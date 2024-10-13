@@ -1,0 +1,4 @@
+kubeaid-bootstrap-script.config.yaml
+*.test.config.yaml
+
+outputs/

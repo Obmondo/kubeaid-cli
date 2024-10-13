@@ -1,0 +1,48 @@
+global:
+  clusterName: {{ .ClusterName }}
+  {{- if .CustomerID }}
+  customerid: {{ .CustomerID }}
+  {{- end }}
+  kubernetes:
+    version: {{ .K8sVersion }}
+  clusterAPI:
+    version: v1.8.1
+  capa:
+    version: v2.6.1
+    autoScaler: true
+  kubeaid:
+    repo: {{ .KubeaidForkURL }}
+  kubeaidConfig:
+    repo: {{ .KubeaidConfigForkURL }}
+
+provider:
+  aws: true
+
+aws:
+  secretName: cloud-credentials
+  sshKeyName: {{ .SSHKeyName }}
+  region: {{ .Region }}
+  bastion:
+    enabled: true
+  vpc:
+    cidrBlock: 10.14.0.0/22
+  pods:
+    cidrBlock: 10.244.0.0/16
+  controlPlane:
+    loadBalancer:
+      loadBalancerType: nlb
+    region: {{ .Region }}
+    replicas: {{ .ControlPlaneReplicas }}
+    instanceType: {{ .ControlPlaneInstanceType }}
+    ami:
+      id: {{ .ControlPlaneAMI }}
+  machinePools:
+  {{- range .MachinePools }}
+    - name: {{ .Name }}
+      replicas: {{ .Replicas }}
+      instanceType: {{ .InstanceType }}
+      sshKeyName: {{ .SSHKeyName }}
+      ami:
+        id: {{ .AMI }}
+      rootVolumeSize: {{ .RootVolumeSize }}
+  {{- end }}

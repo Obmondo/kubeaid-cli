@@ -1,0 +1,39 @@
+forks:
+  kubeaid: https://github.com/Obmondo/KubeAid
+  kubeaidConfig: https://github.com/Archisman-Mridha/kubeaid-config
+
+git:
+  username: "...."
+  password: "...."
+
+cluster:
+  name: kubeaid-demo
+  k8sVersion: {{ .K8sVersion }}
+
+cloud:
+  aws:
+    accessKey: "...."
+    secretKey: "...."
+    region: us-east-2
+
+    sshKeyName: kubeaid-demo
+
+    controlPlaneInstanceType: t4g.medium
+    controlPlaneAMI: {{ .AMI }}
+    controlPlaneReplicas: 1
+
+    machinePools:
+      - name: primary
+        ami: {{ .AMI }}
+        instanceType: t4g.medium
+
+        replicas: 1
+        rootVolumeSize: 35
+
+        sshKeyName: kubeaid-demo
+
+monitoring:
+  kubePrometheusVersion: v0.14.0
+  grafanaURL: ""
+
+  connectObmondo: False

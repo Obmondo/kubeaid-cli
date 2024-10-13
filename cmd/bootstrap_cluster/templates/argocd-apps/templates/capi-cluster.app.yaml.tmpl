@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: capi-cluster
+  namespace: argo-cd
+
+spec:
+  destination:
+    namespace: {{ .CAPIClusterNamespace }}
+    server: https://kubernetes.default.svc
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/capi-cluster
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .ClusterName }}/argocd-apps/capi-cluster.values.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  project: default
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

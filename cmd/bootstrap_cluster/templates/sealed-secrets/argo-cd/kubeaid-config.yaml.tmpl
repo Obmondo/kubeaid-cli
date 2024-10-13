@@ -1,0 +1,19 @@
+{{- $name := "kubeaid-config" }}
+{{- if .CustomerID }}
+{{- $name = printf "kubeaid-config-%s" .CustomerID }}
+{{- end }}
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  namespace: argo-cd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+
+stringData:
+  name: {{ $name }}
+  url: {{ .KubeaidConfigForkURL }}
+  type: git
+  username: {{ .GitUsername }}
+  password: {{ .GitPassword }}

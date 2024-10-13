@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.23.0
+
+ARG CPU_ARCHITECTURE
+ENV CPU_ARCHITECTURE=${CPU_ARCHITECTURE}
+
+WORKDIR /
+
+COPY ./scripts/install-prerequisites.sh /install-prerequisites.sh
+RUN sh /install-prerequisites.sh
+
+WORKDIR /app
+
+CMD sleep infinity
