@@ -22,8 +22,7 @@ type (
 	}
 
 	GitConfig struct {
-		Username string `yaml:"username"`
-
+		Username        string `yaml:"username"`
 		Password        string `yaml:"password"`
 		SSHPrivateKey   string `yaml:"sshPrivateKey"`
 		UseSSHAgentAuth bool   `yaml:"useSSHAgentAuth"`
@@ -37,7 +36,7 @@ type (
 	ClusterConfig struct {
 		ClusterName string `yaml:"name" validate:"required"`
 
-		// NOTE : Currently, only Kubernetes v1.31 is supported.
+		// NOTE : Currently, only Kubernetes v1.30.0 and v1.31.0 are supported.
 		K8sVersion string `yaml:"k8sVersion" validate:"required"`
 	}
 

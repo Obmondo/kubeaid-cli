@@ -32,12 +32,14 @@ func BootstrapCluster(ctx *cli.Context) error {
 	gitAuthMethod := utils.GetGitAuthMethod()
 
 	// Create the management cluster (using K3d).
-	{
-		managementClusterName := "management-cluster"
-
-		slog.Info("Spinning up K3d management cluster (in the host machine)", slog.String("name", managementClusterName))
-		utils.ExecuteCommandOrDie(fmt.Sprintf("k3d cluster create %s --servers 1 --agents 2 --wait", managementClusterName))
-	}
+	managementClusterName := "management-cluster"
+	slog.Info("Spinning up K3d management cluster (in the host machine)", slog.String("name", managementClusterName))
+	utils.ExecuteCommandOrDie(fmt.Sprintf(`
+    k3d cluster create %s \
+      --servers 1 --agents 2 \
+      --image rancher/k3s:v1.31.1-k3s1 \
+      --wait
+  `, managementClusterName))
 
 	// Install Sealed Secrets.
 	utils.InstallSealedSecrets()

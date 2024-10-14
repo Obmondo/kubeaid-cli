@@ -27,7 +27,7 @@ const (
 
 	OutputPathManagementClusterKubeconfig  = "./outputs/management-cluster.kubeconfig.yaml"
 	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
-	OutputPathGeneratedConfig              = "kubeaid-bootstrap-script.config.yaml"
+	OutputPathGeneratedConfig              = "./outputs/kubeaid-bootstrap-script.config.yaml"
 
 	// Supported Kubernetes versions.
 	K8s_v1_30_0 = "v1.30.0"
