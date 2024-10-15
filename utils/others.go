@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/template"
 
@@ -81,3 +82,11 @@ func ExecuteCommandOrDie(command string) string {
 }
 
 func Unreachable() { panic("unreachable") }
+
+// Creates intermediate directories which don't exist for the given file path.
+func CreateIntermediateDirectories(filePath string) {
+	parentDir := filepath.Dir(filePath)
+	if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
+		log.Fatalf("Failed creating intermediate directories for file path %s : %v", filePath, err)
+	}
+}

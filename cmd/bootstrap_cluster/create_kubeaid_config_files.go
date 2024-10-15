@@ -96,6 +96,8 @@ func getEmbeddedTemplateNames() []string {
 
 // Creates file from the given template.
 func createFileFromTemplate(destinationFilePath, embeddedTemplateName string, templateValues *TemplateValues) {
+	utils.CreateIntermediateDirectories(destinationFilePath)
+
 	// Open the destination file.
 	destinationFile, err := os.OpenFile(destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
