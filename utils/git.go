@@ -47,10 +47,15 @@ func GetGitAuthMethod() (authMethod transport.AuthMethod) {
 }
 
 func GitCloneRepo(url, dir string, authMethod transport.AuthMethod) *git.Repository {
-	repo, err := git.PlainClone(dir, false, &git.CloneOptions{
+	opts := &git.CloneOptions{
 		Auth: authMethod,
 		URL:  url,
-	})
+	}
+	if url == constants.ParsedConfig.Forks.KubeaidForkURL {
+		opts.Depth = 1
+	}
+
+	repo, err := git.PlainClone(dir, false, opts)
 	if err != nil {
 		log.Fatalf("Failed git cloning repo %s in %s : %v", url, dir, err)
 	}

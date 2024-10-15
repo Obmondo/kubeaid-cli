@@ -243,7 +243,8 @@ func BootstrapCluster(ctx *cli.Context) error {
 
 		// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 		// Kubernetes Secret will exist.
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", utils.GetCapiClusterNamespace()))
+		capiClusterNamespace := utils.GetCapiClusterNamespace()
+		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", capiClusterNamespace))
 
 		// Sync the root, cert-manager, sealed-secrets, secrets and cluster-api ArgoCD Apps.
 		argocdAppsToBeSynced := []string{
@@ -261,8 +262,8 @@ func BootstrapCluster(ctx *cli.Context) error {
 
 		// Move ClusterAPI manifests to the provisioned cluster.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"clusterctl move --kubeconfig %s --to-kubeconfig %s",
-			constants.OutputPathManagementClusterKubeconfig, constants.OutputPathProvisionedClusterKubeconfig,
+			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
+			constants.OutputPathManagementClusterKubeconfig, capiClusterNamespace, constants.OutputPathProvisionedClusterKubeconfig,
 		))
 	}
 
