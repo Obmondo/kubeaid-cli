@@ -1,5 +1,13 @@
 # KubeAid Bootstrap Script
 
+The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cluster API and [KubeAid](https://github.com/Obmondo/KubeAid).
+
+> Currently it only supports bootstrapping self-managed clusters in AWS.
+
+## Official Guides
+
+- [Bootstrapping a self-managed cluster in AWS](https://github.com/Obmondo/KubeAid/blob/master/docs/aws/capi/cluster.md)
+
 ## Developer Guide
 
 > Make sure, you've Docker installed in your system.
