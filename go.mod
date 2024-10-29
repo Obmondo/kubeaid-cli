@@ -1,4 +1,4 @@
-module github.com/Obmondo/kubeaid-bootstrap-script
+module github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme
 
 go 1.22.1
 

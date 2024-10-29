@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/config"
+	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/constants"
+	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/utils"
 	"github.com/urfave/cli/v2"
 )
 

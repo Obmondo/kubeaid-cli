@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/constants"
 )
 
 func GetGitAuthMethod() (authMethod transport.AuthMethod) {
