@@ -45,4 +45,14 @@ aws:
       ami:
         id: {{ .AMI }}
       rootVolumeSize: {{ .RootVolumeSize }}
+      labels:
+      {{- range $key, $value := .Labels }}
+        {{ $key }}: {{ $value }}
+      {{- end }}
+      taints:
+      {{- range $index, $value := .Taints }}
+        - key: {{ $value.Key }}
+          value: {{ $value.Value }}
+          effect: {{ $value.Effect }}
+      {{- end }}
   {{- end }}
