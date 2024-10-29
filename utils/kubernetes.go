@@ -51,10 +51,10 @@ func InstallAndSetupArgoCD(clusterDir string) {
 		//
 		// In that case we want to re-establish the port-forwarding.
 		for {
-			output := ExecuteCommand(`
+			output, _ := ExecuteCommand(`
         pkill kubectl -9
         kubectl port-forward svc/argo-cd-argocd-server -n argo-cd 8080:443
-      `, false)
+      `)
 			if !strings.Contains(output, "broken pipe") {
 				break
 			}

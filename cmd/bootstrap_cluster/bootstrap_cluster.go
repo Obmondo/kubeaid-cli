@@ -21,6 +21,9 @@ import (
 var currentTime = time.Now().Unix()
 
 func BootstrapCluster(ctx *cli.Context) error {
+	// Initialize temp dir where repositories will be cloned.
+	utils.InitTempDir()
+
 	// Parse the config file.
 	configFilePath := ctx.Path(constants.FlagNameConfigFile)
 	constants.ParsedConfig = config.ParseConfigFile(configFilePath)
@@ -85,7 +88,12 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// The clusterawsadm utility takes the credentials that you set as environment variables and
 		// uses them to create a CloudFormation stack in your AWS account with the correct IAM resources.
 		// NOTE : This requires admin privileges.
-		utils.ExecuteCommandOrDie("clusterawsadm bootstrap iam create-cloudformation-stack")
+		output, err := utils.ExecuteCommand("clusterawsadm bootstrap iam create-cloudformation-stack")
+		//
+		// If an error occurs and it's not about AWS Cloudformation stack already existing, then panic.
+		if err != nil && !strings.Contains(output, "already exists, updating") {
+			log.Fatalf("Command execution failed : %v", output)
+		}
 
 	default:
 		utils.Unreachable()
@@ -135,7 +143,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 			  In that case, we'll retry. Otherwise, we'll fail if the 'error' word exists in the output.
 			  If not that means the command execution is successfull.
 			*/
-			output := utils.ExecuteCommand("argocd app sync argo-cd/capi-cluster", false)
+			output, _ := utils.ExecuteCommand("argocd app sync argo-cd/capi-cluster")
 			if strings.Contains(output, "failed to call webhook") {
 				slog.Info("Waiting for kubeadm-control-plane-system and kubeadm-bootstrap-system webhooks to be available....")
 				time.Sleep(5 * time.Second)
@@ -182,11 +190,11 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// Wait for the Kubernetes API server to be reachable and atleast 1 worker node to be
 		// initialized.
 		for {
-			initializedNodeCountAsString := utils.ExecuteCommand(`
+			initializedNodeCountAsString, _ := utils.ExecuteCommand(`
         kubectl get nodes --no-headers -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints \
           | grep -v node.cluster.x-k8s.io/uninitialized \
           | wc -l
-      `, false)
+      `)
 			initializedNodeCountAsString = strings.TrimSpace(initializedNodeCountAsString)
 
 			initializedNodeCount, _ := strconv.Atoi(initializedNodeCountAsString)
@@ -246,15 +254,17 @@ func BootstrapCluster(ctx *cli.Context) error {
 		capiClusterNamespace := utils.GetCapiClusterNamespace()
 		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", capiClusterNamespace))
 
-		// Sync the root, cert-manager, sealed-secrets, secrets and cluster-api ArgoCD Apps.
+		// Sync the root, cert-manager, sealed-secrets, secrets, kube-prometheus and cluster-api ArgoCD
+		// Apps.
 		argocdAppsToBeSynced := []string{
 			"root",
 			"cert-manager",
 			"secrets",
+			"kube-prometheus",
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
-			utils.ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s", argoCDApp))
+			utils.ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s --server-side", argoCDApp))
 		}
 
 		// Sync the Infrastructure Provider component of the CAPI Cluster ArgoCD App.
