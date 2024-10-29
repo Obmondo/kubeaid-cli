@@ -62,14 +62,21 @@ type (
 	}
 
 	AWSMachinePool struct {
-		Name           string `yaml:"name" validate:"required"`
-		Replicas       int    `yaml:"replicas" validate:"required"`
-		InstanceType   string `yaml:"instanceType" validate:"required"`
-		SSHKeyName     string `yaml:"sshKeyName" validate:"required"`
-		AMI            string `yaml:"ami" validate:"required"`
-		RootVolumeSize int    `yaml:"rootVolumeSize" validate:"required"`
+		Name           string            `yaml:"name" validate:"required"`
+		Replicas       int               `yaml:"replicas" validate:"required"`
+		InstanceType   string            `yaml:"instanceType" validate:"required"`
+		SSHKeyName     string            `yaml:"sshKeyName" validate:"required"`
+		AMI            string            `yaml:"ami" validate:"required"`
+		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
+		Labels         map[string]string `yaml:"labels" validate:"required"`
+		Taints         []NodeTaints      `yaml:"taints" validate:"required"`
 	}
 
+	NodeTaints struct {
+		Key    string `yaml:"key" validate:"required"`
+		Value  string `yaml:"value" validate:"required"`
+		Effect string `yaml:"effect" validate:"required"`
+	}
 	AzureConfig struct{}
 
 	HetznerConfig struct{}
