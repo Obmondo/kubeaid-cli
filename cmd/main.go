@@ -4,8 +4,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/cmd/bootstrap_cluster"
-	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/bootstrap_cluster"
+	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/urfave/cli/v2"
 )
 

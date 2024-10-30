@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 )
 
 // Installs Sealed Secrets in the underlying Kubernetes cluster.

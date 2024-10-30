@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 )
 
 const (

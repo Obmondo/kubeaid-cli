@@ -49,10 +49,12 @@ aws:
       {{- range $key, $value := .Labels }}
         {{ $key }}: {{ $value }}
       {{- end }}
+      {{- if gt (len .Taints) 0 }}
       taints:
       {{- range $index, $value := .Taints }}
-        - key: {{ $value.Key }}
-          value: {{ $value.Value }}
-          effect: {{ $value.Effect }}
+        - key: "{{ $value.Key }}"
+          value: "{{ $value.Value }}"
+          effect: "{{ $value.Effect }}"
+      {{- end }}
       {{- end }}
   {{- end }}

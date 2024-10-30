@@ -11,7 +11,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/guilherme-santos03/kubeaid-bootstrap-script-guilherme/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 )
 
 func SetEnvs() {
