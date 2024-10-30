@@ -3,7 +3,7 @@ SHELL = /bin/bash
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/Dockerfile --build-arg CPU_ARCHITECTURE=arm64 -t kubeaid-bootstrap-script-dev .
+	@docker build -f ./build/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t kubeaid-bootstrap-script-dev .
 
 .PHONY: run-container-dev
 run-container-dev:
