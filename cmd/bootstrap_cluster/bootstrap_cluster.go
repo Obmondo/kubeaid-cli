@@ -28,21 +28,26 @@ func BootstrapCluster(ctx *cli.Context) error {
 	configFilePath := ctx.Path(constants.FlagNameConfigFile)
 	constants.ParsedConfig = config.ParseConfigFile(configFilePath)
 
+	// Detect whether we're running in retry mode or not.
+	constants.RetryMode = ctx.Bool(constants.FlagNameRetry)
+
 	// Set environment variables.
 	utils.SetEnvs()
 
 	// Detect git authentication method.
 	gitAuthMethod := utils.GetGitAuthMethod()
 
-	// Create the management cluster (using K3d).
+	// Create the management cluster (using K3d), if we're not retrying.
 	managementClusterName := "management-cluster"
-	slog.Info("Spinning up K3d management cluster (in the host machine)", slog.String("name", managementClusterName))
-	utils.ExecuteCommandOrDie(fmt.Sprintf(`
-    k3d cluster create %s \
-      --servers 1 --agents 2 \
-      --image rancher/k3s:v1.31.1-k3s1 \
-      --wait
-  `, managementClusterName))
+	if !constants.RetryMode || (constants.RetryMode && !utils.DoesK3dClusterExist(managementClusterName)) {
+		slog.Info("Spinning up K3d management cluster (in the host machine)", slog.String("name", managementClusterName))
+		utils.ExecuteCommandOrDie(fmt.Sprintf(`
+			k3d cluster create %s \
+				--servers 1 --agents 2 \
+				--image rancher/k3s:v1.31.1-k3s1 \
+				--wait
+		`, managementClusterName))
+	}
 
 	// Install Sealed Secrets.
 	utils.InstallSealedSecrets()
@@ -90,7 +95,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// NOTE : This requires admin privileges.
 		output, err := utils.ExecuteCommand("clusterawsadm bootstrap iam create-cloudformation-stack")
 		//
-		// If an error occurs and it's not about AWS Cloudformation stack already existing, then panic.
+		// Panic if an error occurs (except regarding the AWS Cloudformation stack already existing).
 		if err != nil && !strings.Contains(output, "already exists, updating") {
 			log.Fatalf("Command execution failed : %v", output)
 		}
@@ -107,7 +112,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 		// Kubernetes Secret will exist.
 		capiClusterNamespace := utils.GetCapiClusterNamespace()
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", capiClusterNamespace))
+		utils.CreateNamespace(capiClusterNamespace)
 
 		// Sync the root, CertManager, Secrets and ClusterAPI ArgoCD Apps one by one.
 		argocdAppsToBeSynced := []string{
@@ -252,7 +257,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 		// Kubernetes Secret will exist.
 		capiClusterNamespace := utils.GetCapiClusterNamespace()
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", capiClusterNamespace))
+		utils.CreateNamespace(capiClusterNamespace)
 
 		// Sync the root, cert-manager, sealed-secrets, secrets, kube-prometheus and cluster-api ArgoCD
 		// Apps.

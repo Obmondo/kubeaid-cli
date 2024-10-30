@@ -5,9 +5,10 @@ import (
 )
 
 const (
-	FlagNameConfigFile = "config-file"
 	FlagNameK8sVersion = "k8s-version"
 	FlagNameCloud      = "cloud"
+	FlagNameConfigFile = "config-file"
+	FlagNameRetry      = "retry"
 
 	CloudProviderAWS     = "aws"
 	CloudProviderAzure   = "azure"
@@ -41,6 +42,10 @@ var (
 	TempDir string
 
 	ParsedConfig *config.Config
+
+	// Indicates whether the script (specifically the bootstrap-cluster command) is running in retry
+	// mode or not.
+	RetryMode = false
 
 	CommonEmbeddedTemplateNames = []string{
 		// ArgoCD.

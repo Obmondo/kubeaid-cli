@@ -112,3 +112,16 @@ func InitTempDir() {
 
 	constants.TempDir = path
 }
+
+// Returns whether the given K3d cluster exists or not.
+func DoesK3dClusterExist(name string) bool {
+	output, _ := ExecuteCommand("k3d cluster list --output json | jq -r '.[].name'")
+
+	clusterNames := strings.Split(strings.TrimSpace(output), "\n")
+	for _, clusterName := range clusterNames {
+		if clusterName == name {
+			return true
+		}
+	}
+	return false
+}

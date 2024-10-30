@@ -42,6 +42,11 @@ func main() {
 						Usage:    "Path to the config file",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name:     constants.FlagNameRetry,
+						Usage:    "Retry bootstrapping the cluster",
+						Required: false,
+					},
 				},
 			},
 		},

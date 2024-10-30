@@ -12,9 +12,11 @@ import (
 
 // Installs Sealed Secrets in the underlying Kubernetes cluster.
 func InstallSealedSecrets() {
+	slog.Info("Installing Sealed Secrets")
 	ExecuteCommandOrDie(`
     helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-    helm install sealed-secrets sealed-secrets/sealed-secrets --namespace kube-system \
+    helm upgrade sealed-secrets sealed-secrets/sealed-secrets --namespace kube-system \
+			--install \
       --set-string fullnameOverride=sealed-secrets-controller \
       --wait
   `)
@@ -35,9 +37,11 @@ Does the following :
 */
 func InstallAndSetupArgoCD(clusterDir string) {
 	// Install ArgoCD.
+	slog.Info("Installing ArgoCD")
 	ExecuteCommandOrDie(`
     helm repo add argo https://argoproj.github.io/argo-helm
-    helm install argo-cd argo/argo-cd --namespace argo-cd --create-namespace \
+    helm upgrade argo-cd argo/argo-cd --namespace argo-cd \
+			--install --create-namespace \
       --set notification.enabled=false --set dex.enabled=false \
       --wait`)
 	time.Sleep(time.Second * 20)
@@ -97,6 +101,18 @@ func GetCapiClusterNamespace() string {
 	return capiClusterNamespace
 }
 
+func CreateNamespace(namespace string) {
+	// Skip creation, if running in retry mode and the namespace already exists.
+	if constants.RetryMode {
+		output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get namespace %s --ignore-not-found", namespace))
+		if output != "" {
+			return
+		}
+	}
+
+	ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", namespace))
+}
+
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
 // infrastructure specific CRDs to be installed and pod to be running.
 func SyncInfrastructureProvider() {
@@ -121,7 +137,8 @@ func SyncInfrastructureProvider() {
 	capiClusterNamespace := GetCapiClusterNamespace()
 	// Wait for the infrastructure specific CRDs to be installed and pod to be running.
 	for {
-		if output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get pods -n %s", capiClusterNamespace)); !strings.Contains(output, "No resources found") {
+		getPodsOutput := ExecuteCommandOrDie(fmt.Sprintf("kubectl get pods -n %s", capiClusterNamespace))
+		if !strings.Contains(getPodsOutput, "No resources found") {
 			podStatus := ExecuteCommandOrDie(fmt.Sprintf("kubectl get pods -n %s -o jsonpath='{.items[0].status.phase}'", capiClusterNamespace))
 			if podStatus == "Running" {
 				break
