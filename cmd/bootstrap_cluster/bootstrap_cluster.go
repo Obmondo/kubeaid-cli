@@ -272,11 +272,14 @@ func BootstrapCluster(ctx *cli.Context) error {
 		// Sync the Infrastructure Provider component of the CAPI Cluster ArgoCD App.
 		utils.SyncInfrastructureProvider()
 
-		// Move ClusterAPI manifests to the provisioned cluster.
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-			constants.OutputPathManagementClusterKubeconfig, capiClusterNamespace, constants.OutputPathProvisionedClusterKubeconfig,
-		))
+		skipClusterctlMove := ctx.Bool(constants.FlagNameSkipClusterctlMove)
+		if !skipClusterctlMove {
+			// Move ClusterAPI manifests to the provisioned cluster.
+			utils.ExecuteCommandOrDie(fmt.Sprintf(
+				"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
+				constants.OutputPathManagementClusterKubeconfig, capiClusterNamespace, constants.OutputPathProvisionedClusterKubeconfig,
+			))
+		}
 	}
 
 	slog.Info("Cluster provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))

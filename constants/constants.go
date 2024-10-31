@@ -5,10 +5,10 @@ import (
 )
 
 const (
-	FlagNameK8sVersion = "k8s-version"
-	FlagNameCloud      = "cloud"
-	FlagNameConfigFile = "config-file"
-	FlagNameRetry      = "retry"
+	FlagNameK8sVersion         = "k8s-version"
+	FlagNameCloud              = "cloud"
+	FlagNameConfigFile         = "config-file"
+	FlagNameSkipClusterctlMove = "skip-clusterctl-move"
 
 	CloudProviderAWS     = "aws"
 	CloudProviderAzure   = "azure"

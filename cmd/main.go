@@ -42,6 +42,14 @@ func main() {
 						Usage:    "Path to the config file",
 						Required: true,
 					},
+					&cli.BoolFlag{
+						Name: constants.FlagNameSkipClusterctlMove,
+						Usage: `
+							Skips executing the clusterctl move command (which is responsible for making the
+							provisioned cluster manage itself)
+						`,
+						Required: false,
+					},
 				},
 			},
 		},
