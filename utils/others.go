@@ -18,7 +18,7 @@ import (
 )
 
 func SetEnvs() {
-	os.Setenv("KUBECONFIG", constants.OutputPathManagementClusterKubeconfig)
+	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
 
 	// Cloud provider specific environment variables.
 	switch {

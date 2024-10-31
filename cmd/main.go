@@ -32,6 +32,7 @@ func main() {
 					},
 				},
 			},
+
 			{
 				Name:   "bootstrap-cluster",
 				Usage:  "Bootstrap a Kubernetes cluster and install KubeAid",
@@ -49,6 +50,19 @@ func main() {
 							provisioned cluster manage itself)
 						`,
 						Required: false,
+					},
+				},
+			},
+
+			{
+				Name:   "delete-cluster",
+				Usage:  "Deletes the provisioned cluster",
+				Action: DeleteCluster,
+				Flags: []cli.Flag{
+					&cli.PathFlag{
+						Name:     constants.FlagNameConfigFile,
+						Usage:    "Path to the config file",
+						Required: true,
 					},
 				},
 			},

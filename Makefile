@@ -36,9 +36,9 @@ use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
 
 .PHONY: delete-provisioned-cluster
-delete-provisioned-cluster:
-	KUBECONFIG=./outputs/management-cluster.kubeconfig.yaml \
-		kubectl delete clusters/kubeaid-demo -n capi-cluster
+delete-provisioned-cluster-dev:
+	@go run ./cmd delete-cluster \
+		--config-file /app/outputs/kubeaid-bootstrap-script.config.yaml
 
 .PHONY: delete-management-cluster
 delete-management-cluster:

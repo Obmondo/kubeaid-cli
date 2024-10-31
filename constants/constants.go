@@ -15,6 +15,7 @@ const (
 	CloudProviderHetzner = "hetzner"
 
 	EnvNameAWSB64EcodedCredentials = "AWS_B64ENCODED_CREDENTIALS"
+	EnvNameKubeconfig              = "KUBECONFIG"
 
 	TemplateNameAWSSampleConfig   = "aws.sample.config.yaml.tmpl"
 	TemplateNameJsonnet           = "cluster-vars.jsonnet.tmpl"

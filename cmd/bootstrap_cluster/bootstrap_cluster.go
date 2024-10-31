@@ -187,7 +187,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 	// Let the provisioned cluster manage itself.
 	{
 		// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-		os.Setenv("KUBECONFIG", constants.OutputPathProvisionedClusterKubeconfig)
+		os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
 
 		// Wait for the Kubernetes API server to be reachable and atleast 1 worker node to be
 		// initialized.
