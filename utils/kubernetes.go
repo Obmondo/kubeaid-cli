@@ -101,13 +101,12 @@ func GetCapiClusterNamespace() string {
 	return capiClusterNamespace
 }
 
+// Creates the given namespace, if it doesn't already exist.
 func CreateNamespace(namespace string) {
-	// Skip creation, if running in retry mode and the namespace already exists.
-	if constants.RetryMode {
-		output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get namespace %s --ignore-not-found", namespace))
-		if output != "" {
-			return
-		}
+	// Skip creation if the namespace already exists.
+	output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get namespace %s --ignore-not-found", namespace))
+	if output != "" {
+		return
 	}
 
 	ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", namespace))

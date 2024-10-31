@@ -43,10 +43,6 @@ var (
 
 	ParsedConfig *config.Config
 
-	// Indicates whether the script (specifically the bootstrap-cluster command) is running in retry
-	// mode or not.
-	RetryMode = false
-
 	CommonEmbeddedTemplateNames = []string{
 		// ArgoCD.
 		"argocd-apps/templates/argo-cd.app.yaml.tmpl",

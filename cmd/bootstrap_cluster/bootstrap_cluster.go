@@ -28,18 +28,15 @@ func BootstrapCluster(ctx *cli.Context) error {
 	configFilePath := ctx.Path(constants.FlagNameConfigFile)
 	constants.ParsedConfig = config.ParseConfigFile(configFilePath)
 
-	// Detect whether we're running in retry mode or not.
-	constants.RetryMode = ctx.Bool(constants.FlagNameRetry)
-
 	// Set environment variables.
 	utils.SetEnvs()
 
 	// Detect git authentication method.
 	gitAuthMethod := utils.GetGitAuthMethod()
 
-	// Create the management cluster (using K3d), if we're not retrying.
+	// Create the management cluster (using K3d), if it doesn't alredy exist.
 	managementClusterName := "management-cluster"
-	if !constants.RetryMode || (constants.RetryMode && !utils.DoesK3dClusterExist(managementClusterName)) {
+	if !utils.DoesK3dClusterExist(managementClusterName) {
 		slog.Info("Spinning up K3d management cluster (in the host machine)", slog.String("name", managementClusterName))
 		utils.ExecuteCommandOrDie(fmt.Sprintf(`
 			k3d cluster create %s \
