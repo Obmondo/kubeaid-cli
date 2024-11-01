@@ -37,12 +37,4 @@ aws:
     ami:
       id: {{ .ControlPlaneAMI }}
   machinePools:
-  {{- range .MachinePools }}
-    - name: {{ .Name }}
-      replicas: {{ .Replicas }}
-      instanceType: {{ .InstanceType }}
-      sshKeyName: {{ .SSHKeyName }}
-      ami:
-        id: {{ .AMI }}
-      rootVolumeSize: {{ .RootVolumeSize }}
-  {{- end }}
+{{ .MachinePools | toYaml | indent 2 }}

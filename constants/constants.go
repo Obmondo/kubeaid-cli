@@ -1,12 +1,6 @@
 package constants
 
 import (
-	"fmt"
-	"log"
-	"log/slog"
-	"os"
-	"time"
-
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 )
 
@@ -40,11 +34,11 @@ var (
 	// Custom ARM and Ubuntu based AMI for each supported Kubernetes version, built by and published
 	// from Obmondo's AWS account.
 	ObmondoPublishedAMIs = map[string]string{
-		K8s_v1_31_0: "ami-05ec083b8943c8487",
-		K8s_v1_30_0: "ami-09d7052173f1960be",
+		K8s_v1_31_0: "ami-0fc044fa0d061d18d",
+		K8s_v1_30_0: "ami-0c4219b11327ef260",
 	}
 
-	TempDir = getTempDir()
+	TempDir string
 
 	ParsedConfig *config.Config
 
@@ -89,15 +83,3 @@ var (
 		"argocd-apps/ccm-aws.values.yaml.tmpl",
 	}
 )
-
-// NOTE : This should be in the utils package. But I've placed this here to avoid import cycle
-// error.
-func getTempDir() string {
-	name := fmt.Sprintf("kubeaid-bootstrap-script-%d", time.Now().Unix())
-	path, err := os.MkdirTemp("/tmp", name)
-	if err != nil {
-		log.Fatalf("Failed creating temp dir : %v", err)
-	}
-	slog.Info("Created temp dir", slog.String("path", path))
-	return path
-}
