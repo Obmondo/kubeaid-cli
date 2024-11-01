@@ -25,7 +25,10 @@ generate-sample-config-aws-dev:
 .PHONY: bootstrap-cluster-dev
 bootstrap-cluster-dev:
 	@go run ./cmd bootstrap-cluster \
-		--config-file /app/outputs/kubeaid-bootstrap-script.config.yaml
+		--config-file /app/outputs/kubeaid-bootstrap-script.config.yaml \
+		--skip-clusterctl-move
+
+# --skip-create-kubeaid-config-files
 
 .PHONY: use-management-cluster
 use-management-cluster:

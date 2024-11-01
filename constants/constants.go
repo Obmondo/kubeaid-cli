@@ -5,10 +5,11 @@ import (
 )
 
 const (
-	FlagNameK8sVersion         = "k8s-version"
-	FlagNameCloud              = "cloud"
-	FlagNameConfigFile         = "config-file"
-	FlagNameSkipClusterctlMove = "skip-clusterctl-move"
+	FlagNameK8sVersion                   = "k8s-version"
+	FlagNameCloud                        = "cloud"
+	FlagNameConfigFile                   = "config-file"
+	FlagNameSkipCreateKubeaidConfigFiles = "skip-create-kubeaid-config-files"
+	FlagNameSkipClusterctlMove           = "skip-clusterctl-move"
 
 	CloudProviderAWS     = "aws"
 	CloudProviderAzure   = "azure"
@@ -84,4 +85,6 @@ var (
 		"argocd-apps/templates/ccm-aws.yaml.tmpl",
 		"argocd-apps/ccm-aws.values.yaml.tmpl",
 	}
+
+	ArgoCDAppNamespace = "argo-cd"
 )

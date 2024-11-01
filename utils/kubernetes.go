@@ -10,16 +10,84 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 )
 
+// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
+// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
+// with the underlying cloud provider.
+func GetCapiClusterNamespace() string {
+	capiClusterNamespace := "capi-cluster"
+	if len(constants.ParsedConfig.CustomerID) > 0 {
+		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", constants.ParsedConfig.CustomerID)
+	}
+	return capiClusterNamespace
+}
+
+// Creates the given namespace (if it doesn't already exist).
+func CreateNamespace(namespace string) {
+	// Skip creation if the namespace already exists.
+	output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get namespace %s --ignore-not-found", namespace))
+	if output != "" {
+		return
+	}
+
+	ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", namespace))
+}
+
+type HelmInstallArgs struct {
+	RepoURL,
+	RepoName,
+	ChartName,
+	ReleaseName,
+	Namespace string
+	Values []string
+}
+
+// Installs the given Helm chart (if not already installed).
+func HelmInstall(args *HelmInstallArgs) {
+	// Skip Helm installation if release already exists.
+	output, _ := ExecuteCommand(fmt.Sprintf(
+		"helm list -n %s --filter %s | grep %s",
+		args.Namespace, args.ReleaseName, args.ReleaseName,
+	))
+	if output != "" {
+		return
+	}
+
+	// Add Helm repo.
+	ExecuteCommandOrDie(fmt.Sprintf("helm repo add %s %s", args.RepoName, args.RepoURL))
+
+	// Install the Helm chart.
+	installationCommand := fmt.Sprintf(
+		"helm install %s %s/%s -n %s",
+		args.ReleaseName, args.RepoName, args.ChartName, args.Namespace,
+	)
+	for _, value := range args.Values {
+		installationCommand += fmt.Sprintf(" --set %s", value)
+	}
+	installationCommand += " --create-namespace --wait"
+	//
+	ExecuteCommandOrDie(installationCommand)
+}
+
 // Installs Sealed Secrets in the underlying Kubernetes cluster.
 func InstallSealedSecrets() {
-	slog.Info("Installing Sealed Secrets")
-	ExecuteCommandOrDie(`
-    helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-    helm upgrade sealed-secrets sealed-secrets/sealed-secrets --namespace kube-system \
-			--install \
-      --set-string fullnameOverride=sealed-secrets-controller \
-      --wait
-  `)
+	HelmInstall(&HelmInstallArgs{
+		RepoName:    "sealed-secrets",
+		RepoURL:     "https://bitnami-labs.github.io/sealed-secrets",
+		ChartName:   "sealed-secrets",
+		Namespace:   "kube-system",
+		ReleaseName: "sealed-secrets",
+		Values:      []string{"fullnameOverride=sealed-secrets-controller"},
+	})
+}
+
+// Takes the path to a Kubernetes Secret file. It then replaces the contents of that file by
+// generating the corresponding Sealed Secret.
+func GenerateSealedSecret(secretFilePath string) {
+	ExecuteCommandOrDie(fmt.Sprintf(`
+		kubeseal \
+			--controller-name sealed-secrets-controller --controller-namespace kube-system \
+			--secret-file %s --sealed-secret-file %s
+		`, secretFilePath, secretFilePath))
 }
 
 /*
@@ -37,23 +105,26 @@ Does the following :
 */
 func InstallAndSetupArgoCD(clusterDir string) {
 	// Install ArgoCD.
-	slog.Info("Installing ArgoCD")
-	ExecuteCommandOrDie(`
-    helm repo add argo https://argoproj.github.io/argo-helm
-    helm upgrade argo-cd argo/argo-cd --namespace argo-cd \
-			--install --create-namespace \
-      --set notification.enabled=false --set dex.enabled=false \
-      --wait`)
+	HelmInstall(&HelmInstallArgs{
+		RepoName:    "argo-cd",
+		RepoURL:     "https://argoproj.github.io/argo-helm",
+		ChartName:   "argo-cd",
+		Namespace:   "argo-cd",
+		ReleaseName: "argo-cd",
+		Values:      []string{"notification.enabled=false", "dex.enabled=false"},
+	})
 	time.Sleep(time.Second * 20)
 
 	// Port forward ArgoCD server.
 	go func() {
-		// Sometimes ArgoCD port forward may fail with this error :
-		//
-		// error copying from remote stream to local connection: readfrom tcp6 [::1]:8080->[::1]:34908:
-		// write tcp6 [::1]:8080->[::1]:34908: write: broken pipe
-		//
-		// In that case we want to re-establish the port-forwarding.
+		/*
+			Sometimes ArgoCD port forward may fail with this error :
+
+				error copying from remote stream to local connection: readfrom tcp6 [::1]:8080->[::1]:34908:
+				write tcp6 [::1]:8080->[::1]:34908: write: broken pipe
+
+			In that case, we want to re-establish the port-forwarding.
+		*/
 		for {
 			output, _ := ExecuteCommand(`
         pkill kubectl -9
@@ -72,7 +143,8 @@ func InstallAndSetupArgoCD(clusterDir string) {
 	// Login to ArgoCD from ArgoCD CLI.
 	ExecuteCommandOrDie(`
     ARGOCD_PASSWORD=$(kubectl -n argo-cd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-    argocd login localhost:8080 --username admin --password $ARGOCD_PASSWORD --insecure`)
+    argocd login localhost:8080 --username admin --password $ARGOCD_PASSWORD --insecure
+	`)
 
 	// Create the root ArgoCD App.
 	slog.Info("Creating and syncing root ArgoCD app")
@@ -80,36 +152,12 @@ func InstallAndSetupArgoCD(clusterDir string) {
 	ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 }
 
-// Takes the path to a Kubernetes Secret file. It then replaces the contents of that file by
-// generating the corresponding Sealed Secret.
-func GenerateSealedSecret(secretFilePath string) {
-	ExecuteCommandOrDie(fmt.Sprintf(`
-		kubeseal \
-			--controller-name sealed-secrets-controller --controller-namespace kube-system \
-			--secret-file %s --sealed-secret-file %s
-		`, secretFilePath, secretFilePath))
-}
+// Syncs the ArgoCD App (if not synced already).
+func SyncArgoCDApp(name string) {
+	// TODO : Skip, if the ArgoCD App is already installed.
 
-// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
-// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
-// with the underlying cloud provider.
-func GetCapiClusterNamespace() string {
-	capiClusterNamespace := "capi-cluster"
-	if len(constants.ParsedConfig.CustomerID) > 0 {
-		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", constants.ParsedConfig.CustomerID)
-	}
-	return capiClusterNamespace
-}
-
-// Creates the given namespace, if it doesn't already exist.
-func CreateNamespace(namespace string) {
-	// Skip creation if the namespace already exists.
-	output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get namespace %s --ignore-not-found", namespace))
-	if output != "" {
-		return
-	}
-
-	ExecuteCommandOrDie(fmt.Sprintf("kubectl create namespace %s", namespace))
+	// Sync the ArgoCD app.
+	ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s --server-side", name))
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
@@ -128,8 +176,9 @@ func SyncInfrastructureProvider() {
 		infrastructureProviderName = fmt.Sprintf("aws-%s", constants.ParsedConfig.CustomerID)
 	}
 
+	// Sync the Infrastructure Provider component.
 	ExecuteCommandOrDie(fmt.Sprintf(
-		"argocd app sync argo-cd/capi-cluster --resource operator.cluster.x-k8s.io:InfrastructureProvider:%s",
+		"argocd app sync argo-cd/capi-cluster --server-side --resource operator.cluster.x-k8s.io:InfrastructureProvider:%s",
 		infrastructureProviderName,
 	))
 

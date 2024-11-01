@@ -44,6 +44,11 @@ func main() {
 						Required: true,
 					},
 					&cli.BoolFlag{
+						Name:     constants.FlagNameSkipCreateKubeaidConfigFiles,
+						Usage:    "Skips recreating KubeAid config files (generally used for developmental purposes)",
+						Required: false,
+					},
+					&cli.BoolFlag{
 						Name: constants.FlagNameSkipClusterctlMove,
 						Usage: `
 							Skips executing the clusterctl move command (which is responsible for making the

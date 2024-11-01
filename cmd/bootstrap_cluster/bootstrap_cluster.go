@@ -68,20 +68,22 @@ func BootstrapCluster(ctx *cli.Context) error {
 		newBranchName := fmt.Sprintf("kubeaid-%s-%d", constants.ParsedConfig.Cluster.ClusterName, currentTime)
 		utils.CreateAndCheckoutToBranch(kubeaidConfigFork, newBranchName, workTree)
 
-		// Create files in the new branch of the KubeAid config fork.
-		createKubeaidConfigFiles(clusterDir, gitAuthMethod)
+		if !ctx.Bool(constants.FlagNameSkipCreateKubeaidConfigFiles) {
+			// Create files in the new branch of the KubeAid config fork.
+			createKubeaidConfigFiles(clusterDir, gitAuthMethod)
 
-		// Add, commit and push the changes.
-		commitMessage := fmt.Sprintf("KubeAid bootstrap setup for argo-cd applications on %s\n", constants.ParsedConfig.Cluster.ClusterName)
-		commitHash := utils.AddCommitAndPushChanges(kubeaidConfigFork, workTree, newBranchName, gitAuthMethod, constants.ParsedConfig.Cluster.ClusterName, commitMessage)
+			// Add, commit and push the changes.
+			commitMessage := fmt.Sprintf("KubeAid bootstrap setup for argo-cd applications on %s\n", constants.ParsedConfig.Cluster.ClusterName)
+			commitHash := utils.AddCommitAndPushChanges(kubeaidConfigFork, workTree, newBranchName, gitAuthMethod, constants.ParsedConfig.Cluster.ClusterName, commitMessage)
 
-		// The user now needs to go ahead and create a PR from the new to the default branch. Then he
-		// needs to merge that branch.
-		// We can't create the PR for the user, since PRs are not part of the core git lib. They are
-		// specific to the git platform the user is on.
+			// The user now needs to go ahead and create a PR from the new to the default branch. Then he
+			// needs to merge that branch.
+			// We can't create the PR for the user, since PRs are not part of the core git lib. They are
+			// specific to the git platform the user is on.
 
-		// Wait until the PR gets merged.
-		utils.WaitUntilPRMerged(kubeaidConfigFork, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
+			// Wait until the PR gets merged.
+			utils.WaitUntilPRMerged(kubeaidConfigFork, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
+		}
 	}
 
 	// Cloud specific tasks.
@@ -119,7 +121,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
-			utils.ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s", argoCDApp))
+			utils.SyncArgoCDApp(argoCDApp)
 		}
 
 		// Sync the Infrastructure Provider component and then the whole CAPI Cluster ArgoCD App.
@@ -266,7 +268,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
-			utils.ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s --server-side", argoCDApp))
+			utils.SyncArgoCDApp(argoCDApp)
 		}
 
 		// Sync the Infrastructure Provider component of the CAPI Cluster ArgoCD App.
