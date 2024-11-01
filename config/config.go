@@ -7,8 +7,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/go-playground/validator/v10"
+	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
+	v1 "k8s.io/api/core/v1"
 )
 
 type (
@@ -62,12 +63,18 @@ type (
 	}
 
 	AWSMachinePool struct {
-		Name           string `yaml:"name" validate:"required"`
-		Replicas       int    `yaml:"replicas" validate:"required"`
-		InstanceType   string `yaml:"instanceType" validate:"required"`
-		SSHKeyName     string `yaml:"sshKeyName" validate:"required"`
-		AMI            string `yaml:"ami" validate:"required"`
-		RootVolumeSize int    `yaml:"rootVolumeSize" validate:"required"`
+		Name           string            `yaml:"name" validate:"required"`
+		Replicas       int               `yaml:"replicas" validate:"required"`
+		InstanceType   string            `yaml:"instanceType" validate:"required"`
+		SSHKeyName     string            `yaml:"sshKeyName" validate:"required"`
+		AMI            AMIConfig         `yaml:"ami" validate:"required"`
+		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
+		Labels         map[string]string `yaml:"labels" default:"[]"`
+		Taints         []v1.Taint        `yaml:"taints" default:"[]"`
+	}
+
+	AMIConfig struct {
+		ID string `yaml:"id" validate:"required"`
 	}
 
 	AzureConfig struct{}
@@ -103,10 +110,12 @@ func ParseConfig(configAsString string) (*Config, error) {
 	}
 	slog.Info("Parsed config")
 
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(parsedConfig); err != nil {
-		return nil, fmt.Errorf("config validation failed : %v", err)
+	// Set defaults.
+	if err := defaults.Set(parsedConfig); err != nil {
+		log.Fatalf("Failed setting defaults for parsed config : %v", err)
 	}
+
+	validateConfig(parsedConfig)
 
 	return parsedConfig, nil
 }
