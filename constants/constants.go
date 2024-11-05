@@ -5,23 +5,28 @@ import (
 )
 
 const (
+	// Supported CLI flags.
 	FlagNameK8sVersion                   = "k8s-version"
 	FlagNameCloud                        = "cloud"
 	FlagNameConfigFile                   = "config-file"
 	FlagNameSkipCreateKubeaidConfigFiles = "skip-create-kubeaid-config-files"
 	FlagNameSkipClusterctlMove           = "skip-clusterctl-move"
 
+	// Supported cloud providers.
 	CloudProviderAWS     = "aws"
 	CloudProviderAzure   = "azure"
 	CloudProviderHetzner = "hetzner"
 
+	// Environment variable names.
 	EnvNameAWSB64EcodedCredentials = "AWS_B64ENCODED_CREDENTIALS"
 	EnvNameKubeconfig              = "KUBECONFIG"
 
+	// Go templates.
 	TemplateNameAWSSampleConfig   = "aws.sample.config.yaml.tmpl"
 	TemplateNameJsonnet           = "cluster-vars.jsonnet.tmpl"
 	TemplateNameKubeaidConfigRepo = "sealed-secrets/argo-cd/kubeaid-config.yaml.tmpl"
 
+	// Output paths.
 	OutputPathManagementClusterKubeconfig  = "./outputs/management-cluster.kubeconfig.yaml"
 	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
 	OutputPathGeneratedConfig              = "./outputs/kubeaid-bootstrap-script.config.yaml"
@@ -85,6 +90,4 @@ var (
 		"argocd-apps/templates/ccm-aws.yaml.tmpl",
 		"argocd-apps/ccm-aws.values.yaml.tmpl",
 	}
-
-	ArgoCDAppNamespace = "argo-cd"
 )

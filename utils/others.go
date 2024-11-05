@@ -41,6 +41,19 @@ func SetEnvs() {
 	}
 }
 
+// Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
+// Then sets the value of constants.TempDir as the temp dir path.
+func InitTempDir() {
+	name := fmt.Sprintf("kubeaid-bootstrap-script-%d", time.Now().Unix())
+	path, err := os.MkdirTemp("/tmp", name)
+	if err != nil {
+		log.Fatalf("Failed creating temp dir : %v", err)
+	}
+	slog.Info("Created temp dir", slog.String("path", path))
+
+	constants.TempDir = path
+}
+
 // Returns value of the given environment variable.
 // Panics if the environment variable isn't found.
 func GetEnv(name string) string {
@@ -110,30 +123,4 @@ func CreateIntermediateDirectories(filePath string) {
 	if err := os.MkdirAll(parentDir, os.ModePerm); err != nil {
 		log.Fatalf("Failed creating intermediate directories for file path %s : %v", filePath, err)
 	}
-}
-
-// Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
-// Then sets the value of constants.TempDir as the temp dir path.
-func InitTempDir() {
-	name := fmt.Sprintf("kubeaid-bootstrap-script-%d", time.Now().Unix())
-	path, err := os.MkdirTemp("/tmp", name)
-	if err != nil {
-		log.Fatalf("Failed creating temp dir : %v", err)
-	}
-	slog.Info("Created temp dir", slog.String("path", path))
-
-	constants.TempDir = path
-}
-
-// Returns whether the given K3d cluster exists or not.
-func DoesK3dClusterExist(name string) bool {
-	output, _ := ExecuteCommand("k3d cluster list --output json | jq -r '.[].name'")
-
-	clusterNames := strings.Split(strings.TrimSpace(output), "\n")
-	for _, clusterName := range clusterNames {
-		if clusterName == name {
-			return true
-		}
-	}
-	return false
 }

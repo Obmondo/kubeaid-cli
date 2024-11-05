@@ -258,13 +258,11 @@ func BootstrapCluster(ctx *cli.Context) error {
 		capiClusterNamespace := utils.GetCapiClusterNamespace()
 		utils.CreateNamespace(capiClusterNamespace)
 
-		// Sync the root, cert-manager, sealed-secrets, secrets, kube-prometheus and cluster-api ArgoCD
-		// Apps.
+		// Sync the root, cert-manager, sealed-secrets, secrets and cluster-api ArgoCD Apps.
 		argocdAppsToBeSynced := []string{
 			"root",
 			"cert-manager",
 			"secrets",
-			"kube-prometheus",
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
