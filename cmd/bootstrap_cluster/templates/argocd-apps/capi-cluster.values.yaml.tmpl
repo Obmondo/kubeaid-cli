@@ -5,10 +5,7 @@ global:
   {{- end }}
   kubernetes:
     version: {{ .K8sVersion }}
-  clusterAPI:
-    version: v1.8.1
   capa:
-    version: v2.6.1
     autoScaler: true
   kubeaid:
     repo: {{ .KubeaidForkURL }}
