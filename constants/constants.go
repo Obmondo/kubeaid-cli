@@ -90,4 +90,6 @@ var (
 		"argocd-apps/templates/ccm-aws.yaml.tmpl",
 		"argocd-apps/ccm-aws.values.yaml.tmpl",
 	}
+
+	NamespaceArgoCD = "argo-cd"
 )

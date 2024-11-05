@@ -13,6 +13,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/urfave/cli/v2"
@@ -106,7 +107,8 @@ func BootstrapCluster(ctx *cli.Context) error {
 	// Provisioning the main cluster.
 	{
 		// Install and setup ArgoCD.
-		utils.InstallAndSetupArgoCD(clusterDir)
+		argoCDApplicationClient, argoCDApplicationClientCloser := utils.InstallAndSetupArgoCD(clusterDir)
+		defer argoCDApplicationClientCloser.Close()
 
 		// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 		// Kubernetes Secret will exist.
@@ -121,13 +123,13 @@ func BootstrapCluster(ctx *cli.Context) error {
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
-			utils.SyncArgoCDApp(argoCDApp)
+			utils.SyncArgoCDApp(argoCDApplicationClient, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 		}
 
 		// Sync the Infrastructure Provider component and then the whole CAPI Cluster ArgoCD App.
 		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 		// Provider component first.
-		utils.SyncInfrastructureProvider()
+		utils.SyncInfrastructureProvider(argoCDApplicationClient)
 		for {
 			/*
 			  Sometimes, we get this error :
@@ -251,7 +253,8 @@ func BootstrapCluster(ctx *cli.Context) error {
 		}
 
 		// Install and setup ArgoCD.
-		utils.InstallAndSetupArgoCD(clusterDir)
+		argoCDApplicationClient, argoCDApplicationClientCloser := utils.InstallAndSetupArgoCD(clusterDir)
+		defer argoCDApplicationClientCloser.Close()
 
 		// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 		// Kubernetes Secret will exist.
@@ -266,11 +269,11 @@ func BootstrapCluster(ctx *cli.Context) error {
 			"cluster-api",
 		}
 		for _, argoCDApp := range argocdAppsToBeSynced {
-			utils.SyncArgoCDApp(argoCDApp)
+			utils.SyncArgoCDApp(argoCDApplicationClient, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 		}
 
 		// Sync the Infrastructure Provider component of the CAPI Cluster ArgoCD App.
-		utils.SyncInfrastructureProvider()
+		utils.SyncInfrastructureProvider(argoCDApplicationClient)
 
 		skipClusterctlMove := ctx.Bool(constants.FlagNameSkipClusterctlMove)
 		if !skipClusterctlMove {

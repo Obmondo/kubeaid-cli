@@ -1,7 +1,9 @@
 package utils
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -9,6 +11,10 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
+	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
@@ -185,7 +191,7 @@ Does the following :
 
 	(4) Creates the root ArgoCD app.
 */
-func InstallAndSetupArgoCD(clusterDir string) {
+func InstallAndSetupArgoCD(clusterDir string) (application.ApplicationServiceClient, io.Closer) {
 	// Install ArgoCD.
 	HelmInstall(&HelmInstallArgs{
 		RepoName:    "argo-cd",
@@ -223,29 +229,79 @@ func InstallAndSetupArgoCD(clusterDir string) {
 	slog.Info("Waiting for kubectl port-forward to be executed in the other go routine....")
 	time.Sleep(time.Second * 10)
 
-	// Login to ArgoCD from ArgoCD CLI.
-	ExecuteCommandOrDie(`
-    ARGOCD_PASSWORD=$(kubectl -n argo-cd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-    argocd login localhost:8080 --username admin --password $ARGOCD_PASSWORD --insecure
-	`)
-
 	// Create the root ArgoCD App.
 	slog.Info("Creating and syncing root ArgoCD app")
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
 	ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+
+	// Create ArgoCD client (without auth token).
+	argoCDClientOpts := &apiclient.ClientOptions{
+		ServerAddr: "localhost:8080",
+		ConfigPath: GetEnv(constants.EnvNameKubeconfig),
+		PlainText:  true,
+		AuthToken:  "",
+	}
+	argoCDClient := apiclient.NewClientOrDie(argoCDClientOpts)
+
+	// Create a session using the ArgoCD client.
+	// We'll use the admin username and password to obtain an auth token.
+	argoCDClientSessionCloser, argoCDClientSession, err := argoCDClient.NewSessionClient()
+	if err != nil {
+		slog.Error("Failed creating an ArgoCD client session", slog.Any("error", err))
+		os.Exit(1)
+	}
+	defer argoCDClientSessionCloser.Close()
+	response, err := argoCDClientSession.Create(context.Background(), &session.SessionCreateRequest{
+		Username: "admin",
+		Password: ExecuteCommandOrDie("kubectl -n argo-cd get secret argocd-initial-admin-secret -o jsonpath=\"{.data.password}\" | base64 -d"),
+	})
+	if err != nil {
+		slog.Error("Failed creating an ArgoCD client session", slog.Any("error", err))
+		os.Exit(1)
+	}
+
+	// Recreate ArgoCD client, with auth token.
+	argoCDClientOpts.AuthToken = response.Token
+	argoCDClient = apiclient.NewClientOrDie(argoCDClientOpts)
+
+	// Create ArgoCD Application client.
+	argoCDApplicationClientCloser, argoCDApplicationClient := argoCDClient.NewApplicationClientOrDie()
+	return argoCDApplicationClient, argoCDApplicationClientCloser
 }
 
 // Syncs the ArgoCD App (if not synced already).
-func SyncArgoCDApp(name string) {
-	// TODO : Skip, if the ArgoCD App is already installed.
+// If the resources array is empty, then the whole ArgoCD Application is synced. Otherwise, only the
+// specified resources under the ArgoCD Application are synced.
+func SyncArgoCDApp(argoCDApplicationClient application.ApplicationServiceClient, name string, resources []*argoCDV1Aplha1.SyncOperationResource) {
+	// Skip, if the ArgoCD App is already synced.
+	argoCDApplication, err := argoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
+		Name:         &name,
+		AppNamespace: &constants.NamespaceArgoCD,
+	})
+	if err != nil {
+		slog.Error("Failed getting ArgoCD application", slog.String("name", name), slog.String("namespace", constants.NamespaceArgoCD))
+		os.Exit(1)
+	}
+	if argoCDApplication.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced {
+		return
+	}
 
 	// Sync the ArgoCD app.
-	ExecuteCommandOrDie(fmt.Sprintf("argocd app sync argo-cd/%s --server-side", name))
+	_, err = argoCDApplicationClient.Sync(context.Background(), &application.ApplicationSyncRequest{
+		Name:         &name,
+		AppNamespace: &constants.NamespaceArgoCD,
+		Resources:    resources,
+		SyncOptions:  &application.SyncOptions{},
+	})
+	if err != nil {
+		slog.Error("Failed syncing ArgoCD application", slog.String("name", name), slog.String("namespace", constants.NamespaceArgoCD))
+		os.Exit(1)
+	}
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
 // infrastructure specific CRDs to be installed and pod to be running.
-func SyncInfrastructureProvider() {
+func SyncInfrastructureProvider(argoCDApplicationClient application.ApplicationServiceClient) {
 	// Determine the name of the Infrastructure Provider component.
 	var infrastructureProviderName string
 	switch {
@@ -260,10 +316,13 @@ func SyncInfrastructureProvider() {
 	}
 
 	// Sync the Infrastructure Provider component.
-	ExecuteCommandOrDie(fmt.Sprintf(
-		"argocd app sync argo-cd/capi-cluster --server-side --resource operator.cluster.x-k8s.io:InfrastructureProvider:%s",
-		infrastructureProviderName,
-	))
+	SyncArgoCDApp(argoCDApplicationClient, "capi-cluster", []*argoCDV1Aplha1.SyncOperationResource{
+		{
+			Group: "operator.cluster.x-k8s.io",
+			Kind:  "InfrastructureProvider",
+			Name:  infrastructureProviderName,
+		},
+	})
 
 	capiClusterNamespace := GetCapiClusterNamespace()
 	// Wait for the infrastructure specific CRDs to be installed and pod to be running.
