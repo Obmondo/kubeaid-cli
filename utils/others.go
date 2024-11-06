@@ -43,8 +43,27 @@ func SetEnvs() {
 
 // Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
 // Then sets the value of constants.TempDir as the temp dir path.
+// If the temp dir already exists, then that gets reused.
 func InitTempDir() {
-	name := fmt.Sprintf("kubeaid-bootstrap-script-%d", time.Now().Unix())
+	namePrefix := "kubeaid-bootstrap-script-"
+
+	// Check if a temp dir already exists for KubeAid Bootstrap Script.
+	// If yes, then reuse that.
+	filesAndFolders, err := os.ReadDir("/tmp")
+	if err != nil {
+		slog.Error("Failed listing files and folders in /tmp", slog.Any("error", err))
+		os.Exit(1)
+	}
+	for _, item := range filesAndFolders {
+		if item.IsDir() && strings.HasPrefix(item.Name(), namePrefix) {
+			constants.TempDir = fmt.Sprintf("/tmp/%s", item.Name())
+			return
+		}
+	}
+
+	// Otherwise, create it.
+
+	name := fmt.Sprintf("%s%d", namePrefix, time.Now().Unix())
 	path, err := os.MkdirTemp("/tmp", name)
 	if err != nil {
 		log.Fatalf("Failed creating temp dir : %v", err)

@@ -235,7 +235,7 @@ func BootstrapCluster(ctx *cli.Context) error {
 
 			// Pull changes done by the merged PR.
 			if err := workTree.Pull(&git.PullOptions{}); err != nil {
-				log.Fatalf("Failed pulling changes in the default branch for kubeaid-config fork")
+				log.Fatalf("Failed pulling changes in the default branch for kubeaid-config fork", slog.Any("error", err))
 			}
 
 			// Update cloud credentials Kubernetes Secret.

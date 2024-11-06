@@ -46,7 +46,35 @@ func GetGitAuthMethod() (authMethod transport.AuthMethod) {
 	return
 }
 
-func GitCloneRepo(url, dir string, authMethod transport.AuthMethod) *git.Repository {
+// Clones the given git repository into the given directory (only if the repo doesn't already exist
+// in there).
+// If the repo already exists, then it just does git pull.
+func GitCloneRepo(url, dirPath string, authMethod transport.AuthMethod) *git.Repository {
+	if _, err := os.ReadDir(dirPath); err == nil {
+		// The repo already exists.
+
+		repo, err := git.PlainOpen(dirPath)
+		if err != nil {
+			slog.Error("Failed opening existing git repo", slog.String("dir", dirPath), slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		// Do git pull.
+		workTree, err := repo.Worktree()
+		if err != nil {
+			slog.Error("Failed opening git repo work-tree", slog.String("dir", dirPath), slog.Any("error", err))
+			os.Exit(1)
+		}
+		if err := workTree.Pull(&git.PullOptions{}); err != nil {
+			slog.Error("Failed doing git pull", slog.String("dir", dirPath), slog.Any("error", err))
+			os.Exit(1)
+		}
+
+		return repo
+	}
+
+	// Clone git repo.
+
 	opts := &git.CloneOptions{
 		Auth: authMethod,
 		URL:  url,
@@ -55,11 +83,12 @@ func GitCloneRepo(url, dir string, authMethod transport.AuthMethod) *git.Reposit
 		opts.Depth = 1
 	}
 
-	repo, err := git.PlainClone(dir, false, opts)
+	repo, err := git.PlainClone(dirPath, false, opts)
 	if err != nil {
-		log.Fatalf("Failed git cloning repo %s in %s : %v", url, dir, err)
+		slog.Info("Failed git cloning repo", slog.String("repo", url), slog.String("dir", dirPath), slog.Any("error", err))
+		os.Exit(1)
 	}
-	slog.Info("Cloned repo", slog.String("repo", url), slog.String("dir", dir))
+	slog.Info("Cloned repo", slog.String("repo", url), slog.String("dir", dirPath))
 	return repo
 }
 
