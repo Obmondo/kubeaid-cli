@@ -22,7 +22,7 @@ cloud:
     controlPlaneAMI: {{ .AMI }}
     controlPlaneReplicas: 1
 
-    machinePools:
+    nodeGroups:
       - name: primary
         ami:
 					id: {{ .AMI }}
@@ -41,6 +41,8 @@ cloud:
 				#
 				# REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine
 				# labels: []
+
+				# taints []
 
 monitoring:
   kubePrometheusVersion: v0.14.0

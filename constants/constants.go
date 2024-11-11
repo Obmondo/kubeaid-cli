@@ -68,6 +68,10 @@ var (
 		"argocd-apps/templates/cluster-api.app.yaml.tmpl",
 		"argocd-apps/cluster-api.values.yaml.tmpl",
 
+		// Cluster Autoscaler.
+		"argocd-apps/templates/cluster-autoscaler.app.yaml.tmpl",
+		"argocd-apps/cluster-autoscaler.values.yaml.tmpl",
+
 		// Traefik.
 		"argocd-apps/templates/traefik.app.yaml.tmpl",
 		"argocd-apps/traefik.values.yaml.tmpl",

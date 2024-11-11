@@ -59,10 +59,10 @@ type (
 		ControlPlaneAMI          string `yaml:"controlPlaneAMI" validate:"required"`
 		ControlPlaneReplicas     int    `yaml:"controlPlaneReplicas" validate:"required"`
 
-		MachinePools []AWSMachinePool `yaml:"machinePools"`
+		NodeGroups []NodeGroups `yaml:"nodeGroups"`
 	}
 
-	AWSMachinePool struct {
+	NodeGroups struct {
 		Name           string            `yaml:"name" validate:"required"`
 		Replicas       int               `yaml:"replicas" validate:"required"`
 		InstanceType   string            `yaml:"instanceType" validate:"required"`

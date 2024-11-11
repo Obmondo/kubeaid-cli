@@ -274,6 +274,9 @@ func BootstrapCluster(ctx *cli.Context) error {
 			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
 			constants.OutputPathManagementClusterKubeconfig, capiClusterNamespace, constants.OutputPathProvisionedClusterKubeconfig,
 		))
+
+		// Sync cluster-autoscaler ArgoCD App.
+		utils.ExecuteCommandOrDie("argocd app sync argo-cd/cluster-autoscaler")
 	}
 
 	slog.Info("Cluster provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
