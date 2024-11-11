@@ -1,0 +1,25 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cluster-autoscaler
+  namespace: argo-cd
+
+spec:
+  destination:
+    namespace: cluster-autoscaler
+    server: https://kubernetes.default.svc
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/cluster-autoscaler
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .ClusterName }}/argocd-apps/cluster-autoscaler.values.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  project: default
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
