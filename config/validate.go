@@ -3,8 +3,10 @@ package config
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 
@@ -14,6 +16,7 @@ import (
 	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/version"
 )
 
 // Validates the parsed config.
@@ -27,6 +30,9 @@ func validateConfig(config *Config) {
 	// Validate based on struct tags.
 	err = validator.Struct(config)
 	assert.AssertErrNil(ctx, err, "Config validation failed")
+
+	// Validate K8s version.
+	ValidateK8sVersion(ctx, config.Cluster.K8sVersion)
 
 	switch {
 	case config.Cloud.AWS != nil:
@@ -44,6 +50,48 @@ func validateConfig(config *Config) {
 	default:
 		log.Fatal("No cloud specific details provided")
 	}
+}
+
+// Checks whether the given string represents a valid  and supported Kubernetes version or not.
+// If not, then panics.
+func ValidateK8sVersion(ctx context.Context, k8sVersion string) {
+	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
+
+	const leastSupportedK8sVersion = "v1.30.0"
+	parsedLeastSupportedK8sVersion, err := version.ParseSemantic(leastSupportedK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing least supported K8s version")
+
+	latestStableK8sVersion := getLatestStableK8sVersion(ctx)
+	parsedLatestStableK8sVersion, err := version.ParseSemantic(latestStableK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing latest stable K8s version")
+
+	if !parsedK8sVersion.AtLeast(parsedLeastSupportedK8sVersion) &&
+		!(parsedK8sVersion.LessThan(parsedLatestStableK8sVersion) || parsedK8sVersion.EqualTo(parsedLatestStableK8sVersion)) {
+
+		slog.ErrorContext(ctx, "K8s versions below v1.30.0 aren't supported")
+		os.Exit(1)
+	}
+}
+
+// Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
+func getLatestStableK8sVersion(ctx context.Context) string {
+	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
+
+	slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
+
+	response, err := http.Get(kubeadmAPIURL)
+	assert.AssertErrNil(ctx, err, "Failed fetching latest stable K8s version")
+	if response.StatusCode != http.StatusOK {
+		slog.ErrorContext(ctx, "Failed fetching latest stable Kubernetes version")
+		os.Exit(1)
+	}
+	defer response.Body.Close()
+
+	latestStableK8sVersion, err := io.ReadAll(response.Body)
+	assert.AssertErrNil(ctx, err, "Failed reading latest stable K8s version from response body")
+
+	return string(latestStableK8sVersion)
 }
 
 // A user defined NodeGroup label key should belong to one of these domains.

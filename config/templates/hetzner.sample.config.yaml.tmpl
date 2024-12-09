@@ -1,0 +1,38 @@
+forks:
+  kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
+
+git:
+  username: xxxxxxxxxx
+  password: xxxxxxxxxx
+
+cluster:
+  name: kubeaid-demo-hetzner
+  k8sVersion: v1.31.0
+
+cloud:
+  hetzner:
+    robot: true
+    robotSSHKey:
+      publicKeyFilePath: ./outputs/.ssh/default.pub
+      privateKeyFilePath: ./outputs/.ssh/default
+
+    controlPlaneEndpoint: xxx.xxx.xxx.xxx
+    bareMetalNodes:
+      1866472:
+        name: xxxxxxxx.enableit.dk
+        maintenanceMode: false
+        wwn:
+          - xxxxxxxxxxxxxxxxxx
+          - xxxxxxxxxxxxxxxxxx
+      1866482:
+        name: xxxxxxxx.enableit.dk
+        maintenanceMode: false
+        wwn:
+          - xxxxxxxxxxxxxxxxxx
+					- xxxxxxxxxxxxxxxxxx
+      1866484:
+        name: xxxxxxxx.enableit.dk
+        maintenanceMode: false
+        wwn:
+          - xxxxxxxxxxxxxxxxxx
+					- xxxxxxxxxxxxxxxxxx

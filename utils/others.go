@@ -1,9 +1,7 @@
 package utils
 
 import (
-	"bytes"
 	"context"
-	"embed"
 	"fmt"
 	"log/slog"
 	"os"
@@ -11,14 +9,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
-	"github.com/go-sprout/sprout/sprigin"
 )
 
 // Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
@@ -76,23 +71,6 @@ func GetParentDirPath(filePath string) string {
 		return ""
 	}
 	return filePath[:splitPosition]
-}
-
-func ParseAndExecuteTemplate(ctx context.Context, embeddedFS *embed.FS, templateFileName string, values any) []byte {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("template", templateFileName),
-	})
-
-	contentsAsBytes, err := embeddedFS.ReadFile(templateFileName)
-	assert.AssertErrNil(ctx, err, "Failed getting template from embedded file-system")
-
-	parsedTemplate, err := template.New(templateFileName).Funcs(sprigin.FuncMap()).Parse(string(contentsAsBytes))
-	assert.AssertErrNil(ctx, err, "Failed parsing template")
-
-	var executedTemplate bytes.Buffer
-	err = parsedTemplate.Execute(&executedTemplate, values)
-	assert.AssertErrNil(ctx, err, "Failed executing template")
-	return executedTemplate.Bytes()
 }
 
 func executeCommand(command string, panicOnExecutionFailure bool) (string, error) {

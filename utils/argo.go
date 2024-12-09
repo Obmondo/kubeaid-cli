@@ -15,6 +15,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
@@ -114,11 +115,9 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 
 	slog.InfoContext(ctx, "Syncing ArgoCD application")
 
-	namespaceArgoCD := "argo-cd"
-
 	applicationSyncRequest := &application.ApplicationSyncRequest{
 		Name:         &name,
-		AppNamespace: &namespaceArgoCD,
+		AppNamespace: aws.String(constants.NamespaceArgoCD),
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{
 			Limit: 3,
 			Backoff: &argoCDV1Aplha1.Backoff{
@@ -166,12 +165,10 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 // If the resources array is empty, then checks whether the whole ArgoCD App is synced. Otherwise,
 // only checks for the specified resources.
 func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Aplha1.SyncOperationResource) bool {
-	namespaceArgoCD := "argo-cd"
-
 	// Get the ArgoCD App.
 	argoCDApp, err := constants.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
 		Name:         &name,
-		AppNamespace: &namespaceArgoCD,
+		AppNamespace: aws.String(constants.NamespaceArgoCD),
 	})
 	assert.AssertErrNil(ctx, err, "Failed getting ArgoCD App")
 

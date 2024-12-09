@@ -9,6 +9,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -21,8 +22,8 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 	// Any cloud specific tasks.
 	switch {
 	case config.ParsedConfig.Cloud.AWS != nil:
-		utils.SetAWSSpecificEnvs()
-		utils.CreateIAMCloudFormationStack()
+		aws.SetAWSSpecificEnvs()
+		aws.CreateIAMCloudFormationStack()
 	}
 
 	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)

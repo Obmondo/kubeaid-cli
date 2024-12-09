@@ -13,6 +13,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/templates"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
@@ -121,7 +122,7 @@ func createFileFromTemplate(ctx context.Context, destinationFilePath, embeddedTe
 
 	// Execute the corresponding template with the template values. Then write the execution result
 	// to that file.
-	content := utils.ParseAndExecuteTemplate(ctx, &KubeaidConfigFileTemplates, path.Join("templates/", embeddedTemplateName), templateValues)
+	content := templates.ParseAndExecuteTemplate(ctx, &KubeaidConfigFileTemplates, path.Join("templates/", embeddedTemplateName), templateValues)
 	destinationFile.Write(content)
 
 	slog.Info("Created file in KubeAid config fork", slog.String("file-path", destinationFilePath))

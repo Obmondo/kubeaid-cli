@@ -1,29 +1,30 @@
 forks:
-  kubeaidConfig: https://github.com/Archisman-Mridha/kubeaid-config
+  kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
 
 git:
-	# username and password (default).
-  username: ""
-  password: ""
+  username: xxxxxxxxxx
+  password: xxxxxxxxxx
 
 cluster:
-  name: kubeaid-demo
-  k8sVersion: {{ .K8sVersion }}
+  name: kubeaid-demo-aws
+  k8sVersion: v1.31.0
 
 cloud:
   aws:
+		region: us-east-1
+
     sshKeyName: kubeaid-demo
 
     controlPlane:
 			instanceType: t4g.medium
     	ami:
-				id: {{ .AMI }}
+				id: ami-xxxxxxxxxxxxxxxxx
     	replicas: 1
 
     nodeGroups:
       - name: primary
         ami:
-					id: {{ .AMI }}
+					id: ami-xxxxxxxxxxxxxxxxx
         instanceType: t4g.medium
         replicas: 1
         rootVolumeSize: 35
@@ -40,7 +41,8 @@ cloud:
 					node.cluster.x-k8s.io/nodegroup: primary
           node-role.kubernetes.io/bootstrapper: ""
 
-				# taints []
+        taints: []
 
-disasterRecovery:
-  bucketName: kubeaid-demo
+		disasterRecovery:
+			veleroBackupsS3BucketName: kubeaid-demo-kubernetes-objects
+      sealedSecretsBackupS3BucketName: kubeaid-demo-sealed-secrets

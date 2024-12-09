@@ -75,8 +75,8 @@ const (
 
 // Template names.
 var (
-	TemplateNameAWSSampleConfig     = "aws.sample.config.yaml.tmpl"
-	TemplateNameHetznerSampleConfig = "hetzner.sample.config.yaml.tmpl"
+	TemplateNameAWSSampleConfig     = "templates/aws.sample.config.yaml.tmpl"
+	TemplateNameHetznerSampleConfig = "templates/hetzner.sample.config.yaml.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.
