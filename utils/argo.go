@@ -209,6 +209,6 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 				return false
 			}
 		}
+		return true
 	}
-	panic("unreachable")
 }

@@ -41,10 +41,10 @@ type (
 
 	SSHKeyPairConfig struct {
 		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"required,notblank"`
-		PublicKey         string
+		PublicKey         string `validate:"required,notblank"`
 
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"required,notblank"`
-		PrivateKey         string
+		PrivateKey         string `validate:"required,notblank"`
 	}
 
 	MonitoringConfig struct {

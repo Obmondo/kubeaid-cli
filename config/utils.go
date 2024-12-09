@@ -63,7 +63,8 @@ func readCloudCredentialsFromFlagsToConfig() {
 }
 
 func readSSHKeys(config *Config) {
-	if config.Cloud.Hetzner != nil {
+	switch {
+	case config.Cloud.Hetzner != nil:
 		readSSHKey(&config.Cloud.Hetzner.RobotSSHKeyPair)
 	}
 }

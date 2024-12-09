@@ -74,10 +74,9 @@ func GetParentDirPath(filePath string) string {
 }
 
 func executeCommand(command string, panicOnExecutionFailure bool) (string, error) {
-	cmd := exec.Command("bash", "-c", command)
-	slog.Info("Executing command", slog.String("command", cmd.String()))
+	slog.Info("Executing command", slog.String("command", command))
 
-	output, err := cmd.CombinedOutput()
+	output, err := exec.Command("bash", "-c", command).CombinedOutput()
 	if panicOnExecutionFailure {
 		assert.AssertErrNil(context.Background(), err, "Command execution failed", slog.String("output", string(output)))
 	}

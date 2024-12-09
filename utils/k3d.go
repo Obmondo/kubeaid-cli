@@ -30,8 +30,19 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		k3d cluster create %s \
 			--servers 1 --agents 3 \
 			--image rancher/k3s:v1.31.0-k3s1 \
+			--network k3d-%s \
 			--wait
-	`, name))
+	`, name, name))
+
+	// By default, the Kubernetes API server URL is like : https://0.0.0.0:5xxxx. 0.0.0.0 isn't
+	// resolvable from within the dev container.
+	// Since we are mounting the Docker socket to the dev container, it can resolve DNS names of
+	// Docker networks. So use the DNS name instead of 0.0.0.0.
+	// NOTE : Consider this situation :
+	//				an existing K3D cluster may have wrong Kubernetes API server URL server.
+	ExecuteCommandOrDie(fmt.Sprintf(`
+		kubectl config set-cluster k3d-%s --server=https://k3d-%s-serverlb:6443
+	`, name, name))
 }
 
 // Returns whether the given K3d cluster exists or not.

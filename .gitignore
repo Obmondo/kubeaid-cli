@@ -2,3 +2,5 @@ scripts/export-aws-credentials.sh
 scripts/export-hetzner-credentials.sh
 
 outputs/
+
+*.swp

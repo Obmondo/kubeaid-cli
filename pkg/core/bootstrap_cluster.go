@@ -56,6 +56,7 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 	SetupCluster(ctx, managementClusterClient)
 
 	// Sync the complete capi-cluster ArgoCD App.
+	// TODO : Make it compatible with the retry feature, when `clusterctl move` is already performed.
 	utils.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
 
 	// Close ArgoCD application client.

@@ -25,4 +25,4 @@ RUN CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm
 
 COPY --from=builder /app/kubeaid-bootstrap-script /usr/local/bin/kubeaid-bootstrap-script
 
-CMD sleep infinity
+CMD ["sleep", "infinity"]

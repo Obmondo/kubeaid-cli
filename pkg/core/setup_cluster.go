@@ -48,23 +48,12 @@ func SetupCluster(ctx context.Context, kubeClient client.Client) {
 // infrastructure specific CRDs to be installed and pod to be running.
 func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 	// Determine the name of the Infrastructure Provider component.
-	var infrastructureProviderName string
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
-		infrastructureProviderName = "aws"
-
-	case config.ParsedConfig.Cloud.Hetzner != nil:
-		infrastructureProviderName = "hetzner"
-	}
-	if len(config.ParsedConfig.CustomerID) > 0 {
-		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedConfig.CustomerID
-	}
 
 	// Sync the Infrastructure Provider component.
 	utils.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{{
 		Group: "operator.cluster.x-k8s.io",
 		Kind:  "InfrastructureProvider",
-		Name:  infrastructureProviderName,
+		Name:  getInfrastructureProviderName(),
 	}})
 
 	capiClusterNamespace := utils.GetCapiClusterNamespace()
@@ -90,4 +79,21 @@ func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 		slog.InfoContext(ctx, "Waiting for the infrastructure provider component pod to come up")
 		return false, nil
 	})
+}
+
+// Returns the name of the InfrastructureProvider component.
+func getInfrastructureProviderName() (infrastructureProviderName string) {
+	switch {
+	case config.ParsedConfig.Cloud.AWS != nil:
+		infrastructureProviderName = "aws"
+
+	case config.ParsedConfig.Cloud.Hetzner != nil:
+		infrastructureProviderName = "hetzner"
+	}
+
+	if len(config.ParsedConfig.CustomerID) > 0 {
+		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedConfig.CustomerID
+	}
+
+	return
 }
