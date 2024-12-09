@@ -6,6 +6,4 @@ type CloudProvider interface {
 	SetupDisasterRecovery(ctx context.Context)
 
 	GetSealedSecretsBackupBucketName() string
-
-	GetLatestBackupName(ctx context.Context) string
 }
