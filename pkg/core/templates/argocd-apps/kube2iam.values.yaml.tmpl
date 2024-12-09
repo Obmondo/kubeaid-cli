@@ -1,0 +1,15 @@
+kube2iam:
+  host:
+    iptables: false
+    interface: lxc+
+  rbac:
+    create: true
+  podAnnotations:
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+  extraArgs:
+    namespace-restrictions: ""

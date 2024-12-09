@@ -22,6 +22,27 @@ Once you're inside the container, use `make generate-sample-config-aws-dev` to g
 
 Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 
+## TODOs
+
+- [ ] Check Git URL if SSH agent is used.
+- [ ] Validation for sshagentauth (should not accept https url).
+- [x] `--debug` flag to print command execution outputs.
+- [ ] Support adding admin SSH keys via config file.
+- [ ] Support using HTTPS for ArgoCD apps.
+- [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
+
 ## REFERENCES
 
 - [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/#comparison-with-client-side-apply)
+
+- [The definitive guide to building Golang based CLI](https://www.youtube.com/watch?v=SSRIn5DAmyw)
+
+- [AWS S3 Sync Command – Guide with Examples](https://spacelift.io/blog/aws-s3-sync)
+
+- How KubeAid backs up Sealed Secrets using a CRONJob : https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml
+
+- [Key Management](https://playbook.stakater.com/content/workshop/sealed-secrets/management.html)
+
+- [Secret Rotation](https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation)
+
+- [Kubernetes Backups, Upgrades, Migrations - with Velero](https://youtu.be/zybLTQER0yY?si=qOZcizBqPOeouJ7y)

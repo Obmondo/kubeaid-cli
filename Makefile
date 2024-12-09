@@ -24,10 +24,11 @@ generate-sample-config-aws-dev:
 
 .PHONY: bootstrap-cluster-dev
 bootstrap-cluster-dev:
-	@go run ./cmd bootstrap-cluster \
-		--config-file /app/outputs/kubeaid-bootstrap-script.config.yaml \
+	go run ./cmd cluster bootstrap aws \
+		--debug \
+		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
 		--skip-clusterctl-move
-#		--skip-create-kubeaid-config-files
+# --skip-kubeaid-config-setup
 
 .PHONY: use-management-cluster
 use-management-cluster:
@@ -39,8 +40,8 @@ use-provisioned-cluster:
 
 .PHONY: delete-provisioned-cluster
 delete-provisioned-cluster-dev:
-	@go run ./cmd delete-cluster \
-		--config-file /app/outputs/kubeaid-bootstrap-script.config.yaml
+	@go run ./cmd cluster delete \
+		--config /app/outputs/kubeaid-bootstrap-script.config.yaml
 
 .PHONY: delete-management-cluster
 delete-management-cluster:

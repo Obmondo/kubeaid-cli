@@ -1,4 +1,4 @@
-kubeaid-bootstrap-script.config.yaml
-*.test.config.yaml
+scripts/export-aws-credentials.sh
+scripts/export-hetzner-credentials.sh
 
 outputs/

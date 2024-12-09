@@ -1,77 +1,93 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/siderolabs/talos/pkg/machinery/labels"
-)
-
-var (
-	// A user defined MachinePool label key should belong to one of these domains.
-	// REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
-	ValidMachinePoolLabelDomains = []string{
-		"node.cluster.x-k8s.io/",
-		"node-role.kubernetes.io/",
-		"node-restriction.kubernetes.io/",
-	}
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	validatorV10 "github.com/go-playground/validator/v10"
+	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
+	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
+	coreV1 "k8s.io/api/core/v1"
 )
 
 // Validates the parsed config.
-// Panics on failure.
-// TODO : Extract the MachinePool labels and taints validation task from 'cloud specifics' section.
 func validateConfig(config *Config) {
-	// Validate based on struct tags.
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(config); err != nil {
-		log.Fatalf("config validation failed : %v", err)
-	}
+	ctx := context.Background()
 
-	// Cloud provider specific validations.
+	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
+	err := validator.RegisterValidation("notblank", goNonStandardValidtors.NotBlank)
+	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
+
+	// Validate based on struct tags.
+	err = validator.Struct(config)
+	assert.AssertErrNil(ctx, err, "Config validation failed")
+
 	switch {
 	case config.Cloud.AWS != nil:
-
-		for _, machinePool := range config.Cloud.AWS.MachinePools {
-			// Validate MachinePools labels.
-			//
-			// (1) according to Kubernetes specifications.
-			if err := labels.Validate(machinePool.Labels); err != nil {
-				log.Fatalf("MachinePool labels validation failed : %v", err)
-			}
-			//
-			// (2) according to ClusterAPI specifications.
-			for key := range machinePool.Labels {
-				// Check if the label belongs to a domain considered valid by ClusterAPI.
-				isValidMachinePoolLabelDomain := false
-				for _, machinePoolLabelDomains := range ValidMachinePoolLabelDomains {
-					if strings.HasPrefix(key, machinePoolLabelDomains) {
-						isValidMachinePoolLabelDomain = true
-						break
-					}
-				}
-				if !isValidMachinePoolLabelDomain {
-					slog.Error("MachinePool label key should belong to one of these domains", slog.Any("domains", ValidMachinePoolLabelDomains))
-					os.Exit(1)
-				}
-			}
-
-			taintsAsKVPairs := map[string]string{}
-			for _, taint := range machinePool.Taints {
-				taintsAsKVPairs[taint.Key] = fmt.Sprintf("%s:%s", taint.Value, taint.Effect)
-			}
-			//
-			// Validate MachinePool taints.
-			if err := labels.ValidateTaints(taintsAsKVPairs); err != nil {
-				log.Fatalf("MachinePool taint validation failed : %v", err)
-			}
+		for _, nodeGroup := range config.Cloud.AWS.NodeGroups {
+			// Validate labels and taints.
+			validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 		}
 
-	case config.Cloud.Azure != nil:
 	case config.Cloud.Hetzner != nil:
-		log.Fatal("Support for Azure and Hetzner are coming soon")
+		break
+
+	case config.Cloud.Azure != nil:
+		log.Fatal("Support for Azure is coming soon")
+
+	default:
+		log.Fatal("No cloud specific details provided")
 	}
+}
+
+// A user defined NodeGroup label key should belong to one of these domains.
+// REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+var validNodeGroupLabelDomains = []string{
+	"node.cluster.x-k8s.io/",
+	"node-role.kubernetes.io/",
+	"node-restriction.kubernetes.io/",
+}
+
+// Validates node-group labels and taints.
+func validateLabelsAndTaints(ctx context.Context, nodeGroupName string, labels map[string]string, taints []*coreV1.Taint) {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("node-group", nodeGroupName),
+	})
+
+	// Validate labels.
+	//
+	// (1) according to Kubernetes specifications.
+	err := labelsPkg.Validate(labels)
+	assert.AssertErrNil(ctx, err, "MachinePool labels validation failed")
+	//
+	// (2) according to ClusterAPI specifications.
+	for key := range labels {
+		// Check if the label belongs to a domain considered valid by ClusterAPI.
+		isValidNodeGroupLabelDomain := false
+		for _, nodeGroupLabelDomains := range validNodeGroupLabelDomains {
+			if strings.HasPrefix(key, nodeGroupLabelDomains) {
+				isValidNodeGroupLabelDomain = true
+				break
+			}
+		}
+		if !isValidNodeGroupLabelDomain {
+			slog.Error("NodeGroup label key should belong to one of these domains", slog.Any("domains", validNodeGroupLabelDomains))
+			os.Exit(1)
+		}
+	}
+
+	taintsAsKVPairs := map[string]string{}
+	for _, taint := range taints {
+		taintsAsKVPairs[taint.Key] = fmt.Sprintf("%s:%s", taint.Value, taint.Effect)
+	}
+	//
+	// Validate taints.
+	err = labelsPkg.ValidateTaints(taintsAsKVPairs)
+	assert.AssertErrNil(ctx, err, "NodeGroup taints validation failed")
 }

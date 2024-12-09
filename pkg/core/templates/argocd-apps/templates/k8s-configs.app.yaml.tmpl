@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: k8s-configs
+  namespace: argo-cd
+spec:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  project: default
+  source:
+    repoURL: {{ .KubeaidConfigForkURL }}
+    path: k8s/{{ .ClusterConfig.Name }}/k8s-configs
+    targetRevision: HEAD
+    directory:
+      recurse: true
