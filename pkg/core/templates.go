@@ -29,19 +29,26 @@ type TemplateValues struct {
 }
 
 func getTemplateValues() *TemplateValues {
-	return &TemplateValues{
-		CustomerID:               config.ParsedConfig.CustomerID,
-		GitUsername:              config.ParsedConfig.Git.Username,
-		GitPassword:              config.ParsedConfig.Git.Password,
-		ClusterConfig:            config.ParsedConfig.Cluster,
-		ForksConfig:              config.ParsedConfig.Forks,
-		AWSConfig:                config.ParsedConfig.Cloud.AWS,
-		HetznerConfig:            config.ParsedConfig.Cloud.Hetzner,
-		MonitoringConfig:         config.ParsedConfig.Monitoring,
-		CAPIClusterNamespace:     utils.GetCapiClusterNamespace(),
-		AWSB64EncodedCredentials: os.Getenv(constants.EnvNameAWSB64EcodedCredentials),
-		AWSAccountID:             aws.GetAccountID(context.Background()),
+	templateValues := &TemplateValues{
+		CustomerID:           config.ParsedConfig.CustomerID,
+		GitUsername:          config.ParsedConfig.Git.Username,
+		GitPassword:          config.ParsedConfig.Git.Password,
+		ClusterConfig:        config.ParsedConfig.Cluster,
+		ForksConfig:          config.ParsedConfig.Forks,
+		AWSConfig:            config.ParsedConfig.Cloud.AWS,
+		HetznerConfig:        config.ParsedConfig.Cloud.Hetzner,
+		MonitoringConfig:     config.ParsedConfig.Monitoring,
+		CAPIClusterNamespace: utils.GetCapiClusterNamespace(),
 	}
+
+	// Set cloud provider specific values.
+	switch {
+	case config.ParsedConfig.Cloud.AWS != nil:
+		templateValues.AWSAccountID = aws.GetAccountID(context.Background())
+		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
+	}
+
+	return templateValues
 }
 
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
@@ -50,20 +57,18 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	embeddedTemplateNames := constants.CommonNonSecretTemplateNames
 
 	// Add cloud provider specific templates.
-	var cloudSpecificEmbeddedTemplateNames []string
 	switch {
 	case config.ParsedConfig.Cloud.AWS != nil:
-		cloudSpecificEmbeddedTemplateNames = constants.AWSSpecificNonSecretTemplateNames
+		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificNonSecretTemplateNames...)
+		//
+		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
+		// cloud-provider specific config.
+		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+			embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
+		}
 
 	case config.ParsedConfig.Cloud.Hetzner != nil:
-		cloudSpecificEmbeddedTemplateNames = constants.HetznerSpecificNonSecretTemplateNames
-	}
-	embeddedTemplateNames = append(embeddedTemplateNames, cloudSpecificEmbeddedTemplateNames...)
-
-	// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
-	// cloud-provider specific config.
-	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)
 	}
 
 	// Add Obmondo K8s Agent related templates, if 'monitoring.connectObmondo' is set to true.

@@ -4,8 +4,8 @@ metadata:
   name: hetzner-robot-ssh-keys
   namespace: {{ .CAPIClusterNamespace }}
 stringData:
-	ssh-privatekey: |
-		{{ .HetznerConfig.RobotSSHKey.PrivateKey }}
+  ssh-privatekey: |
+{{ .HetznerConfig.RobotSSHKeyPair.PrivateKey | indent 4 }}
 
-	ssh-publickey: |
-		{{ .HetznerConfig.RobotSSHKey.PublicKey }}
+  ssh-publickey: |
+{{ .HetznerConfig.RobotSSHKeyPair.PublicKey | indent 4  }}

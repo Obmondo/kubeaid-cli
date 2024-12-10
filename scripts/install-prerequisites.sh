@@ -17,7 +17,7 @@ chmod +x gojsontoyaml
 mkdir -p /usr/local/bin
 mv ./gojsontoyaml /usr/local/bin
 
-# ------------------------------ Required by KubeAid Bootstrap Script ------------------------------
+# ------------------------------ Required by KubeAid Bootstrap Script -----------------------------
 
 # Kubeseal
 KUBESEAL_VERSION="0.23.0"
@@ -52,7 +52,7 @@ rm k9s_linux_"${CPU_ARCHITECTURE}".deb
 
 apt install -y vim
 
-# ------------------------------------------ Add SSH keys ------------------------------------------
+# ------------------------------------------ Add SSH keys -----------------------------------------
 mkdir -p /root/.ssh
-ssh-keyscan {github.com,gitlab.com} >> /root/.ssh/known_hosts
-ssh-keyscan -p 2223 gitea.obmondo.com >> /root/.ssh/known_hosts
+ssh-keyscan {github.com,gitlab.com} >>/root/.ssh/known_hosts
+ssh-keyscan -p 2223 gitea.obmondo.com >>/root/.ssh/known_hosts

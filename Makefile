@@ -21,12 +21,13 @@ run-container-dev: build-image-dev
 	@docker run --name $(CONTAINER_NAME) \
     --network $(NETWORK_NAME) \
     --detach \
-    -e SSH_AUTH_SOCK=/ssh-agent \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v /dev/bus/usb:/dev/bus/usb \
-    -v $(SSH_AUTH_SOCK):/ssh-agent \
     -v $(CURRENT_DIR):/app \
     $(IMAGE_NAME)
+
+# -e SSH_AUTH_SOCK=/ssh-agent \
+# -v /dev/bus/usb:/dev/bus/usb \
+# -v $(SSH_AUTH_SOCK):/ssh-agent \
 
 .PHONY: exec-container-dev
 exec-container-dev:
@@ -44,13 +45,20 @@ remove-container-dev: stop-container-dev
 generate-sample-config-aws-dev:
 	@go run ./cmd config generate aws
 
-.PHONY: bootstrap-cluster-dev
-bootstrap-cluster-dev:
+.PHONY: bootstrap-cluster-dev-aws
+bootstrap-cluster-dev-aws:
 	@go run ./cmd cluster bootstrap aws \
 		--debug \
 		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
 		--skip-clusterctl-move
 # --skip-kubeaid-config-setup
+
+.PHONY: bootstrap-cluster-dev-hetzner
+bootstrap-cluster-dev-hetzner:
+	@go run ./cmd cluster bootstrap hetzner \
+		--debug \
+		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
+		--skip-clusterctl-move --skip-kubeaid-config-setup
 
 .PHONY: use-management-cluster
 use-management-cluster:

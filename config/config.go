@@ -109,7 +109,6 @@ type (
 
 		// Robot is Hetzner's administration panel for dedicated root servers, colocation, Storage Boxes,
 		// and domains (via the Domain Registration Robot add-on).
-		Robot           bool             `yaml:"robot" validate:"required"`
 		RobotSSHKeyPair SSHKeyPairConfig `yaml:"robotSSHKey" validate:"required"`
 
 		ControlPlaneEndpoint string                        `yaml:"controlPlaneEndpoint" validate:"required,notblank"`
