@@ -58,7 +58,8 @@ bootstrap-cluster-dev-hetzner:
 	@go run ./cmd cluster bootstrap hetzner \
 		--debug \
 		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
-		--skip-clusterctl-move --skip-kubeaid-config-setup
+		--skip-clusterctl-move
+# --skip-kubeaid-config-setup
 
 .PHONY: use-management-cluster
 use-management-cluster:

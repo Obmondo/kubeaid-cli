@@ -4,4 +4,3 @@ tab_width = 2
 
 [*.yaml, *.yaml.tmpl]
 indent_style = space
-indent_size = 2

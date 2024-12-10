@@ -51,13 +51,13 @@ hetzner:
   controlPlaneRegions:
     - hel1
   nodes:
-  {{- range $id, $node := .HetznerConfig.BareMetalNodes }}
-  {{ $id }}:
-    name: {{ $node.Name }}
-    maintenanceMode: false
-    wwn:
-      {{- range $wwn := $node.WWN }}
-      - {{ $wwn }}
-      {{- end }}
-  {{- end }}
+    {{- range $id, $node := .HetznerConfig.BareMetalNodes }}
+    {{ $id }}:
+      name: {{ $node.Name }}
+      maintenanceMode: false
+      wwn:
+        {{- range $wwn := $node.WWN }}
+        - {{ $wwn }}
+        {{- end }}
+    {{- end }}
 {{- end }}
