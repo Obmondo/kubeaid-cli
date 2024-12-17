@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hetzner-robot-ssh-keys
+  namespace: {{ .CAPIClusterNamespace }}
+stringData:
+  ssh-privatekey: |
+{{ .HetznerConfig.RobotSSHKeyPair.PrivateKey | indent 4 }}
+
+  ssh-publickey: |
+{{ .HetznerConfig.RobotSSHKeyPair.PublicKey | indent 4  }}

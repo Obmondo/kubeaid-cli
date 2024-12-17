@@ -1,89 +1,51 @@
 package utils
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
-	"path"
-	"strings"
+	"os"
 	"time"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/clientcmd"
+	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Installs Sealed Secrets in the underlying Kubernetes cluster.
-func InstallSealedSecrets() {
-	ExecuteCommandOrDie(`
-    helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-    helm install sealed-secrets sealed-secrets/sealed-secrets --namespace kube-system \
-      --set-string fullnameOverride=sealed-secrets-controller \
-      --wait
-  `)
-}
+// Uses the kubeconfig file present at the given path, to create and return a Kubernetes Go client.
+func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.Client {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("kubeconfig", kubeconfigPath),
+	})
 
-/*
-Does the following :
+	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	assert.AssertErrNil(ctx, err, "Failed building config from kubeconfig file")
 
-	(1) Install ArgoCD.
+	scheme := runtime.NewScheme()
 
-	(2) Then port forwards the ArgoCD server by spinning up a go-routine.
-	    NOTE : Kills any existing kubectl process.
-	    TODO : Just kill the port-forwarding on port 8080, instead of killing all kubectl processes.
+	err = coreV1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding Core v1 scheme")
 
-	(3) Logs in to ArgoCD from ArgoCD CLI.
+	err = clusterAPIV1Beta1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
 
-	(4) Creates the root ArgoCD app.
-*/
-func InstallAndSetupArgoCD(clusterDir string) {
-	// Install ArgoCD.
-	ExecuteCommandOrDie(`
-    helm repo add argo https://argoproj.github.io/argo-helm
-    helm install argo-cd argo/argo-cd --namespace argo-cd --create-namespace \
-      --set notification.enabled=false --set dex.enabled=false \
-      --wait`)
-	time.Sleep(time.Second * 20)
+	kubeClient, err := client.New(kubeconfig, client.Options{
+		Scheme: scheme,
+	})
+	assert.AssertErrNil(ctx, err, "Failed creating kube client from kubeconfig")
 
-	// Port forward ArgoCD server.
-	go func() {
-		// Sometimes ArgoCD port forward may fail with this error :
-		//
-		// error copying from remote stream to local connection: readfrom tcp6 [::1]:8080->[::1]:34908:
-		// write tcp6 [::1]:8080->[::1]:34908: write: broken pipe
-		//
-		// In that case we want to re-establish the port-forwarding.
-		for {
-			output, _ := ExecuteCommand(`
-        pkill kubectl -9
-        kubectl port-forward svc/argo-cd-argocd-server -n argo-cd 8080:443
-      `)
-			if !strings.Contains(output, "broken pipe") {
-				break
-			}
-
-			slog.Info("Retrying port-forwarding ArgoCD server")
-		}
-	}()
-	slog.Info("Waiting for kubectl port-forward to be executed in the other go routine....")
-	time.Sleep(time.Second * 10)
-
-	// Login to ArgoCD from ArgoCD CLI.
-	ExecuteCommandOrDie(`
-    ARGOCD_PASSWORD=$(kubectl -n argo-cd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
-    argocd login localhost:8080 --username admin --password $ARGOCD_PASSWORD --insecure`)
-
-	// Create the root ArgoCD App.
-	slog.Info("Creating and syncing root ArgoCD app")
-	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
-	ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
-}
-
-// Takes the path to a Kubernetes Secret file. It then replaces the contents of that file by
-// generating the corresponding Sealed Secret.
-func GenerateSealedSecret(secretFilePath string) {
-	ExecuteCommandOrDie(fmt.Sprintf(`
-		kubeseal \
-			--controller-name sealed-secrets-controller --controller-namespace kube-system \
-			--secret-file %s --sealed-secret-file %s
-		`, secretFilePath, secretFilePath))
+	return kubeClient
 }
 
 // Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
@@ -91,44 +53,152 @@ func GenerateSealedSecret(secretFilePath string) {
 // with the underlying cloud provider.
 func GetCapiClusterNamespace() string {
 	capiClusterNamespace := "capi-cluster"
-	if len(constants.ParsedConfig.CustomerID) > 0 {
-		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", constants.ParsedConfig.CustomerID)
+	if len(config.ParsedConfig.CustomerID) > 0 {
+		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", config.ParsedConfig.CustomerID)
 	}
 	return capiClusterNamespace
 }
 
-// Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
-// infrastructure specific CRDs to be installed and pod to be running.
-func SyncInfrastructureProvider() {
-	// Determine the name of the Infrastructure Provider component.
-	var infrastructureProviderName string
-	switch {
-	case constants.ParsedConfig.Cloud.AWS != nil:
-		infrastructureProviderName = "aws"
-
-	default:
-		Unreachable()
-	}
-	if len(constants.ParsedConfig.CustomerID) > 0 {
-		infrastructureProviderName = fmt.Sprintf("aws-%s", constants.ParsedConfig.CustomerID)
+// Creates the given namespace (if it doesn't already exist).
+func CreateNamespace(ctx context.Context, namespaceName string, kubeClient client.Client) {
+	namespace := &coreV1.Namespace{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name: namespaceName,
+		},
 	}
 
-	ExecuteCommandOrDie(fmt.Sprintf(
-		"argocd app sync argo-cd/capi-cluster --resource operator.cluster.x-k8s.io:InfrastructureProvider:%s",
-		infrastructureProviderName,
-	))
+	err := kubeClient.Create(ctx, namespace)
+	if errors.IsAlreadyExists(err) {
+		return
+	}
+	assert.AssertErrNil(ctx, err, "Failed creating namespace", slog.String("namespace", namespaceName))
+}
 
-	capiClusterNamespace := GetCapiClusterNamespace()
-	// Wait for the infrastructure specific CRDs to be installed and pod to be running.
-	for {
-		if output := ExecuteCommandOrDie(fmt.Sprintf("kubectl get pods -n %s", capiClusterNamespace)); !strings.Contains(output, "No resources found") {
-			podStatus := ExecuteCommandOrDie(fmt.Sprintf("kubectl get pods -n %s -o jsonpath='{.items[0].status.phase}'", capiClusterNamespace))
-			if podStatus == "Running" {
-				break
-			}
+// Installs Sealed Secrets in the underlying Kubernetes cluster.
+func InstallSealedSecrets(ctx context.Context) {
+	HelmInstall(ctx, &HelmInstallArgs{
+		RepoName:    "sealed-secrets",
+		RepoURL:     "https://bitnami-labs.github.io/sealed-secrets",
+		ChartName:   "sealed-secrets",
+		Version:     "2.16.2",
+		Namespace:   "sealed-secrets",
+		ReleaseName: "sealed-secrets",
+		Values:      "fullnameOverride=sealed-secrets-controller",
+	})
+}
+
+// Takes the path to a Kubernetes Secret file. It replaces the contents of that file by generating
+// the corresponding Sealed Secret.
+func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
+	ExecuteCommandOrDie(fmt.Sprintf(`
+		kubeseal \
+			--controller-name sealed-secrets-controller --controller-namespace sealed-secrets \
+			--secret-file %s --sealed-secret-file %s
+	`, secretFilePath, secretFilePath))
+}
+
+// Waits for the main cluster to be provisioned.
+func WaitForMainClusterToBeProvisioned(ctx context.Context, kubeClient client.Client) {
+	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
+		slog.Info("Waiting for the main cluster to be provisioned")
+
+		// Get the Cluster resource from the management cluster.
+		cluster := &clusterAPIV1Beta1.Cluster{}
+		if err := GetClusterResource(ctx, kubeClient, cluster); err != nil {
+			return false, err
 		}
 
-		slog.Info("Waiting for the capi-cluster pod to come up", slog.String("namespace", capiClusterNamespace))
-		time.Sleep(5 * time.Second)
+		// Cluster phase should be 'Provisioned'.
+		if cluster.Status.Phase != string(clusterAPIV1Beta1.ClusterPhaseProvisioned) {
+			return false, nil
+		}
+		//
+		// Cluster status should be 'Ready'.
+		for _, condition := range cluster.Status.Conditions {
+			if condition.Type == clusterAPIV1Beta1.ReadyCondition && condition.Status == "True" {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
+}
+
+// Queries the Cluster resource using the given kube-client.
+func GetClusterResource(ctx context.Context, kubeClient client.Client, cluster *clusterAPIV1Beta1.Cluster) error {
+	var (
+		name      = config.ParsedConfig.Cluster.Name
+		namespace = GetCapiClusterNamespace()
+	)
+	return kubeClient.Get(
+		ctx,
+		types.NamespacedName{
+			Namespace: namespace,
+			Name:      name,
+		},
+		cluster,
+	)
+}
+
+// Waits for the main cluster to be ready to run our application workloads.
+func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) {
+	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
+		slog.Info("Waiting for the provisioned cluster's Kubernetes API server to be reachable and atleast 1 worker node to be initialized....")
+
+		// List the nodes.
+		nodes := &coreV1.NodeList{}
+		if err := kubeClient.List(ctx, nodes); err != nil {
+			return false, err
+		}
+
+		initializedWorkerNodeCount := 0
+		for _, node := range nodes.Items {
+			if isControlPlaneNode(&node) {
+				continue
+			}
+
+			isUninitialized := false
+			//
+			// Check whether the 'node.cluster.x-k8s.io/uninitialized' taint exists for the node or not.
+			// If yes, that means the node is still uninitialized.
+			for _, taint := range node.Spec.Taints {
+				if taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key {
+					isUninitialized = true
+				}
+			}
+
+			if !isUninitialized {
+				initializedWorkerNodeCount++
+			}
+		}
+		isClusterReady := (initializedWorkerNodeCount > 0)
+		return isClusterReady, nil
+	})
+}
+
+// Returns whether the given node object is part of the control plane or not.
+func isControlPlaneNode(node *coreV1.Node) bool {
+	isControlPlaneNode := false
+	for key := range node.Labels {
+		if key == kubeadmConstants.LabelNodeRoleControlPlane {
+			isControlPlaneNode = true
+		}
 	}
+	return isControlPlaneNode
+}
+
+// Saves kubeconfig of the provisioned cluster locally.
+func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
+	secret := &coreV1.Secret{}
+	err := kubeClient.Get(ctx, types.NamespacedName{
+		Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedConfig.Cluster.Name),
+		Namespace: GetCapiClusterNamespace(),
+	}, secret)
+	assert.AssertErrNil(ctx, err, "Failed getting secret containing kubeconfig")
+
+	kubeConfig := secret.Data["value"]
+
+	err = os.WriteFile(constants.OutputPathProvisionedClusterKubeconfig, kubeConfig, 0644)
+	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
+
+	slog.InfoContext(ctx, "kubeconfig has been saved locally")
 }

@@ -1,0 +1,27 @@
+LoadCustomCRDs: true
+velero:
+  configuration:
+    extraEnvVars:
+      AWS_CLUSTER_NAME: {{ .ClusterConfig.Name }}
+    backupStorageLocation:
+      - name: default
+        bucket: {{ .AWSConfig.DisasterRecovery.VeleroBackupsS3BucketName }}
+        config:
+          region: {{ .AWSConfig.Credentials.AWSRegion }}
+        provider: aws
+    volumeSnapshotLocation:
+      - name: default
+        provider: aws
+        config:
+          region: {{ .AWSConfig.Credentials.AWSRegion }}
+    features: EnableCSI
+  initContainers:
+    - name: velero-velero-plugin-for-aws
+      image: "velero/velero-plugin-for-aws:v1.7.1"
+      imagePullPolicy: IfNotPresent
+      volumeMounts:
+        - mountPath: /target
+          name: plugins
+  podAnnotations:
+    iam.amazonaws.com/role: arn:aws:iam::{{ .AWSAccountID }}:role/velero-{{ .ClusterConfig.Name }}
+    cluster-autoscaler.kubernetes.io/safe-to-evict: "true"

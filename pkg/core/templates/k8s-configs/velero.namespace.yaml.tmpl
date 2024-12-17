@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    iam.amazonaws.com/allowed-roles: |
+      ["arn:aws:iam::{{ .AWSAccountID }}:role/velero-{{ .ClusterConfig.Name }}"]
+  name: velero
+spec:	
+  finalizers:	
+    - kubernetes

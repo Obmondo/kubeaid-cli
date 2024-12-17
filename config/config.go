@@ -1,15 +1,9 @@
 package config
 
 import (
-	"embed"
-	"fmt"
-	"log"
-	"log/slog"
-	"os"
+	"context"
 
-	"github.com/creasty/defaults"
-	"gopkg.in/yaml.v3"
-	v1 "k8s.io/api/core/v1"
+	coreV1 "k8s.io/api/core/v1"
 )
 
 type (
@@ -19,7 +13,7 @@ type (
 		Cluster    ClusterConfig    `yaml:"cluster" validate:"required"`
 		Forks      ForksConfig      `yaml:"forks" validate:"required"`
 		Cloud      CloudConfig      `yaml:"cloud" validate:"required"`
-		Monitoring MonitoringConfig `yaml:"monitoring" validate:"required"`
+		Monitoring MonitoringConfig `yaml:"monitoring"`
 	}
 
 	GitConfig struct {
@@ -30,92 +24,117 @@ type (
 	}
 
 	ForksConfig struct {
-		KubeaidForkURL       string `yaml:"kubeaid" validate:"required"`
-		KubeaidConfigForkURL string `yaml:"kubeaidConfig" validate:"required"`
+		KubeaidForkURL       string `yaml:"kubeaid" default:"https://github.com/Obmondo/KubeAid"`
+		KubeaidConfigForkURL string `yaml:"kubeaidConfig" validate:"required,notblank"`
 	}
 
 	ClusterConfig struct {
-		ClusterName string `yaml:"name" validate:"required"`
-
-		// NOTE : Currently, only Kubernetes v1.30.0 and v1.31.0 are supported.
-		K8sVersion string `yaml:"k8sVersion" validate:"required"`
+		Name       string `yaml:"name" validate:"required,notblank"`
+		K8sVersion string `yaml:"k8sVersion" validate:"required,notblank"`
 	}
 
 	CloudConfig struct {
 		AWS     *AWSConfig     `yaml:"aws"`
-		Azure   *AzureConfig   `yaml:"azure"`
 		Hetzner *HetznerConfig `yaml:"hetzner"`
+		Azure   *AzureConfig   `yaml:"azure"`
 	}
 
-	AWSConfig struct {
-		AccessKey    string `yaml:"accessKey" validate:"required"`
-		SecretKey    string `yaml:"secretKey" validate:"required"`
-		SessionToken string `yaml:"sessionToken"`
-		Region       string `yaml:"region" validate:"required"`
+	SSHKeyPairConfig struct {
+		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"required,notblank"`
+		PublicKey         string `validate:"required,notblank"`
 
-		SSHKeyName string `yaml:"sshKeyName" validate:"required"`
-
-		ControlPlaneInstanceType string `yaml:"controlPlaneInstanceType" validate:"required"`
-		ControlPlaneAMI          string `yaml:"controlPlaneAMI" validate:"required"`
-		ControlPlaneReplicas     int    `yaml:"controlPlaneReplicas" validate:"required"`
-
-		NodeGroups []NodeGroups `yaml:"nodeGroups"`
+		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"required,notblank"`
+		PrivateKey         string `validate:"required,notblank"`
 	}
-
-	NodeGroups struct {
-		Name           string            `yaml:"name" validate:"required"`
-		Replicas       int               `yaml:"replicas" validate:"required"`
-		InstanceType   string            `yaml:"instanceType" validate:"required"`
-		SSHKeyName     string            `yaml:"sshKeyName" validate:"required"`
-		AMI            AMIConfig         `yaml:"ami" validate:"required"`
-		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
-		Labels         map[string]string `yaml:"labels" default:"[]"`
-		Taints         []v1.Taint        `yaml:"taints" default:"[]"`
-	}
-
-	AMIConfig struct {
-		ID string `yaml:"id" validate:"required"`
-	}
-
-	AzureConfig struct{}
-
-	HetznerConfig struct{}
 
 	MonitoringConfig struct {
-		KubePrometheusVersion string `yaml:"kubePrometheusVersion" validate:"required"`
+		KubePrometheusVersion string `yaml:"kubePrometheusVersion" default:"v0.14.0"`
 		GrafanaURL            string `yaml:"grafanaURL"`
-		ConnectObmondo        bool   `yaml:"connectObmondo"`
+		ConnectObmondo        bool   `yaml:"connectObmondo" default:"False"`
 	}
 )
 
-//go:embed templates/*
-var SampleConfigs embed.FS
+// AWS specific.
+type (
+	AWSConfig struct {
+		Credentials AWSCredentials
 
-func ParseConfigFile(configFile string) *Config {
-	configFileContents, err := os.ReadFile(configFile)
-	if err != nil {
-		log.Fatalf("Failed reading config file : %v", err)
-	}
-	parsedConfig, err := ParseConfig(string(configFileContents))
-	if err != nil {
-		log.Fatalf("Failed parsing config file : %v", err)
-	}
-	return parsedConfig
-}
+		Region         string             `yaml:"region"`
+		BastionEnabled bool               `yaml:"bastionEnabled" default:"True"`
+		ControlPlane   ControlPlaneConfig `yaml:"controlPlane" validate:"required"`
+		NodeGroups     []NodeGroups       `yaml:"nodeGroups" validate:"required"`
+		SSHKeyName     string             `yaml:"sshKeyName" validate:"required,notblank"`
 
-func ParseConfig(configAsString string) (*Config, error) {
-	parsedConfig := &Config{}
-	if err := yaml.Unmarshal([]byte(configAsString), parsedConfig); err != nil {
-		return nil, fmt.Errorf("failed unmarshalling config : %v", err)
-	}
-	slog.Info("Parsed config")
-
-	// Set defaults.
-	if err := defaults.Set(parsedConfig); err != nil {
-		log.Fatalf("Failed setting defaults for parsed config : %v", err)
+		DisasterRecovery *AWSDisasterRecoveryConfig `yaml:"disasterRecovery"`
 	}
 
-	validateConfig(parsedConfig)
+	AWSCredentials struct {
+		AWSAccessKey    string `validate:"required,notblank"`
+		AWSSecretKey    string `validate:"required,notblank"`
+		AWSSessionToken string
+		AWSRegion       string `validate:"required,notblank"`
+	}
 
-	return parsedConfig, nil
+	ControlPlaneConfig struct {
+		Replicas     int       `yaml:"replicas" validate:"required"`
+		InstanceType string    `yaml:"instanceType" validate:"required,notblank"`
+		AMI          AMIConfig `yaml:"ami" validate:"required"`
+	}
+
+	NodeGroups struct {
+		Name           string            `yaml:"name" validate:"required,notblank"`
+		Replicas       int               `yaml:"replicas" validate:"required"`
+		InstanceType   string            `yaml:"instanceType" validate:"required,notblank"`
+		SSHKeyName     string            `yaml:"sshKeyName" validate:"required,notblank"`
+		AMI            AMIConfig         `yaml:"ami" validate:"required"`
+		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
+		Labels         map[string]string `yaml:"labels" default:"[]"`
+		Taints         []*coreV1.Taint   `yaml:"taints" default:"[]"`
+	}
+
+	AMIConfig struct {
+		ID string `yaml:"id" validate:"required,notblank"`
+	}
+
+	AWSDisasterRecoveryConfig struct {
+		VeleroBackupsS3BucketName       string `yaml:"veleroBackupsS3BucketName" validate:"required,notblank"`
+		SealedSecretsBackupS3BucketName string `yaml:"sealedSecretsBackupS3BucketName" validate:"required,notblank"`
+	}
+)
+
+// Hetzner specific.
+type (
+	HetznerConfig struct {
+		Credentials HetznerCredentials
+
+		// Robot is Hetzner's administration panel for dedicated root servers, colocation, Storage Boxes,
+		// and domains (via the Domain Registration Robot add-on).
+		RobotSSHKeyPair SSHKeyPairConfig `yaml:"robotSSHKey" validate:"required"`
+
+		ControlPlaneEndpoint string                        `yaml:"controlPlaneEndpoint" validate:"required,notblank"`
+		BareMetalNodes       map[string]HetznerNodeConfigs `yaml:"bareMetalNodes" validate:"required"`
+	}
+
+	HetznerCredentials struct {
+		HetznerAPIToken      string `validate:"required,notblank"`
+		HetznerRobotUser     string `validate:"required,notblank"`
+		HetznerRobotPassword string `validate:"required,notblank"`
+	}
+
+	HetznerNodeConfigs struct {
+		Name string   `yaml:"name" validate:"required,notblank"`
+		WWN  []string `yaml:"wwn" validate:"required,notblank"` // World Wide Name, a unique identifier.
+	}
+)
+
+// Azure specific.
+type (
+	AzureConfig struct{}
+)
+
+var ParsedConfig = &Config{}
+
+// Read config file from the given file path. Then, parse and validate it.
+func InitConfig() {
+	parseConfigFile(context.Background(), ConfigFilePath)
 }

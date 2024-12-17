@@ -1,52 +1,42 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/bootstrap_cluster"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/urfave/cli/v2"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/spf13/cobra"
 )
 
+var rootCmd = &cobra.Command{
+	Use: "kubeaid-bootstrap-script",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
+}
+
+func init() {
+	// Subcommands.
+	rootCmd.AddCommand(cluster.ClusterCmd)
+	rootCmd.AddCommand(config.ConfigCmd)
+
+	// Flags.
+	var isDebugModeEnabled bool
+	rootCmd.PersistentFlags().
+		BoolVar(&isDebugModeEnabled, constants.FlagNameDebug, false, "Run the script in debug mode")
+
+	// Initialization tasks.
+
+	// Initialize logger.
+	logger.InitLogger(isDebugModeEnabled)
+}
+
 func main() {
-	app := &cli.App{
-		Name:  "KubeAid Bootstrap Script",
-		Usage: "Bootstrap a Kubernetes cluster using KubeAid and ClusterAPI",
-		Commands: []*cli.Command{
-			{
-				Name:   "generate-sample-config",
-				Usage:  "Generate a sample configuration file",
-				Action: generateSampleConfig,
-				Flags: []cli.Flag{
-					&cli.StringFlag{
-						Name:     constants.FlagNameK8sVersion,
-						Usage:    "Kubernetes version (v1.31.0 / v1.30.0)",
-						Required: false,
-						Value:    "v1.31.0",
-					},
-					&cli.StringFlag{
-						Name:     constants.FlagNameCloud,
-						Usage:    "Cloud provider (AWS / Azure / Hetzner)",
-						Required: true,
-					},
-				},
-			},
-			{
-				Name:   "bootstrap-cluster",
-				Usage:  "Bootstrap a Kubernetes cluster and install KubeAid",
-				Action: bootstrap_cluster.BootstrapCluster,
-				Flags: []cli.Flag{
-					&cli.PathFlag{
-						Name:     constants.FlagNameConfigFile,
-						Usage:    "Path to the config file",
-						Required: true,
-					},
-				},
-			},
-		},
-	}
-	if err := app.Run(os.Args); err != nil {
-		log.Fatalf("Failed running KubeAid Bootstrap script : %v", err)
+	if err := rootCmd.Execute(); err != nil {
+		slog.Error(err.Error())
+		os.Exit(1)
 	}
 }

@@ -1,0 +1,63 @@
+global:
+  clusterName: {{ .ClusterConfig.Name }}
+  {{- if .CustomerID }}
+  customerid: {{ .CustomerID }}
+  {{- end }}
+  kubernetes:
+    version: {{ .K8sVersion }}
+  kubeaid:
+    repo: {{ .KubeaidForkURL }}
+  kubeaidConfig:
+    repo: {{ .KubeaidConfigForkURL }}
+
+{{- if .AWSConfig }}
+provider:
+  aws: true
+
+aws:
+  secretName: cloud-credentials
+  sshKeyName: {{ .AWSConfig.SSHKeyName }}
+  region: {{ .AWSConfig.Credentials.AWSRegion }}
+  bastion:
+    enabled: {{ .AWSConfig.BastionEnabled }}
+  vpc:
+    cidrBlock: 10.14.0.0/22
+  pods:
+    cidrBlock: 10.244.0.0/16
+  controlPlane:
+    loadBalancer:
+      loadBalancerType: nlb
+    region: {{ .AWSConfig.Credentials.AWSRegion }}
+    replicas: {{ .AWSConfig.ControlPlane.Replicas }}
+    instanceType: {{ .AWSConfig.ControlPlane.InstanceType }}
+    ami:
+      id: {{ .AWSConfig.ControlPlane.AMI.ID }}
+  nodeGroups:
+{{ .AWSConfig.NodeGroups | toYaml | indent 2 }}
+{{- end }}
+
+{{- if .HetznerConfig }}
+provider:
+  hetzner: true
+
+hetzner:
+  pods:
+    cidrBlock: 10.244.0.0/16
+  controlPlaneEndpoint:
+    host: {{ .HetznerConfig.ControlPlaneEndpoint }}
+    port: 6443
+  controlPlaneLoadBalancer:
+    enabled: false
+  controlPlaneRegions:
+    - hel1
+  nodes:
+    {{- range $id, $node := .HetznerConfig.BareMetalNodes }}
+    {{ $id }}:
+      name: {{ $node.Name }}
+      maintenanceMode: false
+      wwn:
+        {{- range $wwn := $node.WWN }}
+        - {{ $wwn }}
+        {{- end }}
+    {{- end }}
+{{- end }}
