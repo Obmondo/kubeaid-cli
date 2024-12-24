@@ -57,9 +57,9 @@ bootstrap-cluster-dev-aws:
 bootstrap-cluster-dev-hetzner:
 	@go run ./cmd cluster bootstrap hetzner \
 		--debug \
-		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
-		--skip-clusterctl-move
+		--config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 # --skip-kubeaid-config-setup
+# --skip-clusterctl-move
 
 .PHONY: use-management-cluster
 use-management-cluster:
@@ -69,10 +69,10 @@ use-management-cluster:
 use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
 
-.PHONY: delete-provisioned-cluster
+.PHONY: delete-provisioned-cluster-dev
 delete-provisioned-cluster-dev:
 	@go run ./cmd cluster delete \
-		--config /app/outputs/kubeaid-bootstrap-script.config.yaml
+		--config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: delete-management-cluster
 delete-management-cluster:

@@ -171,6 +171,9 @@ func getCreatePRURL(fromBranch string) string {
 	return createPRURL
 }
 
+// TODO : Sometimes we get this error while trying to detect whether the branch has been merged
+// or not : `unexpected EOF`.
+// In that case, just retry instead of erroring out.
 func WaitUntilPRMerged(ctx context.Context, repo *git.Repository, defaultBranchName string, commitHash plumbing.Hash, auth transport.AuthMethod, branchToBeMerged string) {
 	for {
 		slog.Info("Waiting for PR to be merged. Sleeping for 10 seconds....", slog.String("from-branch", branchToBeMerged), slog.String("to-branch", defaultBranchName))

@@ -62,6 +62,7 @@ const (
 const (
 	ArgoCDAppRoot              = "root"
 	ArgoCDAppCapiCluster       = "capi-cluster"
+	ArgoCDAppHetznerRobot      = "hetzner-robot"
 	ArgoCDAppClusterAutoscaler = "cluster-autoscaler"
 	ArgoCDAppVelero            = "velero"
 )

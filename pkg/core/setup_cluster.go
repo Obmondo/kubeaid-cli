@@ -38,6 +38,12 @@ func SetupCluster(ctx context.Context, kubeClient client.Client) {
 		utils.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
+	// If provisioning cluster in Hetzner bare metal, then sync the Hetzner Robot ArgoCD App.
+	// TODO : Explain.
+	if config.ParsedConfig.Cloud.Hetzner != nil {
+		utils.SyncArgoCDApp(ctx, constants.ArgoCDAppHetznerRobot, []*argoCDV1Alpha1.SyncOperationResource{})
+	}
+
 	// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
 	// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 	// Provider component first.
