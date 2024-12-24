@@ -46,3 +46,5 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [Secret Rotation](https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation)
 
 - [Kubernetes Backups, Upgrades, Migrations - with Velero](https://youtu.be/zybLTQER0yY?si=qOZcizBqPOeouJ7y)
+
+- [Failover](https://docs.hetzner.com/robot/dedicated-server/ip/failover/)
