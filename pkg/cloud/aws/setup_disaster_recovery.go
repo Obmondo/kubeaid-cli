@@ -7,6 +7,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/sagikazarmark/slog-shim"
 )
@@ -14,9 +15,7 @@ import (
 // Sets up the provisioned cluster for Disaster Recovery.
 // NOTE : Picks up AWS credentials from the environment.
 func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
-	if config.ParsedConfig.Cloud.AWS.DisasterRecovery == nil {
-		return
-	}
+	assert.AssertNotNil(ctx, config.ParsedConfig.Cloud.AWS.DisasterRecovery, "No AWS disaster-recovery config provided")
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
 

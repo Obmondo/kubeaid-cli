@@ -10,11 +10,14 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o kubeaid-bootstrap-script ./cmd
+RUN go build -o kubeaid-bootstrap-script ./cmd/kubeaid-bootstrap-script
 
 #--- Packager stage ---
 
 FROM golang:1.23.0 AS packages
+
+# Set the maintainer label
+LABEL org.opencontainers.image.authors="ashish@obmondo.com, archisman@obmondo.com"
 
 WORKDIR /
 

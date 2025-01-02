@@ -28,15 +28,31 @@ jobs:
           username: obmondo
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push AMD64 and ARM64 container images
+      - name: Build and push KubeAid Bootstrap Script AMD64 and ARM64 container images
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: build/Dockerfile
+          file: build/kubeaid-bootstrap-script/Dockerfile
           # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
           # using QEMU).
           platforms: linux/amd64,linux/arm64
           tags: ghcr.io/obmondo/kubeaid-bootstrap-script:${{ github.event.release.tag_name }}
+          push: true
+          # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
+          # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
+          # builds.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Hetzner Failover Script AMD64 and ARM64 container images
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: build/hetzner-failover-script/Dockerfile
+          # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
+          # using QEMU).
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/obmondo/hetzner-failover-script:${{ github.event.release.tag_name }}
           push: true
           # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
           # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across

@@ -65,7 +65,9 @@ func main() {
 
 	// Update Failover IP to the current node's IP (the current node, on which this script is
 	// running)
-	_, _, err = hetznerRobotClient.Failover.SwitchFailover(ctx, failoverIP)
+	// NOTE : Contributed :
+	//				https://github.com/floshodan/hrobot-go/commit/700f8ef9fdac565129608b3a50583b4b6564ff34.
+	_, _, err = hetznerRobotClient.Failover.SwitchFailover(ctx, failoverIP, activeServerIP)
 	assert.AssertErrNil(ctx, err, "Failed switching Failover IP to the current node IP")
 
 	// Wait for the update to complete.

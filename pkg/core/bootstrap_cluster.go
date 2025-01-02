@@ -36,7 +36,9 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
 	// setup Disaster Recovery.
-	cloudProvider.SetupDisasterRecovery(ctx)
+	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+		cloudProvider.SetupDisasterRecovery(ctx)
+	}
 }
 
 func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
