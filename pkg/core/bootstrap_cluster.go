@@ -28,11 +28,27 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 
 	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
 
-	// Provision the main cluster
-	provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+	// Create the management cluster (using K3d), if it doesn't already exist.
+	utils.CreateK3DCluster(ctx, "management-cluster")
 
-	// Let the provisioned cluster manage itself.
-	dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
+	// Install Sealed Secrets.
+	utils.InstallSealedSecrets(ctx)
+
+	// Setup cluster directory in the user's KubeAid config repo.
+	if !skipKubeAidConfigSetup {
+		SetupKubeAidConfig(ctx, gitAuthMethod, false)
+	}
+
+	// While retrying, if `clusterctl move` has already been executed, then we skip these steps and
+	// move to the disaster recovery setup step.
+	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	if !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+		// Provision the main cluster
+		provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+
+		// Let the provisioned cluster manage itself.
+		dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
+	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
 	// setup Disaster Recovery.
@@ -42,17 +58,7 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 }
 
 func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
-	// Create the management cluster (using K3d), if it doesn't already exist.
-	utils.CreateK3DCluster(ctx, "management-cluster")
 	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
-
-	// Install Sealed Secrets.
-	utils.InstallSealedSecrets(ctx)
-
-	// Setup cluster directory in the user's KubeAid config repo.
-	if !skipKubeAidConfigSetup {
-		SetupKubeAidConfig(ctx, gitAuthMethod, false)
-	}
 
 	// Setup the management cluster.
 	SetupCluster(ctx, managementClusterClient)
