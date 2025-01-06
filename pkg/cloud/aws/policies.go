@@ -20,7 +20,7 @@ func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
 					"s3:ListMultipartUploadParts",
 				},
 				Effect:   "Allow",
-				Resource: fmt.Sprintf("arn:aws:s3:::-%s", sealedSecretBackupsS3BucketName),
+				Resource: fmt.Sprintf("arn:aws:s3:::%s/*", sealedSecretBackupsS3BucketName),
 			},
 		},
 	}
