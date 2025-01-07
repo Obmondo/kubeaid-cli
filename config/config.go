@@ -4,6 +4,7 @@ import (
 	"context"
 
 	coreV1 "k8s.io/api/core/v1"
+	kubeadmBootstrapProviderV1Beta1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1"
 )
 
 type (
@@ -31,7 +32,14 @@ type (
 	ClusterConfig struct {
 		Name       string `yaml:"name" validate:"required,notblank"`
 		K8sVersion string `yaml:"k8sVersion" validate:"required,notblank"`
+
+		EnableAuditLogging bool `yaml:"enableAuditLogging"`
+
+		APIServer APIServerConfig                        `yaml:"apiServer"`
+		Files     []kubeadmBootstrapProviderV1Beta1.File `yaml:"files"`
 	}
+
+	APIServerConfig kubeadmBootstrapProviderV1Beta1.ControlPlaneComponent
 
 	CloudConfig struct {
 		AWS     *AWSConfig     `yaml:"aws"`

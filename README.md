@@ -30,6 +30,8 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [ ] Support adding admin SSH keys via config file.
 - [ ] Support using HTTPS for ArgoCD apps.
 - [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
+- [ ] Support enabling `Audit Logging`.
+- [ ] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
 
 ## REFERENCES
 
@@ -48,3 +50,7 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [Kubernetes Backups, Upgrades, Migrations - with Velero](https://youtu.be/zybLTQER0yY?si=qOZcizBqPOeouJ7y)
 
 - [Failover](https://docs.hetzner.com/robot/dedicated-server/ip/failover/)
+
+- [Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
+
+- [Kube API server args](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/)
