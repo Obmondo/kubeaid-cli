@@ -36,10 +36,13 @@ type (
 		EnableAuditLogging bool `yaml:"enableAuditLogging"`
 
 		APIServer APIServerConfig                        `yaml:"apiServer"`
-		Files     []kubeadmBootstrapProviderV1Beta1.File `yaml:"files"`
+		Files     []kubeadmBootstrapProviderV1Beta1.File `yaml:"files" default:"[]"`
 	}
 
-	APIServerConfig kubeadmBootstrapProviderV1Beta1.ControlPlaneComponent
+	APIServerConfig struct {
+		ExtraArgs    map[string]string                               `yaml:"extraArgs" default:"{}"`
+		ExtraVolumes []kubeadmBootstrapProviderV1Beta1.HostPathMount `yaml:"extraVolumes" default:"[]"`
+	}
 
 	CloudConfig struct {
 		AWS     *AWSConfig     `yaml:"aws"`
