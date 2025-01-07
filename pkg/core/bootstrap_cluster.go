@@ -112,6 +112,20 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 	SetupCluster(ctx, provisionedClusterClient)
 
 	if !skipClusterctlMove {
+		// Make ClusterAPI use IAM roles instead of (temporary) credentials.
+		//
+		// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
+		//        a master node.
+		//        And, the master node count should be more than 1.
+		{
+			// Zero the credentials CAPA controller started with.
+			// This will force the CAPA controller to fall back to use the attached instance profiles.
+			utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
+
+			// Rollout and restart on capa-controller-manager deployment.
+			utils.ExecuteCommandOrDie("clusterawsadm controller rollout-controller --namespace capi-cluster")
+		}
+
 		// Move ClusterAPI manifests to the provisioned cluster.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",

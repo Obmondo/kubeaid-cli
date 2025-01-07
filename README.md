@@ -54,3 +54,5 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
 
 - [Kube API server args](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/)
+
+- [Using IAM roles in management cluster instead of AWS credentials](https://cluster-api-aws.sigs.k8s.io/topics/using-iam-roles-in-mgmt-cluster)
