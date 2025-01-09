@@ -8,7 +8,7 @@ The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cl
 
 - [Bootstrapping a self-managed cluster in AWS](https://github.com/Obmondo/KubeAid/blob/master/docs/aws/capi/cluster.md)
 
-## Developer Guide
+## Developer Guide (AWS)
 
 > Make sure, you've Docker installed in your system.
 
@@ -22,6 +22,12 @@ Once you're inside the container, use `make generate-sample-config-aws-dev` to g
 
 Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 
+### Debugging
+
+- Check ClusterAPI related pod logs.
+
+- SSH into the control-plane node. In case of AWS, you can view cloud-init logs stored at `/var/log/cloud-init-output.log`.
+
 ## TODOs
 
 - [ ] Check Git URL if SSH agent is used.
@@ -30,8 +36,11 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [ ] Support adding admin SSH keys via config file.
 - [ ] Support using HTTPS for ArgoCD apps.
 - [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
-- [ ] Support enabling `Audit Logging`.
-- [ ] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
+- [x] Support enabling `Audit Logging`.
+- [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
+- [ ] Support scale to / from zero for the node-groups.
+  > First, this needs to be solved : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
+- [ ] `recover cluster` command
 
 ## REFERENCES
 

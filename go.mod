@@ -264,7 +264,6 @@ require (
 	k8s.io/apiextensions-apiserver v0.31.3 // indirect
 	k8s.io/apiserver v0.31.3 // indirect
 	k8s.io/cli-runtime v0.31.2 // indirect
-	k8s.io/cluster-bootstrap v0.31.3 // indirect
 	k8s.io/component-base v0.31.3 // indirect
 	k8s.io/component-helpers v0.31.2 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect

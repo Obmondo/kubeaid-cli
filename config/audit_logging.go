@@ -4,7 +4,7 @@ import (
 	_ "embed"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	kubeadmAPIV1Beta1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1"
+	v1 "k8s.io/api/core/v1"
 )
 
 var (
@@ -16,7 +16,7 @@ var (
 
 		constants.KubeAPIServerFlagAuditPolicyFile: "/srv/kubernetes/audit.yaml",
 
-		constants.KubeAPIServerFlagAuditLogPath: "/var/log/kube-apiserver-audit.log",
+		constants.KubeAPIServerFlagAuditLogPath: "/var/log/kube-apiserver-audit.logs",
 	}
 
 	//go:embed files/defaults/audit-policy.yaml
@@ -51,7 +51,7 @@ func hydrateWithAuditLoggingOptions() {
 		}
 
 		if !isAuditPolicyFileProvidedByUser {
-			ParsedConfig.Cluster.Files = append(ParsedConfig.Cluster.Files, kubeadmAPIV1Beta1.File{
+			ParsedConfig.Cluster.Files = append(ParsedConfig.Cluster.Files, FileConfig{
 				Path:    auditPolicyFileHostPath,
 				Content: defaultAuditPolicy,
 				Append:  false,
@@ -60,28 +60,30 @@ func hydrateWithAuditLoggingOptions() {
 	}
 
 	// Make sure that the audit policy file is mounted to the Kube API server pod.
-	ensureHostPathGetsMounted(auditPolicyFileHostPath, kubeadmAPIV1Beta1.HostPathMount{
+	ensureHostPathGetsMounted(auditPolicyFileHostPath, HostPathMountConfig{
 		Name:      constants.KubeAPIServerFlagAuditPolicyFile,
 		HostPath:  auditPolicyFileHostPath,
 		MountPath: auditPolicyFileHostPath,
 		ReadOnly:  true,
+		PathType:  v1.HostPathFileOrCreate,
 	})
 
 	// If using the log backend, make sure that the log backend file is mounted to the Kube API
 	// server pod.
 	if logBackendHostPath, ok := kubeAPIServerDefaultExtraArgsForAuditLogging[constants.KubeAPIServerFlagAuditLogPath]; ok {
-		ensureHostPathGetsMounted(logBackendHostPath, kubeadmAPIV1Beta1.HostPathMount{
+		ensureHostPathGetsMounted(logBackendHostPath, HostPathMountConfig{
 			Name:      "log-backend",
 			HostPath:  logBackendHostPath,
 			MountPath: logBackendHostPath,
 			ReadOnly:  false,
+			PathType:  v1.HostPathFileOrCreate,
 		})
 	}
 }
 
 // Ensures that the given host path gets mounted to the Kube API server pod. If not, then uses the
 // given default volume to do the mount.
-func ensureHostPathGetsMounted(hostPath string, volume kubeadmAPIV1Beta1.HostPathMount) {
+func ensureHostPathGetsMounted(hostPath string, volume HostPathMountConfig) {
 	hostPathAlreadyMounted := false
 	for _, userSpecifiedVolume := range ParsedConfig.Cluster.APIServer.ExtraVolumes {
 		if userSpecifiedVolume.HostPath == volume.HostPath {
