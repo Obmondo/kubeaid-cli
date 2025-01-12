@@ -35,12 +35,12 @@ type (
 		EnableAuditLogging bool `yaml:"enableAuditLogging"`
 
 		APIServer APIServerConfig `yaml:"apiServer"`
-		Files     []FileConfig    `yaml:"files" default:"[]"`
 	}
 
 	APIServerConfig struct {
 		ExtraArgs    map[string]string     `yaml:"extraArgs" default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
+		Files        []FileConfig          `yaml:"files" default:"[]"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount
@@ -48,14 +48,21 @@ type (
 		Name      string              `yaml:"name" validate:"required,notblank"`
 		HostPath  string              `yaml:"hostPath" validate:"required,notblank"`
 		MountPath string              `yaml:"mountPath" validate:"required,notblank"`
-		ReadOnly  bool                `yaml:"readOnly" default:"true"`
 		PathType  coreV1.HostPathType `yaml:"pathType" validate:"required"`
+
+		// Whether the mount should be read-only or not.
+		// Defaults to true.
+		//
+		// NOTE : If you want the mount to be read-only, then set this true.
+		//        Otherwise, omit setting this field. It gets removed by the kubeadm control-plane
+		//        provider component, which results to the capi-cluster ArgoCD App always being in
+		//        OutOfSync state.
+		ReadOnly bool `yaml:"readOnly,omitempty"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File
 	FileConfig struct {
 		Path    string `yaml:"path" validate:"required,notblank"`
-		Append  bool   `yaml:"append" default:"false"`
 		Content string `yaml:"content" validate:"required,notblank"`
 	}
 

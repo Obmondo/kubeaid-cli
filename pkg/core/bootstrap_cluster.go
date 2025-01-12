@@ -97,7 +97,7 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 
 	if isPartOfDisasterRecovery {
 		// If this is a part of the disaster recovery process, then
-		// restore Kubernetes Secrets containing a Sealed Secrets keys.
+		// restore Kubernetes Secrets containing a Sealed Secrets key.
 
 		sealedSecretsBackupBucketName := cloudProvider.GetSealedSecretsBackupBucketName()
 		manifestsDirPath := utils.GetDirPathForDownloadedStorageBucketContents(sealedSecretsBackupBucketName)

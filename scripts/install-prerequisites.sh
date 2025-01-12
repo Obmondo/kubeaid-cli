@@ -30,8 +30,8 @@ apt install -y curl
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 # Clusterawsadm
-wget https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.5.2/clusterawsadm_v2.5.2_linux_"${CPU_ARCHITECTURE}"
-mv clusterawsadm_v2.5.2_linux_"${CPU_ARCHITECTURE}" /usr/local/bin/clusterawsadm
+wget https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.7.1/clusterawsadm_v2.7.1_linux_"${CPU_ARCHITECTURE}"
+mv clusterawsadm_v2.7.1_linux_"${CPU_ARCHITECTURE}" /usr/local/bin/clusterawsadm
 chmod +x /usr/local/bin/clusterawsadm
 
 # Clusterctl

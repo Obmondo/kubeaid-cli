@@ -20,7 +20,7 @@ In a separate terminal window, use `make exec-container-dev` to execute into the
 
 Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.
 
-Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
+Export your AWS credentials as environment variables and then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 
 ### Debugging
 
@@ -38,8 +38,10 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
 - [x] Support enabling `Audit Logging`.
 - [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
-- [ ] Support scale to / from zero for the node-groups.
-  > First, this needs to be solved : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
+- [x] ETCD metrics enabled.
+- [x] Support scale to / from zero for the node-groups.
+  > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
+  > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
 - [ ] `recover cluster` command
 
 ## REFERENCES
@@ -65,3 +67,7 @@ Then run `make bootstrap-cluster-dev` to bootstrap the cluster!
 - [Kube API server args](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/)
 
 - [Using IAM roles in management cluster instead of AWS credentials](https://cluster-api-aws.sigs.k8s.io/topics/using-iam-roles-in-mgmt-cluster)
+
+- [KubeadmControlPlane CRD](https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml)
+
+- [How can you call a helm 'helper' template from a subchart with the correct context?](https://stackoverflow.com/questions/47791971/how-can-you-call-a-helm-helper-template-from-a-subchart-with-the-correct-conte)

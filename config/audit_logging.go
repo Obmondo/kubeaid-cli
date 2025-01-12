@@ -43,7 +43,7 @@ func hydrateWithAuditLoggingOptions() {
 	// If the user has not specified an Audit Policy file, then use the default one.
 	{
 		isAuditPolicyFileProvidedByUser := false
-		for _, file := range ParsedConfig.Cluster.Files {
+		for _, file := range ParsedConfig.Cluster.APIServer.Files {
 			if file.Path == auditPolicyFileHostPath {
 				isAuditPolicyFileProvidedByUser = true
 				break
@@ -51,10 +51,9 @@ func hydrateWithAuditLoggingOptions() {
 		}
 
 		if !isAuditPolicyFileProvidedByUser {
-			ParsedConfig.Cluster.Files = append(ParsedConfig.Cluster.Files, FileConfig{
+			ParsedConfig.Cluster.APIServer.Files = append(ParsedConfig.Cluster.APIServer.Files, FileConfig{
 				Path:    auditPolicyFileHostPath,
 				Content: defaultAuditPolicy,
-				Append:  false,
 			})
 		}
 	}
@@ -75,7 +74,6 @@ func hydrateWithAuditLoggingOptions() {
 			Name:      "log-backend",
 			HostPath:  logBackendHostPath,
 			MountPath: logBackendHostPath,
-			ReadOnly:  false,
 			PathType:  v1.HostPathFileOrCreate,
 		})
 	}

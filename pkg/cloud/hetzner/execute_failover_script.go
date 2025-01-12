@@ -15,4 +15,6 @@ hetzner-robot App in KubeAid). This will make the Failover IP point to β.
 The Kubernetes API server of the provisioned cluster will then be reachable via that Failover
 IP.
 */
-func ExecuteFailoverScript(ctx context.Context) {}
+func ExecuteFailoverScript(ctx context.Context) {
+	panic("unimplemented")
+}
