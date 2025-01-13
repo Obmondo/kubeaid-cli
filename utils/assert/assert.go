@@ -41,7 +41,7 @@ func AssertNotNil(ctx context.Context, value interface{}, errorMessage string, a
 
 // Panics if the given value is false.
 func Assert(ctx context.Context, value bool, errorMessage string, attributes ...any) {
-	if !value {
+	if value {
 		return
 	}
 

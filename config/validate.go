@@ -40,11 +40,11 @@ func validateConfig(config *Config) {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
 				nodeGroup.Replicas >= nodeGroup.MinSize,
-				"node-group replica count should be >= its min-size", slog.String("node-group", nodeGroup.Name),
+				"replica count should be >= its min-size", slog.String("node-group", nodeGroup.Name),
 			)
 			assert.Assert(ctx,
 				nodeGroup.Replicas <= nodeGroup.Maxsize,
-				"node-group replica count should be <= its max-size", slog.String("node-group", nodeGroup.Name),
+				"replica count should be <= its max-size", slog.String("node-group", nodeGroup.Name),
 			)
 
 			// Validate labels and taints.

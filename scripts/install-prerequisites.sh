@@ -38,12 +38,12 @@ chmod +x /usr/local/bin/clusterawsadm
 curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.7.3/clusterctl-linux-"${CPU_ARCHITECTURE}" -o clusterctl
 install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
 
-# ------------------------------------------- Utilities -------------------------------------------
-
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
 chmod +x ./kubectl
 mv ./kubectl /usr/local/bin
+
+# ------------------------------------------- Utilities -------------------------------------------
 
 # K9s
 wget https://github.com/derailed/k9s/releases/download/v0.32.5/k9s_linux_"${CPU_ARCHITECTURE}".deb
