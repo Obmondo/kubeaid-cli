@@ -109,20 +109,25 @@ type (
 	}
 
 	ControlPlaneConfig struct {
-		Replicas     int       `yaml:"replicas" validate:"required"`
+		Replicas     uint      `yaml:"replicas" validate:"required"`
 		InstanceType string    `yaml:"instanceType" validate:"required,notblank"`
 		AMI          AMIConfig `yaml:"ami" validate:"required"`
 	}
 
 	NodeGroups struct {
-		Name           string            `yaml:"name" validate:"required,notblank"`
-		Replicas       int               `yaml:"replicas" validate:"required"`
-		InstanceType   string            `yaml:"instanceType" validate:"required,notblank"`
-		SSHKeyName     string            `yaml:"sshKeyName" validate:"required,notblank"`
-		AMI            AMIConfig         `yaml:"ami" validate:"required"`
-		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
-		Labels         map[string]string `yaml:"labels" default:"[]"`
-		Taints         []*coreV1.Taint   `yaml:"taints" default:"[]"`
+		Name string `yaml:"name" validate:"required,notblank"`
+
+		Replicas uint `yaml:"replicas" validate:"required"`
+		MinSize  uint `yaml:"minSize" validate:"required"`
+		Maxsize  uint `yaml:"maxSize" validate:"required"`
+
+		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
+		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
+		AMI            AMIConfig `yaml:"ami" validate:"required"`
+		RootVolumeSize uint      `yaml:"rootVolumeSize" validate:"required"`
+
+		Labels map[string]string `yaml:"labels" default:"[]"`
+		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
 	}
 
 	AMIConfig struct {
