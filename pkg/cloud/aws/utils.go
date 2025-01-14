@@ -3,7 +3,6 @@ package aws
 import (
 	"context"
 	"log/slog"
-	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
@@ -33,8 +32,10 @@ func CreateIAMCloudFormationStack() {
 	// NOTE : This requires admin privileges.
 	output, err := utils.ExecuteCommand("clusterawsadm bootstrap iam create-cloudformation-stack")
 
-	// Panic if an error occurs (except regarding the AWS Cloudformation stack already existing).
-	if !strings.Contains(output, "already exists, updating") {
-		assert.AssertErrNil(context.Background(), err, "Failed bootstrapping IAM CloudFormation Stack", slog.String("output", output))
-	}
+	// NOTE : If the CloudFormation template is in ROLLBACK_COMPLETE state, maybe there are
+	// pre-existing IAM resources with overlapping name. If so, then first delete them manually from
+	// the AWS Console and then retry running the script.
+	assert.AssertErrNil(context.Background(), err,
+		"Failed bootstrapping IAM CloudFormation Stack", slog.String("output", output),
+	)
 }

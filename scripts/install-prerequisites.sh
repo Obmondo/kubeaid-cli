@@ -30,20 +30,20 @@ apt install -y curl
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
 # Clusterawsadm
-wget https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.5.2/clusterawsadm_v2.5.2_linux_"${CPU_ARCHITECTURE}"
-mv clusterawsadm_v2.5.2_linux_"${CPU_ARCHITECTURE}" /usr/local/bin/clusterawsadm
+wget https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.7.1/clusterawsadm-linux-"${CPU_ARCHITECTURE}"
+mv clusterawsadm-linux-"${CPU_ARCHITECTURE}" /usr/local/bin/clusterawsadm
 chmod +x /usr/local/bin/clusterawsadm
 
 # Clusterctl
 curl -L https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.7.3/clusterctl-linux-"${CPU_ARCHITECTURE}" -o clusterctl
 install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
 
-# ------------------------------------------- Utilities -------------------------------------------
-
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
 chmod +x ./kubectl
 mv ./kubectl /usr/local/bin
+
+# ------------------------------------------- Utilities -------------------------------------------
 
 # K9s
 wget https://github.com/derailed/k9s/releases/download/v0.32.5/k9s_linux_"${CPU_ARCHITECTURE}".deb

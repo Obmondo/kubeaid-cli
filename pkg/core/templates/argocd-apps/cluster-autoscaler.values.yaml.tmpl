@@ -17,3 +17,6 @@ cluster-autoscaler:
   autoDiscovery:
     clusterName: {{ .ClusterConfig.Name }}
     namespace: {{ .CAPIClusterNamespace }}
+
+enableClusterAPIScaleFromZeroSupport:
+  aws: true

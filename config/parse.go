@@ -30,14 +30,19 @@ func ParseConfig(ctx context.Context, configAsString string) {
 	slog.InfoContext(ctx, "Parsed config")
 
 	// Set defaults.
-	err = defaults.Set(ParsedConfig)
-	assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed config")
-	//
-	// Read cloud credentials from CLI flags and store them in config.
-	readCloudCredentialsFromFlagsToConfig()
-	//
-	// Read SSH key-pairs from provided file paths and store them in config.
-	readSSHKeys(ParsedConfig)
+	{
+		err = defaults.Set(ParsedConfig)
+		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed config")
+
+		// Read cloud credentials from CLI flags and store them in config.
+		readCloudCredentialsFromFlagsToConfig()
+
+		// Read SSH key-pairs from provided file paths and store them in config.
+		hydrateSSHKeyConfigs()
+
+		// Hydrate with Audit Logging options (if required).
+		hydrateWithAuditLoggingOptions()
+	}
 
 	// Validate.
 	validateConfig(ParsedConfig)
@@ -62,16 +67,16 @@ func readCloudCredentialsFromFlagsToConfig() {
 	}
 }
 
-func readSSHKeys(config *Config) {
+func hydrateSSHKeyConfigs() {
 	switch {
-	case config.Cloud.Hetzner != nil:
-		readSSHKey(&config.Cloud.Hetzner.RobotSSHKeyPair)
+	case ParsedConfig.Cloud.Hetzner != nil:
+		hydrateSSHKeyConfig(&ParsedConfig.Cloud.Hetzner.RobotSSHKeyPair)
 	}
 }
 
 // Reads and validates an SSH key-pair from the provided file paths.
 // The key-pair is then stored in the SSH key config struct itself.
-func readSSHKey(sshKeyConfig *SSHKeyPairConfig) {
+func hydrateSSHKeyConfig(sshKeyConfig *SSHKeyPairConfig) {
 	ctx := context.Background()
 
 	// Read and validate the SSH public key.

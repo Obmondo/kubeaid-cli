@@ -32,6 +32,9 @@ aws:
     instanceType: {{ .AWSConfig.ControlPlane.InstanceType }}
     ami:
       id: {{ .AWSConfig.ControlPlane.AMI.ID }}
+    {{- if .ClusterConfig.APIServer }}
+    apiServer: {{ .ClusterConfig.APIServer | toYaml | nindent 6 }}
+    {{- end }}
   nodeGroups:
 {{ .AWSConfig.NodeGroups | toYaml | indent 2 }}
 {{- end }}

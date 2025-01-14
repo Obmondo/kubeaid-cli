@@ -20,21 +20,31 @@ func AssertErrNil(ctx context.Context, err error, customErrorMessage string, att
 }
 
 // Panics if the given value isn't nil.
-func AssertNil(ctx context.Context, value interface{}, errorMessage string) {
+func AssertNil(ctx context.Context, value interface{}, errorMessage string, attributes ...any) {
 	if value == nil {
 		return
 	}
 
-	slog.ErrorContext(ctx, errorMessage)
+	slog.ErrorContext(ctx, errorMessage, attributes...)
 	os.Exit(1)
 }
 
 // Panics if the given value is nil.
-func AssertNotNil(ctx context.Context, value interface{}, errorMessage string) {
+func AssertNotNil(ctx context.Context, value interface{}, errorMessage string, attributes ...any) {
 	if value != nil {
 		return
 	}
 
-	slog.ErrorContext(ctx, errorMessage)
+	slog.ErrorContext(ctx, errorMessage, attributes...)
+	os.Exit(1)
+}
+
+// Panics if the given value is false.
+func Assert(ctx context.Context, value bool, errorMessage string, attributes ...any) {
+	if value {
+		return
+	}
+
+	slog.ErrorContext(ctx, errorMessage, attributes...)
 	os.Exit(1)
 }

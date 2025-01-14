@@ -30,7 +30,7 @@ func RecoverCluster(ctx context.Context, cloudProvider cloud.CloudProvider) {
 		Pull and gzip decode backed up (by Sealed Secrets backuper CRONJob) Kubernetes Secrets from S3
 		bucket. Each Kubernetes Secret contains a Sealed Secrets encryption key.
 
-		The script uresponsible for this backup process can be found here :
+		The script responsible for this backup process can be found here :
 		https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml
 
 		And you can read about Sealed Secrets key rotation from these references :

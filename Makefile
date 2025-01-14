@@ -7,7 +7,7 @@ IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build -f ./build/kubeaid-bootstrap-script/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
 
 .PHONY: remove-image-dev
 remove-image-dev:
@@ -43,22 +43,22 @@ remove-container-dev: stop-container-dev
 
 .PHONY: generate-sample-config-aws-dev
 generate-sample-config-aws-dev:
-	@go run ./cmd config generate aws
+	@go run ./cmd/kubeaid-bootstrap-script/ config generate aws
 
 .PHONY: bootstrap-cluster-dev-aws
 bootstrap-cluster-dev-aws:
-	@go run ./cmd cluster bootstrap aws \
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap aws \
 		--debug \
-		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
-		--skip-clusterctl-move
+		--config /app/outputs/kubeaid-bootstrap-script.aws.config.yaml
 # --skip-kubeaid-config-setup
+# --skip-clusterctl-move
 
 .PHONY: bootstrap-cluster-dev-hetzner
 bootstrap-cluster-dev-hetzner:
-	@go run ./cmd cluster bootstrap hetzner \
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap hetzner \
 		--debug \
-		--config /app/outputs/kubeaid-bootstrap-script.config.yaml \
-		--skip-clusterctl-move
+    --config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
+    --skip-clusterctl-move
 # --skip-kubeaid-config-setup
 
 .PHONY: use-management-cluster
@@ -69,10 +69,15 @@ use-management-cluster:
 use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
 
-.PHONY: delete-provisioned-cluster
-delete-provisioned-cluster-dev:
-	@go run ./cmd cluster delete \
-		--config /app/outputs/kubeaid-bootstrap-script.config.yaml
+.PHONY: delete-provisioned-cluster-dev-aws
+delete-provisioned-cluster-dev-aws:
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+		--config /app/outputs/kubeaid-bootstrap-script.aws.config.yaml
+
+.PHONY: delete-provisioned-cluster-dev-hetzner
+delete-provisioned-cluster-dev-hetzner:
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+		--config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: delete-management-cluster
 delete-management-cluster:

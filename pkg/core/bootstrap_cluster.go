@@ -10,6 +10,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -28,21 +29,8 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 
 	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
 
-	// Provision the main cluster
-	provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
-
-	// Let the provisioned cluster manage itself.
-	dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
-
-	// If the diasterRecovery section is specified in the cloud-provider specific config, then
-	// setup Disaster Recovery.
-	cloudProvider.SetupDisasterRecovery(ctx)
-}
-
-func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
 	// Create the management cluster (using K3d), if it doesn't already exist.
 	utils.CreateK3DCluster(ctx, "management-cluster")
-	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
 
 	// Install Sealed Secrets.
 	utils.InstallSealedSecrets(ctx)
@@ -51,6 +39,27 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 	if !skipKubeAidConfigSetup {
 		SetupKubeAidConfig(ctx, gitAuthMethod, false)
 	}
+
+	// While retrying, if `clusterctl move` has already been executed, then we skip these steps and
+	// move to the disaster recovery setup step.
+	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	if !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+		// Provision the main cluster
+		provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+
+		// Let the provisioned cluster manage itself.
+		dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
+	}
+
+	// If the diasterRecovery section is specified in the cloud-provider specific config, then
+	// setup Disaster Recovery.
+	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+		cloudProvider.SetupDisasterRecovery(ctx)
+	}
+}
+
+func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
+	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
 
 	// Setup the management cluster.
 	SetupCluster(ctx, managementClusterClient)
@@ -61,6 +70,12 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 
 	// Close ArgoCD application client.
 	constants.ArgoCDApplicationClientCloser.Close()
+
+	// CASE : Hetzner
+	// Make the Failover IP point to the master node where `kubeadm init` has been executed.
+	if config.ParsedConfig.Cloud.Hetzner != nil {
+		hetzner.ExecuteFailoverScript(ctx)
+	}
 
 	// Wait for the main cluster to be provisioned and ready.
 	utils.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
@@ -82,7 +97,7 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 
 	if isPartOfDisasterRecovery {
 		// If this is a part of the disaster recovery process, then
-		// restore Kubernetes Secrets containing a Sealed Secrets keys.
+		// restore Kubernetes Secrets containing a Sealed Secrets key.
 
 		sealedSecretsBackupBucketName := cloudProvider.GetSealedSecretsBackupBucketName()
 		manifestsDirPath := utils.GetDirPathForDownloadedStorageBucketContents(sealedSecretsBackupBucketName)
@@ -104,6 +119,20 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 	SetupCluster(ctx, provisionedClusterClient)
 
 	if !skipClusterctlMove {
+		// Make ClusterAPI use IAM roles instead of (temporary) credentials.
+		//
+		// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
+		//        a master node.
+		//        And, the master node count should be more than 1.
+		{
+			// Zero the credentials CAPA controller started with.
+			// This will force the CAPA controller to fall back to use the attached instance profiles.
+			utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
+
+			// Rollout and restart on capa-controller-manager deployment.
+			utils.ExecuteCommandOrDie("clusterawsadm controller rollout-controller --namespace capi-cluster")
+		}
+
 		// Move ClusterAPI manifests to the provisioned cluster.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",

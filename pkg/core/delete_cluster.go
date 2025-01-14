@@ -27,28 +27,23 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	{
-		provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
 
-		// Try to find the Cluster resource in the provisioned cluster.
-		err := utils.GetClusterResource(ctx, provisionedClusterClient, cluster)
+	// The Cluster resource exists in the provisioned cluster.
+	// The means, the 'clusterctl move' command has been executed.
+	if utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
-		// The Cluster resource exists in the provisioned cluster.
-		// The means, the 'clusterctl move' command has been executed.
-		if err == nil {
-			slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
-
-			// Move back the ClusterAPI manifests back from the provisioned cluster to the management
-			// cluster.
-			// NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
-			retry.Do(func() error {
-				_, err := utils.ExecuteCommand(fmt.Sprintf(
-					"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-					constants.OutputPathProvisionedClusterKubeconfig, constants.OutputPathManagementClusterKubeconfig, utils.GetCapiClusterNamespace(),
-				))
-				return err
-			})
-		}
+		// Move back the ClusterAPI manifests back from the provisioned cluster to the management
+		// cluster.
+		// NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
+		retry.Do(func() error {
+			_, err := utils.ExecuteCommand(fmt.Sprintf(
+				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
+				constants.OutputPathProvisionedClusterKubeconfig, constants.OutputPathManagementClusterKubeconfig, utils.GetCapiClusterNamespace(),
+			))
+			return err
+		})
 	}
 
 	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)

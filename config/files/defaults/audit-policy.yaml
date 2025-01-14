@@ -1,0 +1,13 @@
+apiVersion: audit.k8s.io/v1
+kind: Policy
+# Don't generate audit events for all requests in the RequestReceived stage.
+omitStages:
+  - "RequestReceived"
+rules:
+  # Log events with metadata (requesting user, timestamp, resource, verb, etc.) but not request or
+  # response body.
+  - level: Metadata
+    # Long-running requests like watches that fall under this rule will not generate an audit event
+    # in RequestReceived stage. We will omit those logs.
+    omitStages:
+      - "RequestReceived"

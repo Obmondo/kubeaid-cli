@@ -44,6 +44,12 @@ const (
 	FlagNameAWSRegion       = "aws-region"
 )
 
+// Kube API server CLI flags.
+const (
+	KubeAPIServerFlagAuditPolicyFile = "audit-policy-file"
+	KubeAPIServerFlagAuditLogPath    = "audit-log-path"
+)
+
 // Cloud providers.
 const (
 	CloudProviderAWS     = "aws"
@@ -62,6 +68,7 @@ const (
 const (
 	ArgoCDAppRoot              = "root"
 	ArgoCDAppCapiCluster       = "capi-cluster"
+	ArgoCDAppHetznerRobot      = "hetzner-robot"
 	ArgoCDAppClusterAutoscaler = "cluster-autoscaler"
 	ArgoCDAppVelero            = "velero"
 )
@@ -75,8 +82,8 @@ const (
 
 // Template names.
 var (
-	TemplateNameAWSSampleConfig     = "templates/aws.sample.config.yaml.tmpl"
-	TemplateNameHetznerSampleConfig = "templates/hetzner.sample.config.yaml.tmpl"
+	TemplateNameAWSSampleConfig     = "files/templates/aws.sample.config.yaml.tmpl"
+	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.

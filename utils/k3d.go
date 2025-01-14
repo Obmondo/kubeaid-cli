@@ -38,11 +38,24 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// resolvable from within the dev container.
 	// Since we are mounting the Docker socket to the dev container, it can resolve DNS names of
 	// Docker networks. So use the DNS name instead of 0.0.0.0.
+	//
 	// NOTE : Consider this situation :
-	//				an existing K3D cluster may have wrong Kubernetes API server URL server.
+	//        an existing K3D cluster may have wrong Kubernetes API server URL server.
 	ExecuteCommandOrDie(fmt.Sprintf(`
 		kubectl config set-cluster k3d-%s --server=https://k3d-%s-serverlb:6443
 	`, name, name))
+
+	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".
+	// We'll change the label value to "" (just like it is in Vanilla Kubernetes).
+	// Some apps (like capi-cluster) relies on this label to get scheduled to the master node.
+	ExecuteCommandOrDie(fmt.Sprintf(`
+		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
+
+		for node in $master_nodes; do
+			kubectl label $node node-role.kubernetes.io/control-plane-
+			kubectl label $node node-role.kubernetes.io/control-plane=""
+		done
+	`))
 }
 
 // Returns whether the given K3d cluster exists or not.

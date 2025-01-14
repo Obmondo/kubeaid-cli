@@ -31,6 +31,47 @@ type (
 	ClusterConfig struct {
 		Name       string `yaml:"name" validate:"required,notblank"`
 		K8sVersion string `yaml:"k8sVersion" validate:"required,notblank"`
+
+		EnableAuditLogging bool `yaml:"enableAuditLogging"`
+
+		APIServer APIServerConfig `yaml:"apiServer"`
+	}
+
+	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
+	//
+	// NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
+	//        source types linked below.
+	//        There are some configuration options which appear in the corresponding GoLang source type,
+	//        but not in the CRD. If you set those fields, then they get removed by the Kubeadm
+	//        control-plane provider. This causes the capi-cluster ArgoCD App to always be in an
+	//        OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
+	APIServerConfig struct {
+		ExtraArgs    map[string]string     `yaml:"extraArgs" default:"{}"`
+		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
+		Files        []FileConfig          `yaml:"files" default:"[]"`
+	}
+
+	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount
+	HostPathMountConfig struct {
+		Name      string              `yaml:"name" validate:"required,notblank"`
+		HostPath  string              `yaml:"hostPath" validate:"required,notblank"`
+		MountPath string              `yaml:"mountPath" validate:"required,notblank"`
+		PathType  coreV1.HostPathType `yaml:"pathType" validate:"required"`
+
+		// Whether the mount should be read-only or not.
+		// Defaults to true.
+		//
+		// NOTE : If you want the mount to be read-only, then set this true.
+		//        Otherwise, omit setting this field. It gets removed by the Kubeadm control-plane
+		//        provider component, which results to the capi-cluster ArgoCD App always being in
+		//        OutOfSync state.
+		ReadOnly bool `yaml:"readOnly,omitempty"`
+	}
+
+	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File
+	FileConfig struct {
+		Path    string `yaml:"path" validate:"required,notblank"`
+		Content string `yaml:"content" validate:"required,notblank"`
 	}
 
 	CloudConfig struct {
@@ -76,20 +117,25 @@ type (
 	}
 
 	ControlPlaneConfig struct {
-		Replicas     int       `yaml:"replicas" validate:"required"`
+		Replicas     uint      `yaml:"replicas" validate:"required"`
 		InstanceType string    `yaml:"instanceType" validate:"required,notblank"`
 		AMI          AMIConfig `yaml:"ami" validate:"required"`
 	}
 
 	NodeGroups struct {
-		Name           string            `yaml:"name" validate:"required,notblank"`
-		Replicas       int               `yaml:"replicas" validate:"required"`
-		InstanceType   string            `yaml:"instanceType" validate:"required,notblank"`
-		SSHKeyName     string            `yaml:"sshKeyName" validate:"required,notblank"`
-		AMI            AMIConfig         `yaml:"ami" validate:"required"`
-		RootVolumeSize int               `yaml:"rootVolumeSize" validate:"required"`
-		Labels         map[string]string `yaml:"labels" default:"[]"`
-		Taints         []*coreV1.Taint   `yaml:"taints" default:"[]"`
+		Name string `yaml:"name" validate:"required,notblank"`
+
+		Replicas uint `yaml:"replicas" validate:"required"`
+		MinSize  uint `yaml:"minSize" validate:"required"`
+		Maxsize  uint `yaml:"maxSize" validate:"required"`
+
+		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
+		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
+		AMI            AMIConfig `yaml:"ami" validate:"required"`
+		RootVolumeSize uint      `yaml:"rootVolumeSize" validate:"required"`
+
+		Labels map[string]string `yaml:"labels" default:"[]"`
+		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
 	}
 
 	AMIConfig struct {

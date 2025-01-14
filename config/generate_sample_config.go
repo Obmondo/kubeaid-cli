@@ -11,7 +11,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/templates"
 )
 
-//go:embed templates/*
+//go:embed files/templates/*
 var SampleConfigs embed.FS
 
 func GenerateSampleConfig(ctx context.Context, cloudProvider string) {

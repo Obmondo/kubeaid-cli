@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config/generate"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/config/generate"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/spf13/cobra"
 )
@@ -13,9 +13,7 @@ var ConfigCmd = &cobra.Command{
 	},
 }
 
-var (
-	ConfigFilePath string
-)
+var ConfigFilePath string
 
 func init() {
 	// Subcommands.
