@@ -37,6 +37,14 @@ type (
 		APIServer APIServerConfig `yaml:"apiServer"`
 	}
 
+	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
+	//
+	// NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
+	//        source types linked below.
+	//        There are some configuration options which appear in the corresponding GoLang source type,
+	//        but not in the CRD. If you set those fields, then they get removed by the Kubeadm
+	//        control-plane provider. This causes the capi-cluster ArgoCD App to always be in an
+	//        OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
 	APIServerConfig struct {
 		ExtraArgs    map[string]string     `yaml:"extraArgs" default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
@@ -54,7 +62,7 @@ type (
 		// Defaults to true.
 		//
 		// NOTE : If you want the mount to be read-only, then set this true.
-		//        Otherwise, omit setting this field. It gets removed by the kubeadm control-plane
+		//        Otherwise, omit setting this field. It gets removed by the Kubeadm control-plane
 		//        provider component, which results to the capi-cluster ArgoCD App always being in
 		//        OutOfSync state.
 		ReadOnly bool `yaml:"readOnly,omitempty"`

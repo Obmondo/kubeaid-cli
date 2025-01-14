@@ -20,13 +20,31 @@ In a separate terminal window, use `make exec-container-dev` to execute into the
 
 Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.
 
-Export your AWS credentials as environment variables and then run `make bootstrap-cluster-dev` to bootstrap the cluster!
+Export your AWS credentials as environment variables like such :
 
-### Debugging
+```sh
+export AWS_REGION=""
+export AWS_ACCESS_KEY_ID=""
+export AWS_SECRET_ACCESS_KEY=""
+export AWS_SESSION_TOKEN=""
+```
 
-- Check ClusterAPI related pod logs.
+Then run `make bootstrap-cluster-dev-aws` to bootstrap the cluster!
 
-- SSH into the control-plane node. In case of AWS, you can view cloud-init logs stored at `/var/log/cloud-init-output.log`.
+> [!NOTE]
+> If the `clusterawsadm bootstrap iam create-cloudformation-stack` command errors out with this message :
+>
+>     	the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
+>
+> then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
+
+If cluster provisioning gets stuck, then debug by :
+
+- checking logs of ClusterAPI related pod.
+
+- SSHing into the control-plane node. You can view cloud-init output logs stored at `/var/log/cloud-init-output.log`.
+
+If you want to delete the provisioned cluster, then execute : `make delete-provisioned-cluster-dev-aws`.
 
 ## TODOs
 
