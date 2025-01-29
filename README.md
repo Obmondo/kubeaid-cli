@@ -8,7 +8,7 @@ The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cl
 
 - [Bootstrapping a self-managed cluster in AWS](https://github.com/Obmondo/KubeAid/blob/master/docs/aws/capi/cluster.md)
 
-## Developer Guide (AWS)
+## Developer Guide (AWS edition)
 
 > Make sure, you've Docker installed in your system.
 
@@ -34,7 +34,7 @@ Then run `make bootstrap-cluster-dev-aws` to bootstrap the cluster!
 > [!NOTE]
 > If the `clusterawsadm bootstrap iam create-cloudformation-stack` command errors out with this message :
 >
->     	the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
+> 		the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
 >
 > then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
 
@@ -45,6 +45,10 @@ If cluster provisioning gets stuck, then debug by :
 - SSHing into the control-plane node. You can view cloud-init output logs stored at `/var/log/cloud-init-output.log`.
 
 If you want to delete the provisioned cluster, then execute : `make delete-provisioned-cluster-dev-aws`.
+
+## Rigorous testing (AWS edition)
+
+Spin up a cluster.
 
 ## TODOs
 
@@ -89,3 +93,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [KubeadmControlPlane CRD](https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml)
 
 - [How can you call a helm 'helper' template from a subchart with the correct context?](https://stackoverflow.com/questions/47791971/how-can-you-call-a-helm-helper-template-from-a-subchart-with-the-correct-conte)
+
+- [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)

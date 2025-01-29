@@ -40,10 +40,10 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 		SetupKubeAidConfig(ctx, gitAuthMethod, false)
 	}
 
-	// While retrying, if `clusterctl move` has already been executed, then we skip these steps and
-	// move to the disaster recovery setup step.
-	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
-	if !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+	// While retrying, if `clusterctl move` has already been executed, then we skip the following
+	// steps and jump to the disaster recovery setup step.
+	provisionedClusterClient, err := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
+	if (err != nil) || !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
 		// Provision the main cluster
 		provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
 
@@ -59,7 +59,7 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 }
 
 func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
-	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
+	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Setup the management cluster.
 	SetupCluster(ctx, managementClusterClient)
@@ -89,7 +89,7 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipClusterctlMove bool, cloudProvider cloud.CloudProvider, isPartOfDisasterRecovery bool) {
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	os.Setenv("KUBECONFIG", constants.OutputPathProvisionedClusterKubeconfig)
-	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
 	// workloads.

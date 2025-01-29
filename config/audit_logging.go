@@ -59,7 +59,7 @@ func hydrateWithAuditLoggingOptions() {
 	}
 
 	// Make sure that the audit policy file is mounted to the Kube API server pod.
-	ensureHostPathGetsMounted(auditPolicyFileHostPath, HostPathMountConfig{
+	ensureHostPathGetsMounted(HostPathMountConfig{
 		Name:      constants.KubeAPIServerFlagAuditPolicyFile,
 		HostPath:  auditPolicyFileHostPath,
 		MountPath: auditPolicyFileHostPath,
@@ -70,7 +70,7 @@ func hydrateWithAuditLoggingOptions() {
 	// If using the log backend, make sure that the log backend file is mounted to the Kube API
 	// server pod.
 	if logBackendHostPath, ok := kubeAPIServerDefaultExtraArgsForAuditLogging[constants.KubeAPIServerFlagAuditLogPath]; ok {
-		ensureHostPathGetsMounted(logBackendHostPath, HostPathMountConfig{
+		ensureHostPathGetsMounted(HostPathMountConfig{
 			Name:      "log-backend",
 			HostPath:  logBackendHostPath,
 			MountPath: logBackendHostPath,
@@ -81,7 +81,7 @@ func hydrateWithAuditLoggingOptions() {
 
 // Ensures that the given host path gets mounted to the Kube API server pod. If not, then uses the
 // given default volume to do the mount.
-func ensureHostPathGetsMounted(hostPath string, volume HostPathMountConfig) {
+func ensureHostPathGetsMounted(volume HostPathMountConfig) {
 	hostPathAlreadyMounted := false
 	for _, userSpecifiedVolume := range ParsedConfig.Cluster.APIServer.ExtraVolumes {
 		if userSpecifiedVolume.HostPath == volume.HostPath {

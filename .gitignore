@@ -4,3 +4,5 @@ scripts/export-hetzner-credentials.sh
 outputs/
 
 *.swp
+
+.direnv/

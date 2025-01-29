@@ -30,9 +30,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		k3d cluster create %s \
 			--servers 1 --agents 3 \
 			--image rancher/k3s:v1.31.0-k3s1 \
-			--network k3d-%s \
+      --network host.docker.internal \
 			--wait
-	`, name, name))
+	`, name))
 
 	// By default, the Kubernetes API server URL is like : https://0.0.0.0:5xxxx. 0.0.0.0 isn't
 	// resolvable from within the dev container.

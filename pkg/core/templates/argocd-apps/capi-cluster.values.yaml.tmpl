@@ -35,8 +35,7 @@ aws:
     {{- if .ClusterConfig.APIServer }}
     apiServer: {{ .ClusterConfig.APIServer | toYaml | nindent 6 }}
     {{- end }}
-  nodeGroups:
-{{ .AWSConfig.NodeGroups | toYaml | indent 2 }}
+  nodeGroups: {{ .AWSConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}
 
 {{- if .HetznerConfig }}

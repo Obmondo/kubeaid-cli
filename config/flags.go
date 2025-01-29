@@ -15,17 +15,19 @@ import (
 var ConfigFilePath string
 
 func RegisterConfigFilePathFlag(command *cobra.Command) {
-	command.PersistentFlags().
-		StringVar(&ConfigFilePath, constants.FlagNameConfig, constants.OutputPathGeneratedConfig, "Path to the KubeAid Bootstrap Script config file")
+	command.PersistentFlags().StringVar(
+		&ConfigFilePath,
+		constants.FlagNameConfig,
+		constants.OutputPathGeneratedConfig,
+		"Path to the KubeAid Bootstrap Script config file",
+	)
 	command.MarkPersistentFlagRequired(constants.FlagNameConfig)
 }
 
-var (
-	AWSAccessKey,
+var AWSAccessKey,
 	AWSSecretKey,
 	AWSSessionToken,
 	AWSRegion string
-)
 
 func RegisterAWSCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("aws-credentials", pflag.ExitOnError)
@@ -46,11 +48,9 @@ func RegisterAWSCredentialsFlags(command *cobra.Command) {
 	command.Flags().AddFlagSet(flagSet)
 }
 
-var (
-	HetznerAPIToken,
+var HetznerAPIToken,
 	HetznerRobotUser,
 	HetznerRobotPassword string
-)
 
 func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("aws-credentials", pflag.ExitOnError)
@@ -72,7 +72,11 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 // Usage : flagSet.VisitAll(getFlagOrEnvValue)
 //
 // If a flag isn't set, then we try to get its value from the corresponding environment variable.
-// Panics, if the flag and environment variable aren't set and there's no default flag value.
+//
+// Let's say, if the flag is `--aws-region` and it's not set, then we'll try to get the value of
+// the AWS_REGION environment variable.
+//
+// Panics, if both the flag and environment variable aren't set and there's no default flag value.
 func bindFlagToEnv(flag *pflag.Flag) {
 	if len(flag.Value.String()) > 0 {
 		return

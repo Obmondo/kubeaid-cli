@@ -27,7 +27,7 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	// The Cluster resource exists in the provisioned cluster.
 	// The means, the 'clusterctl move' command has been executed.
@@ -46,7 +46,7 @@ func DeleteCluster(ctx context.Context) {
 		})
 	}
 
-	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
+	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Get the Cluster resource from the management cluster.
 	err := utils.GetClusterResource(ctx, managementClusterClient, cluster)

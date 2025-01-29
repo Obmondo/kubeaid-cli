@@ -28,9 +28,9 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 	createBucketInput := &s3.CreateBucketInput{
 		Bucket: aws.String(name),
 	}
-	if config.ParsedConfig.Cloud.AWS.Region != "us-east-1" {
+	if config.ParsedConfig.Cloud.AWS.Credentials.AWSRegion != "us-east-1" {
 		createBucketInput.CreateBucketConfiguration = &s3Types.CreateBucketConfiguration{
-			LocationConstraint: s3Types.BucketLocationConstraint(config.ParsedConfig.Cloud.AWS.Region),
+			LocationConstraint: s3Types.BucketLocationConstraint(config.ParsedConfig.Cloud.AWS.Credentials.AWSRegion),
 		}
 	}
 	_, err := s3Client.CreateBucket(ctx, createBucketInput)

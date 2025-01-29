@@ -24,13 +24,18 @@ import (
 )
 
 // Uses the kubeconfig file present at the given path, to create and return a Kubernetes Go client.
-func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.Client {
+func CreateKubernetesClient(ctx context.Context,
+	kubeconfigPath string,
+	panicOnKubeconfigBuildFailure bool,
+) (client.Client, error) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("kubeconfig", kubeconfigPath),
 	})
 
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	assert.AssertErrNil(ctx, err, "Failed building config from kubeconfig file")
+	if err != nil {
+		return nil, WrapError("Failed building config from kubeconfig file", err)
+	}
 
 	scheme := runtime.NewScheme()
 
@@ -45,7 +50,7 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.C
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating kube client from kubeconfig")
 
-	return kubeClient
+	return kubeClient, nil
 }
 
 // Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
@@ -78,9 +83,9 @@ func CreateNamespace(ctx context.Context, namespaceName string, kubeClient clien
 func InstallSealedSecrets(ctx context.Context) {
 	HelmInstall(ctx, &HelmInstallArgs{
 		RepoName:    "sealed-secrets",
-		RepoURL:     "https://bitnami-labs.github.io/sealed-secrets",
+		RepoURL:     "https://bitnami-labs.github.io/sealed-secrets/",
 		ChartName:   "sealed-secrets",
-		Version:     "2.16.2",
+		Version:     "2.17.1",
 		Namespace:   "sealed-secrets",
 		ReleaseName: "sealed-secrets",
 		Values:      "fullnameOverride=sealed-secrets-controller",
