@@ -41,20 +41,26 @@ stop-container-dev:
 remove-container-dev: stop-container-dev
 	@docker rm $(CONTAINER_NAME)
 
-.PHONY: generate-sample-config-aws-dev
-generate-sample-config-aws-dev:
+.PHONY: sample-config-generate-aws-dev
+sample-config-generate-aws-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ config generate aws
 
-.PHONY: bootstrap-cluster-dev-aws
-bootstrap-cluster-dev-aws:
+.PHONY: devenv-create-aws-dev
+devenv-create-aws-dev:
+	@go run ./cmd/kubeaid-bootstrap-script/ devenv create aws \
+		--debug \
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
+
+.PHONY: bootstrap-cluster-aws-dev
+bootstrap-cluster-aws-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap aws \
 		--debug \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 # --skip-kubeaid-config-setup
 # --skip-clusterctl-move
 
-.PHONY: bootstrap-cluster-dev-hetzner
-bootstrap-cluster-dev-hetzner:
+.PHONY: bootstrap-cluster-hetzner-dev
+bootstrap-cluster-hetzner-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap hetzner \
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
@@ -69,17 +75,17 @@ use-management-cluster:
 use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
 
-.PHONY: delete-provisioned-cluster-dev-aws
-delete-provisioned-cluster-dev-aws:
+.PHONY: provisioned-cluster-delete-aws-dev
+provisioned-cluster-delete-aws-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 
-.PHONY: delete-provisioned-cluster-dev-hetzner
-delete-provisioned-cluster-dev-hetzner:
+.PHONY: provisioned-cluster-delete-hetzner-dev
+provisioned-cluster-delete-hetzner-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
-.PHONY: delete-management-cluster
-delete-management-cluster:
+.PHONY: management-cluster-delete
+management-cluster-delete:
 	KUBECONFIG=./outputs/management-cluster.kubeconfig.yaml \
 		k3d cluster delete management-cluster

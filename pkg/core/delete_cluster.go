@@ -29,6 +29,21 @@ func DeleteCluster(ctx context.Context) {
 
 	provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
+	/*
+	  BUG :
+
+	  Suppose this command is running not on the original management cluster, but on a dev
+	  environment that the user has created later. There can be 2 scenarios :
+
+	    (1) clusterctl move was executed while provisioning the cluster. Then, we'll re-execute
+	        clusterctl move, moving back the ClusterAPI manifests from the provisioned to the
+	        management cluster.
+
+	    (2) clusterctl move wasn't executed while provisioning the cluster. In that case, how are
+	        we going to have those ClusterAPI resource manifests back in the cluster? Should we
+	        sync the whole capi-cluster ArgoCD App? I need to test this.
+	*/
+
 	// The Cluster resource exists in the provisioned cluster.
 	// The means, the 'clusterctl move' command has been executed.
 	if utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {

@@ -6,6 +6,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
 	"github.com/spf13/cobra"
@@ -20,8 +21,9 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
-	rootCmd.AddCommand(cluster.ClusterCmd)
 	rootCmd.AddCommand(config.ConfigCmd)
+	rootCmd.AddCommand(devenv.DevenvCmd)
+	rootCmd.AddCommand(cluster.ClusterCmd)
 
 	// Flags.
 	var isDebugModeEnabled bool

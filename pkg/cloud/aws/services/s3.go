@@ -60,7 +60,7 @@ func DownloadS3BucketContents(ctx context.Context, s3Client *s3.Client, bucketNa
 	slog.InfoContext(ctx, "Downloading contents of S3 bucket")
 
 	// Create directory where S3 objects will be downloaded.
-	downloadDir := utils.GetDirPathForDownloadedStorageBucketContents(bucketName)
+	downloadDir := utils.GetDownloadedStorageBucketContentsDir(bucketName)
 	err := os.MkdirAll(downloadDir, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
 

@@ -9,7 +9,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -20,25 +19,8 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 	// Detect git authentication method.
 	gitAuthMethod := utils.GetGitAuthMethod(ctx)
 
-	// Any cloud specific tasks.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
-		aws.SetAWSSpecificEnvs()
-		aws.CreateIAMCloudFormationStack()
-	}
-
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
-
-	// Create the management cluster (using K3d), if it doesn't already exist.
-	utils.CreateK3DCluster(ctx, "management-cluster")
-
-	// Install Sealed Secrets.
-	utils.InstallSealedSecrets(ctx)
-
-	// Setup cluster directory in the user's KubeAid config repo.
-	if !skipKubeAidConfigSetup {
-		SetupKubeAidConfig(ctx, gitAuthMethod, false)
-	}
+	// Create local dev environment.
+	CreateDevEnv(ctx, skipKubeAidConfigSetup)
 
 	// While retrying, if `clusterctl move` has already been executed, then we skip the following
 	// steps and jump to the disaster recovery setup step.
@@ -61,11 +43,9 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
 	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
-	// Setup the management cluster.
-	SetupCluster(ctx, managementClusterClient)
-
 	// Sync the complete capi-cluster ArgoCD App.
-	// TODO : Make it compatible with the retry feature, when `clusterctl move` is already performed.
+	//
+	// BUG : If `clusterctl move` has already been executed, then we don't want to do this.
 	utils.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
 
 	// Close ArgoCD application client.
@@ -100,7 +80,7 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 		// restore Kubernetes Secrets containing a Sealed Secrets key.
 
 		sealedSecretsBackupBucketName := cloudProvider.GetSealedSecretsBackupBucketName()
-		manifestsDirPath := utils.GetDirPathForDownloadedStorageBucketContents(sealedSecretsBackupBucketName)
+		manifestsDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsBackupBucketName)
 
 		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", manifestsDirPath))
 	}

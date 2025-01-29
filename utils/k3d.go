@@ -41,9 +41,10 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	//
 	// NOTE : Consider this situation :
 	//        an existing K3D cluster may have wrong Kubernetes API server URL server.
-	ExecuteCommandOrDie(fmt.Sprintf(`
-		kubectl config set-cluster k3d-%s --server=https://k3d-%s-serverlb:6443
-	`, name, name))
+	//
+	// ExecuteCommandOrDie(fmt.Sprintf(`
+	// 	kubectl config set-cluster k3d-%s --server=https://k3d-%s-serverlb:6443
+	// `, name, name))
 
 	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".
 	// We'll change the label value to "" (just like it is in Vanilla Kubernetes).

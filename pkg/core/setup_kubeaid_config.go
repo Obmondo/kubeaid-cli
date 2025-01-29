@@ -27,13 +27,17 @@ Does the following :
 	(2) Commits and pushes those changes to the upstream.
 
 	(3) Waits for those changes to get merged into the default branch.
+
+It expects the KubeAid Config repository to be already cloned in the temp directory.
 */
-func SetupKubeAidConfig(ctx context.Context, gitAuthMethod transport.AuthMethod, onlyUpdateSealedSecrets bool) {
+func SetupKubeAidConfig(ctx context.Context,
+	gitAuthMethod transport.AuthMethod,
+	onlyUpdateSealedSecrets bool,
+) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
-	// Clone the KubeAid config fork locally (if not already cloned).
-	repoDir := path.Join(constants.TempDir, "kubeaid-config")
-	repo := utils.GitCloneRepo(ctx, config.ParsedConfig.Forks.KubeaidConfigForkURL, repoDir, gitAuthMethod)
+	repo, err := git.PlainOpen(utils.GetKubeAidConfigDir())
+	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
 
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
