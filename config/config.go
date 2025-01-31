@@ -125,9 +125,8 @@ type (
 	NodeGroups struct {
 		Name string `yaml:"name" validate:"required,notblank"`
 
-		Replicas uint `yaml:"replicas" validate:"required"`
-		MinSize  uint `yaml:"minSize" validate:"required"`
-		Maxsize  uint `yaml:"maxSize" validate:"required"`
+		MinSize uint `yaml:"minSize" validate:"required"`
+		Maxsize uint `yaml:"maxSize" validate:"required"`
 
 		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
 		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
