@@ -31,11 +31,21 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 
 	// Create IAM Policy for Sealed Secrets Backuper.
 	sealedSecretsBackuperIAMPolicyName := fmt.Sprintf("sealed-secrets-backuper-%s", clusterName)
-	services.CreateIAMPolicy(ctx, a.iamClient, sealedSecretsBackuperIAMPolicyName, getSealedSecretsBackuperIAMPolicy())
+	services.CreateIAMRoleForPolicy(ctx,
+		a.iamClient,
+		sealedSecretsBackuperIAMPolicyName,
+		getSealedSecretsBackuperIAMPolicy(),
+		getIAMTrustPolicy(ctx),
+	)
 	//
 	// Create IAM Policy for Velero.
 	veleroIAMPolicyName := fmt.Sprintf("velero-%s", clusterName)
-	services.CreateIAMPolicy(ctx, a.iamClient, veleroIAMPolicyName, getVeleroIAMPolicy())
+	services.CreateIAMRoleForPolicy(ctx,
+		a.iamClient,
+		veleroIAMPolicyName,
+		getVeleroIAMPolicy(),
+		getIAMTrustPolicy(ctx),
+	)
 
 	// Sync Kube2IAM, K8sConfigs, Velero and SealedSecrets ArgoCD Apps.
 	argocdAppsToBeSynced := []string{

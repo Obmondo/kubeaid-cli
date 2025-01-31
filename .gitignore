@@ -6,3 +6,6 @@ outputs/
 *.swp
 
 .direnv/
+
+# Scratchpad
+.yaml

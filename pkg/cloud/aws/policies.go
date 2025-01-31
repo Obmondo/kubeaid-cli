@@ -1,11 +1,27 @@
 package aws
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 )
+
+func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
+	return services.PolicyDocument{
+		Version: "2012-10-17",
+		Statement: []services.PolicyStatement{
+			{
+				Action: []string{"sts:AssumeRole"},
+				Effect: "Allow",
+				Principal: map[string]string{
+					"AWS": fmt.Sprintf("arn:aws:iam::%s:role/nodes.cluster-api-provider-aws.sigs.k8s.io", GetAccountID(ctx)),
+				},
+			},
+		},
+	}
+}
 
 func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
 	sealedSecretBackupsS3BucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -29,18 +30,27 @@ type (
 	}
 )
 
-// CreateIAMPolicy creates an IAM policy.
-func CreateIAMPolicy(ctx context.Context, iamClient *iam.Client, name string, document PolicyDocument) {
+// CreateIAMRoleForPolicy creates an IAM role with the given IAM policy. It also links an IAM trust
+// policy for the IAM role, so it can be assumed by the nodes of the provisioned Kubernetes
+// cluster.
+func CreateIAMRoleForPolicy(ctx context.Context,
+	iamClient *iam.Client,
+	name string,
+	policyDocument,
+	assumePolicyDocument PolicyDocument,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("iam-policy", name),
+		slog.String("iam-role", name),
 	})
 
-	documentAsBytes, err := json.Marshal(document)
-	assert.AssertErrNil(ctx, err, "Failed JSON marshalling IAM Policy document")
+	// Create the IAM policy.
 
-	_, err = iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
-		PolicyName:     aws.String(name),
-		PolicyDocument: aws.String(string(documentAsBytes)),
+	iamPolicyPath := fmt.Sprintf("/%s", name)
+
+	_, err := iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
+		PolicyName:     &name,
+		PolicyDocument: jsonMarshalIAMPolicyDocument(ctx, policyDocument),
+		Path:           &iamPolicyPath,
 	})
 	switch {
 	// IAM Policy already exists.
@@ -51,4 +61,29 @@ func CreateIAMPolicy(ctx context.Context, iamClient *iam.Client, name string, do
 		assert.AssertErrNil(ctx, err, "Failed creating IAM Policy")
 		slog.InfoContext(ctx, "Created IAM Policy")
 	}
+
+	// Create IAM Role (with IAM Trust Policy, so it can be assumed) and link the above IAM Policy
+	// to it.
+	_, err = iamClient.CreateRole(ctx, &iam.CreateRoleInput{
+		RoleName:                 &name,
+		AssumeRolePolicyDocument: jsonMarshalIAMPolicyDocument(ctx, assumePolicyDocument),
+		Path:                     &iamPolicyPath,
+	})
+	switch {
+	// IAM Role already exists.
+	case strings.Contains(err.Error(), "already exists"):
+		slog.InfoContext(ctx, "IAM Role already exists")
+
+	default:
+		assert.AssertErrNil(ctx, err, "Failed creating IAM Role")
+		slog.InfoContext(ctx, "Created IAM Role")
+	}
+}
+
+// JSON marshals the given IAM Policy document and returns the result.
+func jsonMarshalIAMPolicyDocument(ctx context.Context, policyDocument PolicyDocument) *string {
+	policyDocumentAsBytes, err := json.Marshal(policyDocument)
+	assert.AssertErrNil(ctx, err, "Failed JSON marshalling IAM Policy document")
+
+	return aws.String(string(policyDocumentAsBytes))
 }
