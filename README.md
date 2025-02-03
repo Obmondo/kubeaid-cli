@@ -34,7 +34,7 @@ Then run `make bootstrap-cluster-dev-aws` to bootstrap the cluster!
 > [!NOTE]
 > If the `clusterawsadm bootstrap iam create-cloudformation-stack` command errors out with this message :
 >
-> 		the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
+>      the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
 >
 > then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
 
@@ -45,10 +45,6 @@ If cluster provisioning gets stuck, then debug by :
 - SSHing into the control-plane node. You can view cloud-init output logs stored at `/var/log/cloud-init-output.log`.
 
 If you want to delete the provisioned cluster, then execute : `make delete-provisioned-cluster-dev-aws`.
-
-## Rigorous testing (AWS edition)
-
-Spin up a cluster.
 
 ## TODOs
 
@@ -74,7 +70,7 @@ Spin up a cluster.
 
 - [AWS S3 Sync Command – Guide with Examples](https://spacelift.io/blog/aws-s3-sync)
 
-- How KubeAid backs up Sealed Secrets using a CRONJob : https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml
+- How KubeAid backs up Sealed Secrets using a CRONJob : <https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml>
 
 - [Key Management](https://playbook.stakater.com/content/workshop/sealed-secrets/management.html)
 

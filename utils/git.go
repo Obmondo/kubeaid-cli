@@ -31,7 +31,9 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 	// SSH private key and password.
 	case len(config.ParsedConfig.Git.SSHPrivateKey) > 0:
 		authMethod, err = ssh.NewPublicKeysFromFile("git", config.ParsedConfig.Git.SSHPrivateKey, config.ParsedConfig.Git.Password)
-		assert.AssertErrNil(ctx, err, "Failed generating SSH public key from SSH private key and password for git")
+		assert.AssertErrNil(ctx, err,
+			"Failed generating SSH public key from SSH private key and password for git",
+		)
 		slog.Info("Using SSH private key and password")
 
 	// Username and password.
@@ -53,8 +55,12 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 
 // Clones the given git repository into the given directory (only if the repo doesn't already exist
 // in there).
-// If the repo already exists, then it just does git pull.
-func GitCloneRepo(ctx context.Context, url, dirPath string, authMethod transport.AuthMethod) *git.Repository {
+// If the repo already exists, then it checks out to the default branch and fetches the latest
+// changes.
+func GitCloneRepo(ctx context.Context,
+	url, dirPath string,
+	authMethod transport.AuthMethod,
+) *git.Repository {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("repo", url), slog.String("dir", dirPath),
 	})
@@ -63,6 +69,28 @@ func GitCloneRepo(ctx context.Context, url, dirPath string, authMethod transport
 	if _, err := os.ReadDir(dirPath); err == nil {
 		repo, err := git.PlainOpen(dirPath)
 		assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
+
+		workTree, err := repo.Worktree()
+		assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
+
+		// Checkout to the default branch.
+		defaultBranchName := GetDefaultBranchName(ctx, repo)
+		err = workTree.Checkout(&git.CheckoutOptions{
+			Branch: plumbing.ReferenceName("refs/heads/" + defaultBranchName),
+			Keep:   false,
+		})
+		assert.AssertErrNil(ctx, err, "Failed checking out to default branch first")
+		slog.InfoContext(ctx, "Checked out to the default branch")
+
+		// Fetch all the changes.
+		err = repo.Fetch(&git.FetchOptions{
+			Auth:     authMethod,
+			RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
+		})
+		if !errors.Is(err, git.NoErrAlreadyUpToDate) {
+			assert.AssertErrNil(ctx, err, "Failed fetching latest changes")
+		}
+		slog.InfoContext(ctx, "Fetched latest changes")
 
 		return repo
 	}
@@ -105,23 +133,40 @@ func GetDefaultBranchName(ctx context.Context, repo *git.Repository) string {
 	panic("Failed detecting default branch name")
 }
 
-func CreateAndCheckoutToBranch(repo *git.Repository, branch string, workTree *git.Worktree) {
+func CreateAndCheckoutToBranch(ctx context.Context,
+	repo *git.Repository,
+	branch string,
+	workTree *git.Worktree,
+) {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("branch", branch),
+	})
+
 	// Check if the branch already exists.
 	branchRef, err := repo.Reference(plumbing.ReferenceName("refs/heads/"+branch), true)
 	if err == nil && branchRef != nil {
-		log.Fatalf("Branch %s already exists", branch)
+		slog.ErrorContext(ctx, "Branch already exists")
+		os.Exit(1)
 	}
 
-	if err = workTree.Checkout(&git.CheckoutOptions{
+	err = workTree.Checkout(&git.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/" + branch),
+		Keep:   false,
 		Create: true,
-	}); err != nil {
-		log.Fatalf("Failed creating and checking out to branch %s : %v", branch, err)
-	}
-	slog.Info("Created and checked out to new branch", slog.String("branch", branch))
+	})
+	assert.AssertErrNil(ctx, err, "Failed creating and checking out to branch")
+
+	slog.InfoContext(ctx, "Created and checked out to new branch")
 }
 
-func AddCommitAndPushChanges(ctx context.Context, repo *git.Repository, workTree *git.Worktree, branch string, auth transport.AuthMethod, clusterName string, commitMessage string) plumbing.Hash {
+func AddCommitAndPushChanges(ctx context.Context,
+	repo *git.Repository,
+	workTree *git.Worktree,
+	branch string,
+	auth transport.AuthMethod,
+	clusterName string,
+	commitMessage string,
+) plumbing.Hash {
 	err := workTree.AddGlob(fmt.Sprintf("k8s/%s/*", config.ParsedConfig.Cluster.Name))
 	assert.AssertErrNil(ctx, err, "Failed adding changes to git")
 
@@ -174,9 +219,18 @@ func getCreatePRURL(fromBranch string) string {
 // TODO : Sometimes we get this error while trying to detect whether the branch has been merged
 // or not : `unexpected EOF`.
 // In that case, just retry instead of erroring out.
-func WaitUntilPRMerged(ctx context.Context, repo *git.Repository, defaultBranchName string, commitHash plumbing.Hash, auth transport.AuthMethod, branchToBeMerged string) {
+func WaitUntilPRMerged(ctx context.Context,
+	repo *git.Repository,
+	defaultBranchName string,
+	commitHash plumbing.Hash,
+	auth transport.AuthMethod,
+	branchToBeMerged string,
+) {
 	for {
-		slog.Info("Waiting for PR to be merged. Sleeping for 10 seconds....", slog.String("from-branch", branchToBeMerged), slog.String("to-branch", defaultBranchName))
+		slog.Info("Waiting for PR to be merged. Sleeping for 10 seconds....",
+			slog.String("from-branch", branchToBeMerged),
+			slog.String("to-branch", defaultBranchName),
+		)
 		time.Sleep(10 * time.Second)
 
 		err := repo.Fetch(&git.FetchOptions{

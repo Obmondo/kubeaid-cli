@@ -45,19 +45,16 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 
 	// Create the IAM policy.
 
-	iamPolicyPath := fmt.Sprintf("/%s", name)
+	iamPolicyPath := fmt.Sprintf("/%s/", name)
 
 	_, err := iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
 		PolicyName:     &name,
 		PolicyDocument: jsonMarshalIAMPolicyDocument(ctx, policyDocument),
 		Path:           &iamPolicyPath,
 	})
-	switch {
-	// IAM Policy already exists.
-	case strings.Contains(err.Error(), "already exists"):
+	if err != nil && strings.Contains(err.Error(), "already exists") {
 		slog.InfoContext(ctx, "IAM Policy already exists")
-
-	default:
+	} else {
 		assert.AssertErrNil(ctx, err, "Failed creating IAM Policy")
 		slog.InfoContext(ctx, "Created IAM Policy")
 	}
@@ -69,12 +66,9 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 		AssumeRolePolicyDocument: jsonMarshalIAMPolicyDocument(ctx, assumePolicyDocument),
 		Path:                     &iamPolicyPath,
 	})
-	switch {
-	// IAM Role already exists.
-	case strings.Contains(err.Error(), "already exists"):
+	if err != nil && strings.Contains(err.Error(), "already exists") {
 		slog.InfoContext(ctx, "IAM Role already exists")
-
-	default:
+	} else {
 		assert.AssertErrNil(ctx, err, "Failed creating IAM Role")
 		slog.InfoContext(ctx, "Created IAM Role")
 	}

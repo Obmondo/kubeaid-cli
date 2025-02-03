@@ -56,7 +56,7 @@ func SetupKubeAidConfig(ctx context.Context,
 
 	// Create and checkout to a new branch.
 	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
-	utils.CreateAndCheckoutToBranch(repo, newBranchName, workTree)
+	utils.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree)
 
 	clusterDir := utils.GetClusterDir()
 

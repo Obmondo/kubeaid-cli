@@ -38,8 +38,6 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
 		cloudProvider.SetupDisasterRecovery(ctx)
 	}
-
-	// Sync all the ArgoCD Apps, so there won't be any unsynced one.
 }
 
 func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {

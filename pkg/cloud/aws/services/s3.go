@@ -52,7 +52,12 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 
 // Downloads the contents of the given S3 bucket locally.
 // If the contents are gZip encoded, then you can choose to gZip decode them after download.
-func DownloadS3BucketContents(ctx context.Context, s3Client *s3.Client, bucketName string, gzipDecode bool) {
+// NOTE : The download path is decided by utils.GetDownloadedStorageBucketContentsDir( ).
+func DownloadS3BucketContents(ctx context.Context,
+	s3Client *s3.Client,
+	bucketName string,
+	gzipDecode bool,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("s3-bucket", bucketName),
 	})
