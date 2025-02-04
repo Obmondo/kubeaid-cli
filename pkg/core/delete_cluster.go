@@ -44,8 +44,7 @@ func DeleteCluster(ctx context.Context) {
 	        sync the whole capi-cluster ArgoCD App? I need to test this.
 	*/
 
-	// The Cluster resource exists in the provisioned cluster.
-	// The means, the 'clusterctl move' command has been executed.
+	// Detect whether the `clusterctl move` command has already been executed or not.
 	if utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
 		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
@@ -64,7 +63,7 @@ func DeleteCluster(ctx context.Context) {
 	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Get the Cluster resource from the management cluster.
-	err := utils.GetClusterResource(ctx, managementClusterClient, cluster)
+	err := utils.GetKubernetesResource(ctx, managementClusterClient, cluster)
 	assert.AssertErrNil(ctx, err, "Cluster resource was suppossed to be present in the management cluster")
 
 	// If the cluster gets marked as paused, then unmark it first.

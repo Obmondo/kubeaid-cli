@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1" // KCP = Kubeadm Control plane Provider.
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -44,6 +45,9 @@ func CreateKubernetesClient(ctx context.Context,
 
 	err = clusterAPIV1Beta1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
+
+	err = kcpV1Beta1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding KCP (Kubeadm Control plane Providerr) v1beta1 scheme")
 
 	kubeClient, err := client.New(kubeconfig, client.Options{
 		Scheme: scheme,
@@ -109,7 +113,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, kubeClient client.Cl
 
 		// Get the Cluster resource from the management cluster.
 		cluster := &clusterAPIV1Beta1.Cluster{}
-		if err := GetClusterResource(ctx, kubeClient, cluster); err != nil {
+		if err := GetKubernetesResource(ctx, kubeClient, cluster); err != nil {
 			return false, err
 		}
 
@@ -128,19 +132,14 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, kubeClient client.Cl
 	})
 }
 
-// Queries the Cluster resource using the given kube-client.
-func GetClusterResource(ctx context.Context, kubeClient client.Client, cluster *clusterAPIV1Beta1.Cluster) error {
-	var (
-		name      = config.ParsedConfig.Cluster.Name
-		namespace = GetCapiClusterNamespace()
-	)
-	return kubeClient.Get(
-		ctx,
+// Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.
+func GetKubernetesResource(ctx context.Context, kubeClient client.Client, resource client.Object) error {
+	return kubeClient.Get(ctx,
 		types.NamespacedName{
-			Namespace: namespace,
-			Name:      name,
+			Name:      resource.GetName(),
+			Namespace: resource.GetNamespace(),
 		},
-		cluster,
+		resource,
 	)
 }
 
@@ -194,15 +193,26 @@ func isControlPlaneNode(node *coreV1.Node) bool {
 // Saves kubeconfig of the provisioned cluster locally.
 func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 	secret := &coreV1.Secret{}
-	err := kubeClient.Get(ctx, types.NamespacedName{
-		Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedConfig.Cluster.Name),
-		Namespace: GetCapiClusterNamespace(),
-	}, secret)
-	assert.AssertErrNil(ctx, err, "Failed getting secret containing kubeconfig")
+	// Seldom, after the cluster has been provisioned, Cluster API takes some time to create the
+	// Kubernetes secret containing the kubeconfig.
+	for {
+		err := kubeClient.Get(ctx,
+			types.NamespacedName{
+				Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedConfig.Cluster.Name),
+				Namespace: GetCapiClusterNamespace(),
+			},
+			secret,
+		)
+		if err == nil {
+			break
+		}
+
+		time.Sleep(2 * time.Second)
+	}
 
 	kubeConfig := secret.Data["value"]
 
-	err = os.WriteFile(constants.OutputPathProvisionedClusterKubeconfig, kubeConfig, 0644)
+	err := os.WriteFile(constants.OutputPathProvisionedClusterKubeconfig, kubeConfig, 0644)
 	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
 
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")
@@ -212,7 +222,7 @@ func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient client.Client) bool {
 	// If the Cluster resource is found in the provisioned cluster, that means `clusterctl move` has
 	// been executed.
-	err := GetClusterResource(ctx, provisionedClusterClient, &clusterAPIV1Beta1.Cluster{
+	err := GetKubernetesResource(ctx, provisionedClusterClient, &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      config.ParsedConfig.Cluster.Name,
 			Namespace: GetCapiClusterNamespace(),

@@ -1,6 +1,10 @@
 package hetzner
 
-import "context"
+import (
+	"context"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
 type Hetzner struct{}
 
@@ -17,5 +21,9 @@ func (*Hetzner) GetSealedSecretsBackupBucketName() string {
 }
 
 func (*Hetzner) GetLatestBackupName(ctx context.Context) string {
+	panic("unreachable")
+}
+
+func (*Hetzner) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any) {
 	panic("unreachable")
 }

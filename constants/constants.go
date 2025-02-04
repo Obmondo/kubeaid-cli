@@ -42,6 +42,7 @@ const (
 	FlagNameAWSSecretKey    = "aws-secret-access-key"
 	FlagNameAWSSessionToken = "aws-session-token"
 	FlagNameAWSRegion       = "aws-region"
+	FlagNameAMIID           = "ami-id"
 )
 
 // Kube API server CLI flags.
