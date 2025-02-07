@@ -15,19 +15,24 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
-func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterctlMove bool, cloudProvider cloud.CloudProvider, isPartOfDisasterRecovery bool) {
+func BootstrapCluster(ctx context.Context,
+	skipKubePrometheusBuild,
+	skipClusterctlMove bool,
+	cloudProvider cloud.CloudProvider,
+	isPartOfDisasterRecovery bool,
+) {
 	// Detect git authentication method.
 	gitAuthMethod := utils.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, skipKubeAidConfigSetup)
+	CreateDevEnv(ctx, skipKubePrometheusBuild)
 
 	// While retrying, if `clusterctl move` has already been executed, then we skip the following
 	// steps and jump to the disaster recovery setup step.
 	provisionedClusterClient, err := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
 	if (err != nil) || !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
 		// Provision the main cluster
-		provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild)
 
 		// Let the provisioned cluster manage itself.
 		dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
@@ -40,7 +45,7 @@ func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterct
 	}
 }
 
-func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
+func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubePrometheusBuild bool) {
 	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Sync the complete capi-cluster ArgoCD App.
@@ -66,7 +71,12 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
 }
 
-func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipClusterctlMove bool, cloudProvider cloud.CloudProvider, isPartOfDisasterRecovery bool) {
+func dogfoodProvisionedCluster(ctx context.Context,
+	gitAuthMethod transport.AuthMethod,
+	skipClusterctlMove bool,
+	cloudProvider cloud.CloudProvider,
+	isPartOfDisasterRecovery bool,
+) {
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	os.Setenv("KUBECONFIG", constants.OutputPathProvisionedClusterKubeconfig)
 	provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
@@ -99,12 +109,12 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 	SetupCluster(ctx, provisionedClusterClient)
 
 	if !skipClusterctlMove {
-		// Make ClusterAPI use IAM roles instead of (temporary) credentials.
+		// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 		//
 		// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
 		//        a master node.
 		//        And, the master node count should be more than 1.
-		{
+		if config.ParsedConfig.Cloud.AWS != nil {
 			// Zero the credentials CAPA controller started with.
 			// This will force the CAPA controller to fall back to use the attached instance profiles.
 			utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")

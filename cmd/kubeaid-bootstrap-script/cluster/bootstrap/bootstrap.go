@@ -12,10 +12,8 @@ var BootstrapCmd = &cobra.Command{
 	},
 }
 
-var (
-	skipKubeAidConfigSetup,
+var skipKubePrometheusBuild,
 	skipClusterctlMove bool
-)
 
 func init() {
 	// Subcommands.
@@ -25,7 +23,7 @@ func init() {
 	// Flags.
 
 	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipKubeAidConfigSetup, constants.FlagNameSkipKubeAidConfigSetup, false, "Skip the initial KubeAid config repo setup step")
+		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false, "Skip the Kube Prometheus build step while setting up KubeAid Config")
 
 	BootstrapCmd.PersistentFlags().
 		BoolVar(&skipClusterctlMove, constants.FlagNameSkipClusterctlMove, false, "Skip executing the 'clusterctl move' command")

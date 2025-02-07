@@ -55,8 +55,8 @@ devenv-create-aws-dev:
 bootstrap-cluster-aws-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap aws \
 		--debug \
-		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
-# --skip-kubeaid-config-setup
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
+    --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
 .PHONY: bootstrap-cluster-hetzner-dev
@@ -65,7 +65,7 @@ bootstrap-cluster-hetzner-dev:
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
     --skip-clusterctl-move
-# --skip-kubeaid-config-setup
+# --skip-kube-prometheus-build
 
 .PHONY: use-management-cluster
 use-management-cluster:

@@ -32,7 +32,7 @@ It expects the KubeAid Config repository to be already cloned in the temp direct
 */
 func SetupKubeAidConfig(ctx context.Context,
 	gitAuthMethod transport.AuthMethod,
-	onlyUpdateSealedSecrets bool,
+	skipKubePrometheusBuild bool,
 ) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
@@ -60,10 +60,9 @@ func SetupKubeAidConfig(ctx context.Context,
 
 	clusterDir := utils.GetClusterDir()
 
-	if !onlyUpdateSealedSecrets {
-		// Create / update non Secret files.
-		createOrUpdateKubeAidConfigFiles(ctx, clusterDir, gitAuthMethod)
-	}
+	// Create / update non Secret files.
+	createOrUpdateKubeAidConfigFiles(ctx, clusterDir, gitAuthMethod, skipKubePrometheusBuild)
+
 	// Create / update Secret files.
 	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
 
@@ -83,7 +82,11 @@ func SetupKubeAidConfig(ctx context.Context,
 
 // Creates / updates all necessary files for the given cluster, in the user's KubeAid config
 // repository.
-func createOrUpdateKubeAidConfigFiles(ctx context.Context, clusterDir string, gitAuthMethod transport.AuthMethod) {
+func createOrUpdateKubeAidConfigFiles(ctx context.Context,
+	clusterDir string,
+	gitAuthMethod transport.AuthMethod,
+	skipKubePrometheusBuild bool,
+) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 	templateValues := getTemplateValues()
@@ -95,7 +98,9 @@ func createOrUpdateKubeAidConfigFiles(ctx context.Context, clusterDir string, gi
 	}
 
 	// Build KubePrometheus.
-	// buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+	if !skipKubePrometheusBuild {
+		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+	}
 }
 
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid

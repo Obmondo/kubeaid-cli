@@ -29,8 +29,8 @@ const (
 
 	FlagNameConfig = "config"
 
-	FlagNameSkipKubeAidConfigSetup = "skip-kubeaid-config-setup"
-	FlagNameSkipClusterctlMove     = "skip-clusterctl-move"
+	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
+	FlagNameSkipClusterctlMove      = "skip-clusterctl-move"
 
 	FlagNameDeleteOldCluster = "delete-old-cluster"
 

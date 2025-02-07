@@ -10,7 +10,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 )
 
-func CreateDevEnv(ctx context.Context, skipKubeAidConfigSetup bool) {
+func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 	// Any cloud specific tasks.
 	switch {
 	case config.ParsedConfig.Cloud.AWS != nil:
@@ -37,7 +37,7 @@ func CreateDevEnv(ctx context.Context, skipKubeAidConfigSetup bool) {
 	)
 
 	// Setup cluster directory in the user's KubeAid config repo.
-	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubePrometheusBuild)
 
 	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 

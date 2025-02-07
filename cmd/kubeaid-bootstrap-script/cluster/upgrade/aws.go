@@ -31,5 +31,5 @@ func init() {
 	config.RegisterAWSCredentialsFlags(AWSCmd)
 
 	AWSCmd.PersistentFlags().
-		StringVar(&newAMIID, constants.FlagNameSkipKubeAidConfigSetup, "", "ID of the AMI which supports the new Kubernetes version")
+		StringVar(&newAMIID, constants.FlagNameAMIID, "", "ID of the AMI which supports the new Kubernetes version")
 }
