@@ -74,6 +74,16 @@ type (
 		Content string `yaml:"content" validate:"required,notblank"`
 	}
 
+	NodeGroup struct {
+		Name string `yaml:"name" validate:"required,notblank"`
+
+		MinSize uint `yaml:"minSize" validate:"required"`
+		Maxsize uint `yaml:"maxSize" validate:"required"`
+
+		Labels map[string]string `yaml:"labels" default:"[]"`
+		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
+	}
+
 	CloudConfig struct {
 		AWS     *AWSConfig     `yaml:"aws"`
 		Hetzner *HetznerConfig `yaml:"hetzner"`
@@ -98,50 +108,43 @@ type (
 // AWS specific.
 type (
 	AWSConfig struct {
-		Credentials AWSCredentials
+		Credentials AWSCredentials `yaml:"credentials"`
 
-		BastionEnabled bool               `yaml:"bastionEnabled" default:"True"`
-		VPCID          *string            `yaml:"vpcID"`
-		ControlPlane   ControlPlaneConfig `yaml:"controlPlane" validate:"required"`
-		NodeGroups     []NodeGroups       `yaml:"nodeGroups" validate:"required"`
-		SSHKeyName     string             `yaml:"sshKeyName" validate:"required,notblank"`
+		BastionEnabled bool            `yaml:"bastionEnabled" default:"True"`
+		VPCID          *string         `yaml:"vpcID"`
+		ControlPlane   AWSControlPlane `yaml:"controlPlane" validate:"required"`
+		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups" validate:"required"`
+		SSHKeyName     string          `yaml:"sshKeyName" validate:"required,notblank"`
 
-		DisasterRecovery *AWSDisasterRecoveryConfig `yaml:"disasterRecovery"`
+		DisasterRecovery *AWSDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AWSCredentials struct {
-		AWSAccessKey    string `yaml:"accessKey" validate:"required,notblank"`
-		AWSSecretKey    string `yaml:"secretKey" validate:"required,notblank"`
+		AWSAccessKey    string `yaml:"accessKey" validate:"notblank"`
+		AWSSecretKey    string `yaml:"secretKey" validate:"notblank"`
 		AWSSessionToken string `yaml:"sessionToken"`
-		AWSRegion       string `yaml:"region" validate:"required,notblank"`
+		AWSRegion       string `yaml:"region" validate:"notblank"`
 	}
 
-	ControlPlaneConfig struct {
-		Replicas     uint      `yaml:"replicas" validate:"required"`
-		InstanceType string    `yaml:"instanceType" validate:"required,notblank"`
-		AMI          AMIConfig `yaml:"ami" validate:"required"`
+	AWSControlPlane struct {
+		Replicas     uint   `yaml:"replicas" validate:"required"`
+		InstanceType string `yaml:"instanceType" validate:"required,notblank"`
+		AMI          AMI    `yaml:"ami" validate:"required"`
 	}
 
-	NodeGroups struct {
-		Name string `yaml:"name" validate:"required,notblank"`
-
-		MinSize uint `yaml:"minSize" validate:"required"`
-		Maxsize uint `yaml:"maxSize" validate:"required"`
-
-		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
-		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
-		AMI            AMIConfig `yaml:"ami" validate:"required"`
-		RootVolumeSize uint      `yaml:"rootVolumeSize" validate:"required"`
-
-		Labels map[string]string `yaml:"labels" default:"[]"`
-		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
+	AWSNodeGroup struct {
+		NodeGroup      `yaml:",inline"`
+		InstanceType   string `yaml:"instanceType" validate:"required,notblank"`
+		SSHKeyName     string `yaml:"sshKeyName" validate:"required,notblank"`
+		AMI            AMI    `yaml:"ami" validate:"required"`
+		RootVolumeSize uint   `yaml:"rootVolumeSize" validate:"required"`
 	}
 
-	AMIConfig struct {
+	AMI struct {
 		ID string `yaml:"id" validate:"required,notblank"`
 	}
 
-	AWSDisasterRecoveryConfig struct {
+	AWSDisasterRecovery struct {
 		VeleroBackupsS3BucketName       string `yaml:"veleroBackupsS3BucketName" validate:"required,notblank"`
 		SealedSecretsBackupS3BucketName string `yaml:"sealedSecretsBackupS3BucketName" validate:"required,notblank"`
 	}
@@ -152,23 +155,73 @@ type (
 	HetznerConfig struct {
 		Credentials HetznerCredentials
 
-		// Robot is Hetzner's administration panel for dedicated root servers, colocation, Storage Boxes,
-		// and domains (via the Domain Registration Robot add-on).
-		RobotSSHKeyPair SSHKeyPairConfig `yaml:"robotSSHKey" validate:"required"`
-
-		ControlPlaneEndpoint string                        `yaml:"controlPlaneEndpoint" validate:"required,notblank"`
-		BareMetalNodes       map[string]HetznerNodeConfigs `yaml:"bareMetalNodes" validate:"required"`
+		HCloud           HCloud            `yaml:"hcloud" validate:"required"`
+		HetznerBareMetal *HetznerBareMetal `yaml:"robot"`
 	}
 
 	HetznerCredentials struct {
 		HetznerAPIToken      string `validate:"required,notblank"`
-		HetznerRobotUser     string `validate:"required,notblank"`
+		HetznerRobotUsername string `validate:"required,notblank"`
 		HetznerRobotPassword string `validate:"required,notblank"`
 	}
 
-	HetznerNodeConfigs struct {
-		Name string   `yaml:"name" validate:"required,notblank"`
-		WWN  []string `yaml:"wwn" validate:"required,notblank"` // World Wide Name, a unique identifier.
+	HCloud struct {
+		SSHKeyName   string             `yaml:"sshKeyName" validate:"required,notblank"`
+		Enabled      bool               `yaml:"enabled"`
+		ControlPlane HCloudControlPlane `yaml:"controlPlane"`
+		NodeGroups   []HCloudNodeGroup  `yaml:"nodeGroups"`
+	}
+
+	HCloudControlPlane struct {
+		LoadBalancer HetznerControlPlaneLoadBalancer `yaml:"loadBalancer"`
+		Regions      []string                        `yaml:"regions"`
+		MachineType  string                          `yaml:"machineType" validate:"required,notblank"`
+		Replicas     int                             `yaml:"replicas" validate:"required"`
+	}
+
+	HetznerControlPlaneLoadBalancer struct {
+		Enabled bool   `yaml:"enabled" validate:"required"`
+		Region  string `yaml:"region" validate:"required,notblank"`
+	}
+
+	HCloudNodeGroup struct {
+		NodeGroup     `yaml:",inline"`
+		MachineType   string                  `yaml:"machineType" validate:"required,notblank"`
+		FailureDomain string                  `yaml:"failureDomain" validate:"required,notblank"`
+		SSHKeys       []HCloudNodeGroupSSHKey `yaml:"sshKeys" validate:"required"`
+	}
+
+	HCloudNodeGroupSSHKey struct {
+		Name string `yaml:"name" validate:"required,notblank"`
+	}
+
+	HetznerBareMetal struct {
+		Enabled         bool                         `yaml:"enabled" validate:"required"`
+		RobotSSHKeyPair SSHKeyPairConfig             `yaml:"robotSSHKey" validate:"required"`
+		ControlPlane    HetznerBareMetalControlPlane `yaml:"controlPlane"`
+		NodeGroups      []HetznerBareMetalNodeGroup  `yaml:"nodeGroups"`
+	}
+
+	HetznerBareMetalControlPlane struct {
+		Endpoint HetznerControlPlaneEndpoint `yaml:"endpoint" validate:"required,notblank"`
+		Nodes    []HetznerBareMetalNode      `yaml:"nodes"`
+	}
+
+	HetznerControlPlaneEndpoint struct {
+		Host string `yaml:"host" validate:"required,notblank"`
+		Port int    `yaml:"port"`
+	}
+
+	HetznerBareMetalNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+		Nodes     []HetznerBareMetalNode `yaml:"nodes" validate:"required"`
+	}
+
+	HetznerBareMetalNode struct {
+		Name string `yaml:"name" validate:"required,notblank"`
+
+		// WWN (World Wide Name) is the unique identifier.
+		WWN []string `yaml:"wwn" validate:"required,notblank"`
 	}
 )
 

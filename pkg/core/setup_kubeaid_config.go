@@ -95,7 +95,7 @@ func createOrUpdateKubeAidConfigFiles(ctx context.Context, clusterDir string, gi
 	}
 
 	// Build KubePrometheus.
-	buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+	// buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
 }
 
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid

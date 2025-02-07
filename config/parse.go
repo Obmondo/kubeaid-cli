@@ -61,7 +61,7 @@ func readCloudCredentialsFromFlagsToConfig() {
 	case ParsedConfig.Cloud.Hetzner != nil:
 		ParsedConfig.Cloud.Hetzner.Credentials = HetznerCredentials{
 			HetznerAPIToken,
-			HetznerRobotUser,
+			HetznerRobotUsername,
 			HetznerRobotPassword,
 		}
 	}
@@ -70,7 +70,10 @@ func readCloudCredentialsFromFlagsToConfig() {
 func hydrateSSHKeyConfigs() {
 	switch {
 	case ParsedConfig.Cloud.Hetzner != nil:
-		hydrateSSHKeyConfig(&ParsedConfig.Cloud.Hetzner.RobotSSHKeyPair)
+		// When using Hetzner Bare Metal.
+		if (ParsedConfig.Cloud.Hetzner.HetznerBareMetal != nil) && ParsedConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
+			hydrateSSHKeyConfig(&ParsedConfig.Cloud.Hetzner.HetznerBareMetal.RobotSSHKeyPair)
+		}
 	}
 }
 

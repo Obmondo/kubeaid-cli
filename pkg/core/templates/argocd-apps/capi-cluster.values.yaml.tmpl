@@ -43,23 +43,19 @@ provider:
   hetzner: true
 
 hetzner:
-  pods:
-    cidrBlock: 10.244.0.0/16
-  controlPlaneEndpoint:
-    host: {{ .HetznerConfig.ControlPlaneEndpoint }}
-    port: 6443
-  controlPlaneLoadBalancer:
-    enabled: false
-  controlPlaneRegions:
-    - hel1
-  nodes:
-    {{- range $id, $node := .HetznerConfig.BareMetalNodes }}
-    {{ $id }}:
-      name: {{ $node.Name }}
-      maintenanceMode: false
-      wwn:
-        {{- range $wwn := $node.WWN }}
-        - {{ $wwn }}
-        {{- end }}
-    {{- end }}
+  {{- if .HetznerConfig.HCloud }}
+  hcloud:
+    sshKeyName: {{ .HetznerConfig.HCloud.SSHKeyName }}
+    enabled: {{ .HetznerConfig.HCloud.Enabled }}
+    controlPlane:
+      loadBalancer: {{ .HetznerConfig.HCloud.ControlPlane.LoadBalancer | toYaml | nindent 8 }}
+      regions: {{ .HetznerConfig.HCloud.ControlPlane.Regions | toYaml | nindent 8 }}
+      replicas: {{ .HetznerConfig.HCloud.ControlPlane.Replicas }}
+      machineType: {{ .HetznerConfig.HCloud.ControlPlane.MachineType }}
+    nodeGroups: {{ .HetznerConfig.HCloud.NodeGroups | toYaml | nindent 6 }}
+  {{- end }}
+
+  {{- if .HetznerConfig.HetznerBareMetal }}
+  robot: {{- toYaml .HetznerConfig.HetznerBareMetal | nindent 4 }}
+  {{- end }}
 {{- end }}

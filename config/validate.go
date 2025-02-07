@@ -54,7 +54,8 @@ func validateConfig(config *Config) {
 		log.Fatal("Support for Azure is coming soon")
 
 	default:
-		log.Fatal("No cloud specific details provided")
+		slog.ErrorContext(ctx, "No cloud specific details provided")
+		os.Exit(1)
 	}
 }
 

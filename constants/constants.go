@@ -34,8 +34,8 @@ const (
 
 	FlagNameDeleteOldCluster = "delete-old-cluster"
 
-	FlagNameHetznerAPIToken      = "hetzner-api-token"
-	FlagNameHetznerRobotUser     = "hetzner-robot-user"
+	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
+	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
 
 	FlagNameAWSAccessKey    = "aws-access-key-id"
@@ -151,8 +151,8 @@ var (
 
 	HetznerSpecificNonSecretTemplateNames = []string{
 		// For Hetzner Robot Failover.
-		"argocd-apps/templates/hetzner-robot.app.yaml.tmpl",
-		"argocd-apps/hetzner-robot.values.yaml.tmpl",
+		// "argocd-apps/templates/hetzner-robot.app.yaml.tmpl",
+		// "argocd-apps/hetzner-robot.values.yaml.tmpl",
 
 		// For Hetzner Cloud Controller Manager.
 		"argocd-apps/templates/ccm-hetzner.app.yaml.tmpl",
@@ -161,7 +161,7 @@ var (
 
 	HetznerSpecificSecretTemplateNames = []string{
 		// For Cluster API.
-		"sealed-secrets/capi-cluster/hetzner-robot-ssh-keypair.yaml.tmpl",
+		// "sealed-secrets/capi-cluster/hetzner-robot-ssh-keypair.yaml.tmpl",
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 	}
 

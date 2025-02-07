@@ -49,7 +49,7 @@ func RegisterAWSCredentialsFlags(command *cobra.Command) {
 }
 
 var HetznerAPIToken,
-	HetznerRobotUser,
+	HetznerRobotUsername,
 	HetznerRobotPassword string
 
 func RegisterHetznerCredentialsFlags(command *cobra.Command) {
@@ -58,8 +58,8 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 	flagSet.StringVar(&HetznerAPIToken, constants.FlagNameHetznerAPIToken, "", "Hetzner API token")
 	command.MarkFlagRequired(constants.FlagNameHetznerAPIToken)
 
-	flagSet.StringVar(&HetznerRobotUser, constants.FlagNameHetznerRobotUser, "", "Hetzner robot user")
-	command.MarkFlagRequired(constants.FlagNameHetznerRobotUser)
+	flagSet.StringVar(&HetznerRobotUsername, constants.FlagNameHetznerRobotUsername, "", "Hetzner robot user")
+	command.MarkFlagRequired(constants.FlagNameHetznerRobotUsername)
 
 	flagSet.StringVar(&HetznerRobotPassword, constants.FlagNameHetznerRobotPassword, "", "Hetzner robot password")
 	command.MarkFlagRequired(constants.FlagNameHetznerRobotPassword)
