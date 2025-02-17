@@ -35,7 +35,7 @@ func BootstrapCluster(ctx context.Context,
 		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild)
 
 		// Let the provisioned cluster manage itself.
-		dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
+		pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
 	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
@@ -70,7 +70,7 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
 }
 
-func dogfoodProvisionedCluster(ctx context.Context,
+func pivotCluster(ctx context.Context,
 	gitAuthMethod transport.AuthMethod,
 	skipClusterctlMove bool,
 	cloudProvider cloud.CloudProvider,
