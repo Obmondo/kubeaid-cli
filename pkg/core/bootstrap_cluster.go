@@ -9,8 +9,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
@@ -22,7 +22,7 @@ func BootstrapCluster(ctx context.Context,
 	isPartOfDisasterRecovery bool,
 ) {
 	// Detect git authentication method.
-	gitAuthMethod := utils.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
 	CreateDevEnv(ctx, skipKubePrometheusBuild)
@@ -40,8 +40,13 @@ func BootstrapCluster(ctx context.Context,
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
 	// setup Disaster Recovery.
-	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
-		cloudProvider.SetupDisasterRecovery(ctx)
+	switch {
+	case config.ParsedConfig.Cloud.AWS != nil:
+		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+			cloudProvider.SetupDisasterRecovery(ctx)
+		}
+
+	default:
 	}
 }
 
@@ -55,12 +60,6 @@ func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMetho
 
 	// Close ArgoCD application client.
 	constants.ArgoCDApplicationClientCloser.Close()
-
-	// CASE : Hetzner
-	// Make the Failover IP point to the master node where `kubeadm init` has been executed.
-	if config.ParsedConfig.Cloud.Hetzner != nil {
-		hetzner.ExecuteFailoverScript(ctx)
-	}
 
 	// Wait for the main cluster to be provisioned and ready.
 	utils.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)

@@ -11,5 +11,10 @@ type CloudProvider interface {
 
 	GetSealedSecretsBackupBucketName() string
 
+	UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
+		capiClusterValuesFilePath string,
+		_updates any,
+	)
+
 	UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any)
 }

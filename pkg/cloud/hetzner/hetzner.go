@@ -24,6 +24,12 @@ func (*Hetzner) GetLatestBackupName(ctx context.Context) string {
 	panic("unreachable")
 }
 
+func (*Hetzner) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
+	capiClusterValuesFilePath string,
+	_updates any,
+) {
+}
+
 func (*Hetzner) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any) {
 	panic("unreachable")
 }

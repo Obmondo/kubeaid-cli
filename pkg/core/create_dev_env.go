@@ -8,6 +8,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
 )
 
 func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
@@ -27,10 +28,10 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 	utils.InstallSealedSecrets(ctx)
 
 	// Detect git authentication method.
-	gitAuthMethod := utils.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
-	_ = utils.GitCloneRepo(ctx,
+	_ = git.CloneRepo(ctx,
 		config.ParsedConfig.Forks.KubeaidConfigForkURL,
 		utils.GetKubeAidConfigDir(),
 		gitAuthMethod,

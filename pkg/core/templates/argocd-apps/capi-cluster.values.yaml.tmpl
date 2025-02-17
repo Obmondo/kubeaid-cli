@@ -15,6 +15,12 @@ provider:
   aws: true
 
 aws:
+  # Currently, hostNetworking must be set to true.
+  # Otherwise, during the Kubernetes version upgrade process, when the control-plane nodes get
+  # restarted, AWS CAPA errors out, complaining that :
+  #
+  #     NoCredentialProviders: no valid providers in chain. Deprecated.
+  useHostNetwork: true
   secretName: cloud-credentials
   sshKeyName: {{ .AWSConfig.SSHKeyName }}
   region: {{ .AWSConfig.Credentials.AWSRegion }}

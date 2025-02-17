@@ -9,7 +9,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
 	"github.com/sagikazarmark/slog-shim"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	capaV1Beta1 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta1"
+	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -22,7 +22,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
 	// Get the AWSMachineTemplate resource referred by KubeadmControlPlane resource.
-	awsMachineTemplate := &capaV1Beta1.AWSMachineTemplate{
+	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-control-plane", config.ParsedConfig.Cluster.Name),
 			Namespace: utils.GetCapiClusterNamespace(),
@@ -34,7 +34,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	)
 
 	// Delete that AWSMachineTemplate.
-	err = clusterClient.Delete(ctx, awsMachineTemplate, nil)
+	err = clusterClient.Delete(ctx, awsMachineTemplate, &client.DeleteOptions{})
 	assert.AssertErrNil(ctx, err,
 		"Failed deleting the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
@@ -43,9 +43,10 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	)
 
 	// Recreate the AWSMachineTemplate.
-	awsMachineTemplate.Spec.Template.Spec.AMI = capaV1Beta1.AMIReference{
+	awsMachineTemplate.Spec.Template.Spec.AMI = capaV1Beta2.AMIReference{
 		ID: &updates.AMIID,
 	}
-	err = clusterClient.Create(ctx, awsMachineTemplate, nil)
+	awsMachineTemplate.ObjectMeta.ResourceVersion = ""
+	err = clusterClient.Create(ctx, awsMachineTemplate, &client.CreateOptions{})
 	assert.AssertErrNil(ctx, err, "Failed recreating the AWSMachineTemplate")
 }

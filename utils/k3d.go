@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
@@ -25,26 +26,24 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 	slog.InfoContext(ctx, "Creating the K3d management cluster")
 
+	// Kubernetes API Server host for MacOS.
+	// NOTE : The user must make sure, that host.docker.internal is mapped to 127.0.0.1 in the host
+	//        machine.
+	apiServerHost := "host.docker.internal"
+
+	// In case of Linux, the Kubernetes API Server host is set to the Docker Bridge Gateway IP.
+	if runtime.GOOS == "linux" {
+		apiServerHost = "172.17.0.1"
+	}
+
 	// Create the cluster.
 	ExecuteCommandOrDie(fmt.Sprintf(`
 		k3d cluster create %s \
 			--servers 1 --agents 3 \
 			--image rancher/k3s:v1.31.0-k3s1 \
-      --network host.docker.internal \
+      --api-port %s:6445 \
 			--wait
-	`, name))
-
-	// By default, the Kubernetes API server URL is like : https://0.0.0.0:5xxxx. 0.0.0.0 isn't
-	// resolvable from within the dev container.
-	// Since we are mounting the Docker socket to the dev container, it can resolve DNS names of
-	// Docker networks. So use the DNS name instead of 0.0.0.0.
-	//
-	// NOTE : Consider this situation :
-	//        an existing K3D cluster may have wrong Kubernetes API server URL server.
-	//
-	// ExecuteCommandOrDie(fmt.Sprintf(`
-	// 	kubectl config set-cluster k3d-%s --server=https://k3d-%s-serverlb:6443
-	// `, name, name))
+	`, name, apiServerHost))
 
 	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".
 	// We'll change the label value to "" (just like it is in Vanilla Kubernetes).

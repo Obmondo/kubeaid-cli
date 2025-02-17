@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1" // KCP = Kubeadm Control plane Provider.
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,6 +49,9 @@ func CreateKubernetesClient(ctx context.Context,
 
 	err = kcpV1Beta1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding KCP (Kubeadm Control plane Providerr) v1beta1 scheme")
+
+	err = capaV1Beta2.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta1 scheme")
 
 	kubeClient, err := client.New(kubeconfig, client.Options{
 		Scheme: scheme,

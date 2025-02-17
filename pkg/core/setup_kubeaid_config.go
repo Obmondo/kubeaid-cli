@@ -13,8 +13,9 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/utils/templates"
-	"github.com/go-git/go-git/v5"
+	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
@@ -36,27 +37,15 @@ func SetupKubeAidConfig(ctx context.Context,
 ) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
-	repo, err := git.PlainOpen(utils.GetKubeAidConfigDir())
+	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
 	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
 
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
 
-	// Remove any unstaged changes, by hard resetting to the latest commit.
-	// Otherwise, we'll get error when checking out to a new branch.
-
-	headRef, err := repo.Head()
-	assert.AssertErrNil(ctx, err, "Failed getting head ref")
-
-	err = workTree.Reset(&git.ResetOptions{
-		Commit: headRef.Hash(),
-		Mode:   git.HardReset,
-	})
-	assert.AssertErrNil(ctx, err, "Failed hard resetting to latest commit")
-
 	// Create and checkout to a new branch.
 	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
-	utils.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree)
+	git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
 
 	clusterDir := utils.GetClusterDir()
 
@@ -67,8 +56,11 @@ func SetupKubeAidConfig(ctx context.Context,
 	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
 
 	// Add, commit and push the changes.
-	commitMessage := fmt.Sprintf("(cluster/%s) : created / updated KubeAid config files", config.ParsedConfig.Cluster.Name)
-	commitHash := utils.AddCommitAndPushChanges(ctx, repo, workTree, newBranchName, gitAuthMethod, config.ParsedConfig.Cluster.Name, commitMessage)
+	commitMessage := fmt.Sprintf(
+		"(cluster/%s) : created / updated KubeAid config files",
+		config.ParsedConfig.Cluster.Name,
+	)
+	commitHash := git.AddCommitAndPushChanges(ctx, repo, workTree, newBranchName, gitAuthMethod, config.ParsedConfig.Cluster.Name, commitMessage)
 
 	// The user now needs to go ahead and create a PR from the new to the default branch. Then he
 	// needs to merge that branch.
@@ -76,8 +68,8 @@ func SetupKubeAidConfig(ctx context.Context,
 	// specific to the git platform the user is on.
 
 	// Wait until the PR gets merged.
-	defaultBranchName := utils.GetDefaultBranchName(ctx, repo)
-	utils.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
+	defaultBranchName := git.GetDefaultBranchName(ctx, repo)
+	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
 }
 
 // Creates / updates all necessary files for the given cluster, in the user's KubeAid config
@@ -157,7 +149,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, gitAuthMethod t
 
 	// Clone the KubeAid fork locally (if not already cloned).
 	kubeaidForkDir := constants.TempDir + "/kubeaid"
-	utils.GitCloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, kubeaidForkDir, gitAuthMethod)
+	git.CloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, kubeaidForkDir, gitAuthMethod)
 
 	// Run the KubePrometheus build script.
 	slog.Info("Running KubePrometheus build script...")

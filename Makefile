@@ -59,13 +59,30 @@ bootstrap-cluster-aws-dev:
     --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
+.PHONY: upgrade-cluster-aws-dev
+upgrade-cluster-aws-dev:
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster upgrade aws \
+		--debug \
+    --config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
+		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
+
+.PHONY: delete-provisioned-cluster-aws-dev
+delete-provisioned-cluster-aws-dev:
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
+
 .PHONY: bootstrap-cluster-hetzner-dev
 bootstrap-cluster-hetzner-dev:
 	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap hetzner \
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
-    --skip-clusterctl-move
-# --skip-kube-prometheus-build
+    --skip-kube-prometheus-build
+# --skip-clusterctl-move
+
+.PHONY: delete-provisioned-cluster-hetzner-dev
+delete-provisioned-cluster-hetzner-dev:
+	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: use-management-cluster
 use-management-cluster:
@@ -74,16 +91,6 @@ use-management-cluster:
 .PHONY: use-provisioned-cluster
 use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
-
-.PHONY: provisioned-cluster-delete-aws-dev
-provisioned-cluster-delete-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
-		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
-
-.PHONY: provisioned-cluster-delete-hetzner-dev
-provisioned-cluster-delete-hetzner-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
-		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: management-cluster-delete
 management-cluster-delete:
