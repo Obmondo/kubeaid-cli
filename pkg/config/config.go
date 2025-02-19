@@ -32,9 +32,11 @@ type (
 		Name       string `yaml:"name" validate:"required,notblank"`
 		K8sVersion string `yaml:"k8sVersion" validate:"required,notblank"`
 
-		EnableAuditLogging bool `yaml:"enableAuditLogging"`
+		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 
 		APIServer APIServerConfig `yaml:"apiServer"`
+
+		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
@@ -74,11 +76,19 @@ type (
 		Content string `yaml:"content" validate:"required,notblank"`
 	}
 
+	UserConfig struct {
+		Name         string `yaml:"name" validate:"required"`
+		SSHPublicKey string `yaml:"sshPublicKey" validate:"required"`
+	}
+
 	NodeGroup struct {
 		Name string `yaml:"name" validate:"required,notblank"`
 
 		MinSize uint `yaml:"minSize" validate:"required"`
 		Maxsize uint `yaml:"maxSize" validate:"required"`
+
+		CPU    uint32 `yaml:"cpu"`
+		Memory uint32 `yaml:"memory"`
 
 		Labels map[string]string `yaml:"labels" default:"[]"`
 		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`

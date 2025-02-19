@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 )
 
 func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {

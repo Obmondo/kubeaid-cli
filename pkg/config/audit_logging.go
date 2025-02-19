@@ -3,7 +3,7 @@ package config
 import (
 	_ "embed"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	v1 "k8s.io/api/core/v1"
 )
 

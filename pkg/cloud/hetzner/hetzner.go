@@ -3,13 +3,18 @@ package hetzner
 import (
 	"context"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Hetzner struct{}
 
-func NewHetznerCloudProvider() *Hetzner {
+func NewHetznerCloudProvider() cloud.CloudProvider {
 	return &Hetzner{}
+}
+
+func (*Hetzner) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
+	panic("unimplemented")
 }
 
 func (*Hetzner) SetupDisasterRecovery(ctx context.Context) {

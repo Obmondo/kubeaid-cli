@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -21,11 +23,11 @@ func SetupCluster(ctx context.Context, kubeClient client.Client) {
 	slog.InfoContext(ctx, "Setting up cluster")
 
 	// Install and setup ArgoCD.
-	utils.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), kubeClient)
+	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), kubeClient)
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 	// Kubernetes Secret will exist.
-	utils.CreateNamespace(ctx, utils.GetCapiClusterNamespace(), kubeClient)
+	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), kubeClient)
 
 	// Sync the Root, CertManager, Secrets and ClusterAPI ArgoCD Apps one by one.
 	argocdAppsToBeSynced := []string{
@@ -35,7 +37,7 @@ func SetupCluster(ctx context.Context, kubeClient client.Client) {
 		"cluster-api",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		utils.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
 	// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
@@ -50,13 +52,13 @@ func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 	// Determine the name of the Infrastructure Provider component.
 
 	// Sync the Infrastructure Provider component.
-	utils.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{{
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{{
 		Group: "operator.cluster.x-k8s.io",
 		Kind:  "InfrastructureProvider",
 		Name:  getInfrastructureProviderName(),
 	}})
 
-	capiClusterNamespace := utils.GetCapiClusterNamespace()
+	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
 	// Wait for the infrastructure specific CRDs to be installed and infrastructure provider component
 	// pod to be running.
@@ -82,18 +84,12 @@ func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 }
 
 // Returns the name of the InfrastructureProvider component.
-func getInfrastructureProviderName() (infrastructureProviderName string) {
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
-		infrastructureProviderName = "aws"
-
-	case config.ParsedConfig.Cloud.Hetzner != nil:
-		infrastructureProviderName = "hetzner"
-	}
+func getInfrastructureProviderName() string {
+	infrastructureProviderName := globals.CloudProviderName
 
 	if len(config.ParsedConfig.CustomerID) > 0 {
 		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedConfig.CustomerID
 	}
 
-	return
+	return infrastructureProviderName
 }

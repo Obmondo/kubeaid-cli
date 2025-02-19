@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/avast/retry-go/v4"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,11 +24,11 @@ func DeleteCluster(ctx context.Context) {
 	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      config.ParsedConfig.Cluster.Name,
-			Namespace: utils.GetCapiClusterNamespace(),
+			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
 
-	provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
+	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	/*
 	  BUG :
@@ -45,7 +46,7 @@ func DeleteCluster(ctx context.Context) {
 	*/
 
 	// Detect whether the `clusterctl move` command has already been executed or not.
-	if utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+	if kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
 		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
 		// Move back the ClusterAPI manifests back from the provisioned cluster to the management
@@ -54,16 +55,16 @@ func DeleteCluster(ctx context.Context) {
 		retry.Do(func() error {
 			_, err := utils.ExecuteCommand(fmt.Sprintf(
 				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-				constants.OutputPathProvisionedClusterKubeconfig, constants.OutputPathManagementClusterKubeconfig, utils.GetCapiClusterNamespace(),
+				constants.OutputPathProvisionedClusterKubeconfig, constants.OutputPathManagementClusterKubeconfig, kubernetes.GetCapiClusterNamespace(),
 			))
 			return err
 		})
 	}
 
-	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Get the Cluster resource from the management cluster.
-	err := utils.GetKubernetesResource(ctx, managementClusterClient, cluster)
+	err := kubernetes.GetKubernetesResource(ctx, managementClusterClient, cluster)
 	assert.AssertErrNil(ctx, err, "Cluster resource was suppossed to be present in the management cluster")
 
 	// If the cluster gets marked as paused, then unmark it first.

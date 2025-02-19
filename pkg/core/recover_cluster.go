@@ -3,21 +3,28 @@ package core
 import (
 	"context"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func RecoverCluster(ctx context.Context, cloudProvider cloud.CloudProvider) {
-	switch {
-	case config.ParsedConfig.Cloud.Hetzner != nil:
+func RecoverCluster(ctx context.Context) {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		assert.AssertNotNil(ctx, config.ParsedConfig.Cloud.AWS.DisasterRecovery, "disasterRecovery section in the config file, can't be empty")
+
+	case constants.CloudProviderAzure:
+		panic("unimplemented")
+
+	case constants.CloudProviderHetzner:
 		assert.AssertNil(ctx, config.ParsedConfig.Cloud.Hetzner, "Disaster recovery isn't supported for Hetzner")
 
-	case config.ParsedConfig.Cloud.AWS != nil:
-		assert.AssertNotNil(ctx, config.ParsedConfig.Cloud.AWS.DisasterRecovery, "disasterRecovery section in the config file, can't be empty")
+	default:
+		panic("unreachable")
 	}
 
 	// Load AWS SDK config.
@@ -40,7 +47,7 @@ func RecoverCluster(ctx context.Context, cloudProvider cloud.CloudProvider) {
 	services.DownloadS3BucketContents(ctx, s3Client, config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName, true)
 
 	// Bootstrap the new cluster.
-	BootstrapCluster(ctx, true, false, cloudProvider, true)
+	BootstrapCluster(ctx, true, false, true)
 
 	panic("unimplemented")
 

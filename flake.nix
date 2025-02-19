@@ -57,8 +57,9 @@
               kubeseal
               clusterctl
               clusterawsadm
-              k9s
+							yq
 
+              k9s
               gnumake
             ];
         };

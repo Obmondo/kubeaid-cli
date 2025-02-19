@@ -9,12 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/templates"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
@@ -108,7 +110,7 @@ func CreateOrUpdateSealedSecretFiles(ctx context.Context, clusterDir string) {
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 
 		// Encrypt the Secret to a Sealed Secret.
-		utils.GenerateSealedSecret(ctx, destinationFilePath)
+		kubernetes.GenerateSealedSecret(ctx, destinationFilePath)
 	}
 }
 
@@ -148,7 +150,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, gitAuthMethod t
 	}
 
 	// Clone the KubeAid fork locally (if not already cloned).
-	kubeaidForkDir := constants.TempDir + "/kubeaid"
+	kubeaidForkDir := globals.TempDir + "/kubeaid"
 	git.CloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, kubeaidForkDir, gitAuthMethod)
 
 	// Run the KubePrometheus build script.

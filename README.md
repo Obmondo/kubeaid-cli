@@ -51,9 +51,8 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [ ] Check Git URL if SSH agent is used.
 - [ ] Validation for sshagentauth (should not accept https url).
 - [x] `--debug` flag to print command execution outputs.
-- [ ] Support adding admin SSH keys via config file.
+- [x] Support adding multiple SSH keys via config file.
 - [ ] Support using HTTPS for ArgoCD apps.
-- [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
 - [x] Support enabling `Audit Logging`.
 - [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
 - [x] ETCD metrics enabled.

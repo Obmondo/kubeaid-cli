@@ -1,4 +1,4 @@
-package utils
+package kubernetes
 
 import (
 	"context"
@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"runtime"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 )
@@ -37,7 +38,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	}
 
 	// Create the cluster.
-	ExecuteCommandOrDie(fmt.Sprintf(`
+	utils.ExecuteCommandOrDie(fmt.Sprintf(`
 		k3d cluster create %s \
 			--servers 1 --agents 3 \
 			--image rancher/k3s:v1.31.0-k3s1 \
@@ -48,7 +49,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".
 	// We'll change the label value to "" (just like it is in Vanilla Kubernetes).
 	// Some apps (like capi-cluster) relies on this label to get scheduled to the master node.
-	ExecuteCommandOrDie(fmt.Sprintf(`
+	utils.ExecuteCommandOrDie(fmt.Sprintf(`
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
 
 		for node in $master_nodes; do

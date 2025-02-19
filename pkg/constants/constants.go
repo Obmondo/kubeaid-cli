@@ -1,11 +1,5 @@
 package constants
 
-import (
-	"io"
-
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-)
-
 // Environment variable names.
 const (
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
@@ -166,12 +160,4 @@ var (
 	}
 
 	TemplateNameJsonnet = "cluster-vars.jsonnet.tmpl"
-)
-
-// Global states.
-var (
-	TempDir string
-
-	ArgoCDApplicationClientCloser io.Closer
-	ArgoCDApplicationClient       application.ApplicationServiceClient
 )

@@ -3,23 +3,10 @@ package utils
 import (
 	"context"
 	"log/slog"
-	"os"
 	"os/exec"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
-
-// Returns value of the given environment variable.
-// Panics if the environment variable isn't found.
-func GetEnv(name string) string {
-	value, found := os.LookupEnv(name)
-	if !found || len(value) == 0 {
-		slog.Error("Env not found", slog.String("name", name))
-		os.Exit(1)
-	}
-
-	return value
-}
 
 func executeCommand(command string, panicOnExecutionFailure bool) (string, error) {
 	slog.Info("Executing command", slog.String("command", command))

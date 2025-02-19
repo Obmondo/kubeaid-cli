@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/spf13/cobra"
 )
 

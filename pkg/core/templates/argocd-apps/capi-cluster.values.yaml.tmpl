@@ -9,6 +9,7 @@ global:
     repo: {{ .KubeaidForkURL }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigForkURL }}
+  additionalUsers: {{ .AdditionalUsers | toYaml | nindent 4 }}
 
 {{- if .AWSConfig }}
 provider:
@@ -39,7 +40,10 @@ aws:
     ami:
       id: {{ .AWSConfig.ControlPlane.AMI.ID }}
     {{- if .ClusterConfig.APIServer }}
-    apiServer: {{ .ClusterConfig.APIServer | toYaml | nindent 6 }}
+    apiServer:
+      extraArgs: {{ .ClusterConfig.APIServer.ExtraArgs | toYaml | nindent 8 }}
+      extraVolumes: {{ .ClusterConfig.APIServer.ExtraVolumes | toYaml | nindent 8 }}
+      files: {{ .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
     {{- end }}
   nodeGroups: {{ .AWSConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}

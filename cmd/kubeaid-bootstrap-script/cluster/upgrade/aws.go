@@ -1,9 +1,9 @@
 package upgrade
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +15,6 @@ var AWSCmd = &cobra.Command{
 		core.UpgradeCluster(cmd.Context(), core.UpgradeClusterArgs{
 			NewKubernetesVersion: kubernetesVersion,
 
-			CloudProvider: aws.NewAWSCloudProvider(),
 			CloudSpecificUpdates: aws.MachineTemplateUpdates{
 				AMIID: newAMIID,
 			},

@@ -1,7 +1,7 @@
 package create
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 	"github.com/spf13/cobra"
 )

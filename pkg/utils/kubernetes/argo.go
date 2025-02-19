@@ -1,4 +1,4 @@
-package utils
+package kubernetes
 
 import (
 	"context"
@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
@@ -40,7 +42,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 	slog.Info("Creating root ArgoCD app")
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
 
-	ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 
 	createArgoCDApplicationClient(ctx, kubeClient)
 }
@@ -94,7 +96,7 @@ func createArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 	argoCDClient = apiclient.NewClientOrDie(argoCDClientOpts)
 
 	// Create ArgoCD Application client.
-	constants.ArgoCDApplicationClientCloser, constants.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
+	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
 }
 
 // Syncs the ArgoCD App (if not synced already).
@@ -130,7 +132,7 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 	}
 
 	for {
-		_, err := constants.ArgoCDApplicationClient.Sync(ctx, applicationSyncRequest)
+		_, err := globals.ArgoCDApplicationClient.Sync(ctx, applicationSyncRequest)
 		if err != nil {
 			if strings.Contains(err.Error(), "another operation is already in progress") {
 				slog.WarnContext(ctx, "ArgoCD App sync failed. Retrying after some time", logger.Error(err))
@@ -166,7 +168,7 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 // only checks for the specified resources.
 func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Aplha1.SyncOperationResource) bool {
 	// Get the ArgoCD App.
-	argoCDApp, err := constants.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
+	argoCDApp, err := globals.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
 		Name:         &name,
 		AppNamespace: aws.String(constants.NamespaceArgoCD),
 	})

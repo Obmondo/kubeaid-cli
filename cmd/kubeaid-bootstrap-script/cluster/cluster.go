@@ -5,8 +5,8 @@ import (
 	delete_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/delete"
 	recover_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/recover"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/upgrade"
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/spf13/cobra"
 )
 

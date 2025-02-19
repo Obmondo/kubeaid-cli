@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/templates"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
 //go:embed files/templates/*
@@ -19,6 +19,9 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 	switch cloudProvider {
 	case constants.CloudProviderAWS:
 		templateName = constants.TemplateNameAWSSampleConfig
+
+	case constants.CloudProviderAzure:
+		panic("unimplemented")
 
 	case constants.CloudProviderHetzner:
 		templateName = constants.TemplateNameHetznerSampleConfig

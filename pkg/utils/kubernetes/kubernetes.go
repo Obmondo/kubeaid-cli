@@ -1,4 +1,4 @@
-package utils
+package kubernetes
 
 import (
 	"context"
@@ -7,10 +7,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,7 +37,7 @@ func CreateKubernetesClient(ctx context.Context,
 
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, WrapError("Failed building config from kubeconfig file", err)
+		return nil, utils.WrapError("Failed building config from kubeconfig file", err)
 	}
 
 	scheme := runtime.NewScheme()
@@ -103,7 +104,7 @@ func InstallSealedSecrets(ctx context.Context) {
 // Takes the path to a Kubernetes Secret file. It replaces the contents of that file by generating
 // the corresponding Sealed Secret.
 func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
-	ExecuteCommandOrDie(fmt.Sprintf(`
+	utils.ExecuteCommandOrDie(fmt.Sprintf(`
 		kubeseal \
 			--controller-name sealed-secrets-controller --controller-namespace sealed-secrets \
 			--secret-file %s --sealed-secret-file %s

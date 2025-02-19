@@ -7,13 +7,14 @@ import (
 	"path"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
@@ -24,7 +25,6 @@ type (
 	UpgradeClusterArgs struct {
 		NewKubernetesVersion string
 
-		CloudProvider        cloud.CloudProvider
 		CloudSpecificUpdates any
 	}
 )
@@ -36,13 +36,13 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	// Construct the Kubernetes (management / provisioned) cluster client.
 	var clusterClient client.Client
 	{
-		provisionedClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
+		provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 		clusterClient = provisionedClusterClient
 
 		// If `clusterctl move` wasn't executed, then we need to communicate with the management
 		// cluster instead.
-		if !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
-			managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+		if !kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+			managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 			clusterClient = managementClusterClient
 		}
 	}
@@ -51,8 +51,8 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	upgradeControlPlane(ctx, args, clusterClient)
 
 	// (2) Upgrading each node-group one by one.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
 		for _, nodeGroup := range config.ParsedConfig.Cloud.AWS.NodeGroups {
 			upgradeNodeGroup(ctx, args, clusterClient, nodeGroup.Name)
 		}
@@ -93,7 +93,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 		))
 
 		// Update with cloud-specific details.
-		args.CloudProvider.UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx,
+		globals.CloudProvider.UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx,
 			capiClusterValuesFilePath,
 			args.CloudSpecificUpdates,
 		)
@@ -126,7 +126,7 @@ func upgradeControlPlane(ctx context.Context, args UpgradeClusterArgs, clusterCl
 	// NOTE : Since machine templates are immutable, we cannot directly update them.
 	//
 	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	args.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
+	globals.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
 	slog.InfoContext(ctx,
 		"Recreated the AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
@@ -138,10 +138,10 @@ func upgradeControlPlane(ctx context.Context, args UpgradeClusterArgs, clusterCl
 	kubeadmControlPlane := &kcpV1Beta1.KubeadmControlPlane{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      kubeadmControlPlaneName,
-			Namespace: utils.GetCapiClusterNamespace(),
+			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := utils.GetKubernetesResource(ctx, clusterClient, kubeadmControlPlane)
+	err := kubernetes.GetKubernetesResource(ctx, clusterClient, kubeadmControlPlane)
 	assert.AssertErrNil(ctx, err, "Failed retrieving KubeadmControlPlane")
 
 	kubeadmControlPlane.Spec.Version = args.NewKubernetesVersion
@@ -168,7 +168,7 @@ func upgradeNodeGroup(ctx context.Context,
 	slog.InfoContext(ctx, "Triggering Kubernetes version upgrade for node-group....")
 
 	// Delete and recreate the corresponding machine template with updated options.
-	args.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
+	globals.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
 
 	// Update the corresponding MachineDeployment.
 
@@ -177,10 +177,10 @@ func upgradeNodeGroup(ctx context.Context,
 	machineDeployment := &clusterAPIV1Beta1.MachineDeployment{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      machineDeploymentName,
-			Namespace: utils.GetCapiClusterNamespace(),
+			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := utils.GetKubernetesResource(ctx, clusterClient, machineDeployment)
+	err := kubernetes.GetKubernetesResource(ctx, clusterClient, machineDeployment)
 	assert.AssertErrNil(ctx, err, "Failed retrieving MachineDeployment resource")
 
 	machineDeployment.Spec.Template.Spec.Version = &args.NewKubernetesVersion

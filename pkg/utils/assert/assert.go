@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 // Panics if the given error isn't nil.

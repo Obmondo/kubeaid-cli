@@ -2,7 +2,7 @@ package config
 
 import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/config/generate"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/spf13/cobra"
 )
 

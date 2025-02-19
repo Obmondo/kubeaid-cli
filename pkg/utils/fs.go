@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 // Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
@@ -33,7 +33,7 @@ func InitTempDir() {
 			path := "/tmp/" + item.Name()
 			slog.Info("Skipped creating temp dir, since it already exists", slog.String("path", path))
 
-			constants.TempDir = path
+			globals.TempDir = path
 
 			return
 		}
@@ -48,7 +48,7 @@ func InitTempDir() {
 
 	slog.Info("Created temp dir", slog.String("path", path))
 
-	constants.TempDir = path
+	globals.TempDir = path
 }
 
 // Returns path to the parent dir of the given file.
@@ -71,7 +71,7 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 // Returns path to the directory (in temp directory), where the customer's KubeAid Config is / will
 // be cloned.
 func GetKubeAidConfigDir() string {
-	return path.Join(constants.TempDir, "kubeaid-config")
+	return path.Join(globals.TempDir, "kubeaid-config")
 }
 
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
@@ -83,5 +83,5 @@ func GetClusterDir() string {
 // Returns the path to the local temp directory, where contents of the given blob storage bucket
 // will be / is downloaded.
 func GetDownloadedStorageBucketContentsDir(bucketName string) string {
-	return path.Join(constants.TempDir, "buckets", bucketName)
+	return path.Join(globals.TempDir, "buckets", bucketName)
 }

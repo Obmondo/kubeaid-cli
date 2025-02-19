@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"text/template"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/go-sprout/sprout/sprigin"
 )
 

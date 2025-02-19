@@ -1,8 +1,7 @@
 package recover
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 	"github.com/spf13/cobra"
 )
@@ -10,7 +9,7 @@ import (
 var AWSCmd = &cobra.Command{
 	Use: "aws",
 	Run: func(cmd *cobra.Command, args []string) {
-		core.RecoverCluster(cmd.Context(), aws.NewAWSCloudProvider())
+		core.RecoverCluster(cmd.Context())
 	},
 }
 

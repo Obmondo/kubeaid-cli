@@ -1,4 +1,4 @@
-package utils
+package kubernetes
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/avast/retry-go/v4"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"

@@ -4,28 +4,36 @@ import (
 	"context"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/git"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 	// Any cloud specific tasks.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
 		aws.SetAWSSpecificEnvs()
 		aws.CreateIAMCloudFormationStack()
+
+	case constants.CloudProviderAzure:
+		panic("unimplemented")
+
+	case constants.CloudProviderHetzner:
+		break
 	}
 
 	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
 
 	// Create the management cluster (using K3d), if it doesn't already exist.
-	utils.CreateK3DCluster(ctx, "management-cluster")
+	kubernetes.CreateK3DCluster(ctx, "management-cluster")
 
 	// Install Sealed Secrets.
-	utils.InstallSealedSecrets(ctx)
+	kubernetes.InstallSealedSecrets(ctx)
 
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
@@ -40,7 +48,7 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 	// Setup cluster directory in the user's KubeAid config repo.
 	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubePrometheusBuild)
 
-	managementClusterClient, _ := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Setup the management cluster.
 	SetupCluster(ctx, managementClusterClient)

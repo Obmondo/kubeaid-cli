@@ -4,17 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	validatorV10 "github.com/go-playground/validator/v10"
 	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
+	"golang.org/x/crypto/ssh"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 )
@@ -34,8 +36,21 @@ func validateConfig(config *Config) {
 	// Validate K8s version.
 	ValidateK8sVersion(ctx, config.Cluster.K8sVersion)
 
-	switch {
-	case config.Cloud.AWS != nil:
+	// Validate additional users.
+	for _, additionalUser := range config.Cluster.AdditionalUsers {
+		// Additional user name cannot be ubuntu.
+		assert.Assert(ctx, additionalUser.Name != "ubuntu", "additional user name cannot be ubuntu")
+
+		// Validate the public SSH key.
+		_, _, _, _, err = ssh.ParseAuthorizedKey([]byte(additionalUser.SSHPublicKey))
+		assert.AssertErrNil(ctx, err,
+			"SSH public key is invalid : failed parsing",
+			slog.String("additional-user", additionalUser.Name),
+		)
+	}
+
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
 		for _, nodeGroup := range config.Cloud.AWS.NodeGroups {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
@@ -47,15 +62,14 @@ func validateConfig(config *Config) {
 			validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 		}
 
-	case config.Cloud.Hetzner != nil:
+	case constants.CloudProviderAzure:
+		panic("unimplemented")
+
+	case constants.CloudProviderHetzner:
 		break
 
-	case config.Cloud.Azure != nil:
-		log.Fatal("Support for Azure is coming soon")
-
 	default:
-		slog.ErrorContext(ctx, "No cloud specific details provided")
-		os.Exit(1)
+		panic("unreachable")
 	}
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	goGit "github.com/go-git/go-git/v5"
 )
 

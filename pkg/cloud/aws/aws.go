@@ -6,21 +6,24 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type AWS struct {
-	s3Client  *s3.Client
 	iamClient *iam.Client
+	s3Client  *s3.Client
+	ec2Client *ec2.Client
 }
 
-func NewAWSCloudProvider() *AWS {
+func NewAWSCloudProvider() cloud.CloudProvider {
 	ctx := context.Background()
 
 	// Load AWS SDK config.
@@ -28,8 +31,9 @@ func NewAWSCloudProvider() *AWS {
 	assert.AssertErrNil(ctx, err, "Failed initiating AWS SDK config")
 
 	return &AWS{
-		s3Client:  s3.NewFromConfig(awsSDKConfig),
 		iamClient: iam.NewFromConfig(awsSDKConfig),
+		s3Client:  s3.NewFromConfig(awsSDKConfig),
+		ec2Client: ec2.NewFromConfig(awsSDKConfig),
 	}
 }
 

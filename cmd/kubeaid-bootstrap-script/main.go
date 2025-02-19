@@ -7,8 +7,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/devenv"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/spf13/cobra"
 )
 

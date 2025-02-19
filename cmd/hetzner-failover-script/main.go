@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/floshodan/hrobot-go/hrobot"
 )
 

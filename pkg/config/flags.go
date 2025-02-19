@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )

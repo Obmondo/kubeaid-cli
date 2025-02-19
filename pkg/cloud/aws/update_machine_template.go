@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/sagikazarmark/slog-shim"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
@@ -25,10 +25,10 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-control-plane", config.ParsedConfig.Cluster.Name),
-			Namespace: utils.GetCapiClusterNamespace(),
+			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := utils.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate)
+	err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate)
 	assert.AssertErrNil(ctx, err,
 		"Failed retrieving the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)

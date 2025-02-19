@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/sagikazarmark/slog-shim"
 )
@@ -55,6 +55,6 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		utils.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 }
