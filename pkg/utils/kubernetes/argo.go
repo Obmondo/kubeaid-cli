@@ -99,6 +99,18 @@ func createArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
 }
 
+// Lists and syncs all the ArgoCD Apps.
+func SyncAllArgoCDApps(ctx context.Context) {
+	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
+
+	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
+	assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
+
+	for _, item := range response.Items {
+		SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
+	}
+}
+
 // Syncs the ArgoCD App (if not synced already).
 // If the resources array is empty, then the whole ArgoCD App is synced. Otherwise, only the
 // specified resources.
@@ -120,6 +132,10 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 	applicationSyncRequest := &application.ApplicationSyncRequest{
 		Name:         &name,
 		AppNamespace: aws.String(constants.NamespaceArgoCD),
+		SyncOptions: &application.SyncOptions{
+			Items: []string{},
+		},
+		Prune: aws.Bool(true),
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{
 			Limit: 3,
 			Backoff: &argoCDV1Aplha1.Backoff{
@@ -129,6 +145,9 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 	}
 	if len(resources) > 0 {
 		applicationSyncRequest.Resources = resources
+	}
+	if name == constants.ArgoCDAppKubePrometheus {
+		applicationSyncRequest.SyncOptions.Items = append(applicationSyncRequest.SyncOptions.Items, "ServerSideApply=true")
 	}
 
 	for {

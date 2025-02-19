@@ -66,6 +66,7 @@ const (
 	ArgoCDAppHetznerRobot      = "hetzner-robot"
 	ArgoCDAppClusterAutoscaler = "cluster-autoscaler"
 	ArgoCDAppVelero            = "velero"
+	ArgoCDAppKubePrometheus    = "kube-prometheus"
 )
 
 // Uncategorized.

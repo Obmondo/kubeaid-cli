@@ -54,6 +54,11 @@ func BootstrapCluster(ctx context.Context,
 
 	default:
 	}
+
+	// Sync all ArgoCD Apps.
+	kubernetes.SyncAllArgoCDApps(ctx)
+
+	slog.InfoContext(ctx, "Cluster bootstrapping finished")
 }
 
 func provisionMainCluster(ctx context.Context,
