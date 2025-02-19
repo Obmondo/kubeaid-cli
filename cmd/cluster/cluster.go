@@ -1,10 +1,10 @@
 package cluster
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/bootstrap"
-	delete_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/delete"
-	recover_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/recover"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster/upgrade"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/bootstrap"
+	delete_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/delete"
+	recover_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/recover"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/upgrade"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/spf13/cobra"

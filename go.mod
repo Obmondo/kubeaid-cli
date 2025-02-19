@@ -14,7 +14,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.69.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.28.6
 	github.com/creasty/defaults v1.8.0
-	github.com/floshodan/hrobot-go v0.0.0-20241226081906-b7fee2ebca75
 	github.com/go-git/go-git/v5 v5.12.0
 	github.com/go-playground/validator/v10 v10.23.0
 	github.com/go-sprout/sprout v0.6.0

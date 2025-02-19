@@ -1,7 +1,7 @@
 package devenv
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/devenv/create"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv/create"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/spf13/cobra"

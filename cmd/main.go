@@ -4,9 +4,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/cluster"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-bootstrap-script/devenv"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/spf13/cobra"
