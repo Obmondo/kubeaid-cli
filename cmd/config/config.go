@@ -8,6 +8,7 @@ import (
 
 var ConfigCmd = &cobra.Command{
 	Use: "config",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

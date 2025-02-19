@@ -7,8 +7,10 @@ import (
 )
 
 var HetznerCmd = &cobra.Command{
-	Use:   "hetzner",
-	Short: "Bootstrap a self-managed Kubernetes cluster in Hetzner (bare-metal)",
+	Use: "hetzner",
+
+	Short: "Bootstrap a Hetzner based cluster",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		core.BootstrapCluster(cmd.Context(), skipKubePrometheusBuild, skipClusterctlMove, false)
 	},

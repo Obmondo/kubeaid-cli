@@ -9,8 +9,10 @@ import (
 )
 
 var AWSCmd = &cobra.Command{
-	Use:   "aws",
-	Short: "Bootstrap a self-managed Kubernetes cluster in AWS",
+	Use: "aws",
+
+	Short: "Trigger Kubernetes version upgrade of the provisioned AWS based cluster",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		core.UpgradeCluster(cmd.Context(), core.UpgradeClusterArgs{
 			NewKubernetesVersion: kubernetesVersion,

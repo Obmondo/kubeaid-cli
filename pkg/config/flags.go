@@ -76,7 +76,8 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 // Let's say, if the flag is `--aws-region` and it's not set, then we'll try to get the value of
 // the AWS_REGION environment variable.
 //
-// Panics, if both the flag and environment variable aren't set and there's no default flag value.
+// NOTE : Doesn't panic, if both the flag and environment variable aren't set and there's no
+// default flag value.
 func bindFlagToEnv(flag *pflag.Flag) {
 	if len(flag.Value.String()) > 0 {
 		return

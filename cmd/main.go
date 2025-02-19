@@ -14,6 +14,7 @@ import (
 
 var rootCmd = &cobra.Command{
 	Use: "kubeaid-bootstrap-script",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -28,7 +29,7 @@ func init() {
 	// Flags.
 	var isDebugModeEnabled bool
 	rootCmd.PersistentFlags().
-		BoolVar(&isDebugModeEnabled, constants.FlagNameDebug, false, "Run the script in debug mode")
+		BoolVar(&isDebugModeEnabled, constants.FlagNameDebug, false, "Generate debug logs")
 
 	// Initialization tasks.
 

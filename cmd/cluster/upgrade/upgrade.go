@@ -6,8 +6,8 @@ import (
 )
 
 var UpgradeCmd = &cobra.Command{
-	Use:   "upgrade",
-	Short: "Upgrade the Kubernetes version of a provisioned cluster",
+	Use: "upgrade",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},

@@ -130,10 +130,10 @@ type (
 	}
 
 	AWSCredentials struct {
-		AWSAccessKey    string `yaml:"accessKey" validate:"notblank"`
-		AWSSecretKey    string `yaml:"secretKey" validate:"notblank"`
+		AWSAccessKey    string `yaml:"accessKey" validate:"required,notblank"`
+		AWSSecretKey    string `yaml:"secretKey" validate:"required,notblank"`
 		AWSSessionToken string `yaml:"sessionToken"`
-		AWSRegion       string `yaml:"region" validate:"notblank"`
+		AWSRegion       string `yaml:"region" validate:"required,notblank"`
 	}
 
 	AWSControlPlane struct {

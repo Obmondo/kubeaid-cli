@@ -7,8 +7,10 @@ import (
 )
 
 var AWSCmd = &cobra.Command{
-	Use:   "aws",
-	Short: "Bootstrap a self-managed Kubernetes cluster in AWS",
+	Use: "aws",
+
+	Short: "Bootstrap an AWS based cluster",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		core.BootstrapCluster(cmd.Context(), skipKubePrometheusBuild, skipClusterctlMove, false)
 	},

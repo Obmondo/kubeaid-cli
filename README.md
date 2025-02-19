@@ -10,13 +10,15 @@ The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cl
 
 ## Developer Guide (AWS edition)
 
-> Make sure, you've Docker installed in your system.
+> Make sure, you've Docker installed and running in your system.
 
 Run `make build-image-dev` to build the KubeAid Bootstrap Script container image (development version).
 
 Then run `make run-container-dev` to run the container.
 
-In a separate terminal window, use `make exec-container-dev` to execute into the container.
+If you're running MacOS, then in your host machine, make sure you have mapped `host.docker.internal` to **127.0.0.1** in your **/etc/hosts**.
+
+Use `make exec-container-dev` to execute into the container.
 
 Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.
 
@@ -59,6 +61,7 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [x] Support scale to / from zero for the node-groups.
   > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
   > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
+- [ ] In case of AWS, pick up AWS credentials from `~/.aws/credentials` (if present).
 - [ ] `recover cluster` command
 
 ## REFERENCES

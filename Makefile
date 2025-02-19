@@ -7,7 +7,7 @@ IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/kubeaid-bootstrap-script/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build -f ./build/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
 
 .PHONY: remove-image-dev
 remove-image-dev:
@@ -43,17 +43,17 @@ remove-container-dev: stop-container-dev
 
 .PHONY: sample-config-generate-aws-dev
 sample-config-generate-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ config generate aws
+	@go run ./cmd/ config generate aws
 
 .PHONY: devenv-create-aws-dev
 devenv-create-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ devenv create aws \
+	@go run ./cmd/ devenv create aws \
 		--debug \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 
 .PHONY: bootstrap-cluster-aws-dev
 bootstrap-cluster-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap aws \
+	@go run ./cmd/ cluster bootstrap aws \
 		--debug \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
     --skip-kube-prometheus-build
@@ -61,19 +61,19 @@ bootstrap-cluster-aws-dev:
 
 .PHONY: upgrade-cluster-aws-dev
 upgrade-cluster-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster upgrade aws \
+	@go run ./cmd/ cluster upgrade aws \
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
 		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
 
 .PHONY: delete-provisioned-cluster-aws-dev
 delete-provisioned-cluster-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+	@go run ./cmd/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 
 .PHONY: bootstrap-cluster-hetzner-dev
 bootstrap-cluster-hetzner-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap hetzner \
+	@go run ./cmd/ cluster bootstrap hetzner \
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
     --skip-kube-prometheus-build
@@ -81,7 +81,7 @@ bootstrap-cluster-hetzner-dev:
 
 .PHONY: delete-provisioned-cluster-hetzner-dev
 delete-provisioned-cluster-hetzner-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
+	@go run ./cmd/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: use-management-cluster

@@ -7,8 +7,10 @@ import (
 )
 
 var AWSCmd = &cobra.Command{
-	Use:   "aws",
-	Short: "Create a local dev environment",
+	Use: "aws",
+
+	Short: "Create and setup the local K3D management cluster, for deploying an AWS based cluster",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		core.CreateDevEnv(cmd.Context(), true)
 	},

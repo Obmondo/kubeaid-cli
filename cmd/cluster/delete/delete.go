@@ -6,8 +6,10 @@ import (
 )
 
 var DeleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a provisioned cluster",
+	Use: "delete",
+
+	Short: "Delete the provisioned cluster",
+
 	Run: func(cmd *cobra.Command, args []string) {
 		core.DeleteCluster(cmd.Context())
 	},
