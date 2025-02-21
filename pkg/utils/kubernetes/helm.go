@@ -70,8 +70,21 @@ func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configura
 	listAction.StateMask = action.ListAll
 	listAction.Filter = args.ReleaseName
 
-	releases, err := listAction.Run()
-	assert.AssertErrNil(ctx, err, "Failed searching for existing Helm release")
+	// We need to retry, since sometimes the list operation may error out saying :
+	//  tls: failed to verify certificate: x509: certificate signed by unknown authority
+	var (
+		releases []*release.Release
+		err      error
+	)
+	for {
+		releases, err = listAction.Run()
+		if err == nil {
+			break
+		}
+
+		slog.ErrorContext(ctx, "Failed searching for existing Helm release. Retrying after 10 seconds....", logger.Error(err))
+		time.Sleep(10 * time.Second)
+	}
 
 	for _, release := range releases {
 		if (release.Name == args.ReleaseName) && (release.Namespace == args.Namespace) {

@@ -18,24 +18,32 @@ import (
 
 func BootstrapCluster(ctx context.Context,
 	skipKubePrometheusBuild,
-	skipClusterctlMove bool,
+	skipClusterctlMove,
 	isPartOfDisasterRecovery bool,
 ) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, skipKubePrometheusBuild)
+	CreateDevEnv(ctx, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-	// While retrying, if `clusterctl move` has already been executed, then we skip the following
-	// steps and jump to the disaster recovery setup step.
 	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
-	if (err != nil) || !kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
+	if !isClusterctlMoveExecuted {
 		// Provision the main cluster
-		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild)
+		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-		// Let the provisioned cluster manage itself.
+		// Pivot ClusterAPI (the provisioned cluster will manage itself).
 		pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+	} else {
+		// We're retrying running the script.
+
+		// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
+		// All Kubernetes operations from now on, will be done against the provisioned cluster.
+		os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+
+		// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
+		kubernetes.CreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
@@ -58,18 +66,17 @@ func BootstrapCluster(ctx context.Context,
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
-	slog.InfoContext(ctx, "Cluster bootstrapping finished")
+	slog.InfoContext(ctx, "Cluster bootstrapping finished 🎊")
 }
 
 func provisionMainCluster(ctx context.Context,
 	gitAuthMethod transport.AuthMethod,
 	skipKubePrometheusBuild bool,
+	isPartOfDisasterRecovery bool,
 ) {
 	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Sync the complete capi-cluster ArgoCD App.
-	//
-	// BUG : If `clusterctl move` has already been executed, then we don't want to do this.
 	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
 
 	// Close ArgoCD application client.
@@ -90,35 +97,23 @@ func pivotCluster(ctx context.Context,
 	isPartOfDisasterRecovery bool,
 ) {
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-	os.Setenv("KUBECONFIG", constants.OutputPathProvisionedClusterKubeconfig)
+	// All Kubernetes operations from now on, will be done against the provisioned cluster.
+	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+
 	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
 	// workloads.
 	kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
 
-	if isPartOfDisasterRecovery {
-		// If this is a part of the disaster recovery process, then
-		// restore Kubernetes Secrets containing a Sealed Secrets key.
-
-		sealedSecretsBackupBucketName := globals.CloudProvider.GetSealedSecretsBackupBucketName()
-		manifestsDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsBackupBucketName)
-
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", manifestsDirPath))
-	}
-
-	// Install Sealed Secrets.
-	kubernetes.InstallSealedSecrets(ctx)
-
-	// We need to update the Sealed Secrets in the kubeaid-config fork.
-	// Those represent Kubernetes Secrets encyrpted using the private key of the Sealed Secrets
-	// controller installed in the K3d management cluster.
+	// Setup the provisioned cluster.
+	//
+	// NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
+	// Currently, they represent Kubernetes Secrets encyrpted using the private key of the Sealed
+	// Secrets controller installed in the K3d management cluster.
 	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
 	// key of the Sealed Secrets controller installed in the provisioned main cluster.
-	SetupKubeAidConfig(ctx, gitAuthMethod, true)
-
-	// Setup the provisioned cluster.
-	SetupCluster(ctx, provisionedClusterClient)
+	SetupCluster(ctx, provisionedClusterClient, gitAuthMethod, true, isPartOfDisasterRecovery)
 
 	if !skipClusterctlMove {
 		// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.

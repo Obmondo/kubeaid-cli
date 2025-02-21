@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,14 +14,40 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // NOTE : Sealed Secrets must already be installed in the cluster.
-func SetupCluster(ctx context.Context, kubeClient client.Client) {
+func SetupCluster(ctx context.Context,
+	kubeClient client.Client,
+	gitAuthMethod transport.AuthMethod,
+	skipKubePrometheusBuild,
+	isPartOfDisasterRecovery bool,
+) {
 	slog.InfoContext(ctx, "Setting up cluster")
+
+	// Install Sealed Secrets.
+	kubernetes.InstallSealedSecrets(ctx)
+
+	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
+	// keys from a previous cluster which got destroyed.
+	if isPartOfDisasterRecovery {
+		sealedSecretsKeysBackupBucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsKeysBackupBucketName)
+
+		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))
+
+		slog.InfoContext(ctx,
+			"Restored Sealed Secrets controller private keys from a previous cluster",
+			slog.String("dir-path", sealedSecretsKeysDirPath),
+		)
+	}
+
+	// Setup cluster directory in the user's KubeAid config repo.
+	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubePrometheusBuild)
 
 	// Install and setup ArgoCD.
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), kubeClient)
@@ -52,11 +79,13 @@ func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 	// Determine the name of the Infrastructure Provider component.
 
 	// Sync the Infrastructure Provider component.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{{
-		Group: "operator.cluster.x-k8s.io",
-		Kind:  "InfrastructureProvider",
-		Name:  getInfrastructureProviderName(),
-	}})
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{
+		{
+			Group: "operator.cluster.x-k8s.io",
+			Kind:  "InfrastructureProvider",
+			Name:  getInfrastructureProviderName(),
+		},
+	})
 
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 

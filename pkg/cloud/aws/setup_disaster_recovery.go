@@ -27,11 +27,15 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 	veleroBackupsS3BucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsS3BucketName
 	services.CreateS3Bucket(ctx, a.s3Client, veleroBackupsS3BucketName)
 
-	clusterName := config.ParsedConfig.Cluster.Name
+	var (
+		clusterName = config.ParsedConfig.Cluster.Name
+		accountID   = GetAccountID(ctx)
+	)
 
 	// Create IAM Policy for Sealed Secrets Backuper.
 	sealedSecretsBackuperIAMPolicyName := fmt.Sprintf("sealed-secrets-backuper-%s", clusterName)
 	services.CreateIAMRoleForPolicy(ctx,
+		accountID,
 		a.iamClient,
 		sealedSecretsBackuperIAMPolicyName,
 		getSealedSecretsBackuperIAMPolicy(),
@@ -41,6 +45,7 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 	// Create IAM Policy for Velero.
 	veleroIAMPolicyName := fmt.Sprintf("velero-%s", clusterName)
 	services.CreateIAMRoleForPolicy(ctx,
+		accountID,
 		a.iamClient,
 		veleroIAMPolicyName,
 		getVeleroIAMPolicy(),

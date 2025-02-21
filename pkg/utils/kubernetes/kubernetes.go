@@ -12,6 +12,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,6 +46,9 @@ func CreateKubernetesClient(ctx context.Context,
 	err = coreV1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding Core v1 scheme")
 
+	err = appsV1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding Apps v1 scheme")
+
 	err = clusterAPIV1Beta1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
 
@@ -59,7 +63,21 @@ func CreateKubernetesClient(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating kube client from kubeconfig")
 
-	return kubeClient, nil
+	err = pingKubernetesCluster(ctx, kubeClient)
+	return kubeClient, err
+}
+
+// Checks whether the Kubernetes cluster is reachable or not, by trying to list the Deployments in
+// the default namespace.
+func pingKubernetesCluster(ctx context.Context, kubeClient client.Client) error {
+	deployments := &appsV1.DeploymentList{}
+	err := kubeClient.List(ctx, deployments, &client.ListOptions{
+		Namespace: "default",
+	})
+	if err != nil {
+		return fmt.Errorf("Failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %v", err)
+	}
+	return nil
 }
 
 // Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'

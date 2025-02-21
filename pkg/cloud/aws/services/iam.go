@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/aws/aws-sdk-go-v2/aws"
+	aws "github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 )
 
@@ -34,6 +35,7 @@ type (
 // policy for the IAM role, so it can be assumed by the nodes of the provisioned Kubernetes
 // cluster.
 func CreateIAMRoleForPolicy(ctx context.Context,
+	accountID string,
 	iamClient *iam.Client,
 	name string,
 	policyDocument,
@@ -43,14 +45,13 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 		slog.String("iam-role", name),
 	})
 
+	iamPath := fmt.Sprintf("/%s/", config.ParsedConfig.Cluster.Name)
+
 	// Create the IAM policy.
-
-	iamPolicyPath := fmt.Sprintf("/%s/", name)
-
 	_, err := iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
 		PolicyName:     &name,
 		PolicyDocument: jsonMarshalIAMPolicyDocument(ctx, policyDocument),
-		Path:           &iamPolicyPath,
+		Path:           &iamPath,
 	})
 	if err != nil && strings.Contains(err.Error(), "already exists") {
 		slog.InfoContext(ctx, "IAM Policy already exists")
@@ -59,12 +60,11 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 		slog.InfoContext(ctx, "Created IAM Policy")
 	}
 
-	// Create IAM Role (with IAM Trust Policy, so it can be assumed) and link the above IAM Policy
-	// to it.
+	// Create IAM Role (with IAM Trust Policy, so it can be assumed).
 	_, err = iamClient.CreateRole(ctx, &iam.CreateRoleInput{
 		RoleName:                 &name,
 		AssumeRolePolicyDocument: jsonMarshalIAMPolicyDocument(ctx, assumePolicyDocument),
-		Path:                     &iamPolicyPath,
+		Path:                     &iamPath,
 	})
 	if err != nil && strings.Contains(err.Error(), "already exists") {
 		slog.InfoContext(ctx, "IAM Role already exists")
@@ -72,6 +72,14 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 		assert.AssertErrNil(ctx, err, "Failed creating IAM Role")
 		slog.InfoContext(ctx, "Created IAM Role")
 	}
+
+	// Link the IAM Role and Policy
+	_, err = iamClient.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
+		RoleName:  &name,
+		PolicyArn: aws.String(fmt.Sprintf("arn:aws:iam::%s:policy%s%s", accountID, iamPath, name)),
+	})
+	assert.AssertErrNil(ctx, err, "Failed attaching IAM Role and Policy")
+	slog.InfoContext(ctx, "Attached IAM Role and Policy")
 }
 
 // JSON marshals the given IAM Policy document and returns the result.

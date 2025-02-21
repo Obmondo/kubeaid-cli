@@ -44,7 +44,8 @@ func RecoverCluster(ctx context.Context) {
 			(1) https://playbook.stakater.com/content/workshop/sealed-secrets/management.html.
 			(2) https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation
 	*/
-	services.DownloadS3BucketContents(ctx, s3Client, config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName, true)
+	sealedSecretsKeysBackupBucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+	services.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupBucketName, true)
 
 	// Bootstrap the new cluster.
 	BootstrapCluster(ctx, true, false, true)

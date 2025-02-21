@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"path"
 	"strings"
 	"time"
@@ -44,11 +45,11 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 
-	createArgoCDApplicationClient(ctx, kubeClient)
+	CreateArgoCDApplicationClient(ctx, kubeClient)
 }
 
 // Creates and returns an ArgoCD application client.
-func createArgoCDApplicationClient(ctx context.Context, kubeClient client.Client) {
+func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client) {
 	slog.InfoContext(ctx, "Creating ArgoCD application client")
 
 	// Create ArgoCD client (without auth token).
@@ -103,11 +104,17 @@ func createArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 func SyncAllArgoCDApps(ctx context.Context) {
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
-	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
-	assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
+	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
+	SyncArgoCDApp(ctx, constants.ArgoCDAppRoot, []*argoCDV1Aplha1.SyncOperationResource{})
 
-	for _, item := range response.Items {
-		SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
+	// Sync each ArgoCD App.
+	{
+		response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
+		assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
+
+		for _, item := range response.Items {
+			SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
+		}
 	}
 }
 
@@ -133,9 +140,10 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 		Name:         &name,
 		AppNamespace: aws.String(constants.NamespaceArgoCD),
 		SyncOptions: &application.SyncOptions{
-			Items: []string{},
+			Items: []string{
+				"CreateNamespace=true",
+			},
 		},
-		Prune: aws.Bool(true),
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{
 			Limit: 3,
 			Backoff: &argoCDV1Aplha1.Backoff{
@@ -186,12 +194,38 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 // If the resources array is empty, then checks whether the whole ArgoCD App is synced. Otherwise,
 // only checks for the specified resources.
 func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Aplha1.SyncOperationResource) bool {
-	// Get the ArgoCD App.
-	argoCDApp, err := globals.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
-		Name:         &name,
-		AppNamespace: aws.String(constants.NamespaceArgoCD),
-	})
-	assert.AssertErrNil(ctx, err, "Failed getting ArgoCD App")
+	var (
+		argoCDApp *argoCDV1Aplha1.Application
+		err       error
+	)
+	// We need a retrial mechanism, because when we sync the argo-cd ArgoCD App, the ArgoCD pod may
+	// get restarted, which will cause a failure. Then, we need to completely reconstruct the
+	// ArgoCD Application client.
+	for {
+		// Get the ArgoCD App.
+		argoCDApp, err = globals.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
+			Name:         &name,
+			AppNamespace: aws.String(constants.NamespaceArgoCD),
+		})
+		if err == nil {
+			break
+		}
+
+		slog.ErrorContext(ctx, "Failed getting ArgoCD App. Retrying after 10 seconds....", logger.Error(err))
+		time.Sleep(10 * time.Second)
+
+		// Reconstruct the ArgoCD Application Client.
+
+		kubeconfig := os.Getenv(constants.EnvNameKubeconfig)
+
+		clusterClient, err := CreateKubernetesClient(ctx, kubeconfig, true)
+		assert.AssertErrNil(ctx, err,
+			"Failed constructing Kubernetes cluster client",
+			slog.String("kubeconfig", kubeconfig),
+		)
+
+		CreateArgoCDApplicationClient(ctx, clusterClient)
+	}
 
 	switch {
 	// Only check that the specified resources are synced.
@@ -213,14 +247,9 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 			return true
 		}
 
-	// Check that the whole ArgoCD App is synced.
-	default:
-		if name != constants.ArgoCDAppVelero {
-			return argoCDApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced
-		}
-
-		// In case of Velero ArgoCD App, check that all the resources (except Schedules and Backups)
-		// are synced.
+	// In case of Velero ArgoCD App, check that all the resources (except Schedules and Backups)
+	// are synced.
+	case name == constants.ArgoCDAppVelero:
 		for _, resource := range argoCDApp.Status.Resources {
 			if resource.Kind == "Schedule" || resource.Kind == "Backup" {
 				continue
@@ -231,5 +260,9 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 			}
 		}
 		return true
+
+	// Check that the whole ArgoCD App is synced.
+	default:
+		return argoCDApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
+func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild, isPartOfDisasterRecovery bool) {
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
@@ -32,9 +32,6 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 	// Create the management cluster (using K3d), if it doesn't already exist.
 	kubernetes.CreateK3DCluster(ctx, "management-cluster")
 
-	// Install Sealed Secrets.
-	kubernetes.InstallSealedSecrets(ctx)
-
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
@@ -45,11 +42,8 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild bool) {
 		gitAuthMethod,
 	)
 
-	// Setup cluster directory in the user's KubeAid config repo.
-	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubePrometheusBuild)
-
 	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Setup the management cluster.
-	SetupCluster(ctx, managementClusterClient)
+	SetupCluster(ctx, managementClusterClient, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 }
