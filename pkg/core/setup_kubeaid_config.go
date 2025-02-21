@@ -52,7 +52,7 @@ func SetupKubeAidConfig(ctx context.Context,
 	clusterDir := utils.GetClusterDir()
 
 	// Create / update non Secret files.
-	createOrUpdateKubeAidConfigFiles(ctx, clusterDir, gitAuthMethod, skipKubePrometheusBuild)
+	createOrUpdateNonSecretFiles(ctx, clusterDir, gitAuthMethod, skipKubePrometheusBuild)
 
 	// Create / update Secret files.
 	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
@@ -74,9 +74,9 @@ func SetupKubeAidConfig(ctx context.Context,
 	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
 }
 
-// Creates / updates all necessary files for the given cluster, in the user's KubeAid config
+// Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
 // repository.
-func createOrUpdateKubeAidConfigFiles(ctx context.Context,
+func createOrUpdateNonSecretFiles(ctx context.Context,
 	clusterDir string,
 	gitAuthMethod transport.AuthMethod,
 	skipKubePrometheusBuild bool,
@@ -115,7 +115,11 @@ func CreateOrUpdateSealedSecretFiles(ctx context.Context, clusterDir string) {
 }
 
 // Creates file from the given template.
-func createFileFromTemplate(ctx context.Context, destinationFilePath, embeddedTemplateName string, templateValues *TemplateValues) {
+func createFileFromTemplate(ctx context.Context,
+	destinationFilePath,
+	embeddedTemplateName string,
+	templateValues *TemplateValues,
+) {
 	utils.CreateIntermediateDirsForFile(ctx, destinationFilePath)
 
 	// Open the destination file.

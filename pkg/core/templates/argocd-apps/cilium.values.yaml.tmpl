@@ -1,0 +1,5 @@
+{{- if .ProvisionedClusterEndpoint }}
+cilium:
+  k8sServiceHost: {{ .ProvisionedClusterEndpoint.Host }}
+  k8sServicePort: {{ .ProvisionedClusterEndpoint.Port }}
+{{- end }}

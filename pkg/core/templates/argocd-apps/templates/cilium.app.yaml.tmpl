@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cilium
+  namespace: cilium
+
+spec:
+  destination:
+    namespace: cilium
+    server: https://kubernetes.default.svc
+  project: default
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/cilium
+      targetRevision: HEAD
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/cilium.values.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+

@@ -30,11 +30,13 @@ func BootstrapCluster(ctx context.Context,
 	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
 	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
 	if !isClusterctlMoveExecuted {
-		// Provision the main cluster
-		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+		// Provision and setup the main cluster.
+		provisionAndSetupMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-		// Pivot ClusterAPI (the provisioned cluster will manage itself).
-		pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+		if !skipClusterctlMove {
+			// Pivot ClusterAPI (the provisioned cluster will manage itself).
+			pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+		}
 	} else {
 		// We're retrying running the script.
 
@@ -69,7 +71,7 @@ func BootstrapCluster(ctx context.Context,
 	slog.InfoContext(ctx, "Cluster bootstrapping finished 🎊")
 }
 
-func provisionMainCluster(ctx context.Context,
+func provisionAndSetupMainCluster(ctx context.Context,
 	gitAuthMethod transport.AuthMethod,
 	skipKubePrometheusBuild bool,
 	isPartOfDisasterRecovery bool,
@@ -89,17 +91,10 @@ func provisionMainCluster(ctx context.Context,
 	kubernetes.SaveKubeconfig(ctx, managementClusterClient)
 
 	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
-}
 
-func pivotCluster(ctx context.Context,
-	gitAuthMethod transport.AuthMethod,
-	skipClusterctlMove bool,
-	isPartOfDisasterRecovery bool,
-) {
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	// All Kubernetes operations from now on, will be done against the provisioned cluster.
 	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
-
 	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
@@ -114,29 +109,33 @@ func pivotCluster(ctx context.Context,
 	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
 	// key of the Sealed Secrets controller installed in the provisioned main cluster.
 	SetupCluster(ctx, provisionedClusterClient, gitAuthMethod, true, isPartOfDisasterRecovery)
+}
 
-	if !skipClusterctlMove {
-		// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
-		//
-		// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
-		//        a master node.
-		//        And, the master node count should be more than 1.
-		if config.ParsedConfig.Cloud.AWS != nil {
-			// Zero the credentials CAPA controller started with.
-			// This will force the CAPA controller to fall back to use the attached instance profiles.
-			utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
+func pivotCluster(ctx context.Context,
+	gitAuthMethod transport.AuthMethod,
+	skipClusterctlMove bool,
+	isPartOfDisasterRecovery bool,
+) {
+	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
+	//
+	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
+	//        a master node.
+	//        And, the master node count should be more than 1.
+	if config.ParsedConfig.Cloud.AWS != nil {
+		// Zero the credentials CAPA controller started with.
+		// This will force the CAPA controller to fall back to use the attached instance profiles.
+		utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
 
-			// Rollout and restart on capa-controller-manager deployment.
-			utils.ExecuteCommandOrDie("clusterawsadm controller rollout-controller --namespace capi-cluster")
-		}
-
-		// Move ClusterAPI manifests to the provisioned cluster.
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-			constants.OutputPathManagementClusterKubeconfig, kubernetes.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
-		))
-
-		// Sync cluster-autoscaler ArgoCD App.
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler, []*argoCDV1Alpha1.SyncOperationResource{})
+		// Rollout and restart on capa-controller-manager deployment.
+		utils.ExecuteCommandOrDie("clusterawsadm controller rollout-controller --namespace capi-cluster")
 	}
+
+	// Move ClusterAPI manifests to the provisioned cluster.
+	utils.ExecuteCommandOrDie(fmt.Sprintf(
+		"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
+		constants.OutputPathManagementClusterKubeconfig, kubernetes.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
+	))
+
+	// Sync cluster-autoscaler ArgoCD App.
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler, []*argoCDV1Alpha1.SyncOperationResource{})
 }
