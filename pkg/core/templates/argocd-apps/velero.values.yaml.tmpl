@@ -23,5 +23,5 @@ velero:
         - mountPath: /target
           name: plugins
   podAnnotations:
-    iam.amazonaws.com/role: arn:aws:iam::{{ .AWSAccountID }}:role/velero-{{ .ClusterConfig.Name }}
+    iam.amazonaws.com/role: arn:aws:iam::{{ .AWSAccountID }}:role/{{ .ClusterConfig.Name }}/velero-{{ .ClusterConfig.Name }}
     cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
