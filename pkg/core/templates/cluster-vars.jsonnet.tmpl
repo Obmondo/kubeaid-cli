@@ -22,7 +22,11 @@
   },
   prometheus_scrape_namespaces: [
     "monitoring",
-    "obmondo",
+  ],
+  prometheus_scrape_default_namespaces: [
+    "argo-cd",
+    "sealed-secrets",
+    "cert-manager",
   ],
   prometheus+: {
     storage: {
