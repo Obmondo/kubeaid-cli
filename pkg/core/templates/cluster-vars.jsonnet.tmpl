@@ -20,9 +20,7 @@
     limits: { memory: "1Gi" },
     requests: { cpu: "200m", memory: "500Mi" },
   },
-  prometheus_scrape_namespaces: [
-    "monitoring",
-  ],
+  prometheus_scrape_namespaces: [],
   prometheus_scrape_default_namespaces: [
     "argo-cd",
     "sealed-secrets",
