@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -28,9 +28,9 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 	createBucketInput := &s3.CreateBucketInput{
 		Bucket: aws.String(name),
 	}
-	if config.ParsedConfig.Cloud.AWS.Region != "us-east-1" {
+	if config.ParsedConfig.Cloud.AWS.Credentials.AWSRegion != "us-east-1" {
 		createBucketInput.CreateBucketConfiguration = &s3Types.CreateBucketConfiguration{
-			LocationConstraint: s3Types.BucketLocationConstraint(config.ParsedConfig.Cloud.AWS.Region),
+			LocationConstraint: s3Types.BucketLocationConstraint(config.ParsedConfig.Cloud.AWS.Credentials.AWSRegion),
 		}
 	}
 	_, err := s3Client.CreateBucket(ctx, createBucketInput)
@@ -52,7 +52,12 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 
 // Downloads the contents of the given S3 bucket locally.
 // If the contents are gZip encoded, then you can choose to gZip decode them after download.
-func DownloadS3BucketContents(ctx context.Context, s3Client *s3.Client, bucketName string, gzipDecode bool) {
+// NOTE : The download path is decided by utils.GetDownloadedStorageBucketContentsDir( ).
+func DownloadS3BucketContents(ctx context.Context,
+	s3Client *s3.Client,
+	bucketName string,
+	gzipDecode bool,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("s3-bucket", bucketName),
 	})
@@ -60,7 +65,7 @@ func DownloadS3BucketContents(ctx context.Context, s3Client *s3.Client, bucketNa
 	slog.InfoContext(ctx, "Downloading contents of S3 bucket")
 
 	// Create directory where S3 objects will be downloaded.
-	downloadDir := utils.GetDirPathForDownloadedStorageBucketContents(bucketName)
+	downloadDir := utils.GetDownloadedStorageBucketContentsDir(bucketName)
 	err := os.MkdirAll(downloadDir, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
 

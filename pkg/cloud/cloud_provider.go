@@ -1,9 +1,29 @@
 package cloud
 
-import "context"
+import (
+	"context"
 
-type CloudProvider interface {
-	SetupDisasterRecovery(ctx context.Context)
+	"sigs.k8s.io/controller-runtime/pkg/client"
+)
 
-	GetSealedSecretsBackupBucketName() string
-}
+type (
+	CloudProvider interface {
+		GetVMSpecs(ctx context.Context, vmType string) *VMSpec
+
+		SetupDisasterRecovery(ctx context.Context)
+
+		GetSealedSecretsBackupBucketName() string
+
+		UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
+			capiClusterValuesFilePath string,
+			_updates any,
+		)
+
+		UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any)
+	}
+
+	VMSpec struct {
+		CPU    uint32
+		Memory uint32
+	}
+)

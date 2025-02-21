@@ -8,15 +8,17 @@ The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cl
 
 - [Bootstrapping a self-managed cluster in AWS](https://github.com/Obmondo/KubeAid/blob/master/docs/aws/capi/cluster.md)
 
-## Developer Guide (AWS)
+## Developer Guide (AWS edition)
 
-> Make sure, you've Docker installed in your system.
+> Make sure, you've Docker installed and running in your system.
 
 Run `make build-image-dev` to build the KubeAid Bootstrap Script container image (development version).
 
 Then run `make run-container-dev` to run the container.
 
-In a separate terminal window, use `make exec-container-dev` to execute into the container.
+If you're running MacOS, then in your host machine, make sure you have mapped `host.docker.internal` to **127.0.0.1** in your **/etc/hosts**.
+
+Use `make exec-container-dev` to execute into the container.
 
 Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.
 
@@ -34,7 +36,7 @@ Then run `make bootstrap-cluster-dev-aws` to bootstrap the cluster!
 > [!NOTE]
 > If the `clusterawsadm bootstrap iam create-cloudformation-stack` command errors out with this message :
 >
->     	the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
+>      the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
 >
 > then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
 
@@ -51,15 +53,15 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [ ] Check Git URL if SSH agent is used.
 - [ ] Validation for sshagentauth (should not accept https url).
 - [x] `--debug` flag to print command execution outputs.
-- [ ] Support adding admin SSH keys via config file.
+- [x] Support adding multiple SSH keys via config file.
 - [ ] Support using HTTPS for ArgoCD apps.
-- [ ] Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure Provider component first.
 - [x] Support enabling `Audit Logging`.
 - [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
 - [x] ETCD metrics enabled.
 - [x] Support scale to / from zero for the node-groups.
   > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
   > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
+- [ ] In case of AWS, pick up AWS credentials from `~/.aws/credentials` (if present).
 - [ ] `recover cluster` command
 
 ## REFERENCES
@@ -70,7 +72,7 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 
 - [AWS S3 Sync Command – Guide with Examples](https://spacelift.io/blog/aws-s3-sync)
 
-- How KubeAid backs up Sealed Secrets using a CRONJob : https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml
+- How KubeAid backs up Sealed Secrets using a CRONJob : <https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml>
 
 - [Key Management](https://playbook.stakater.com/content/workshop/sealed-secrets/management.html)
 
@@ -89,3 +91,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [KubeadmControlPlane CRD](https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml)
 
 - [How can you call a helm 'helper' template from a subchart with the correct context?](https://stackoverflow.com/questions/47791971/how-can-you-call-a-helm-helper-template-from-a-subchart-with-the-correct-conte)
+
+- [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)

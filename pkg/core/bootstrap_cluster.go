@@ -6,125 +6,122 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
-func BootstrapCluster(ctx context.Context, skipKubeAidConfigSetup, skipClusterctlMove bool, cloudProvider cloud.CloudProvider, isPartOfDisasterRecovery bool) {
+func BootstrapCluster(ctx context.Context,
+	skipKubePrometheusBuild,
+	skipClusterctlMove,
+	isPartOfDisasterRecovery bool,
+) {
 	// Detect git authentication method.
-	gitAuthMethod := utils.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Any cloud specific tasks.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
-		aws.SetAWSSpecificEnvs()
-		aws.CreateIAMCloudFormationStack()
-	}
+	// Create local dev environment.
+	CreateDevEnv(ctx, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
-
-	// Create the management cluster (using K3d), if it doesn't already exist.
-	utils.CreateK3DCluster(ctx, "management-cluster")
-
-	// Install Sealed Secrets.
-	utils.InstallSealedSecrets(ctx)
-
-	// Setup cluster directory in the user's KubeAid config repo.
-	if !skipKubeAidConfigSetup {
-		SetupKubeAidConfig(ctx, gitAuthMethod, false)
-	}
-
-	// While retrying, if `clusterctl move` has already been executed, then we skip these steps and
-	// move to the disaster recovery setup step.
-	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
-	if !utils.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
+	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
+	if !isClusterctlMoveExecuted {
 		// Provision the main cluster
-		provisionMainCluster(ctx, gitAuthMethod, skipKubeAidConfigSetup)
+		provisionMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-		// Let the provisioned cluster manage itself.
-		dogfoodProvisionedCluster(ctx, gitAuthMethod, skipClusterctlMove, cloudProvider, isPartOfDisasterRecovery)
+		// Pivot ClusterAPI (the provisioned cluster will manage itself).
+		pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+	} else {
+		// We're retrying running the script.
+
+		// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
+		// All Kubernetes operations from now on, will be done against the provisioned cluster.
+		os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+
+		// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
+		kubernetes.CreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
 	// setup Disaster Recovery.
-	if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
-		cloudProvider.SetupDisasterRecovery(ctx)
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+			globals.CloudProvider.SetupDisasterRecovery(ctx)
+		}
+
+	case constants.CloudProviderAzure:
+		panic("unimplemented")
+
+	case constants.CloudProviderHetzner:
+		panic("unimplemented")
+
+	default:
 	}
+
+	// Sync all ArgoCD Apps.
+	kubernetes.SyncAllArgoCDApps(ctx)
+
+	slog.InfoContext(ctx, "Cluster bootstrapping finished 🎊")
 }
 
-func provisionMainCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipKubeAidConfigSetup bool) {
-	managementClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig)
-
-	// Setup the management cluster.
-	SetupCluster(ctx, managementClusterClient)
+func provisionMainCluster(ctx context.Context,
+	gitAuthMethod transport.AuthMethod,
+	skipKubePrometheusBuild bool,
+	isPartOfDisasterRecovery bool,
+) {
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
 
 	// Sync the complete capi-cluster ArgoCD App.
-	// TODO : Make it compatible with the retry feature, when `clusterctl move` is already performed.
-	utils.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
 
 	// Close ArgoCD application client.
-	constants.ArgoCDApplicationClientCloser.Close()
-
-	// CASE : Hetzner
-	// Make the Failover IP point to the master node where `kubeadm init` has been executed.
-	if config.ParsedConfig.Cloud.Hetzner != nil {
-		hetzner.ExecuteFailoverScript(ctx)
-	}
+	globals.ArgoCDApplicationClientCloser.Close()
 
 	// Wait for the main cluster to be provisioned and ready.
-	utils.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
+	kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
 
 	// Save kubeconfig locally.
-	utils.SaveKubeconfig(ctx, managementClusterClient)
+	kubernetes.SaveKubeconfig(ctx, managementClusterClient)
 
 	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
 }
 
-func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.AuthMethod, skipClusterctlMove bool, cloudProvider cloud.CloudProvider, isPartOfDisasterRecovery bool) {
+func pivotCluster(ctx context.Context,
+	gitAuthMethod transport.AuthMethod,
+	skipClusterctlMove bool,
+	isPartOfDisasterRecovery bool,
+) {
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-	os.Setenv("KUBECONFIG", constants.OutputPathProvisionedClusterKubeconfig)
-	provisionedClusterClient := utils.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig)
+	// All Kubernetes operations from now on, will be done against the provisioned cluster.
+	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+
+	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
 	// workloads.
-	utils.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
-
-	if isPartOfDisasterRecovery {
-		// If this is a part of the disaster recovery process, then
-		// restore Kubernetes Secrets containing a Sealed Secrets key.
-
-		sealedSecretsBackupBucketName := cloudProvider.GetSealedSecretsBackupBucketName()
-		manifestsDirPath := utils.GetDirPathForDownloadedStorageBucketContents(sealedSecretsBackupBucketName)
-
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", manifestsDirPath))
-	}
-
-	// Install Sealed Secrets.
-	utils.InstallSealedSecrets(ctx)
-
-	// We need to update the Sealed Secrets in the kubeaid-config fork.
-	// Those represent Kubernetes Secrets encyrpted using the private key of the Sealed Secrets
-	// controller installed in the K3d management cluster.
-	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
-	// key of the Sealed Secrets controller installed in the provisioned main cluster.
-	SetupKubeAidConfig(ctx, gitAuthMethod, true)
+	kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
 
 	// Setup the provisioned cluster.
-	SetupCluster(ctx, provisionedClusterClient)
+	//
+	// NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
+	// Currently, they represent Kubernetes Secrets encyrpted using the private key of the Sealed
+	// Secrets controller installed in the K3d management cluster.
+	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
+	// key of the Sealed Secrets controller installed in the provisioned main cluster.
+	SetupCluster(ctx, provisionedClusterClient, gitAuthMethod, true, isPartOfDisasterRecovery)
 
 	if !skipClusterctlMove {
-		// Make ClusterAPI use IAM roles instead of (temporary) credentials.
+		// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 		//
 		// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
 		//        a master node.
 		//        And, the master node count should be more than 1.
-		{
+		if config.ParsedConfig.Cloud.AWS != nil {
 			// Zero the credentials CAPA controller started with.
 			// This will force the CAPA controller to fall back to use the attached instance profiles.
 			utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
@@ -136,10 +133,10 @@ func dogfoodProvisionedCluster(ctx context.Context, gitAuthMethod transport.Auth
 		// Move ClusterAPI manifests to the provisioned cluster.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-			constants.OutputPathManagementClusterKubeconfig, utils.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
+			constants.OutputPathManagementClusterKubeconfig, kubernetes.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
 		))
 
 		// Sync cluster-autoscaler ArgoCD App.
-		utils.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler, []*argoCDV1Alpha1.SyncOperationResource{})
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 }

@@ -43,6 +43,9 @@ curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stabl
 chmod +x ./kubectl
 mv ./kubectl /usr/local/bin
 
+# yq
+apt install -y yq
+
 # ------------------------------------------- Utilities -------------------------------------------
 
 # K9s

@@ -1,2 +1,14 @@
----
+aws-cloud-controller-manager:
+  # Currently, hostNetworking must be set to true.
+  # Otherwise, during the Kubernetes version upgrade process, when the control-plane nodes get
+  # restarted, AWS CCM errors out, complaining that :
+  #
+  #     EC2RoleRequestError: no EC2 instance role found caused by: RequestError: send request
+  #     failed caused by: Get "http://169.254.169.254/latest/meta-data/iam/security-credentials/":
+  #     context deadline exceeded
+  #
+  # NOTE : When I SSH into the underlying EC2 instance and do :
+  #        `curl http://169.254.169.254/latest/meta-data/iam/security-credentials/`, then it
+  #        succeeds.
+  hostNetworking: true
 

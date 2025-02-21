@@ -5,10 +5,11 @@ import (
 	"embed"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 //go:embed templates/*
@@ -38,12 +39,12 @@ func getTemplateValues() *TemplateValues {
 		AWSConfig:            config.ParsedConfig.Cloud.AWS,
 		HetznerConfig:        config.ParsedConfig.Cloud.Hetzner,
 		MonitoringConfig:     config.ParsedConfig.Monitoring,
-		CAPIClusterNamespace: utils.GetCapiClusterNamespace(),
+		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 	}
 
 	// Set cloud provider specific values.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
 		templateValues.AWSAccountID = aws.GetAccountID(context.Background())
 		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
 	}
@@ -57,8 +58,8 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	embeddedTemplateNames := constants.CommonNonSecretTemplateNames
 
 	// Add cloud provider specific templates.
-	switch {
-	case config.ParsedConfig.Cloud.AWS != nil:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificNonSecretTemplateNames...)
 		//
 		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
@@ -67,7 +68,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
 		}
 
-	case config.ParsedConfig.Cloud.Hetzner != nil:
+	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)
 	}
 
@@ -88,8 +89,8 @@ func getEmbeddedSecretTemplateNames() []string {
 	embeddedTemplateNames := constants.CommonSecretTemplateNames
 
 	// Add cloud provider specific templates, if required.
-	switch {
-	case config.ParsedConfig.Cloud.Hetzner != nil:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificSecretTemplateNames...)
 	}
 

@@ -7,7 +7,7 @@ IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/kubeaid-bootstrap-script/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build -f ./build/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
 
 .PHONY: remove-image-dev
 remove-image-dev:
@@ -41,25 +41,48 @@ stop-container-dev:
 remove-container-dev: stop-container-dev
 	@docker rm $(CONTAINER_NAME)
 
-.PHONY: generate-sample-config-aws-dev
-generate-sample-config-aws-dev:
-	@go run ./cmd/kubeaid-bootstrap-script/ config generate aws
+.PHONY: sample-config-generate-aws-dev
+sample-config-generate-aws-dev:
+	@go run ./cmd/ config generate aws
 
-.PHONY: bootstrap-cluster-dev-aws
-bootstrap-cluster-dev-aws:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap aws \
+.PHONY: devenv-create-aws-dev
+devenv-create-aws-dev:
+	@go run ./cmd/ devenv create aws \
 		--debug \
-		--config /app/outputs/kubeaid-bootstrap-script.aws.config.yaml
-# --skip-kubeaid-config-setup
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
+
+.PHONY: bootstrap-cluster-aws-dev
+bootstrap-cluster-aws-dev:
+	@go run ./cmd/ cluster bootstrap aws \
+		--debug \
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
+    --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
-.PHONY: bootstrap-cluster-dev-hetzner
-bootstrap-cluster-dev-hetzner:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster bootstrap hetzner \
+.PHONY: upgrade-cluster-aws-dev
+upgrade-cluster-aws-dev:
+	@go run ./cmd/ cluster upgrade aws \
 		--debug \
-    --config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
-    --skip-clusterctl-move
-# --skip-kubeaid-config-setup
+    --config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
+		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
+
+.PHONY: delete-provisioned-cluster-aws-dev
+delete-provisioned-cluster-aws-dev:
+	@go run ./cmd/ cluster delete \
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
+
+.PHONY: bootstrap-cluster-hetzner-dev
+bootstrap-cluster-hetzner-dev:
+	@go run ./cmd/ cluster bootstrap hetzner \
+		--debug \
+    --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
+    --skip-kube-prometheus-build
+# --skip-clusterctl-move
+
+.PHONY: delete-provisioned-cluster-hetzner-dev
+delete-provisioned-cluster-hetzner-dev:
+	@go run ./cmd/ cluster delete \
+		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
 .PHONY: use-management-cluster
 use-management-cluster:
@@ -69,17 +92,7 @@ use-management-cluster:
 use-provisioned-cluster:
 	export KUBECONFIG=./outputs/provisioned-cluster.kubeconfig.yaml
 
-.PHONY: delete-provisioned-cluster-dev-aws
-delete-provisioned-cluster-dev-aws:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
-		--config /app/outputs/kubeaid-bootstrap-script.aws.config.yaml
-
-.PHONY: delete-provisioned-cluster-dev-hetzner
-delete-provisioned-cluster-dev-hetzner:
-	@go run ./cmd/kubeaid-bootstrap-script/ cluster delete \
-		--config /app/outputs/kubeaid-bootstrap-script.hetzner.config.yaml
-
-.PHONY: delete-management-cluster
-delete-management-cluster:
+.PHONY: management-cluster-delete
+management-cluster-delete:
 	KUBECONFIG=./outputs/management-cluster.kubeconfig.yaml \
 		k3d cluster delete management-cluster

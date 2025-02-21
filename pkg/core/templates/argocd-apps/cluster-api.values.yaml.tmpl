@@ -1,7 +1,4 @@
 cluster-api-operator:
-  core: cluster-api:v1.7.2
   configSecret:
     name: cloud-credentials
     namespace: {{ .CAPIClusterNamespace }}
-  bootstrap: kubeadm:v1.7.2
-  controlPlane: kubeadm:v1.7.2

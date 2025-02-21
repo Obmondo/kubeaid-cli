@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/sagikazarmark/slog-shim"
 )
@@ -27,15 +27,30 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 	veleroBackupsS3BucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsS3BucketName
 	services.CreateS3Bucket(ctx, a.s3Client, veleroBackupsS3BucketName)
 
-	clusterName := config.ParsedConfig.Cluster.Name
+	var (
+		clusterName = config.ParsedConfig.Cluster.Name
+		accountID   = GetAccountID(ctx)
+	)
 
 	// Create IAM Policy for Sealed Secrets Backuper.
 	sealedSecretsBackuperIAMPolicyName := fmt.Sprintf("sealed-secrets-backuper-%s", clusterName)
-	services.CreateIAMPolicy(ctx, a.iamClient, sealedSecretsBackuperIAMPolicyName, getSealedSecretsBackuperIAMPolicy())
+	services.CreateIAMRoleForPolicy(ctx,
+		accountID,
+		a.iamClient,
+		sealedSecretsBackuperIAMPolicyName,
+		getSealedSecretsBackuperIAMPolicy(),
+		getIAMTrustPolicy(ctx),
+	)
 	//
 	// Create IAM Policy for Velero.
 	veleroIAMPolicyName := fmt.Sprintf("velero-%s", clusterName)
-	services.CreateIAMPolicy(ctx, a.iamClient, veleroIAMPolicyName, getVeleroIAMPolicy())
+	services.CreateIAMRoleForPolicy(ctx,
+		accountID,
+		a.iamClient,
+		veleroIAMPolicyName,
+		getVeleroIAMPolicy(),
+		getIAMTrustPolicy(ctx),
+	)
 
 	// Sync Kube2IAM, K8sConfigs, Velero and SealedSecrets ArgoCD Apps.
 	argocdAppsToBeSynced := []string{
@@ -45,6 +60,6 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		utils.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 }
