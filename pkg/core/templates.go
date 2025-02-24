@@ -10,6 +10,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 //go:embed templates/*
@@ -27,6 +28,7 @@ type TemplateValues struct {
 	CAPIClusterNamespace,
 	AWSB64EncodedCredentials,
 	AWSAccountID string
+	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
 
 func getTemplateValues() *TemplateValues {
@@ -47,6 +49,26 @@ func getTemplateValues() *TemplateValues {
 	case constants.CloudProviderAWS:
 		templateValues.AWSAccountID = aws.GetAccountID(context.Background())
 		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
+	}
+
+	// Set control-plane endpoint, if cluster has been provisioned. The control-plane endpoint will
+	// be used to create the Cilium ArgoCD App.
+	//
+	// NOTE :
+	//
+	//  (1) This executes before we do `clusterctl move`.
+	//
+	//  (2) Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
+	//      the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
+	//      provisioned, we bring it in the GitOPs cycle.
+	{
+		ctx := context.Background()
+
+		managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+
+		if cluster, err := kubernetes.GetClusterResource(ctx, managementClusterClient); err == nil {
+			templateValues.ProvisionedClusterEndpoint = &cluster.Spec.ControlPlaneEndpoint
+		}
 	}
 
 	return templateValues

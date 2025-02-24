@@ -241,15 +241,27 @@ func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")
 }
 
-// Returns whether the `clusterctl move` command has already been executed or not.
-func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient client.Client) bool {
-	// If the Cluster resource is found in the provisioned cluster, that means `clusterctl move` has
-	// been executed.
-	err := GetKubernetesResource(ctx, provisionedClusterClient, &clusterAPIV1Beta1.Cluster{
+// Looks for and returns the Cluster resource in the given Kubernetes cluster.
+func GetClusterResource(ctx context.Context,
+	clusterClient client.Client,
+) (*clusterAPIV1Beta1.Cluster, error) {
+	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      config.ParsedConfig.Cluster.Name,
 			Namespace: GetCapiClusterNamespace(),
 		},
-	})
+	}
+
+	if err := GetKubernetesResource(ctx, clusterClient, cluster); err != nil {
+		return nil, utils.WrapError("Failed getting Cluster resource", err)
+	}
+	return cluster, nil
+}
+
+// Returns whether the `clusterctl move` command has already been executed or not.
+func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient client.Client) bool {
+	// If the Cluster resource is found in the provisioned cluster, that means `clusterctl move` has
+	// been executed.
+	_, err := GetClusterResource(ctx, provisionedClusterClient)
 	return err == nil
 }

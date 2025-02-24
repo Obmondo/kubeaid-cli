@@ -82,6 +82,10 @@ var (
 	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
+		// For Cilium
+		"argocd-apps/templates/cilium.app.yaml.tmpl",
+		"argocd-apps/cilium.values.yaml.tmpl",
+
 		// For ArgoCD.
 		"argocd-apps/templates/argo-cd.app.yaml.tmpl",
 		"argocd-apps/argo-cd.values.yaml.tmpl",
