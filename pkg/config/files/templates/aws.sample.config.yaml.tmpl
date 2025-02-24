@@ -4,9 +4,10 @@
 #   (1) Clone the KubeAid and KubeAid config repositories.
 #   (2) Create and push commits to a branch in the KubeAid config repository.
 #
-# So, make sure the Git password (token) you're using has permissions associated to do the above.
+# So, make sure the Git password (token) you're using has necessary permissions associated to do
+# the above.
 #
-# Currently, we only support HTTPS authentication.
+# NOTE : Currently, we only support HTTPS authentication.
 git:
   username: xxxxxxxxxx
   password: xxxxxxxxxx
@@ -53,14 +54,21 @@ cluster:
   #   # REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File
   #   files: []
 
-  # Uncomment, if you just want audit-logging to be setup for you! KubeAid Bootstrap Script will set
-  # necessary configuration options in cluster.apiServer.
+  # Uncomment, if you just want audit-logging to work out of the box! KubeAid Bootstrap Script will
+  # set necessary configuration options in cluster.apiServer.
   # enableAuditLogging: True
+  
+  # Any additional users you want to be setup for each Kubernetes node.
+  # additionalUsers:
+  #  - name: archi
+  #    sshPublicKey: xxxxxxxxxx
 
 cloud:
   # AWS specific configurations.
   aws:
-    region: us-east-1
+    # AWS Cloud credentials.
+    credentials:
+      # region: us-east-1
 
     # AWS SSH Keypair name, which ClusterAPI components (Kubeadm bootstrap and control-plane
     # providers specifically) will use to SSH into the main cluster's master nodes.
@@ -69,24 +77,22 @@ cloud:
     # Use an existing VPC instead of Cluster API automatically spinning up a new one.
     # vpcID: xxxxxxxxxx
 
+    # By default, a Bastion Host will be created.
     # bastionEnabled: True
 
     controlPlane:
       ami:
         id: ami-xxxxxxxxxxxxxxxxx
       instanceType: t4g.medium
-      replicas: 1
+      replicas: 3
 
     nodeGroups:
       - name: primary
         ami:
           id: ami-xxxxxxxxxxxxxxxxx
         instanceType: t4g.medium
-
-        minSize: 0
-        replicas: 1
+        minSize: 1
         maxSize: 3
-
         rootVolumeSize: 35
 
         # AWS SSH Keypair name, which ClusterAPI components (Kubeadm bootstrap provider
@@ -106,8 +112,14 @@ cloud:
 
         # taints: []
 
+    # Setup disaster recovery.
+    # NOTE : Skips creating any of necessary S3 buckets, IAM Roles or Policies if they already
+    # exist.
     disasterRecovery:
+      # S3 bucket where Velero will backup Kubernetes objects.
       veleroBackupsS3BucketName: kubeaid-demo-kubernetes-objects
+
+      # S3 Bucket where Sealed Secrets controller's private keys will be backed up.
       sealedSecretsBackupS3BucketName: kubeaid-demo-sealed-secrets
 
 # monitoring:
