@@ -76,7 +76,7 @@ func provisionAndSetupMainCluster(ctx context.Context,
 	skipKubePrometheusBuild bool,
 	isPartOfDisasterRecovery bool,
 ) {
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
 
 	// Sync the complete capi-cluster ArgoCD App.
 	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
@@ -133,7 +133,7 @@ func pivotCluster(ctx context.Context,
 	// Move ClusterAPI manifests to the provisioned cluster.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
 		"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-		constants.OutputPathManagementClusterKubeconfig, kubernetes.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
+		constants.OutputPathManagementClusterContainerKubeconfig, kubernetes.GetCapiClusterNamespace(), constants.OutputPathProvisionedClusterKubeconfig,
 	))
 
 	// Sync cluster-autoscaler ArgoCD App.

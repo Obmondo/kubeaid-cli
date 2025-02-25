@@ -42,7 +42,7 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 		// If `clusterctl move` wasn't executed, then we need to communicate with the management
 		// cluster instead.
 		if !kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
-			managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+			managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
 			clusterClient = managementClusterClient
 		}
 	}

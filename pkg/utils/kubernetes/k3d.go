@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"runtime"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -14,37 +14,58 @@ import (
 )
 
 // Creates a K3D cluster with the given name (only if it doesn't already exist).
+//
+// The user needs to create a Docker Network (preferably named `k3d-management-cluster`) and run
+// the KubeAid Bootstrap Script container in that Docker Network.
+// The K3D cluster will reuse that existing network.
+// From inside the container, we can access the K3D cluster's API server using
+// https://k3d-management-cluster-server-0:6443.
+// And from outside the container, we can use https://127.0.0.1:<whatever the random port is>.
 func CreateK3DCluster(ctx context.Context, name string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("cluster", name),
 	})
 
-	// Skip creating the cluster, if it already exists.
-	if doesK3dClusterExist(ctx, name) {
+	// Create the K3D cluster if it doesn't already exist.
+	if !doesK3dClusterExist(ctx, name) {
+		slog.InfoContext(ctx, "Creating the K3d management cluster")
+
+		// We'll reuse the existing k3d-management-cluster Docker Network.
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        k3d cluster create %s \
+          --servers 1 --agents 3 \
+          --image rancher/k3s:v1.31.0-k3s1 \
+          --network k3d-management-cluster \
+          --wait
+	    `,
+			name,
+		))
+	} else {
 		slog.InfoContext(ctx, "Skipped creating the K3d management cluster")
-		return
 	}
 
-	slog.InfoContext(ctx, "Creating the K3d management cluster")
+	// Create the management cluster's host kubeconfig.
+	// Use https://127.0.0.1:<whatever the random port is> as the API server address.
+	utils.ExecuteCommandOrDie(fmt.Sprintf(
+		`
+      cp %s %s && \
+        yq '.clusters[0].cluster.server' %s | \
+        sed -E 's#https://[^:]+#https://127.0.0.1#' | \
+        xargs -I{} yq -i -y '.clusters[0].cluster.server = "{}"' %s
+    `,
+		constants.OutputPathManagementClusterContainerKubeconfig,
+		constants.OutputPathManagementClusterHostKubeconfig,
+		constants.OutputPathManagementClusterHostKubeconfig,
+		constants.OutputPathManagementClusterHostKubeconfig,
+	))
 
-	// Kubernetes API Server host for MacOS.
-	// NOTE : The user must make sure, that host.docker.internal is mapped to 127.0.0.1 in the host
-	//        machine.
-	apiServerHost := "host.docker.internal"
-
-	// In case of Linux, the Kubernetes API Server host is set to the Docker Bridge Gateway IP.
-	if runtime.GOOS == "linux" {
-		apiServerHost = "172.17.0.1"
-	}
-
-	// Create the cluster.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(`
-		k3d cluster create %s \
-			--servers 1 --agents 3 \
-			--image rancher/k3s:v1.31.0-k3s1 \
-      --api-port %s:6445 \
-			--wait
-	`, name, apiServerHost))
+	// For management cluster's in-container kubeconfig, use
+	// https://k3d-management-cluster-server-0:6443 as the API server address.
+	utils.ExecuteCommandOrDie(fmt.Sprintf(
+		"yq -i -y '.clusters[0].cluster.server = \"https://k3d-management-cluster-server-0:6443\"' %s",
+		constants.OutputPathManagementClusterContainerKubeconfig,
+	))
 
 	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".
 	// We'll change the label value to "" (just like it is in Vanilla Kubernetes).

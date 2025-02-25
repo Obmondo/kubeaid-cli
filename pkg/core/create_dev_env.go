@@ -27,7 +27,7 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild, isPartOfDisaster
 		break
 	}
 
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterKubeconfig)
+	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterContainerKubeconfig)
 
 	// Create the management cluster (using K3d), if it doesn't already exist.
 	kubernetes.CreateK3DCluster(ctx, "management-cluster")
@@ -42,7 +42,7 @@ func CreateDevEnv(ctx context.Context, skipKubePrometheusBuild, isPartOfDisaster
 		gitAuthMethod,
 	)
 
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
 
 	// Setup the management cluster.
 	SetupCluster(ctx, managementClusterClient, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
