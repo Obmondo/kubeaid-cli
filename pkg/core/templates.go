@@ -64,7 +64,7 @@ func getTemplateValues() *TemplateValues {
 	{
 		ctx := context.Background()
 
-		managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterKubeconfig, true)
+		managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
 
 		if cluster, err := kubernetes.GetClusterResource(ctx, managementClusterClient); err == nil {
 			templateValues.ProvisionedClusterEndpoint = &cluster.Spec.ControlPlaneEndpoint

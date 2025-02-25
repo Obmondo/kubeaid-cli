@@ -54,9 +54,12 @@ const (
 
 // Output paths.
 const (
-	OutputPathManagementClusterKubeconfig  = "./outputs/management-cluster.kubeconfig.yaml"
+	OutputPathGeneratedConfig = "./outputs/kubeaid-bootstrap-script.config.yaml"
+
+	OutputPathManagementClusterHostKubeconfig      = "./outputs/management-cluster.host.kubeconfig.yaml"
+	OutputPathManagementClusterContainerKubeconfig = "./outputs/management-cluster.container.kubeconfig.yaml"
+
 	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
-	OutputPathGeneratedConfig              = "./outputs/kubeaid-bootstrap-script.config.yaml"
 )
 
 // ArgoCD App names.

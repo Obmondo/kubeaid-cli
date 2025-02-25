@@ -86,7 +86,7 @@ delete-provisioned-cluster-hetzner-dev:
 
 .PHONY: use-management-cluster
 use-management-cluster:
-	export KUBECONFIG=./outputs/management-cluster.kubeconfig.yaml
+	export KUBECONFIG=./outputs/management-cluster.container.kubeconfig.yaml
 
 .PHONY: use-provisioned-cluster
 use-provisioned-cluster:
@@ -94,5 +94,5 @@ use-provisioned-cluster:
 
 .PHONY: management-cluster-delete
 management-cluster-delete:
-	KUBECONFIG=./outputs/management-cluster.kubeconfig.yaml \
+	KUBECONFIG=./outputs/management-cluster.container.kubeconfig.yaml \
 		k3d cluster delete management-cluster
