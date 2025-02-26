@@ -81,10 +81,10 @@ func provisionAndSetupMainCluster(ctx context.Context,
 	// Sync the complete capi-cluster ArgoCD App.
 	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
 
-	// Close ArgoCD application client.
+	// Close ArgoCD application client (to the management cluster).
 	globals.ArgoCDApplicationClientCloser.Close()
 
-	// Wait for the main cluster to be provisioned and ready.
+	// Wait for the main cluster to be provisioned.
 	kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
 
 	// Save kubeconfig locally.

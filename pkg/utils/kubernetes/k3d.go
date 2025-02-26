@@ -50,12 +50,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
 		`
       cp %s %s && \
-        yq '.clusters[0].cluster.server' %s | \
-        sed -E 's#https://[^:]+#https://127.0.0.1#' | \
-        xargs -I{} yq -i -y '.clusters[0].cluster.server = "{}"' %s
+        KUBECONFIG=%s kubectl config set-cluster k3d-management-cluster --server=$(kubectl config view --minify -o jsonpath='{.clusters[?(@.name=="k3d-management-cluster")].cluster.server}' | sed 's#https://[^:]*#https://127.0.0.1#')
     `,
 		constants.OutputPathManagementClusterContainerKubeconfig,
-		constants.OutputPathManagementClusterHostKubeconfig,
 		constants.OutputPathManagementClusterHostKubeconfig,
 		constants.OutputPathManagementClusterHostKubeconfig,
 	))
@@ -63,7 +60,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"yq -i -y '.clusters[0].cluster.server = \"https://k3d-management-cluster-server-0:6443\"' %s",
+		"KUBECONFIG=%s kubectl config set-cluster k3d-management-cluster --server=https://k3d-management-cluster-server-0:6443",
 		constants.OutputPathManagementClusterContainerKubeconfig,
 	))
 
