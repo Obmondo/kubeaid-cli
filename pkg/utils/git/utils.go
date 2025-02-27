@@ -6,13 +6,16 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
-func GetDefaultBranchName(ctx context.Context, repo *goGit.Repository) string {
+func GetDefaultBranchName(ctx context.Context, authMethod transport.AuthMethod, repo *goGit.Repository) string {
 	remote, err := repo.Remote("origin")
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
-	refs, err := remote.List(&goGit.ListOptions{})
+	refs, err := remote.List(&goGit.ListOptions{
+		Auth: authMethod,
+	})
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
 	for _, ref := range refs {

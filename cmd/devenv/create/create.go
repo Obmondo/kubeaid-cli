@@ -15,4 +15,5 @@ var CreateCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	CreateCmd.AddCommand(AWSCmd)
+	CreateCmd.AddCommand(LocalCmd)
 }

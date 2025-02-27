@@ -68,6 +68,9 @@ func validateConfig(config *Config) {
 	case constants.CloudProviderHetzner:
 		break
 
+	case constants.CloudProviderLocal:
+		break
+
 	default:
 		panic("unreachable")
 	}

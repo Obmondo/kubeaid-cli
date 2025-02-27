@@ -51,13 +51,13 @@ func ParseConfig(ctx context.Context, configAsString string) {
 		hydrateWithAuditLoggingOptions()
 
 		/*
-		  For each node-group, the CPU and memory of the corresponding VM type need to specified.
-		  This is required by Cluster AutoScaler, for 2 things to work :
+			For each node-group, the CPU and memory of the corresponding VM type need to specified.
+			This is required by Cluster AutoScaler, for 2 things to work :
 
-		    (1) scale from zero
+			(1) scale from zero
 
-		    (2) when a node in a node-group is cordoned and there is workload-pressure, the node-group
-		        gets scaled up.
+			(2) when a node in a node-group is cordoned and there is workload-pressure, the node-group
+					gets scaled up.
 		*/
 		// NOTE : Always make sure this gets called after readCloudCredentialsFromFlagsToConfig(),
 		//        since the cloud credentials from the parsed config are required to construct the
@@ -85,6 +85,9 @@ func detectCloudProvider() {
 		globals.CloudProviderName = constants.CloudProviderHetzner
 		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
 
+	case ParsedConfig.Cloud.Local != nil:
+		globals.CloudProviderName = constants.CloudProviderLocal
+
 	default:
 		slog.Error("No cloud specific details provided")
 		os.Exit(1)
@@ -110,6 +113,9 @@ func readCloudCredentialsFromFlagsToConfig() {
 			HetznerRobotUsername,
 			HetznerRobotPassword,
 		}
+
+	case constants.CloudProviderLocal:
+		return
 
 	default:
 		panic("unreachable")
@@ -181,6 +187,9 @@ func hydrateVMSpecs(ctx context.Context) {
 
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")
+
+	case constants.CloudProviderLocal:
+		return
 
 	default:
 		panic("unreachable")

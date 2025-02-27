@@ -25,7 +25,7 @@ func CheckoutToDefaultBranch(ctx context.Context,
 	removeUnstagedChanges(ctx, repo, workTree)
 
 	// Checkout to the default branch.
-	defaultBranchName := GetDefaultBranchName(ctx, repo)
+	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
 	err := workTree.Checkout(&goGit.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/" + defaultBranchName),
 		Keep:   false,

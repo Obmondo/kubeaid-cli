@@ -70,7 +70,7 @@ func SetupKubeAidConfig(ctx context.Context,
 	// specific to the git platform the user is on.
 
 	// Wait until the PR gets merged.
-	defaultBranchName := git.GetDefaultBranchName(ctx, repo)
+	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
 	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
 }
 

@@ -50,6 +50,7 @@ const (
 	CloudProviderAWS     = "aws"
 	CloudProviderHetzner = "hetzner"
 	CloudProviderAzure   = "azure"
+	CloudProviderLocal   = "local"
 )
 
 // Output paths.
@@ -75,6 +76,8 @@ const (
 // Uncategorized.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
+
+	K3DMgmtClusterName = "management-cluster"
 
 	NamespaceArgoCD = "argo-cd"
 )
