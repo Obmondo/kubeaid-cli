@@ -16,8 +16,6 @@ Run `make build-image-dev` to build the KubeAid Bootstrap Script container image
 
 Then run `make run-container-dev` to run the container.
 
-If you're running MacOS, then in your host machine, make sure you have mapped `host.docker.internal` to **127.0.0.1** in your **/etc/hosts**.
-
 Use `make exec-container-dev` to execute into the container.
 
 Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.

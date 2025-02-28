@@ -34,6 +34,7 @@ aws:
   controlPlane:
     loadBalancer:
       loadBalancerType: nlb
+      scheme: {{ .AWSConfig.ControlPlane.LoadBalancerScheme }}
     region: {{ .AWSConfig.Credentials.AWSRegion }}
     replicas: {{ .AWSConfig.ControlPlane.Replicas }}
     instanceType: {{ .AWSConfig.ControlPlane.InstanceType }}
