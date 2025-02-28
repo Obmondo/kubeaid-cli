@@ -59,18 +59,29 @@ func SetupCluster(ctx context.Context,
 	// Sync the Root, CertManager, Secrets and ClusterAPI ArgoCD Apps one by one.
 	argocdAppsToBeSynced := []string{
 		"root",
+		"argo-cd",
 		"cert-manager",
 		"secrets",
-		"cluster-api",
+		"sealed-secrets",
 	}
+
+	if skipKubePrometheusBuild {
+		argocdAppsToBeSynced = append(argocdAppsToBeSynced, []string{constants.ArgoCDAppKubePrometheus}...)
+	}
+
 	for _, argoCDApp := range argocdAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
-	// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
-	// Provider component first.
-	syncInfrastructureProvider(ctx, kubeClient)
+	// NOTE: sync cluster-api if its not a local dev setup
+	if config.ParsedConfig.Cloud.Local != nil {
+		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
+
+		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
+		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
+		// Provider component first.
+		syncInfrastructureProvider(ctx, kubeClient)
+	}
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the

@@ -30,9 +30,12 @@ cluster:
   # NOTE : Make sure that the AMI you're using, is targetted towards this Kubernetes version.
   k8sVersion: v1.31.0
 
+  # Kubeaid version to use.
+  kubeaidVersion: 10.0.0
+
   # Kubernetes API server specific configurations.
   # REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
-  #  
+  #
   # NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
   #        source types linked below.
   #        There are some configuration options which appear in the corresponding GoLang source type,
@@ -57,7 +60,7 @@ cluster:
   # Uncomment, if you just want audit-logging to work out of the box! KubeAid Bootstrap Script will
   # set necessary configuration options in cluster.apiServer.
   # enableAuditLogging: True
-  
+
   # Any additional users you want to be setup for each Kubernetes node.
   # additionalUsers:
   #  - name: archi

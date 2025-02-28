@@ -77,7 +77,7 @@ func getTemplateValues() *TemplateValues {
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
 func getEmbeddedNonSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
-	embeddedTemplateNames := constants.CommonNonSecretTemplateNames
+	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames, constants.CommonCloudNonSecretTemplateNames...)
 
 	// Add cloud provider specific templates.
 	switch globals.CloudProviderName {
@@ -92,6 +92,9 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)
+
+	case constants.CloudProviderLocal:
+		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
 	// Add Obmondo K8s Agent related templates, if 'monitoring.connectObmondo' is set to true.
@@ -108,12 +111,14 @@ func getEmbeddedNonSecretTemplateNames() []string {
 // Returns the list of embedded Secret template names based on the underlying cloud provider.
 func getEmbeddedSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
-	embeddedTemplateNames := constants.CommonSecretTemplateNames
+	embeddedTemplateNames := append(constants.CommonSecretTemplateNames, constants.CommonCloudSecretTemplateNames...)
 
 	// Add cloud provider specific templates, if required.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificSecretTemplateNames...)
+	case constants.CloudProviderLocal:
+		embeddedTemplateNames = constants.CommonSecretTemplateNames
 	}
 
 	return embeddedTemplateNames

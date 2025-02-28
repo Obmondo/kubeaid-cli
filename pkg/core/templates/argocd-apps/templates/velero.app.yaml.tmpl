@@ -1,6 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+    labels:
+      kubeaid.io/version: "{{ .KubeaidVersion }}"
+      kubeaid.io/managed-by: "kubeaid"
+      kubeaid.io/priority: "default"
   name: velero
   namespace: argo-cd
   finalizers:
@@ -9,11 +13,11 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: velero
-  project: default
+  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
       path: argocd-helm-charts/velero
-      targetRevision: HEAD
+      targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
           - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/velero.values.yaml

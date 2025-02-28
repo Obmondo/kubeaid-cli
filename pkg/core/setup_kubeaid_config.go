@@ -92,7 +92,7 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	}
 
 	// Build KubePrometheus.
-	if !skipKubePrometheusBuild {
+	if skipKubePrometheusBuild {
 		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
 	}
 }

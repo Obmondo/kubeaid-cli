@@ -36,6 +36,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
         k3d cluster create %s \
           --servers 1 --agents 3 \
           --image rancher/k3s:v1.31.0-k3s1 \
+          --k3s-arg "--tls-san=0.0.0.0@server:*" \
           --network k3d-%s \
           --wait
 			`,
@@ -49,7 +50,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Create the management cluster's host kubeconfig.
 	// Use https://127.0.0.1:<whatever the random port is> as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		`k3d kubeconfig get %s > %s`,
+		"k3d kubeconfig get %s > %s",
 		name,
 		constants.OutputPathManagementClusterHostKubeconfig,
 	))
@@ -57,7 +58,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443",
+		"cp %s %s && KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443",
+		constants.OutputPathManagementClusterHostKubeconfig,
+		constants.OutputPathManagementClusterContainerKubeconfig,
 		constants.OutputPathManagementClusterContainerKubeconfig,
 		name,
 		name,

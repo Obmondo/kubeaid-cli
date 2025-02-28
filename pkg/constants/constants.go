@@ -88,10 +88,6 @@ var (
 	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
-		// For Cilium
-		"argocd-apps/templates/cilium.app.yaml.tmpl",
-		"argocd-apps/cilium.values.yaml.tmpl",
-
 		// For ArgoCD.
 		"argocd-apps/templates/argo-cd.app.yaml.tmpl",
 		"argocd-apps/argo-cd.values.yaml.tmpl",
@@ -111,6 +107,12 @@ var (
 		"argocd-apps/templates/sealed-secrets.app.yaml.tmpl",
 		"argocd-apps/sealed-secrets.values.yaml.tmpl",
 		"argocd-apps/templates/secrets.app.yaml.tmpl",
+	}
+
+	CommonCloudNonSecretTemplateNames = []string{
+		// For Cilium
+		"argocd-apps/templates/cilium.app.yaml.tmpl",
+		"argocd-apps/cilium.values.yaml.tmpl",
 
 		// For Cluster API.
 		"argocd-apps/templates/cluster-api.app.yaml.tmpl",
@@ -128,7 +130,9 @@ var (
 	CommonSecretTemplateNames = []string{
 		// For ArgoCD.
 		"sealed-secrets/argo-cd/kubeaid-config.yaml.tmpl",
+	}
 
+	CommonCloudSecretTemplateNames = []string{
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 	}

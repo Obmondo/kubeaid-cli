@@ -3,6 +3,7 @@ package create
 import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
+	"log/slog"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ var LocalCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.CreateDevEnv(cmd.Context(), clusterName, true, false)
+		slog.Info("Local cluster bootstrapping finished 🎊")
 	},
 }
 

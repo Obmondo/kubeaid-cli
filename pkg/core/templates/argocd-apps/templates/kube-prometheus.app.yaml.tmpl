@@ -1,16 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+    labels:
+      kubeaid.io/version: "{{ .KubeaidVersion }}"
+      kubeaid.io/managed-by: "kubeaid"
+      kubeaid.io/priority: "default"
   name: kube-prometheus
   namespace: argo-cd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
-
 spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: monitoring
-  project: default
+  project: kubeaid
   source:
     path: k8s/{{ .ClusterConfig.Name }}/kube-prometheus
     repoURL: {{ .KubeaidConfigForkURL }}
