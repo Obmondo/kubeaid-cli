@@ -75,12 +75,15 @@ cloud:
     sshKeyName: kubeaid-demo
 
     # Use an existing VPC instead of Cluster API automatically spinning up a new one.
+    # ClusterAPI will automatically create the remaining necessary infrastructure.
+    # REFERENCE : https://cluster-api-aws.sigs.k8s.io/topics/failure-domains/control-planes#failure-domains-in-control-plane-nodes.
     # vpcID: xxxxxxxxxx
 
     # By default, a Bastion Host will be created.
     # bastionEnabled: True
 
     controlPlane:
+      # loadBalancerScheme: internet-facing
       ami:
         id: ami-xxxxxxxxxxxxxxxxx
       instanceType: t4g.medium

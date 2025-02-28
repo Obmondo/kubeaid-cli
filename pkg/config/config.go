@@ -137,9 +137,10 @@ type (
 	}
 
 	AWSControlPlane struct {
-		Replicas     uint   `yaml:"replicas" validate:"required"`
-		InstanceType string `yaml:"instanceType" validate:"required,notblank"`
-		AMI          AMI    `yaml:"ami" validate:"required"`
+		LoadBalancerScheme string `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
+		Replicas           uint   `yaml:"replicas" validate:"required"`
+		InstanceType       string `yaml:"instanceType" validate:"required,notblank"`
+		AMI                AMI    `yaml:"ami" validate:"required"`
 	}
 
 	AWSNodeGroup struct {
