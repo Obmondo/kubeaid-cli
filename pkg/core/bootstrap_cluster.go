@@ -25,7 +25,7 @@ func BootstrapCluster(ctx context.Context,
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	CreateDevEnv(ctx, constants.K3DMgmtClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
 	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
 	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)

@@ -23,7 +23,7 @@ import (
 // And from outside the container, we can use https://127.0.0.1:<whatever the random port is>.
 func CreateK3DCluster(ctx context.Context, name string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("cluster", name),
+		slog.String("cluster-name", name),
 	})
 
 	// Create the K3D cluster if it doesn't already exist.
@@ -36,9 +36,11 @@ func CreateK3DCluster(ctx context.Context, name string) {
         k3d cluster create %s \
           --servers 1 --agents 3 \
           --image rancher/k3s:v1.31.0-k3s1 \
-          --network k3d-management-cluster \
+          --k3s-arg "--tls-san=0.0.0.0@server:*" \
+          --network k3d-%s \
           --wait
-	    `,
+			`,
+			name,
 			name,
 		))
 	} else {
@@ -48,20 +50,20 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Create the management cluster's host kubeconfig.
 	// Use https://127.0.0.1:<whatever the random port is> as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		`
-      cp %s %s && \
-        KUBECONFIG=%s kubectl config set-cluster k3d-management-cluster --server=$(kubectl config view --minify -o jsonpath='{.clusters[?(@.name=="k3d-management-cluster")].cluster.server}' | sed 's#https://[^:]*#https://127.0.0.1#')
-    `,
-		constants.OutputPathManagementClusterContainerKubeconfig,
-		constants.OutputPathManagementClusterHostKubeconfig,
+		"k3d kubeconfig get %s > %s",
+		name,
 		constants.OutputPathManagementClusterHostKubeconfig,
 	))
 
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"KUBECONFIG=%s kubectl config set-cluster k3d-management-cluster --server=https://k3d-management-cluster-server-0:6443",
+		"cp %s %s && KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443",
+		constants.OutputPathManagementClusterHostKubeconfig,
 		constants.OutputPathManagementClusterContainerKubeconfig,
+		constants.OutputPathManagementClusterContainerKubeconfig,
+		name,
+		name,
 	))
 
 	// Initially the master nodes have label node-role.kubernetes.io/control-plane set to "true".

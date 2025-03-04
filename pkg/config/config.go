@@ -29,8 +29,9 @@ type (
 	}
 
 	ClusterConfig struct {
-		Name       string `yaml:"name" validate:"required,notblank"`
-		K8sVersion string `yaml:"k8sVersion" validate:"required,notblank"`
+		Name           string `yaml:"name" validate:"required,notblank"`
+		K8sVersion     string `yaml:"k8sVersion" validate:"required,notblank"`
+		KubeaidVersion string `yaml:"kubeaidVersion" validate:"required,notblank"`
 
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 
@@ -98,6 +99,7 @@ type (
 		AWS     *AWSConfig     `yaml:"aws"`
 		Hetzner *HetznerConfig `yaml:"hetzner"`
 		Azure   *AzureConfig   `yaml:"azure"`
+		Local   *LocalConfig   `yaml:"local"`
 	}
 
 	SSHKeyPairConfig struct {
@@ -239,6 +241,11 @@ type (
 // Azure specific.
 type (
 	AzureConfig struct{}
+)
+
+// Local specific.
+type (
+	LocalConfig struct{}
 )
 
 var ParsedConfig = &Config{}

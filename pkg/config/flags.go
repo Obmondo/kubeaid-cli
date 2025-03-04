@@ -21,7 +21,6 @@ func RegisterConfigFilePathFlag(command *cobra.Command) {
 		constants.OutputPathGeneratedConfig,
 		"Path to the KubeAid Bootstrap Script config file",
 	)
-	command.MarkPersistentFlagRequired(constants.FlagNameConfig)
 }
 
 var AWSAccessKey,

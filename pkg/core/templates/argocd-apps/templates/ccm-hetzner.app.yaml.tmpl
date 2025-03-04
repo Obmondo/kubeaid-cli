@@ -1,18 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+    labels:
+      kubeaid.io/version: "{{ .KubeaidVersion }}"
+      kubeaid.io/managed-by: "kubeaid"
+      kubeaid.io/priority: "default"
   name: ccm-hetzner
   namespace: argo-cd
-
 spec:
   destination:
     namespace: kube-system
     server: https://kubernetes.default.svc
-  project: default
+  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
       path: argocd-helm-charts/ccm-hetzner
-      targetRevision: HEAD
+      targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
           - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/ccm-hetzner.values.yaml
@@ -23,4 +26,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
-

@@ -1,6 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+    labels:
+      kubeaid.io/version: "{{ .KubeaidVersion }}"
+      kubeaid.io/managed-by: "kubeaid"
+      kubeaid.io/priority: "default"
   name: root
   namespace: argo-cd
   finalizers:
@@ -9,7 +13,7 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: argo-cd
-  project: default
+  project: kubeaid
   source:
     path: k8s/{{ .ClusterConfig.Name }}/argocd-apps
     repoURL: {{ .KubeaidConfigForkURL }}

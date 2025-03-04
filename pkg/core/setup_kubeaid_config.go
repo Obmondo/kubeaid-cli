@@ -70,7 +70,7 @@ func SetupKubeAidConfig(ctx context.Context,
 	// specific to the git platform the user is on.
 
 	// Wait until the PR gets merged.
-	defaultBranchName := git.GetDefaultBranchName(ctx, repo)
+	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
 	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
 }
 
@@ -92,7 +92,7 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	}
 
 	// Build KubePrometheus.
-	if !skipKubePrometheusBuild {
+	if skipKubePrometheusBuild {
 		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
 	}
 }

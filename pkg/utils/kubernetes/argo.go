@@ -42,8 +42,10 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 	// Create the root ArgoCD App.
 	slog.Info("Creating root ArgoCD app")
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
+	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argo-cd/kubeaid-config.yaml")
 
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
 
 	CreateArgoCDApplicationClient(ctx, kubeClient)
 }
@@ -123,7 +125,7 @@ func SyncAllArgoCDApps(ctx context.Context) {
 // specified resources.
 func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1.SyncOperationResource) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("app", name),
+		slog.String("app-name", name),
 	})
 
 	// Skip, if the ArgoCD App is already synced.
@@ -133,7 +135,6 @@ func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1
 	}
 
 	// Sync the ArgoCD app.
-
 	slog.InfoContext(ctx, "Syncing ArgoCD application")
 
 	applicationSyncRequest := &application.ApplicationSyncRequest{

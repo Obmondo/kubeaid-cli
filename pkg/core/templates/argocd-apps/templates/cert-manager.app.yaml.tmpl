@@ -1,18 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+    labels:
+      kubeaid.io/version: "{{ .KubeaidVersion }}"
+      kubeaid.io/managed-by: "kubeaid"
+      kubeaid.io/priority: "default"
   name: cert-manager
   namespace: argo-cd
-
 spec:
   destination:
     namespace: cert-manager
     server: https://kubernetes.default.svc
-  project: default
+  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
       path: argocd-helm-charts/cert-manager
-      targetRevision: HEAD
+      targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
           - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/cert-manager.values.yaml
