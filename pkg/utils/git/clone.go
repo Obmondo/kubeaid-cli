@@ -49,9 +49,7 @@ func CloneRepo(ctx context.Context,
 	var auth transport.AuthMethod
 
 	isPrivate, err := IsRepoPrivate(ctx, url)
-	if err != nil {
-		assert.AssertErrNil(ctx, err, "failed to determine git repo type")
-	}
+	assert.AssertErrNil(ctx, err, "failed to determine git repo type")
 
 	if isPrivate {
 		auth = authMethod
