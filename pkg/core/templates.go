@@ -51,23 +51,29 @@ func getTemplateValues() *TemplateValues {
 		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
 	}
 
-	// Set control-plane endpoint, if cluster has been provisioned. The control-plane endpoint will
-	// be used to create the Cilium ArgoCD App.
+	// Set control-plane endpoint, if cluster has been provisioned (detects by trying to query the
+	// Cluster resource from the management / provisioned cluster).
+	// The control-plane endpoint will be used to create the Cilium ArgoCD App.
 	//
-	// NOTE :
-	//
-	//  (1) This executes before we do `clusterctl move`.
-	//
-	//  (2) Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
-	//      the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
-	//      provisioned, we bring it in the GitOPs cycle.
+	// NOTE : Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
+	//        the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
+	//        provisioned, we bring it in the GitOPs cycle.
 	{
 		ctx := context.Background()
 
-		managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
+		kubeConfigPaths := []string{
+			constants.OutputPathManagementClusterContainerKubeconfig,
+			constants.OutputPathProvisionedClusterKubeconfig,
+		}
 
-		if cluster, err := kubernetes.GetClusterResource(ctx, managementClusterClient); err == nil {
-			templateValues.ProvisionedClusterEndpoint = &cluster.Spec.ControlPlaneEndpoint
+		for _, kubeConfigPath := range kubeConfigPaths {
+			clusterClient, _ := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath, true)
+
+			cluster, err := kubernetes.GetClusterResource(ctx, clusterClient)
+			if err == nil {
+				templateValues.ProvisionedClusterEndpoint = &cluster.Spec.ControlPlaneEndpoint
+				break
+			}
 		}
 	}
 
