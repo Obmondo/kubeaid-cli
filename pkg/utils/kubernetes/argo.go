@@ -16,10 +16,15 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	coreV1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -27,6 +32,7 @@ import (
 
 // Installs ArgoCD Helm chart and creates the root ArgoCD App.
 // Then creates and returns an ArgoCD Application client.
+// TODO : Refactor.
 func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient client.Client) {
 	// Install ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
@@ -39,6 +45,38 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 		Values:      "notification.enabled=false, dex.enabled=false",
 	})
 
+	// Create ArgoCD Application client and port-forward the ArgoCD server.
+	CreateArgoCDApplicationClient(ctx, kubeClient)
+
+	{
+		argoCDServerGRPCConnection, err := grpc.Dial("127.0.0.1:8080", grpc.WithInsecure())
+		assert.AssertErrNil(ctx, err, "Failed creating gRPC connection to the ArgoCD server")
+		defer argoCDServerGRPCConnection.Close()
+
+		// Create ArgoCD Project client.
+		argoCDProjectClient := project.NewProjectServiceClient(argoCDServerGRPCConnection)
+
+		// Create the kubeaid ArgoCD Project.
+		_, err = argoCDProjectClient.Create(ctx, &project.ProjectCreateRequest{
+			Project: &argoCDV1Aplha1.AppProject{
+				ObjectMeta: v1.ObjectMeta{
+					Name: "kubeaid",
+				},
+			},
+		})
+		if err != nil {
+			println(err.Error())
+			gRPCResponseStatus, ok := status.FromError(err)
+			if !ok || (gRPCResponseStatus.Code() == codes.AlreadyExists) {
+				assert.AssertErrNil(ctx, err, "Failed creating kubeaid ArgoCD Project")
+			}
+
+			slog.InfoContext(ctx, "Skipped creating kubeaid ArgoCD project, since it already exists")
+		} else {
+			slog.InfoContext(ctx, "Created kubeaid ArgoCD project")
+		}
+	}
+
 	// Create the root ArgoCD App.
 	slog.Info("Creating root ArgoCD app")
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
@@ -46,11 +84,10 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
-
-	CreateArgoCDApplicationClient(ctx, kubeClient)
 }
 
 // Creates and returns an ArgoCD application client.
+// Also, port-forwards the ArgoCD server.
 func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client) {
 	slog.InfoContext(ctx, "Creating ArgoCD application client")
 
@@ -66,6 +103,8 @@ func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 
 		Insecure:     true,
 		HttpRetryMax: 20,
+
+		GRPCWeb: false,
 	}
 	argoCDClient := apiclient.NewClientOrDie(argoCDClientOpts)
 
