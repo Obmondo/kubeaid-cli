@@ -27,7 +27,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Uses the kubeconfig file present at the given path, to create and return a Kubernetes Go client.
+// Creates a Kubernetes Go client using the Kubeconfig file present at the given path.
+// Panics on failure.
+func MustCreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.Client {
+	clusterClient, err := CreateKubernetesClient(ctx, kubeconfigPath, true)
+	assert.AssertErrNil(ctx, err,
+		"Failed constructing Kubernetes cluster client",
+		slog.String("kubeconfig", kubeconfigPath),
+	)
+
+	return clusterClient
+}
+
+// Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
+// Returns the Kubernetes Go client.
 func CreateKubernetesClient(ctx context.Context,
 	kubeconfigPath string,
 	panicOnKubeconfigBuildFailure bool,
@@ -115,7 +128,9 @@ func InstallSealedSecrets(ctx context.Context) {
 		Version:     "2.17.1",
 		Namespace:   "sealed-secrets",
 		ReleaseName: "sealed-secrets",
-		Values:      "fullnameOverride=sealed-secrets-controller",
+		Values: map[string]interface{}{
+			"fullnameOverride": "sealed-secrets-controller",
+		},
 	})
 }
 

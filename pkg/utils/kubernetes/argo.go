@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
@@ -20,7 +21,6 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	coreV1 "k8s.io/api/core/v1"
@@ -32,64 +32,57 @@ import (
 
 // Installs ArgoCD Helm chart and creates the root ArgoCD App.
 // Then creates and returns an ArgoCD Application client.
-// TODO : Refactor.
 func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient client.Client) {
 	// Install ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
 		RepoName:    "argo-cd",
 		RepoURL:     "https://argoproj.github.io/argo-helm",
 		ChartName:   "argo-cd",
-		Version:     "7.7.0",
+		Version:     "7.8.0",
 		Namespace:   "argo-cd",
 		ReleaseName: "argo-cd",
-		Values:      "notification.enabled=false, dex.enabled=false",
+		Values: map[string]interface{}{
+			"notification": map[string]interface{}{
+				"enabled": false,
+			},
+			"dex": map[string]interface{}{
+				"enabled": false,
+			},
+		},
 	})
 
-	// Create ArgoCD Application client and port-forward the ArgoCD server.
-	CreateArgoCDApplicationClient(ctx, kubeClient)
+	// Port-forward ArgoCD and create ArgoCD client.
+	argoCDClient := NewArgoCDClient(ctx, kubeClient)
+
+	// Create ArgoCD Application client.
+	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
 
 	{
-		argoCDServerGRPCConnection, err := grpc.Dial("127.0.0.1:8080", grpc.WithInsecure())
-		assert.AssertErrNil(ctx, err, "Failed creating gRPC connection to the ArgoCD server")
-		defer argoCDServerGRPCConnection.Close()
-
 		// Create ArgoCD Project client.
-		argoCDProjectClient := project.NewProjectServiceClient(argoCDServerGRPCConnection)
+		argoCDProjectClientCloser, argoCDProjectClient := argoCDClient.NewProjectClientOrDie()
+		defer argoCDProjectClientCloser.Close()
 
-		// Create the kubeaid ArgoCD Project.
-		_, err = argoCDProjectClient.Create(ctx, &project.ProjectCreateRequest{
-			Project: &argoCDV1Aplha1.AppProject{
-				ObjectMeta: v1.ObjectMeta{
-					Name: "kubeaid",
-				},
-			},
-		})
-		if err != nil {
-			println(err.Error())
-			gRPCResponseStatus, ok := status.FromError(err)
-			if !ok || (gRPCResponseStatus.Code() == codes.AlreadyExists) {
-				assert.AssertErrNil(ctx, err, "Failed creating kubeaid ArgoCD Project")
-			}
-
-			slog.InfoContext(ctx, "Skipped creating kubeaid ArgoCD project, since it already exists")
-		} else {
-			slog.InfoContext(ctx, "Created kubeaid ArgoCD project")
-		}
+		// Create the kubeaid ArgoCD Project, under which all the ArgoCD Apps will be.
+		CreateArgoCDProject(ctx, argoCDProjectClient, constants.ArgoCDProjectKubeAid)
 	}
 
-	// Create the root ArgoCD App.
-	slog.Info("Creating root ArgoCD app")
-	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
+	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
 	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argo-cd/kubeaid-config.yaml")
-
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
+
+	// Create the root ArgoCD App.
+	{
+		rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
+		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+
+		slog.Info("Created root ArgoCD app")
+	}
 }
 
-// Creates and returns an ArgoCD application client.
-// Also, port-forwards the ArgoCD server.
-func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client) {
-	slog.InfoContext(ctx, "Creating ArgoCD application client")
+// Port-forwards the ArgoCD server and creates an ArgoCD client.
+// Returns the ArgoCD client.
+func NewArgoCDClient(ctx context.Context, kubeClient client.Client) apiclient.Client {
+	slog.InfoContext(ctx, "Creating ArgoCD client")
 
 	// Create ArgoCD client (without auth token).
 	argoCDClientOpts := &apiclient.ClientOptions{
@@ -115,8 +108,7 @@ func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 
 	// Retrieve ArgoCD admin password.
 	argoCDInitialAdminSecret := &coreV1.Secret{}
-	err = kubeClient.Get(
-		ctx,
+	err = kubeClient.Get(ctx,
 		types.NamespacedName{
 			Namespace: constants.NamespaceArgoCD,
 			Name:      "argocd-initial-admin-secret",
@@ -136,6 +128,57 @@ func CreateArgoCDApplicationClient(ctx context.Context, kubeClient client.Client
 	// Recreate ArgoCD client, with auth token.
 	argoCDClientOpts.AuthToken = response.Token
 	argoCDClient = apiclient.NewClientOrDie(argoCDClientOpts)
+
+	return argoCDClient
+}
+
+// Tries to create an ArgoCD Project with the given name.
+// Skips if the ArgoCD Project already exists.
+// Panics on failure.
+func CreateArgoCDProject(ctx context.Context,
+	argoCDProjectClient project.ProjectServiceClient,
+	name string,
+) {
+	_, err := argoCDProjectClient.Create(ctx, &project.ProjectCreateRequest{
+		Project: &argoCDV1Aplha1.AppProject{
+			ObjectMeta: v1.ObjectMeta{
+				Name: constants.ArgoCDProjectKubeAid,
+			},
+			Spec: argoCDV1Aplha1.AppProjectSpec{
+				SourceRepos: []string{
+					config.ParsedConfig.Forks.KubeaidForkURL,
+					config.ParsedConfig.Forks.KubeaidConfigForkURL,
+				},
+				Destinations:             []argoCDV1Aplha1.ApplicationDestination{{Server: "*", Namespace: "*"}},
+				ClusterResourceWhitelist: []v1.GroupKind{{Group: "*", Kind: "*"}},
+			},
+		},
+	})
+	if err != nil {
+		gRPCResponseStatus, ok := status.FromError(err)
+		if ok && (gRPCResponseStatus.Code() == codes.AlreadyExists) {
+			slog.InfoContext(ctx, "Skipped creating kubeaid ArgoCD project, since it already exists")
+			return
+		}
+
+		assert.AssertErrNil(ctx, err, "Failed creating kubeaid ArgoCD Project")
+	}
+
+	slog.InfoContext(ctx, "Created kubeaid ArgoCD project")
+}
+
+// Recreates the ArgoCD Application client by port-forwarding the ArgoCD server.
+// If the clusterClient is not provided (is nil), then it picks up the KUBECONFIG envionment
+// variable and constructs the cluster client by itself.
+func RecreateArgoCDApplicationClient(ctx context.Context, clusterClient client.Client) {
+	// Construct the cluster client, if not provided.
+	if clusterClient == nil {
+		kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
+		clusterClient = MustCreateKubernetesClient(ctx, kubeconfigPath)
+	}
+
+	// Port-forward ArgoCD and create ArgoCD client.
+	argoCDClient := NewArgoCDClient(ctx, clusterClient)
 
 	// Create ArgoCD Application client.
 	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
@@ -239,12 +282,13 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 		err       error
 	)
 	// We need a retrial mechanism, because when we sync the argo-cd ArgoCD App, the ArgoCD pod may
-	// get restarted, which will cause a failure. Then, we need to completely reconstruct the
-	// ArgoCD Application client.
+	// get restarted, which will cause a failure. Then, we need to again port-forward the ArgoCD
+	// server and completely reconstruct the ArgoCD Application client.
 	for {
 		// Get the ArgoCD App.
 		argoCDApp, err = globals.ArgoCDApplicationClient.Get(context.Background(), &application.ApplicationQuery{
 			Name:         &name,
+			Project:      []string{constants.ArgoCDProjectKubeAid},
 			AppNamespace: aws.String(constants.NamespaceArgoCD),
 		})
 		if err == nil {
@@ -254,17 +298,8 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 		slog.ErrorContext(ctx, "Failed getting ArgoCD App. Retrying after 10 seconds....", logger.Error(err))
 		time.Sleep(10 * time.Second)
 
-		// Reconstruct the ArgoCD Application Client.
-
-		kubeconfig := os.Getenv(constants.EnvNameKubeconfig)
-
-		clusterClient, err := CreateKubernetesClient(ctx, kubeconfig, true)
-		assert.AssertErrNil(ctx, err,
-			"Failed constructing Kubernetes cluster client",
-			slog.String("kubeconfig", kubeconfig),
-		)
-
-		CreateArgoCDApplicationClient(ctx, clusterClient)
+		// Port-forward the ArgoCD server pod and recreate the ArgoCD Application client.
+		RecreateArgoCDApplicationClient(ctx, nil)
 	}
 
 	switch {

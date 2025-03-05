@@ -13,14 +13,14 @@ import (
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 )
 
-// Creates a K3D cluster with the given name (only if it doesn't already exist).
+// Creates a K3D cluster with the given name, if it doesn't already exist.
 //
 // The user needs to create a Docker Network (preferably named `k3d-management-cluster`) and run
 // the KubeAid Bootstrap Script container in that Docker Network.
 // The K3D cluster will reuse that existing network.
 // From inside the container, we can access the K3D cluster's API server using
 // https://k3d-management-cluster-server-0:6443.
-// And from outside the container, we can use https://127.0.0.1:<whatever the random port is>.
+// And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 func CreateK3DCluster(ctx context.Context, name string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("cluster-name", name),
@@ -48,7 +48,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	}
 
 	// Create the management cluster's host kubeconfig.
-	// Use https://127.0.0.1:<whatever the random port is> as the API server address.
+	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
 		"k3d kubeconfig get %s > %s",
 		name,

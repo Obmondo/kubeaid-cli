@@ -14,7 +14,6 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/strvals"
 )
 
 type HelmInstallArgs struct {
@@ -24,7 +23,7 @@ type HelmInstallArgs struct {
 	Version,
 	ReleaseName,
 	Namespace string
-	Values string
+	Values map[string]interface{}
 }
 
 // Installs the given Helm chart (if not already deployed).
@@ -95,7 +94,11 @@ func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configura
 }
 
 // Installs the given Helm chart.
-func helmInstall(ctx context.Context, settings *cli.EnvSettings, actionConfig *action.Configuration, args *HelmInstallArgs) {
+func helmInstall(ctx context.Context,
+	settings *cli.EnvSettings,
+	actionConfig *action.Configuration,
+	args *HelmInstallArgs,
+) {
 	slog.InfoContext(ctx, "Installing Helm chart")
 
 	installAction := action.NewInstall(actionConfig)
@@ -122,11 +125,7 @@ func helmInstall(ctx context.Context, settings *cli.EnvSettings, actionConfig *a
 		return loader.Load(chartPath)
 	})
 
-	// Parse Helm chart values.
-	values, err := strvals.Parse(args.Values)
-	assert.AssertErrNil(ctx, err, "Failed parsing Helm values")
-
 	// Install the Helm chart.
-	_, err = installAction.Run(chart, values)
+	_, err = installAction.Run(chart, args.Values)
 	assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
 }

@@ -63,8 +63,12 @@ const (
 	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
 )
 
-// ArgoCD App names.
+// ArgoCD.
 const (
+	// Project.
+	ArgoCDProjectKubeAid = "kubeaid"
+
+	// Apps.
 	ArgoCDAppRoot              = "root"
 	ArgoCDAppCapiCluster       = "capi-cluster"
 	ArgoCDAppHetznerRobot      = "hetzner-robot"
@@ -77,7 +81,7 @@ const (
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
-	K3DMgmtClusterName = "management-cluster"
+	ManagementClusterName = "management-cluster"
 
 	NamespaceArgoCD = "argo-cd"
 )

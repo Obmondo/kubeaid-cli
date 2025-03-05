@@ -25,7 +25,7 @@ func BootstrapCluster(ctx context.Context,
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, constants.K3DMgmtClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	CreateDevEnv(ctx, constants.ManagementClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
 	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
 	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
@@ -45,7 +45,7 @@ func BootstrapCluster(ctx context.Context,
 		os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
 
 		// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
-		kubernetes.CreateArgoCDApplicationClient(ctx, provisionedClusterClient)
+		kubernetes.RecreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
