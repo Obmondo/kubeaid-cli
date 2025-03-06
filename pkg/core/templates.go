@@ -67,7 +67,10 @@ func getTemplateValues() *TemplateValues {
 		}
 
 		for _, kubeConfigPath := range kubeConfigPaths {
-			clusterClient, _ := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath, true)
+			clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath, true)
+			if err != nil {
+				continue
+			}
 
 			cluster, err := kubernetes.GetClusterResource(ctx, clusterClient)
 			if err == nil {

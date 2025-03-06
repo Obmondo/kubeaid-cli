@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func RecoverCluster(ctx context.Context) {
+func RecoverCluster(ctx context.Context, managementClusterName string) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		assert.AssertNotNil(ctx, config.ParsedConfig.Cloud.AWS.DisasterRecovery, "disasterRecovery section in the config file, can't be empty")
@@ -48,7 +48,7 @@ func RecoverCluster(ctx context.Context) {
 	services.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupBucketName, true)
 
 	// Bootstrap the new cluster.
-	BootstrapCluster(ctx, true, false, true)
+	BootstrapCluster(ctx, managementClusterName, true, false, true)
 
 	panic("unimplemented")
 

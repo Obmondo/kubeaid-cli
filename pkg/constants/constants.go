@@ -21,6 +21,9 @@ const (
 
 	FlagNameK8sVersion = "k8s-version"
 
+	FlagNameManagementClusterName             = "management-cluster-name"
+	FlagNameManagementClusterNameDefaultValue = "management-cluster"
+
 	FlagNameConfig = "config"
 
 	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
@@ -32,11 +35,11 @@ const (
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
 
-	FlagNameAWSAccessKey    = "aws-access-key-id"
-	FlagNameAWSSecretKey    = "aws-secret-access-key"
-	FlagNameAWSSessionToken = "aws-session-token"
-	FlagNameAWSRegion       = "aws-region"
-	FlagNameAMIID           = "ami-id"
+	FlagNameAWSAccessKeyID     = "aws-access-key-id"
+	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
+	FlagNameAWSSessionToken    = "aws-session-token"
+	FlagNameAWSRegion          = "aws-region"
+	FlagNameAMIID              = "ami-id"
 )
 
 // Kube API server CLI flags.
@@ -80,8 +83,6 @@ const (
 // Uncategorized.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
-
-	ManagementClusterName = "management-cluster"
 
 	NamespaceArgoCD = "argo-cd"
 )

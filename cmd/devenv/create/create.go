@@ -14,19 +14,23 @@ var CreateCmd = &cobra.Command{
 }
 
 var (
+	managementClusterName   string
 	skipKubePrometheusBuild bool
-	clusterName             string
 )
 
 func init() {
 	// Subcommands.
 	CreateCmd.AddCommand(AWSCmd)
-	CreateCmd.AddCommand(LocalCmd)
 
 	// Flags.
-	LocalCmd.PersistentFlags().
-		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false, "Skip the Kube Prometheus build step while setting up KubeAid Config")
 
-	LocalCmd.PersistentFlags().
-		StringVar(&clusterName, "cluster-name", "test-cluster", "Create a local k3d cluster with default argo-cd apps")
+	CreateCmd.PersistentFlags().
+		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, "test-cluster",
+			"Name of the local K3D management cluster",
+		)
+
+	CreateCmd.PersistentFlags().
+		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
+			"Skip the Kube Prometheus build step while setting up KubeAid Config",
+		)
 }

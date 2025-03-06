@@ -42,8 +42,8 @@ func NewAWSCloudProvider() cloud.CloudProvider {
 func SetAWSSpecificEnvs() {
 	awsCredentials := config.ParsedConfig.Cloud.AWS.Credentials
 
-	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKey)
-	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretKey)
+	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
+	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
 	os.Setenv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
 	os.Setenv(constants.EnvNameAWSRegion, awsCredentials.AWSRegion)
 

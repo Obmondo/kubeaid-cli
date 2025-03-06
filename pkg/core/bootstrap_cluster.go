@@ -17,6 +17,7 @@ import (
 )
 
 func BootstrapCluster(ctx context.Context,
+	managementClusterName string,
 	skipKubePrometheusBuild,
 	skipClusterctlMove,
 	isPartOfDisasterRecovery bool,
@@ -25,27 +26,29 @@ func BootstrapCluster(ctx context.Context,
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, constants.ManagementClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	CreateDevEnv(ctx, managementClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
-	isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
-	if !isClusterctlMoveExecuted {
-		// Provision and setup the main cluster.
-		provisionAndSetupMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	if config.ParsedConfig.Cloud.Local == nil {
+		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
+		isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
+		if !isClusterctlMoveExecuted {
+			// Provision and setup the main cluster.
+			provisionAndSetupMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
 
-		if !skipClusterctlMove {
-			// Pivot ClusterAPI (the provisioned cluster will manage itself).
-			pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+			if !skipClusterctlMove {
+				// Pivot ClusterAPI (the provisioned cluster will manage itself).
+				pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+			}
+		} else {
+			// We're retrying running the script.
+
+			// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
+			// All Kubernetes operations from now on, will be done against the provisioned cluster.
+			os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+
+			// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
+			kubernetes.RecreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 		}
-	} else {
-		// We're retrying running the script.
-
-		// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-		// All Kubernetes operations from now on, will be done against the provisioned cluster.
-		os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
-
-		// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
-		kubernetes.RecreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 	}
 
 	// If the diasterRecovery section is specified in the cloud-provider specific config, then
@@ -55,20 +58,12 @@ func BootstrapCluster(ctx context.Context,
 		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
 			globals.CloudProvider.SetupDisasterRecovery(ctx)
 		}
-
-	case constants.CloudProviderAzure:
-		panic("unimplemented")
-
-	case constants.CloudProviderHetzner:
-		panic("unimplemented")
-
-	default:
 	}
 
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
-	slog.InfoContext(ctx, "Cluster bootstrapping finished 🎊")
+	slog.InfoContext(ctx, "Cluster has been bootsrapped successfully 🎊")
 }
 
 func provisionAndSetupMainCluster(ctx context.Context,

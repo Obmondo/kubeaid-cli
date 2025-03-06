@@ -12,19 +12,33 @@ var BootstrapCmd = &cobra.Command{
 	},
 }
 
-var skipKubePrometheusBuild,
+var (
+	managementClusterName string
+
+	skipKubePrometheusBuild,
 	skipClusterctlMove bool
+)
 
 func init() {
 	// Subcommands.
 	BootstrapCmd.AddCommand(AWSCmd)
 	BootstrapCmd.AddCommand(HetznerCmd)
+	BootstrapCmd.AddCommand(LocalCmd)
 
 	// Flags.
 
 	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false, "Skip the Kube Prometheus build step while setting up KubeAid Config")
+		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, "test-cluster",
+			"Name of the local K3D management cluster",
+		)
 
 	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipClusterctlMove, constants.FlagNameSkipClusterctlMove, false, "Skip executing the 'clusterctl move' command")
+		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
+			"Skip the Kube Prometheus build step while setting up KubeAid Config",
+		)
+
+	BootstrapCmd.PersistentFlags().
+		BoolVar(&skipClusterctlMove, constants.FlagNameSkipClusterctlMove, false,
+			"Skip executing the 'clusterctl move' command",
+		)
 }
