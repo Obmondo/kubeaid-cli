@@ -110,9 +110,18 @@ func helmInstall(ctx context.Context,
 	installAction.Timeout = 10 * time.Minute
 	installAction.Wait = true
 
-	// Determine the path to the Helm chart.
-	chartPath, err := installAction.ChartPathOptions.LocateChart(args.ChartName, settings)
-	assert.AssertErrNil(ctx, err, "Failed locating chart path in Helm repo")
+	/*
+		Determine the path to the Helm chart.
+		We need to retry, since in some rare scenario we get this type of error :
+
+		  Get "https://bitnami-labs.github.io/sealed-secrets/index.yaml": dial tcp: lookup
+		  bitnami-labs.github.io on 127.0.0.11:53: server misbehaving
+		  looks like "https://bitnami-labs.github.io/sealed-secrets/" is not a valid chart repository
+		  or cannot be reached
+	*/
+	chartPath, _ := retry.DoWithData(func() (string, error) {
+		return installAction.ChartPathOptions.LocateChart(args.ChartName, settings)
+	})
 
 	/*
 		Load the Helm chart from that chart path.
@@ -126,6 +135,6 @@ func helmInstall(ctx context.Context,
 	})
 
 	// Install the Helm chart.
-	_, err = installAction.Run(chart, args.Values)
+	_, err := installAction.Run(chart, args.Values)
 	assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
 }
