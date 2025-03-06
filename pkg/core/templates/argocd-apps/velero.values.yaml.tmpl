@@ -7,13 +7,13 @@ velero:
       - name: default
         bucket: {{ .AWSConfig.DisasterRecovery.VeleroBackupsS3BucketName }}
         config:
-          region: {{ .AWSConfig.Credentials.AWSRegion }}
+          region: {{ .AWSConfig.Region }}
         provider: aws
     volumeSnapshotLocation:
       - name: default
         provider: aws
         config:
-          region: {{ .AWSConfig.Credentials.AWSRegion }}
+          region: {{ .AWSConfig.Region }}
     features: EnableCSI
   initContainers:
     - name: velero-velero-plugin-for-aws

@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -105,7 +104,7 @@ The cloud credentials are searched one by one in the following sources :
 
 	(2) Config File.
 
-	(3) ~/.aws/config (only in case of AWS :)).
+	(3) config and credentials files in ~/.aws (only in case of AWS :)).
 
 We'll fail during validation if the cloud credentials are found in none of the above sources.
 */
@@ -119,9 +118,9 @@ func readCloudCredentialsFromFlagsToConfig(ctx context.Context) {
 			)
 
 			ParsedConfig.Cloud.AWS.Credentials = AWSCredentials{
-				AWSAccessKeyID:     AWSAccessKeyID,
-				AWSSecretAccessKey: AWSSecretAccessKey,
-				AWSSessionToken:    AWSSessionToken,
+				AWSAccessKeyID,
+				AWSSecretAccessKey,
+				AWSSessionToken,
 			}
 
 			return
@@ -136,7 +135,8 @@ func readCloudCredentialsFromFlagsToConfig(ctx context.Context) {
 		}
 
 		// The AWS credentials and region were not provided via the config file as well.
-		// We'll retrieve them from ~/.aws/credentials.
+		// We'll retrieve them using the files in ~/.aws.
+		// And we panic if any error occurs.
 		awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
 		slog.InfoContext(ctx, "Using AWS credentials from ~/.aws/config")
 		ParsedConfig.Cloud.AWS.Credentials = AWSCredentials{
@@ -176,25 +176,13 @@ func readCloudCredentialsFromFlagsToConfig(ctx context.Context) {
 	}
 }
 
-// Retrieve AWS credentials from the ~/.aws/config file.
-// Panics, if any error occurs.
+// Retrieve AWS credentials using the files in ~/.aws.
+// Panics on any error.
 func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
-	// Verify that the ~/.aws/config exists and can be opened.
-	{
-		homeDir, err := os.UserHomeDir()
-		assert.AssertErrNil(ctx, err, "Failed getting user's home dir")
-
-		_, err = os.Open(path.Join(homeDir, ".aws/config"))
-		assert.AssertErrNil(ctx, err, "Failed opening ~/.aws/config")
-	}
-
-	// Now that we have confirmed that the ~/.aws/config file exists, we'll try to read the AWS
-	// credentials off of it.
-
-	slog.InfoContext(ctx, "Detected ~/.aws/credentials")
+	slog.InfoContext(ctx, "Detected ~/.aws")
 
 	awsConfig, err := config.LoadDefaultConfig(ctx)
-	assert.AssertErrNil(ctx, err, "Failed constructing AWS config from ~/.aws/config")
+	assert.AssertErrNil(ctx, err, "Failed constructing AWS config using files in ~/.aws")
 
 	awsCredentials, err := awsConfig.Credentials.Retrieve(ctx)
 	assert.AssertErrNil(ctx, err, "Failed retrieving AWS credentials from constructed AWS config")

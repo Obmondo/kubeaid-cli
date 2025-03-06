@@ -121,6 +121,7 @@ type (
 type (
 	AWSConfig struct {
 		Credentials AWSCredentials `yaml:"credentials"`
+		Region      string         `yaml:"region" validate:"required,notblank"`
 
 		BastionEnabled bool            `yaml:"bastionEnabled" default:"True"`
 		VPCID          *string         `yaml:"vpcID"`
@@ -135,7 +136,6 @@ type (
 		AWSAccessKeyID     string `yaml:"accessKeyID" validate:"required,notblank"`
 		AWSSecretAccessKey string `yaml:"secretAccessKey" validate:"required,notblank"`
 		AWSSessionToken    string `yaml:"sessionToken"`
-		AWSRegion          string `yaml:"region" validate:"required,notblank"`
 	}
 
 	AWSControlPlane struct {

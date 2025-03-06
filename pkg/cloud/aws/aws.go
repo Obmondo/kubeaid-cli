@@ -45,7 +45,7 @@ func SetAWSSpecificEnvs() {
 	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
 	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
 	os.Setenv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
-	os.Setenv(constants.EnvNameAWSRegion, awsCredentials.AWSRegion)
+	os.Setenv(constants.EnvNameAWSRegion, config.ParsedConfig.Cloud.AWS.Region)
 
 	awsB64EncodedCredentials := strings.TrimSpace(
 		strings.Split(

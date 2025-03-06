@@ -24,7 +24,7 @@ aws:
   useHostNetwork: true
   secretName: cloud-credentials
   sshKeyName: {{ .AWSConfig.SSHKeyName }}
-  region: {{ .AWSConfig.Credentials.AWSRegion }}
+  region: {{ .AWSConfig.Region }}
   bastion:
     enabled: {{ .AWSConfig.BastionEnabled }}
   vpc:
@@ -35,7 +35,7 @@ aws:
     loadBalancer:
       loadBalancerType: nlb
       scheme: {{ .AWSConfig.ControlPlane.LoadBalancerScheme }}
-    region: {{ .AWSConfig.Credentials.AWSRegion }}
+    region: {{ .AWSConfig.Region }}
     replicas: {{ .AWSConfig.ControlPlane.Replicas }}
     instanceType: {{ .AWSConfig.ControlPlane.InstanceType }}
     ami:
