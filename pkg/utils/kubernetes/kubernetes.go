@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,7 +15,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -26,6 +27,29 @@ import (
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1" // KCP = Kubeadm Control plane Provider.
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// Returns the management cluster kubeconfig file path, based on whether the script is running
+// inside a container or not.
+func GetManagementClusterKubeconfigPath(ctx context.Context) string {
+	if amContainerized(ctx) {
+		return constants.OutputPathManagementClusterContainerKubeconfig
+	}
+
+	return constants.OutputPathManagementClusterHostKubeconfig
+}
+
+// Detetcs whether the KubeAid Bootstrap Script is running inside a container or not.
+// If the /.dockerenv file exists, then that means, it's running inside a container.
+// Only compatible with the Docker container engine for now.
+func amContainerized(ctx context.Context) bool {
+	_, err := os.Stat("/.dockerenv")
+	if errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+
+	assert.AssertErrNil(ctx, err, "Failed detecting whether running inside a container or not")
+	return true
+}
 
 // Creates a Kubernetes Go client using the Kubeconfig file present at the given path.
 // Panics on failure.
@@ -113,7 +137,7 @@ func CreateNamespace(ctx context.Context, namespaceName string, kubeClient clien
 	}
 
 	err := kubeClient.Create(ctx, namespace)
-	if errors.IsAlreadyExists(err) {
+	if k8sAPIErrors.IsAlreadyExists(err) {
 		return
 	}
 	assert.AssertErrNil(ctx, err, "Failed creating namespace", slog.String("namespace", namespaceName))

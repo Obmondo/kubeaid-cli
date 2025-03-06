@@ -65,7 +65,7 @@ func SetupCluster(ctx context.Context,
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	if config.ParsedConfig.Cloud.Local != nil {
+	if config.ParsedConfig.Cloud.Local == nil {
 		// Sync ClusterAPI ArgoCD App.
 
 		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})

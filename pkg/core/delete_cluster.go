@@ -30,6 +30,8 @@ func DeleteCluster(ctx context.Context) {
 
 	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
 
+	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+
 	/*
 	  BUG :
 
@@ -55,13 +57,13 @@ func DeleteCluster(ctx context.Context) {
 		retry.Do(func() error {
 			_, err := utils.ExecuteCommand(fmt.Sprintf(
 				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-				constants.OutputPathProvisionedClusterKubeconfig, constants.OutputPathManagementClusterContainerKubeconfig, kubernetes.GetCapiClusterNamespace(),
+				constants.OutputPathProvisionedClusterKubeconfig, managementClusterKubeconfigPath, kubernetes.GetCapiClusterNamespace(),
 			))
 			return err
 		})
 	}
 
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
 
 	// Get the Cluster resource from the management cluster.
 	err := kubernetes.GetKubernetesResource(ctx, managementClusterClient, cluster)
