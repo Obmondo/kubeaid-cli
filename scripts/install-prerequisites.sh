@@ -55,7 +55,7 @@ rm k9s_linux_"${CPU_ARCHITECTURE}".deb
 
 apt install -y vim
 
-# ------------------------------------------ Add SSH keys -----------------------------------------
-mkdir -p /root/.ssh
-ssh-keyscan {github.com,gitlab.com} >>/root/.ssh/known_hosts
-ssh-keyscan -p 2223 gitea.obmondo.com >>/root/.ssh/known_hosts
+# # ------------------------------------------ Add SSH keys -----------------------------------------
+# mkdir -p /root/.ssh
+# ssh-keyscan {github.com,gitlab.com} >>/root/.ssh/known_hosts
+# ssh-keyscan -p 2223 gitea.obmondo.com >>/root/.ssh/known_hosts
