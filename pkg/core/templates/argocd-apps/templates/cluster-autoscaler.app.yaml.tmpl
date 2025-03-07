@@ -1,10 +1,10 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-    labels:
-      kubeaid.io/version: "{{ .KubeaidVersion }}"
-      kubeaid.io/managed-by: "kubeaid"
-      kubeaid.io/priority: "default"
+  labels:
+    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/priority: "default"
   name: cluster-autoscaler
   namespace: argo-cd
 spec:

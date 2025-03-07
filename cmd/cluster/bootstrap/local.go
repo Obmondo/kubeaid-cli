@@ -1,16 +1,16 @@
 package bootstrap
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
+
 	"github.com/spf13/cobra"
 )
 
-var HetznerCmd = &cobra.Command{
-	Use: "hetzner",
+var LocalCmd = &cobra.Command{
+	Use: "local",
 
-	Short: "Bootstrap a Hetzner based cluster",
+	Short: "Bootstrap a local K3D cluster (for internal testing purposes)",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.BootstrapCluster(cmd.Context(),
@@ -20,9 +20,4 @@ var HetznerCmd = &cobra.Command{
 			false,
 		)
 	},
-}
-
-func init() {
-	// Flags.
-	config.RegisterHetznerCredentialsFlags(HetznerCmd)
 }

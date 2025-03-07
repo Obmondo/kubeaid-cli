@@ -14,7 +14,6 @@ import (
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/strvals"
 )
 
 type HelmInstallArgs struct {
@@ -24,7 +23,7 @@ type HelmInstallArgs struct {
 	Version,
 	ReleaseName,
 	Namespace string
-	Values string
+	Values map[string]interface{}
 }
 
 // Installs the given Helm chart (if not already deployed).
@@ -95,7 +94,11 @@ func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configura
 }
 
 // Installs the given Helm chart.
-func helmInstall(ctx context.Context, settings *cli.EnvSettings, actionConfig *action.Configuration, args *HelmInstallArgs) {
+func helmInstall(ctx context.Context,
+	settings *cli.EnvSettings,
+	actionConfig *action.Configuration,
+	args *HelmInstallArgs,
+) {
 	slog.InfoContext(ctx, "Installing Helm chart")
 
 	installAction := action.NewInstall(actionConfig)
@@ -107,9 +110,18 @@ func helmInstall(ctx context.Context, settings *cli.EnvSettings, actionConfig *a
 	installAction.Timeout = 10 * time.Minute
 	installAction.Wait = true
 
-	// Determine the path to the Helm chart.
-	chartPath, err := installAction.ChartPathOptions.LocateChart(args.ChartName, settings)
-	assert.AssertErrNil(ctx, err, "Failed locating chart path in Helm repo")
+	/*
+		Determine the path to the Helm chart.
+		We need to retry, since in some rare scenario we get this type of error :
+
+		  Get "https://bitnami-labs.github.io/sealed-secrets/index.yaml": dial tcp: lookup
+		  bitnami-labs.github.io on 127.0.0.11:53: server misbehaving
+		  looks like "https://bitnami-labs.github.io/sealed-secrets/" is not a valid chart repository
+		  or cannot be reached
+	*/
+	chartPath, _ := retry.DoWithData(func() (string, error) {
+		return installAction.ChartPathOptions.LocateChart(args.ChartName, settings)
+	})
 
 	/*
 		Load the Helm chart from that chart path.
@@ -122,11 +134,7 @@ func helmInstall(ctx context.Context, settings *cli.EnvSettings, actionConfig *a
 		return loader.Load(chartPath)
 	})
 
-	// Parse Helm chart values.
-	values, err := strvals.Parse(args.Values)
-	assert.AssertErrNil(ctx, err, "Failed parsing Helm values")
-
 	// Install the Helm chart.
-	_, err = installAction.Run(chart, values)
+	_, err := installAction.Run(chart, args.Values)
 	assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
 }

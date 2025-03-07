@@ -23,24 +23,16 @@ func RegisterConfigFilePathFlag(command *cobra.Command) {
 	)
 }
 
-var AWSAccessKey,
-	AWSSecretKey,
-	AWSSessionToken,
-	AWSRegion string
+var AWSAccessKeyID,
+	AWSSecretAccessKey,
+	AWSSessionToken string
 
 func RegisterAWSCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("aws-credentials", pflag.ExitOnError)
 
-	flagSet.StringVar(&AWSAccessKey, constants.FlagNameAWSAccessKey, "", "AWS access key ID")
-	cobra.MarkFlagRequired(flagSet, constants.FlagNameAWSAccessKey)
-
-	flagSet.StringVar(&AWSSecretKey, constants.FlagNameAWSSecretKey, "", "AWS secret access key")
-	cobra.MarkFlagRequired(flagSet, constants.FlagNameAWSSecretKey)
-
+	flagSet.StringVar(&AWSAccessKeyID, constants.FlagNameAWSAccessKeyID, "", "AWS access key ID")
+	flagSet.StringVar(&AWSSecretAccessKey, constants.FlagNameAWSSecretAccessKey, "", "AWS secret access key")
 	flagSet.StringVar(&AWSSessionToken, constants.FlagNameAWSSessionToken, "", "AWS session token (optional)")
-
-	flagSet.StringVar(&AWSRegion, constants.FlagNameAWSRegion, "", "AWS region")
-	cobra.MarkFlagRequired(flagSet, constants.FlagNameAWSRegion)
 
 	flagSet.VisitAll(bindFlagToEnv)
 
@@ -52,16 +44,11 @@ var HetznerAPIToken,
 	HetznerRobotPassword string
 
 func RegisterHetznerCredentialsFlags(command *cobra.Command) {
-	flagSet := pflag.NewFlagSet("aws-credentials", pflag.ExitOnError)
+	flagSet := pflag.NewFlagSet("hetzner-credentials", pflag.ExitOnError)
 
 	flagSet.StringVar(&HetznerAPIToken, constants.FlagNameHetznerAPIToken, "", "Hetzner API token")
-	command.MarkFlagRequired(constants.FlagNameHetznerAPIToken)
-
 	flagSet.StringVar(&HetznerRobotUsername, constants.FlagNameHetznerRobotUsername, "", "Hetzner robot user")
-	command.MarkFlagRequired(constants.FlagNameHetznerRobotUsername)
-
 	flagSet.StringVar(&HetznerRobotPassword, constants.FlagNameHetznerRobotPassword, "", "Hetzner robot password")
-	command.MarkFlagRequired(constants.FlagNameHetznerRobotPassword)
 
 	flagSet.VisitAll(bindFlagToEnv)
 
@@ -72,8 +59,8 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 //
 // If a flag isn't set, then we try to get its value from the corresponding environment variable.
 //
-// Let's say, if the flag is `--aws-region` and it's not set, then we'll try to get the value of
-// the AWS_REGION environment variable.
+// Let's say, if the flag is `--aws-access-key-id` and it's not set, then we'll try to get the
+// value of the AWS_ACCESS_KEY_ID environment variable.
 //
 // NOTE : Doesn't panic, if both the flag and environment variable aren't set and there's no
 // default flag value.

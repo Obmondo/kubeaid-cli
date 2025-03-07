@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// NOTE : Sealed Secrets must already be installed in the cluster.
 func SetupCluster(ctx context.Context,
 	kubeClient client.Client,
 	gitAuthMethod transport.AuthMethod,
@@ -56,25 +55,19 @@ func SetupCluster(ctx context.Context,
 	// Kubernetes Secret will exist.
 	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), kubeClient)
 
-	// Sync the Root, CertManager, Secrets and ClusterAPI ArgoCD Apps one by one.
+	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
 	argocdAppsToBeSynced := []string{
 		"root",
-		"argo-cd",
 		"cert-manager",
 		"secrets",
-		"sealed-secrets",
 	}
-
-	if skipKubePrometheusBuild {
-		argocdAppsToBeSynced = append(argocdAppsToBeSynced, []string{constants.ArgoCDAppKubePrometheus}...)
-	}
-
 	for _, argoCDApp := range argocdAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	// NOTE: sync cluster-api if its not a local dev setup
-	if config.ParsedConfig.Cloud.Local != nil {
+	if config.ParsedConfig.Cloud.Local == nil {
+		// Sync ClusterAPI ArgoCD App.
+
 		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
 
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.

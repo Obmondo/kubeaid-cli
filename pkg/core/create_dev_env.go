@@ -13,7 +13,14 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-func CreateDevEnv(ctx context.Context, k3DMgmtClusterName string, skipKubePrometheusBuild, isPartOfDisasterRecovery bool) {
+func CreateDevEnv(ctx context.Context,
+	managementClusterName string,
+	skipKubePrometheusBuild,
+	isPartOfDisasterRecovery bool,
+) {
+	// Detect git authentication method.
+	gitAuthMethod := git.GetGitAuthMethod(ctx)
+
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
@@ -27,13 +34,12 @@ func CreateDevEnv(ctx context.Context, k3DMgmtClusterName string, skipKubePromet
 		break
 	}
 
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathManagementClusterContainerKubeconfig)
-
-	// Create the management cluster (using K3d), if it doesn't already exist.
-	kubernetes.CreateK3DCluster(ctx, k3DMgmtClusterName)
-
-	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	// Set KUBECONFIG env.
+	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	os.Setenv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
+	//
+	// and then create the K3D management cluster (if it doesn't already exist).
+	kubernetes.CreateK3DCluster(ctx, managementClusterName)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	_ = git.CloneRepo(ctx,
@@ -42,8 +48,13 @@ func CreateDevEnv(ctx context.Context, k3DMgmtClusterName string, skipKubePromet
 		gitAuthMethod,
 	)
 
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathManagementClusterContainerKubeconfig, true)
+	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
 
 	// Setup the management cluster.
-	SetupCluster(ctx, managementClusterClient, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	SetupCluster(ctx,
+		managementClusterClient,
+		gitAuthMethod,
+		skipKubePrometheusBuild,
+		isPartOfDisasterRecovery,
+	)
 }

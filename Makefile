@@ -55,8 +55,8 @@ devenv-create-aws-dev:
 bootstrap-cluster-aws-dev:
 	@go run ./cmd/ cluster bootstrap aws \
 		--debug \
-		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
-    --skip-kube-prometheus-build
+		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
+# --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
 .PHONY: upgrade-cluster-aws-dev
