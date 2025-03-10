@@ -11,7 +11,7 @@ import (
 var HetznerCmd = &cobra.Command{
 	Use: "hetzner",
 
-	Short: "Generate a sample KubeAid Bootstrap Script config file, for deploying an Hetzner based cluster",
+	Short: "Generate a sample KubeAid Bootstrap Script config file, for deploying a Hetzner based cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		config.GenerateSampleConfig(context.Background(), constants.CloudProviderHetzner)
