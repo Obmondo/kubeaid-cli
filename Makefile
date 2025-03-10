@@ -84,6 +84,13 @@ delete-provisioned-cluster-hetzner-dev:
 	@go run ./cmd/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml
 
+.PHONY: bootstrap-cluster-local-dev
+bootstrap-cluster-local-dev:
+	@go run ./cmd/ cluster bootstrap local \
+		--debug \
+    --config ./outputs/kubeaid-bootstrap-script.local.config.yaml \
+    --skip-kube-prometheus-build
+
 .PHONY: use-management-cluster
 use-management-cluster:
 	export KUBECONFIG=./outputs/management-cluster.container.kubeconfig.yaml

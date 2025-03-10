@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -35,12 +36,13 @@ func CreateK3DCluster(ctx context.Context, name string) {
 			`
         k3d cluster create %s \
           --servers 1 --agents 3 \
-          --image rancher/k3s:v1.31.0-k3s1 \
+          --image rancher/k3s:%s-k3s1 \
           --k3s-arg "--tls-san=0.0.0.0@server:*" \
           --network k3d-%s \
           --wait
 			`,
 			name,
+			config.ParsedConfig.Cluster.K8sVersion,
 			name,
 		))
 	} else {
