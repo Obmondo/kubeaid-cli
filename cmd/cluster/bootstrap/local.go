@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 
 	"github.com/spf13/cobra"
@@ -14,7 +13,7 @@ var LocalCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.BootstrapCluster(cmd.Context(),
-			constants.FlagNameManagementClusterNameDefaultValue,
+			managementClusterName,
 			skipKubePrometheusBuild,
 			skipClusterctlMove,
 			false,

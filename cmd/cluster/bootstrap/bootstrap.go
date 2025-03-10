@@ -28,7 +28,7 @@ func init() {
 	// Flags.
 
 	BootstrapCmd.PersistentFlags().
-		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, "test-cluster",
+		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, constants.FlagNameManagementClusterNameDefaultValue,
 			"Name of the local K3D management cluster",
 		)
 
