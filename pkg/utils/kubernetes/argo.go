@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
@@ -38,7 +37,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 		RepoName:    "argo-cd",
 		RepoURL:     "https://argoproj.github.io/argo-helm",
 		ChartName:   "argo-cd",
-		Version:     "7.8.0",
+		Version:     "7.8.7",
 		Namespace:   "argo-cd",
 		ReleaseName: "argo-cd",
 		Values: map[string]interface{}{
@@ -145,12 +144,15 @@ func CreateArgoCDProject(ctx context.Context,
 				Name: constants.ArgoCDProjectKubeAid,
 			},
 			Spec: argoCDV1Aplha1.AppProjectSpec{
-				SourceRepos: []string{
-					config.ParsedConfig.Forks.KubeaidForkURL,
-					config.ParsedConfig.Forks.KubeaidConfigForkURL,
-				},
-				Destinations:             []argoCDV1Aplha1.ApplicationDestination{{Server: "*", Namespace: "*"}},
-				ClusterResourceWhitelist: []v1.GroupKind{{Group: "*", Kind: "*"}},
+				Description: "A list of Kubeaid ArgoCD applications",
+				SourceRepos: []string{"*"},
+				Destinations: []argoCDV1Aplha1.ApplicationDestination{{
+					Server:    "*",
+					Namespace: "*",
+					Name:      "*",
+				}},
+				ClusterResourceWhitelist:   []v1.GroupKind{{Group: "*", Kind: "*"}},
+				NamespaceResourceWhitelist: []v1.GroupKind{{Group: "*", Kind: "*"}},
 			},
 		},
 	})

@@ -26,6 +26,9 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 	case constants.CloudProviderHetzner:
 		templateName = constants.TemplateNameHetznerSampleConfig
 
+	case constants.CloudProviderLocal:
+		templateName = constants.TemplateNameLocalSampleConfig
+
 	default:
 		panic("unreachable")
 	}
@@ -33,9 +36,15 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 	content := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, templateName, nil)
 
 	destinationFile, err := os.OpenFile(constants.OutputPathGeneratedConfig, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	assert.AssertErrNil(ctx, err, "Failed opening file", slog.String("path", constants.OutputPathGeneratedConfig))
+	assert.AssertErrNil(ctx, err,
+		"Failed opening file",
+		slog.String("path", constants.OutputPathGeneratedConfig),
+	)
 	defer destinationFile.Close()
 
 	_, err = destinationFile.Write(content)
-	assert.AssertErrNil(ctx, err, "Failed writing sample config to file", slog.String("path", constants.OutputPathGeneratedConfig))
+	assert.AssertErrNil(ctx, err,
+		"Failed writing sample config to file",
+		slog.String("path", constants.OutputPathGeneratedConfig),
+	)
 }

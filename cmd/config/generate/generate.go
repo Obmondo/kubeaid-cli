@@ -29,4 +29,5 @@ func init() {
 	// Subcommands.
 	GenerateCmd.AddCommand(AWSCmd)
 	GenerateCmd.AddCommand(HetznerCmd)
+	GenerateCmd.AddCommand(LocalCmd)
 }
