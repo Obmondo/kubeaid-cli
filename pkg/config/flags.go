@@ -55,6 +55,14 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 	command.Flags().AddFlagSet(flagSet)
 }
 
+func RegisterAzureCredentialsFlags(command *cobra.Command) {
+	flagSet := pflag.NewFlagSet("azure-credentials", pflag.ExitOnError)
+
+	flagSet.VisitAll(bindFlagToEnv)
+
+	command.Flags().AddFlagSet(flagSet)
+}
+
 // Usage : flagSet.VisitAll(getFlagOrEnvValue)
 //
 // If a flag isn't set, then we try to get its value from the corresponding environment variable.

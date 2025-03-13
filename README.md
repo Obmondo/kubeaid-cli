@@ -91,3 +91,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [How can you call a helm 'helper' template from a subchart with the correct context?](https://stackoverflow.com/questions/47791971/how-can-you-call-a-helm-helper-template-from-a-subchart-with-the-correct-conte)
 
 - [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)
+
+- [azure-sdk-for-go-samples](https://github.com/Azure-Samples/azure-sdk-for-go-samples/tree/main)

@@ -31,15 +31,17 @@ const (
 
 	FlagNameDeleteOldCluster = "delete-old-cluster"
 
-	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
-	FlagNameHetznerRobotUsername = "hetzner-robot-username"
-	FlagNameHetznerRobotPassword = "hetzner-robot-password"
-
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
 	FlagNameAWSSessionToken    = "aws-session-token"
 	FlagNameAWSRegion          = "aws-region"
 	FlagNameAMIID              = "ami-id"
+
+	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
+	FlagNameHetznerRobotUsername = "hetzner-robot-username"
+	FlagNameHetznerRobotPassword = "hetzner-robot-password"
+
+	FlagNameAzureClientSecret = "azure-client-secret"
 )
 
 // Kube API server CLI flags.
@@ -64,6 +66,8 @@ const (
 	OutputPathManagementClusterContainerKubeconfig = "./outputs/management-cluster.container.kubeconfig.yaml"
 
 	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
+
+	OutputPathJWKSDocument = "./outputs/jwks.json"
 )
 
 // ArgoCD.
@@ -80,6 +84,14 @@ const (
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 )
 
+// Azure
+const (
+	WorkloadIdentityBlobContainerName = "workload-identity-oidc-provider"
+
+	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
+	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
+)
+
 // Uncategorized.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
@@ -92,6 +104,8 @@ var (
 	TemplateNameAWSSampleConfig     = "files/templates/aws.sample.config.yaml.tmpl"
 	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 	TemplateNameLocalSampleConfig   = "files/templates/local.sample.config.yaml.tmpl"
+
+	TemplateNameOpenIDConfig = "openid-configuration.json.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.

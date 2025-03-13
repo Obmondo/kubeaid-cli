@@ -140,7 +140,7 @@ type (
 
 	AWSControlPlane struct {
 		LoadBalancerScheme string `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
-		Replicas           uint   `yaml:"replicas" validate:"required"`
+		Replicas           uint32 `yaml:"replicas" validate:"required"`
 		InstanceType       string `yaml:"instanceType" validate:"required,notblank"`
 		AMI                AMI    `yaml:"ami" validate:"required"`
 	}
@@ -240,7 +240,37 @@ type (
 
 // Azure specific.
 type (
-	AzureConfig struct{}
+	AzureConfig struct {
+		TenantID                     string `yaml:"tenantID" validate:"required,notblank"`
+		SubscriptionID               string `yaml:"subscriptionID" validate:"required,notblank"`
+		ClientIDUserAssignedIdentity string `yaml:"clientIDUserAssignedIdentity" validate:"required,notblank"`
+
+		Location string `yaml:"location" validate:"required,notblank"`
+
+		StorageAccountName                   string `yaml:"storageAccountName" validate:"required,notblank"`
+		WorkloadIdentitySSHPublicKeyFilePath string `yaml:"workloadIdentitySSHPublicKeyFilePath" validate:"required,notblank"`
+
+		SSHPublicKey string            `yaml:"sshPublicKey" validate:"required,notblank"`
+		ClientSecret AzureClientSecret `yaml:"clientSecret" validate:"required"`
+
+		ControlPlane AzureSelfManagedControlPlane `yaml:"controlPlane" validate:"required"`
+	}
+
+	AzureSelfManagedControlPlane struct {
+		DiskSizeGB       uint32 `yaml:"diskSizeGB" validate:"required"`
+		SKU              string `yaml:"sku" validate:"required,notblank"`
+		Replicas         uint32 `yaml:"replicas" validate:"required"`
+		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
+	}
+
+	AzureClientSecret struct {
+		ControlPlane string `yaml:"controlPlane" validate:"required,notblank"`
+		WorkerNode   string `yaml:"workerNode" validate:"required,notblank"`
+	}
+
+	AKS struct {
+		Enabled bool `yaml:"enabled" validate:"required"`
+	}
 )
 
 // Local specific.
