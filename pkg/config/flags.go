@@ -55,8 +55,12 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 	command.Flags().AddFlagSet(flagSet)
 }
 
+var AzureClientSecret string
+
 func RegisterAzureCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("azure-credentials", pflag.ExitOnError)
+
+	flagSet.StringVar(&AzureClientSecret, constants.FlagNameAzureClientSecret, "", "Azure client secret")
 
 	flagSet.VisitAll(bindFlagToEnv)
 

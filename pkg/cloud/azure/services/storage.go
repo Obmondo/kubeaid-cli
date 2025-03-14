@@ -28,6 +28,10 @@ Creates an appropriate Azure Storage Account, if one doesn't already exist.
 	REFERENCE : https://learn.microsoft.com/en-us/azure/storage/common/storage-account-overview.
 */
 func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("storage-account-name", args.Name),
+	})
+
 	// Verify that Storage Account name is available.
 	{
 		response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
@@ -86,6 +90,8 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 
 	_, err = responsePoller.PollUntilDone(ctx, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage Account")
+
+	slog.InfoContext(ctx, "Created Azure Storage Account")
 }
 
 type CreateBlobContainerArgs struct {

@@ -49,6 +49,19 @@ aws:
   nodeGroups: {{ .AWSConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}
 
+{{- if .AzureConfig }}
+provider:
+  azure: true
+
+azure:
+  subscriptionID: {{ .AzureConfig.SubscriptionID }}
+  resourceGroup: {{ .ClusterConfig.Name }}
+
+  sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
+
+  userAssignedIdentity: {{ .UserAssignedIdentity }}
+{{- end }}
+
 {{- if .HetznerConfig }}
 provider:
   hetzner: true

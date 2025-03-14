@@ -2,6 +2,7 @@ package azure
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
@@ -13,10 +14,11 @@ import (
 )
 
 type Azure struct {
-	credentials      *azidentity.DefaultAzureCredential
-	subscriptionID   string
-	armClientFactory *armresources.ClientFactory
-	vmSizesClient    *armcompute.VirtualMachineSizesClient
+	credentials *azidentity.DefaultAzureCredential
+	subscriptionID,
+	resourceGroupName string
+	resourceGroupsClient *armresources.ResourceGroupsClient
+	vmSizesClient        *armcompute.VirtualMachineSizesClient
 }
 
 func NewAzureCloudProvider(ctx context.Context) cloud.CloudProvider {
@@ -28,13 +30,33 @@ func NewAzureCloudProvider(ctx context.Context) cloud.CloudProvider {
 	armClientFactory, err := armresources.NewClientFactory(subscriptionID, credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure Resource Manager (ARM) client factory")
 
+	resourceGroupsClient := armClientFactory.NewResourceGroupsClient()
+
 	vmSizesClient, err := armcompute.NewVirtualMachineSizesClient(subscriptionID, credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure VM sizes client")
+
+	// Create Azure Resource Group, if it doesn't already exist.
+
+	resourceGroupName := config.ParsedConfig.Cluster.Name
+
+	_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
+		armresources.ResourceGroup{
+			Location: &config.ParsedConfig.Cloud.Azure.Location,
+		},
+		nil,
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed creating / updating Resource Group",
+		slog.String("name", resourceGroupName),
+	)
+
+	slog.InfoContext(ctx, "Created Azure Resource Group", slog.String("resource-group-name", resourceGroupName))
 
 	return &Azure{
 		credentials,
 		subscriptionID,
-		armClientFactory,
+		resourceGroupName,
+		resourceGroupsClient,
 		vmSizesClient,
 	}
 }

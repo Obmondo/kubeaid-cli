@@ -21,6 +21,7 @@ type CreateUserAssignedIdentityArgs struct {
 }
 
 // Creates a User Assigned Managed Identity, if it doesn't already exist.
+// Returns its ID.
 /*
 Managed identities for Azure resources eliminate the need to manage credentials in code. You can
 use them to get a Microsoft Entra token for your applications. The applications can use the token
@@ -41,7 +42,7 @@ There are two types of managed identities :
 
 	REFERENCE : https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities.
 */
-func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIdentityArgs) {
+func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIdentityArgs) string {
 	identityName := args.Name
 
 	response, err := args.UserAssignedIdentitiesClient.CreateOrUpdate(ctx,
@@ -56,6 +57,8 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 		nil,
 	)
 	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identity")
+
+	userAssignedIdentityID := *response.ID
 
 	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
 	// subscription where the main cluster will be created.
@@ -94,9 +97,11 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 		responseError, ok := err.(*azcore.ResponseError)
 		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
-			return
+			return userAssignedIdentityID
 		}
 
 		assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
 	}
+
+	return userAssignedIdentityID
 }

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
@@ -21,7 +20,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 
 	_ "embed"
@@ -88,39 +86,22 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		You can view the sequence diagram here : https://azure.github.io/azure-workload-identity/docs/installation/self-managed-clusters/oidc-issuer.html#sequence-diagram.
 	*/
 
-	// Create Azure Resource Group, if it doesn't already exist.
-
-	resourceGroupName := config.ParsedConfig.Cluster.Name
-
-	resourceGroupsClient := a.armClientFactory.NewResourceGroupsClient()
-
-	_, err := resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
-		armresources.ResourceGroup{
-			Location: &config.ParsedConfig.Cloud.Azure.Location,
-		},
-		nil,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating / updating Resource Group",
-		slog.String("name", resourceGroupName),
-	)
-
 	// Create Azure Storage Account, if it doesn't already exist.
 
 	storageClientFactory, err := armstorage.NewClientFactory(a.subscriptionID, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage client factory")
 
-	storageAccountName := config.ParsedConfig.Cloud.Azure.StorageAccountName
+	storageAccountName := config.ParsedConfig.Cloud.Azure.WorkloadIdentity.StorageAccountName
 
 	services.CreateStorageAccount(ctx, &services.CreateStorageAccountArgs{
 		StorageAccountsClient: storageClientFactory.NewAccountsClient(),
-		ResourceGroupName:     resourceGroupName,
+		ResourceGroupName:     a.resourceGroupName,
 		Name:                  storageAccountName,
 	})
 
 	// Create Azure Storage Container, if it doesn't already exist.
 	services.CreateBlobContainer(ctx, &services.CreateBlobContainerArgs{
-		ResourceGroupName:    resourceGroupName,
+		ResourceGroupName:    a.resourceGroupName,
 		StorageAccountName:   storageAccountName,
 		BlobContainersClient: storageClientFactory.NewBlobContainersClient(),
 		BlobContainerName:    constants.BlobContainerNameWorkloadIdentity,
@@ -173,13 +154,15 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 			bytes.Equal(responseBody, openIDConfig),
 			"Fetched openid-configuration.json, isn't as expected",
 		)
+
+		slog.InfoContext(ctx, "Uploaded openid-configuration.json to Azure Blob Container")
 	}
 
 	{
 		// Generate the JWKS document.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"azwi jwks --public-keys %s --output-file %s",
-			config.ParsedConfig.Cloud.Azure.WorkloadIdentitySSHPublicKeyFilePath,
+			config.ParsedConfig.Cloud.Azure.WorkloadIdentity.SSHPublicKeyFilePath,
 			constants.OutputPathJWKSDocument,
 		))
 
@@ -214,40 +197,65 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 			bytes.Equal(responseBody, jwksDocument),
 			"Fetched JWKS document, isn't as expected",
 		)
+
+		slog.InfoContext(ctx, "Uploaded JWKS document to Azure Blob Container")
 	}
 
-	// Create a user assigned managed identity.
+	{
+		userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(a.subscriptionID, a.credentials, nil)
+		assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
 
-	userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(a.subscriptionID, a.credentials, nil)
-	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
+		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
+		assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
 
-	roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
-	assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
+		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
+		// subscription being used.
+		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
+			RoleAssignmentsClient:        roleAssignmentsClient,
+			ResourceGroupName:            a.resourceGroupName,
+			Name:                         config.ParsedConfig.Cluster.Name,
+		})
 
-	services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
-		UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
-		RoleAssignmentsClient:        roleAssignmentsClient,
-		ResourceGroupName:            resourceGroupName,
-		Name:                         config.ParsedConfig.Cluster.Name,
-	})
+		/*
+			Not all ServiceAccount tokens can be exchanged for a valid AAD (Azure Active Directory)
+			token. A federated identity credential between an existing Kubernetes ServiceAccount and an
+			AAD application or user-assigned managed identity has to be created in advance.
+			REFERENCE : https://capz.sigs.k8s.io/topics/workload-identity#workload-identity.
+
+			We need to create two federated identity credentials, one for CAPZ and one for ASO.
+			You can view the steps for that here :
+			https://azure.github.io/azure-workload-identity/docs/topics/federated-identity-credential.html.
+
+			NOTE : CAPZ interfaces with Azure to create and manage some types of resources using Azure
+			       Service Operator (ASO).
+			       You can read about ASO here : https://azure.github.io/azure-service-operator/.
+		*/
+
+		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az identity federated-credential create \
+          --name "" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
+      `,
+		))
+
+		// Create Federated Identity credential for Azure Service Operator (ASO).
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az identity federated-credential create \
+          --name "" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
+      `,
+		))
+	}
 
 	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
-}
-
-func (a *Azure) DeleteWorkloadIdentityProvider(ctx context.Context) {
-	resourceGroupName := config.ParsedConfig.Cluster.Name
-
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("resource-group", resourceGroupName),
-	})
-
-	resourceGroupsClient := a.armClientFactory.NewResourceGroupsClient()
-
-	responsePoller, err := resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
-	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
-
-	_, err = responsePoller.PollUntilDone(ctx, nil)
-	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
-
-	slog.InfoContext(ctx, "Deleted resources related to Workload Identity Provider")
 }
