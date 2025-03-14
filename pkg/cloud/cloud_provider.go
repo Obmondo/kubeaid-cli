@@ -24,6 +24,6 @@ type (
 
 	VMSpec struct {
 		CPU    uint32
-		Memory uint32
+		Memory uint32 // (in MiB).
 	}
 )
