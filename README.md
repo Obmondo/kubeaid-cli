@@ -93,3 +93,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)
 
 - [azure-sdk-for-go-samples](https://github.com/Azure-Samples/azure-sdk-for-go-samples/tree/main)
+
+- [Workload Identity : The Cluster API Provider Azure Book](https://capz.sigs.k8s.io/topics/workload-identity)

@@ -8,6 +8,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -15,7 +16,7 @@ import (
 type CreateStorageAccountArgs struct {
 	StorageAccountsClient *armstorage.AccountsClient
 	ResourceGroupName,
-	StorageAccountName string // The Storage Account name must between 3-24 characters and unqiue within Azure.
+	Name string // The Storage Account name must between 3-24 characters and unqiue within Azure.
 }
 
 /*
@@ -31,7 +32,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	{
 		response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
 			armstorage.AccountCheckNameAvailabilityParameters{
-				Name: to.Ptr(args.StorageAccountName),
+				Name: to.Ptr(args.Name),
 				Type: to.Ptr("Microsoft.Storage/storageAccounts"),
 			},
 			nil,
@@ -46,7 +47,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 
 	responsePoller, err := args.StorageAccountsClient.BeginCreate(ctx,
 		args.ResourceGroupName,
-		args.StorageAccountName,
+		args.Name,
 		armstorage.AccountCreateParameters{
 			// Standard Storage Account type, recommended for most of the scenarios.
 			Kind: to.Ptr(armstorage.KindStorageV2),
@@ -75,7 +76,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	if err != nil {
 		// Skip, if the Storage Account already exists.
 		responseError, ok := err.(*azcore.ResponseError)
-		if ok && responseError.StatusCode == 409 {
+		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Azure Storage Account already exists")
 			return
 		}
@@ -123,7 +124,7 @@ func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 	if err != nil {
 		// Skip, if the Storage Account already exists.
 		responseError, ok := err.(*azcore.ResponseError)
-		if ok && responseError.StatusCode == 409 {
+		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Azure Blob Container already exists")
 			return
 		}

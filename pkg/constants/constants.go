@@ -86,10 +86,14 @@ const (
 
 // Azure
 const (
-	WorkloadIdentityBlobContainerName = "workload-identity-oidc-provider"
+	BlobContainerNameWorkloadIdentity = "workload-identity-oidc-provider"
 
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
+
+	AzureRoleIDContributor = "b24988ac-6180-42a0-ab88-20f7382dd24c"
+
+	AzureResponseStatusCodeResourceAlreadyExists = 409
 )
 
 // Uncategorized.

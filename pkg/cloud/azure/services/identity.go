@@ -1,0 +1,102 @@
+package services
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+)
+
+type CreateUserAssignedIdentityArgs struct {
+	UserAssignedIdentitiesClient *armmsi.UserAssignedIdentitiesClient
+	RoleAssignmentsClient        *armauthorization.RoleAssignmentsClient
+	ResourceGroupName,
+	Name string
+}
+
+// Creates a User Assigned Managed Identity, if it doesn't already exist.
+/*
+Managed identities for Azure resources eliminate the need to manage credentials in code. You can
+use them to get a Microsoft Entra token for your applications. The applications can use the token
+when accessing resources that support Microsoft Entra authentication. Azure manages the identity so
+you don't have to.
+
+There are two types of managed identities :
+
+	(1) system assigned :
+
+	    System-assigned managed identities have their lifecycle tied to the resource that created
+	    them. This identity is restricted to only one resource, and you can grant permissions to
+	    the managed identity by using Azure role-based access control (RBAC).
+
+	(2) user assigned :
+
+	    User-assigned managed identities can be used on multiple resources.
+
+	REFERENCE : https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities.
+*/
+func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIdentityArgs) {
+	identityName := args.Name
+
+	response, err := args.UserAssignedIdentitiesClient.CreateOrUpdate(ctx,
+		args.ResourceGroupName,
+		identityName,
+		armmsi.Identity{
+			Location: &config.ParsedConfig.Cloud.Azure.Location,
+			Tags: map[string]*string{
+				"cluster": &config.ParsedConfig.Cluster.Name,
+			},
+		},
+		nil,
+	)
+	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identity")
+
+	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
+	// subscription where the main cluster will be created.
+	/*
+		The Azure built-in Contributor role grants full access to manage all resources, but does not
+		allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share
+		image galleries.
+
+		REFERENCE : https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
+	*/
+
+	var (
+		subscriptionID = config.ParsedConfig.Cloud.Azure.SubscriptionID
+
+		roleScope          = ("/subscriptions/" + subscriptionID)
+		roleAssignmentName = fmt.Sprintf("%s-contributor-subscription-%s", identityName, subscriptionID)
+		//
+		// You can see the Azure Role definition ID format here :
+		// https://learn.microsoft.com/en-us/cli/azure/role/definition?view=azure-cli-latest.
+		roleDefinitionID = fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, constants.AzureRoleIDContributor)
+	)
+
+	_, err = args.RoleAssignmentsClient.Create(ctx,
+		roleScope,
+		roleAssignmentName,
+		armauthorization.RoleAssignmentCreateParameters{
+			Properties: &armauthorization.RoleAssignmentProperties{
+				PrincipalID:      response.ID,
+				RoleDefinitionID: &roleDefinitionID,
+			},
+		},
+		nil,
+	)
+	if err != nil {
+		// Skip, if the Contributor role is already assigned to the User Assigned Managed Identity.
+		responseError, ok := err.(*azcore.ResponseError)
+		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+			slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
+			return
+		}
+
+		assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
+	}
+}

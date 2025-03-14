@@ -11,6 +11,8 @@ import (
 	"os"
 	"path"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
@@ -19,6 +21,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 
 	_ "embed"
@@ -85,18 +88,13 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		You can view the sequence diagram here : https://azure.github.io/azure-workload-identity/docs/installation/self-managed-clusters/oidc-issuer.html#sequence-diagram.
 	*/
 
-	subscriptionID := config.ParsedConfig.Cloud.Azure.SubscriptionID
-
 	// Create Azure Resource Group, if it doesn't already exist.
 
 	resourceGroupName := config.ParsedConfig.Cluster.Name
 
-	armClientFactory, err := armresources.NewClientFactory(subscriptionID, a.credentials, nil)
-	assert.AssertErrNil(ctx, err, "Failed constructing Azure Resource Manager (ARM) client factory")
+	resourceGroupsClient := a.armClientFactory.NewResourceGroupsClient()
 
-	resourceGroupsClient := armClientFactory.NewResourceGroupsClient()
-
-	_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
+	_, err := resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
 		armresources.ResourceGroup{
 			Location: &config.ParsedConfig.Cloud.Azure.Location,
 		},
@@ -109,7 +107,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 	// Create Azure Storage Account, if it doesn't already exist.
 
-	storageClientFactory, err := armstorage.NewClientFactory(subscriptionID, a.credentials, nil)
+	storageClientFactory, err := armstorage.NewClientFactory(a.subscriptionID, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage client factory")
 
 	storageAccountName := config.ParsedConfig.Cloud.Azure.StorageAccountName
@@ -117,7 +115,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 	services.CreateStorageAccount(ctx, &services.CreateStorageAccountArgs{
 		StorageAccountsClient: storageClientFactory.NewAccountsClient(),
 		ResourceGroupName:     resourceGroupName,
-		StorageAccountName:    storageAccountName,
+		Name:                  storageAccountName,
 	})
 
 	// Create Azure Storage Container, if it doesn't already exist.
@@ -125,7 +123,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		ResourceGroupName:    resourceGroupName,
 		StorageAccountName:   storageAccountName,
 		BlobContainersClient: storageClientFactory.NewBlobContainersClient(),
-		BlobContainerName:    constants.WorkloadIdentityBlobContainerName,
+		BlobContainerName:    constants.BlobContainerNameWorkloadIdentity,
 	})
 
 	storageAccountURL := fmt.Sprintf("https://%s.blob.core.windows.net/", storageAccountName)
@@ -142,14 +140,14 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 			constants.TemplateNameOpenIDConfig,
 			&TemplateArgs{
 				StorageAccountName: storageAccountName,
-				BlobContainerName:  constants.WorkloadIdentityBlobContainerName,
+				BlobContainerName:  constants.BlobContainerNameWorkloadIdentity,
 			},
 		)
 
 		// Upload the OpenID provider issuer discovery document to the Azure Storage Container,
 		// at path .well-known/openid-configuration.
 		_, err := blobClient.UploadBuffer(ctx,
-			constants.WorkloadIdentityBlobContainerName,
+			constants.BlobContainerNameWorkloadIdentity,
 			constants.AzureBlobNameOpenIDConfiguration,
 			openIDConfig,
 			nil,
@@ -160,7 +158,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 		openIDConfigURL := path.Join(
 			storageAccountURL,
-			constants.WorkloadIdentityBlobContainerName,
+			constants.BlobContainerNameWorkloadIdentity,
 			constants.AzureBlobNameOpenIDConfiguration,
 		)
 
@@ -190,7 +188,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 		// Upload the JWKS document.
 		_, err = blobClient.UploadBuffer(ctx,
-			constants.WorkloadIdentityBlobContainerName,
+			constants.BlobContainerNameWorkloadIdentity,
 			constants.AzureBlobNameJWKSDocument,
 			jwksDocument,
 			nil,
@@ -201,7 +199,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 		jwksDocumentConfigURL := path.Join(
 			storageAccountURL,
-			constants.WorkloadIdentityBlobContainerName,
+			constants.BlobContainerNameWorkloadIdentity,
 			constants.AzureBlobNameJWKSDocument,
 		)
 
@@ -217,4 +215,39 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 			"Fetched JWKS document, isn't as expected",
 		)
 	}
+
+	// Create a user assigned managed identity.
+
+	userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(a.subscriptionID, a.credentials, nil)
+	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
+
+	roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
+	assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
+
+	services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+		UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
+		RoleAssignmentsClient:        roleAssignmentsClient,
+		ResourceGroupName:            resourceGroupName,
+		Name:                         config.ParsedConfig.Cluster.Name,
+	})
+
+	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
+}
+
+func (a *Azure) DeleteWorkloadIdentityProvider(ctx context.Context) {
+	resourceGroupName := config.ParsedConfig.Cluster.Name
+
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("resource-group", resourceGroupName),
+	})
+
+	resourceGroupsClient := a.armClientFactory.NewResourceGroupsClient()
+
+	responsePoller, err := resourceGroupsClient.BeginDelete(ctx, resourceGroupName, nil)
+	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
+
+	_, err = responsePoller.PollUntilDone(ctx, nil)
+	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
+
+	slog.InfoContext(ctx, "Deleted resources related to Workload Identity Provider")
 }
