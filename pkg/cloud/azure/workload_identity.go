@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 
 	_ "embed"
@@ -63,29 +64,138 @@ A workload can exchange a service account token projected to its volume for an A
 token using the Azure Identity SDKs or the Microsoft Authentication Library (MSAL).
 
 You can read more here : https://azure.github.io/azure-workload-identity/docs/.
+
+The workflow looks like this :
+
+	(1) The Kubernetes workload sends the signed ServiceAccount token in a request, to Azure Active
+	    Directory (AAD).
+
+	(2) AAD will then extract the OpenID provider issuer discovery document URL from the request
+	    and fetch it from Azure Storage Container.
+
+	(3) AAD will extract the JWKS document URL from that OpenID provider issuer discovery document
+	    and fetch it as well.
+
+	    The JSON Web Key Sets (JWKS) document contains the public signing key(s) that allows AAD to
+	    verify the authenticity of the service account token.
+
+	(4) AAD will use the public signing key(s) to verify the authenticity of the ServiceAccount
+	    token.
+
+	    Finally it'll return an AAD token, back to the Kubernetes workload.
+
+You can view the sequence diagram here : https://azure.github.io/azure-workload-identity/docs/installation/self-managed-clusters/oidc-issuer.html#sequence-diagram.
 */
 func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
+	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
+
+	// Prerequisites for the K3D management cluster.
 	/*
-		(1) The Kubernetes workload sends the signed ServiceAccount token in a request, to Azure Active
-		    Directory (AAD).
+		Not all ServiceAccount tokens can be exchanged for a valid AAD (Azure Active Directory)
+		token. A federated identity credential between an existing Kubernetes ServiceAccount and an
+		AAD application or user-assigned managed identity has to be created in advance.
+		REFERENCE : https://capz.sigs.k8s.io/topics/workload-identity#workload-identity.
 
-		(2) AAD will then extract the OpenID provider issuer discovery document URL from the request
-		    and fetch it from Azure Storage Container.
+		We need to create two federated identity credentials, one for CAPZ and one for ASO.
+		You can view the steps for that here :
+		https://azure.github.io/azure-workload-identity/docs/topics/federated-identity-credential.html.
 
-		(3) AAD will extract the JWKS document URL from that OpenID provider issuer discovery document
-		    and fetch it as well.
+		NOTE : CAPZ interfaces with Azure to create and manage some types of resources using Azure
+		       Service Operator (ASO).
+		       You can read about ASO here : https://azure.github.io/azure-service-operator/.
 
-		    The JSON Web Key Sets (JWKS) document contains the public signing key(s) that allows AAD to
-		    verify the authenticity of the service account token.
+		Azure Federated Identity :
 
-		(4) AAD will use the public signing key(s) to verify the authenticity of the ServiceAccount
-		    token.
+		  Traditionally, developers use certificates or client secrets for their application's
+		  credentials to authenticate with and access services in Microsoft Entra ID. To access the
+		  services in their Microsoft Entra tenant, developers had to store and manage application
+		  credentials outside Azure, introducing the following bottlenecks :
 
-		    Finally it'll return an AAD token, back to the Kubernetes workload.
+		    (1) A maintenance burden for certificates and secrets.
 
-		You can view the sequence diagram here : https://azure.github.io/azure-workload-identity/docs/installation/self-managed-clusters/oidc-issuer.html#sequence-diagram.
+		    (2) The risk of leaking secrets.
+
+		    (3) Certificates expiring and service disruptions because of failed authentication.
+
+		  Federated identity credentials are a new type of credential that enables workload identity
+		  federation for software workloads. Workload identity federation allows you to access
+		  Microsoft Entra protected resources without needing to manage secrets (for supported
+		  scenarios).
+
+		  You create a trust relationship between an external identity provider (IdP) and an app in
+		  Microsoft Entra ID by configuring a federated identity credential. The federated identity
+		  credential is used to indicate which token from the external IdP your application can trust.
+		  After that trust relationship is created, your software workload can exchange trusted tokens
+		  from the external identity provider for access tokens from the Microsoft identity platform.
+		  Your software workload then uses that access token to access the Microsoft Entra protected
+		  resources to which the workload has access.
+
+		NOTE : Microsoft Entra ID is the new name fro AAD.
 	*/
+	{
+		aadApplicationName := config.ParsedConfig.Cloud.Azure.AADApplicationName
 
+		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
+		// So, the CAPZ can exchange the ServiceAccount token it uses, for AAD token.
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        azwi serviceaccount create phase federated-identity \
+          --aad-application-name %s \
+          --service-account-namespace %s \
+          --service-account-name %s  \
+          --service-account-issuer-url %s
+      `,
+			aadApplicationName,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.CAPZDefaultServiceAccountName,
+			serviceAccountIssuerURL,
+		))
+
+		// Create Federated Identity credential for Azure Service Operator (ASO).
+		// So, the ASO can exchange the ServiceAccount token it uses, for AAD token.
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        azwi serviceaccount create phase federated-identity \
+          --aad-application-name %s \
+          --service-account-namespace %s \
+          --service-account-name %s \
+          --service-account-issuer-url %s
+      `,
+			aadApplicationName,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.ASODefaultServiceAccountName,
+			serviceAccountIssuerURL,
+		))
+
+		slog.InfoContext(ctx, "Created Azure Federated Identity for both CAPZ and ASO")
+	}
+
+	// Prerequisites for the main cluster to be provisioned.
+	{
+		userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(
+			a.subscriptionID, a.credentials, nil,
+		)
+		assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
+
+		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(
+			a.subscriptionID, a.credentials, nil,
+		)
+		assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
+
+		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
+		// subscription being used.
+		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
+			RoleAssignmentsClient:        roleAssignmentsClient,
+			ResourceGroupName:            a.resourceGroupName,
+			Name:                         config.ParsedConfig.Cluster.Name,
+		})
+	}
+
+	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
+}
+
+func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	// Create Azure Storage Account, if it doesn't already exist.
 
 	storageClientFactory, err := armstorage.NewClientFactory(a.subscriptionID, a.credentials, nil)
@@ -201,61 +311,8 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		slog.InfoContext(ctx, "Uploaded JWKS document to Azure Blob Container")
 	}
 
-	{
-		userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(a.subscriptionID, a.credentials, nil)
-		assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
+	slog.InfoContext(ctx, "Created external OpenID provider")
 
-		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
-		assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
-
-		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
-		// subscription being used.
-		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
-			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
-			RoleAssignmentsClient:        roleAssignmentsClient,
-			ResourceGroupName:            a.resourceGroupName,
-			Name:                         config.ParsedConfig.Cluster.Name,
-		})
-
-		/*
-			Not all ServiceAccount tokens can be exchanged for a valid AAD (Azure Active Directory)
-			token. A federated identity credential between an existing Kubernetes ServiceAccount and an
-			AAD application or user-assigned managed identity has to be created in advance.
-			REFERENCE : https://capz.sigs.k8s.io/topics/workload-identity#workload-identity.
-
-			We need to create two federated identity credentials, one for CAPZ and one for ASO.
-			You can view the steps for that here :
-			https://azure.github.io/azure-workload-identity/docs/topics/federated-identity-credential.html.
-
-			NOTE : CAPZ interfaces with Azure to create and manage some types of resources using Azure
-			       Service Operator (ASO).
-			       You can read about ASO here : https://azure.github.io/azure-service-operator/.
-		*/
-
-		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			`
-        az identity federated-credential create \
-          --name "" \
-          --identity-name "%s" \
-          --resource-group "%s" \
-          --issuer "%s" \
-          --subject "system:serviceaccount:%s:%s"
-      `,
-		))
-
-		// Create Federated Identity credential for Azure Service Operator (ASO).
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			`
-        az identity federated-credential create \
-          --name "" \
-          --identity-name "%s" \
-          --resource-group "%s" \
-          --issuer "%s" \
-          --subject "system:serviceaccount:%s:%s"
-      `,
-		))
-	}
-
-	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
+	serviceAccountIssuerURL := path.Join(storageAccountURL, constants.BlobContainerNameWorkloadIdentity)
+	return serviceAccountIssuerURL
 }

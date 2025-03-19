@@ -242,8 +242,9 @@ type (
 		TenantID       string `yaml:"tenantID" validate:"required,notblank"`
 		SubscriptionID string `yaml:"subscriptionID" validate:"required,notblank"`
 
-		ClientID     string `yaml:"clientID" validate:"required,notblank"`
-		ClientSecret string `yaml:"clientSecret" validate:"required,notblank"`
+		AADApplicationName string `yaml:"aadApplicationName" validated:"required,notblank"`
+		ClientID           string `yaml:"clientID" validate:"required,notblank"`
+		ClientSecret       string `yaml:"clientSecret" validate:"required,notblank"`
 
 		Location string `yaml:"location" validate:"required,notblank"`
 

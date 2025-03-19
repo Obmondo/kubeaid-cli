@@ -14,7 +14,7 @@ import (
 )
 
 type Azure struct {
-	credentials *azidentity.DefaultAzureCredential
+	credentials *azidentity.ClientSecretCredential
 	subscriptionID,
 	resourceGroupName string
 	resourceGroupsClient *armresources.ResourceGroupsClient
@@ -22,10 +22,17 @@ type Azure struct {
 }
 
 func NewAzureCloudProvider(ctx context.Context) cloud.CloudProvider {
-	credentials, err := azidentity.NewDefaultAzureCredential(nil)
+	azureConfig := config.ParsedConfig.Cloud.Azure
+
+	credentials, err := azidentity.NewClientSecretCredential(
+		azureConfig.TenantID,
+		azureConfig.ClientID,
+		azureConfig.ClientSecret,
+		nil,
+	)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure credentials")
 
-	subscriptionID := config.ParsedConfig.Cloud.Azure.SubscriptionID
+	subscriptionID := azureConfig.SubscriptionID
 
 	armClientFactory, err := armresources.NewClientFactory(subscriptionID, credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure Resource Manager (ARM) client factory")
