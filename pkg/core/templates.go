@@ -20,14 +20,19 @@ type TemplateValues struct {
 	CustomerID,
 	GitUsername,
 	GitPassword string
-	config.ClusterConfig
 	config.ForksConfig
-	AWSConfig     *config.AWSConfig
-	HetznerConfig *config.HetznerConfig
+	config.ClusterConfig
 	config.MonitoringConfig
-	CAPIClusterNamespace,
+	CAPIClusterNamespace string
+
+	AWSConfig *config.AWSConfig
 	AWSB64EncodedCredentials,
 	AWSAccountID string
+
+	AzureConfig *config.AzureConfig
+
+	HetznerConfig *config.HetznerConfig
+
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
 
@@ -36,12 +41,13 @@ func getTemplateValues() *TemplateValues {
 		CustomerID:           config.ParsedConfig.CustomerID,
 		GitUsername:          config.ParsedConfig.Git.Username,
 		GitPassword:          config.ParsedConfig.Git.Password,
-		ClusterConfig:        config.ParsedConfig.Cluster,
 		ForksConfig:          config.ParsedConfig.Forks,
-		AWSConfig:            config.ParsedConfig.Cloud.AWS,
-		HetznerConfig:        config.ParsedConfig.Cloud.Hetzner,
+		ClusterConfig:        config.ParsedConfig.Cluster,
 		MonitoringConfig:     config.ParsedConfig.Monitoring,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
+		AWSConfig:            config.ParsedConfig.Cloud.AWS,
+		HetznerConfig:        config.ParsedConfig.Cloud.Hetzner,
+		AzureConfig:          config.ParsedConfig.Cloud.Azure,
 	}
 
 	// Set cloud provider specific values.
@@ -99,6 +105,9 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
 		}
 
+	case constants.CloudProviderAzure:
+		embeddedTemplateNames = append(embeddedTemplateNames, constants.AzureSpecificNonSecretTemplateNames...)
+
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)
 
@@ -126,6 +135,7 @@ func getEmbeddedSecretTemplateNames() []string {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificSecretTemplateNames...)
+
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonSecretTemplateNames
 	}

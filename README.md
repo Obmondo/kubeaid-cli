@@ -95,3 +95,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [azure-sdk-for-go-samples](https://github.com/Azure-Samples/azure-sdk-for-go-samples/tree/main)
 
 - [Workload Identity : The Cluster API Provider Azure Book](https://capz.sigs.k8s.io/topics/workload-identity)
+
+- [List of all Azure regions and Availability Zones](https://holori.com/list-of-all-azure-regions-and/)

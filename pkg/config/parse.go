@@ -81,7 +81,7 @@ func detectCloudProvider() {
 
 	case ParsedConfig.Cloud.Azure != nil:
 		globals.CloudProviderName = constants.CloudProviderAzure
-		panic("unimplemented")
+		globals.CloudProvider = NewAzureCloudProvider()
 
 	case ParsedConfig.Cloud.Hetzner != nil:
 		globals.CloudProviderName = constants.CloudProviderHetzner
@@ -257,14 +257,19 @@ func hydrateVMSpecs(ctx context.Context) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		for i, nodeGroup := range ParsedConfig.Cloud.AWS.NodeGroups {
-			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMType)
+			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.InstanceType)
 
 			ParsedConfig.Cloud.AWS.NodeGroups[i].CPU = instanceSpecs.CPU
 			ParsedConfig.Cloud.AWS.NodeGroups[i].Memory = instanceSpecs.Memory
 		}
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		for i, nodeGroup := range ParsedConfig.Cloud.Azure.NodeGroups {
+			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
+
+			ParsedConfig.Cloud.Azure.NodeGroups[i].CPU = instanceSpecs.CPU
+			ParsedConfig.Cloud.Azure.NodeGroups[i].Memory = instanceSpecs.Memory
+		}
 
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")

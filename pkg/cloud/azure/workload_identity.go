@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
@@ -22,6 +23,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
+	"github.com/google/uuid"
 
 	_ "embed"
 )
@@ -87,6 +89,8 @@ The workflow looks like this :
 You can view the sequence diagram here : https://azure.github.io/azure-workload-identity/docs/installation/self-managed-clusters/oidc-issuer.html#sequence-diagram.
 */
 func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
+	slog.Info("Setting up Workload Identity provider....")
+
 	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
 
 	// Prerequisites for the K3D management cluster.
@@ -133,7 +137,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		NOTE : Microsoft Entra ID is the new name fro AAD.
 	*/
 	{
-		aadApplicationName := config.ParsedConfig.Cloud.Azure.AADApplicationName
+		aadApplicationName := config.ParsedConfig.Cloud.Azure.AADApplication.Name
 
 		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
 		// So, the CAPZ can exchange the ServiceAccount token it uses, for AAD token.
@@ -196,18 +200,56 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 }
 
 func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
+	azureConfig := config.ParsedConfig.Cloud.Azure
+
 	// Create Azure Storage Account, if it doesn't already exist.
 
 	storageClientFactory, err := armstorage.NewClientFactory(a.subscriptionID, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage client factory")
 
-	storageAccountName := config.ParsedConfig.Cloud.Azure.WorkloadIdentity.StorageAccountName
+	storageAccountName := azureConfig.WorkloadIdentity.StorageAccountName
 
 	services.CreateStorageAccount(ctx, &services.CreateStorageAccountArgs{
 		StorageAccountsClient: storageClientFactory.NewAccountsClient(),
 		ResourceGroupName:     a.resourceGroupName,
 		Name:                  storageAccountName,
 	})
+
+	// Allow the AAD app to access everything in this Azure Storage Container.
+	{
+		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
+		assert.AssertErrNil(ctx, err, "Failed creating role assignments client")
+
+		var (
+			roleDefinitionID = fmt.Sprintf(
+				"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
+				a.subscriptionID,
+				constants.AzureStorageBlobDataOwner,
+			)
+
+			roleScope = fmt.Sprintf(
+				"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s",
+				a.subscriptionID,
+				a.resourceGroupName,
+				storageAccountName,
+			)
+
+			roleAssignmentID = uuid.New().String()
+		)
+
+		_, err = roleAssignmentsClient.Create(ctx,
+			roleScope,
+			roleAssignmentID,
+			armauthorization.RoleAssignmentCreateParameters{
+				Properties: &armauthorization.RoleAssignmentProperties{
+					PrincipalID:      to.Ptr(azureConfig.AADApplication.ObjectID),
+					RoleDefinitionID: to.Ptr(roleDefinitionID),
+				},
+			},
+			nil,
+		)
+		assert.AssertErrNil(ctx, err, "Failed assigning Storage Blob Data Owner role to AAD application")
+	}
 
 	// Create Azure Storage Container, if it doesn't already exist.
 	services.CreateBlobContainer(ctx, &services.CreateBlobContainerArgs{
@@ -272,7 +314,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		// Generate the JWKS document.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"azwi jwks --public-keys %s --output-file %s",
-			config.ParsedConfig.Cloud.Azure.WorkloadIdentity.SSHPublicKeyFilePath,
+			azureConfig.WorkloadIdentity.SSHPublicKeyFilePath,
 			constants.OutputPathJWKSDocument,
 		))
 

@@ -33,21 +33,23 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	})
 
 	// Verify that Storage Account name is available.
-	{
-		response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
-			armstorage.AccountCheckNameAvailabilityParameters{
-				Name: to.Ptr(args.Name),
-				Type: to.Ptr("Microsoft.Storage/storageAccounts"),
-			},
-			nil,
-		)
-		assert.AssertErrNil(ctx, err, "Failed verifying whether Azure Storage Account name is available or not")
+	// {
+	// 	response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
+	// 		armstorage.AccountCheckNameAvailabilityParameters{
+	// 			Name: to.Ptr(args.Name),
+	// 			Type: to.Ptr("Microsoft.Storage/storageAccounts"),
+	// 		},
+	// 		nil,
+	// 	)
+	// 	assert.AssertErrNil(ctx, err, "Failed verifying whether Azure Storage Account name is available or not")
+	//
+	// 	assert.Assert(ctx,
+	// 		*response.CheckNameAvailabilityResult.NameAvailable,
+	// 		"Azure Storage Account name not available",
+	// 	)
+	// }
 
-		assert.Assert(ctx,
-			*response.CheckNameAvailabilityResult.NameAvailable,
-			"Azure Storage Account name not available",
-		)
-	}
+	slog.InfoContext(ctx, "Creating / updating Azure Storage Account")
 
 	responsePoller, err := args.StorageAccountsClient.BeginCreate(ctx,
 		args.ResourceGroupName,
@@ -55,6 +57,12 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 		armstorage.AccountCreateParameters{
 			// Standard Storage Account type, recommended for most of the scenarios.
 			Kind: to.Ptr(armstorage.KindStorageV2),
+
+			SKU: &armstorage.SKU{
+				// You can view all the Storage Account SKU types here :
+				// https://learn.microsoft.com/en-us/rest/api/storagerp/srp_sku_types
+				Name: to.Ptr(armstorage.SKUNameStandardLRS), // Standard Locally Redundant Storage.
+			},
 
 			Location: &config.ParsedConfig.Cloud.Azure.Location,
 
@@ -75,7 +83,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 				"cluster": &config.ParsedConfig.Cluster.Name,
 			},
 		},
-		&armstorage.AccountsClientBeginCreateOptions{},
+		nil,
 	)
 	if err != nil {
 		// Skip, if the Storage Account already exists.
@@ -85,13 +93,13 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 			return
 		}
 
-		assert.AssertErrNil(ctx, err, "Failed creating Azure Storage Account")
+		assert.AssertErrNil(ctx, err, "Failed creating / updating Azure Storage Account")
 	}
 
 	_, err = responsePoller.PollUntilDone(ctx, nil)
-	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage Account")
+	assert.AssertErrNil(ctx, err, "Failed creating / updating Azure Storage Account")
 
-	slog.InfoContext(ctx, "Created Azure Storage Account")
+	slog.InfoContext(ctx, "Created / updated Azure Storage Account")
 }
 
 type CreateBlobContainerArgs struct {

@@ -91,7 +91,8 @@ const (
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
 
-	AzureRoleIDContributor = "b24988ac-6180-42a0-ab88-20f7382dd24c"
+	AzureRoleIDContributor    = "b24988ac-6180-42a0-ab88-20f7382dd24c"
+	AzureStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
 
@@ -112,7 +113,7 @@ var (
 	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 	TemplateNameLocalSampleConfig   = "files/templates/local.sample.config.yaml.tmpl"
 
-	TemplateNameOpenIDConfig = "openid-configuration.json.tmpl"
+	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.
@@ -184,6 +185,12 @@ var (
 		"argocd-apps/templates/k8s-configs.app.yaml.tmpl",
 		"k8s-configs/sealed-secrets.namespace.yaml.tmpl",
 		"k8s-configs/velero.namespace.yaml.tmpl",
+	}
+
+	AzureSpecificNonSecretTemplateNames = []string{
+		// For Azure Cloud Controller Manager.
+		"argocd-apps/templates/ccm-azure.app.yaml.tmpl",
+		"argocd-apps/ccm-azure.values.yaml.tmpl",
 	}
 
 	HetznerSpecificNonSecretTemplateNames = []string{

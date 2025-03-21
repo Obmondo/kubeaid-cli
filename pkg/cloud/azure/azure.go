@@ -21,7 +21,9 @@ type Azure struct {
 	vmSizesClient        *armcompute.VirtualMachineSizesClient
 }
 
-func NewAzureCloudProvider(ctx context.Context) cloud.CloudProvider {
+func NewAzureCloudProvider() cloud.CloudProvider {
+	ctx := context.Background()
+
 	azureConfig := config.ParsedConfig.Cloud.Azure
 
 	credentials, err := azidentity.NewClientSecretCredential(
@@ -43,21 +45,21 @@ func NewAzureCloudProvider(ctx context.Context) cloud.CloudProvider {
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure VM sizes client")
 
 	// Create Azure Resource Group, if it doesn't already exist.
-
 	resourceGroupName := config.ParsedConfig.Cluster.Name
+	{
+		_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
+			armresources.ResourceGroup{
+				Location: &config.ParsedConfig.Cloud.Azure.Location,
+			},
+			nil,
+		)
+		assert.AssertErrNil(ctx, err,
+			"Failed creating / updating Resource Group",
+			slog.String("name", resourceGroupName),
+		)
 
-	_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
-		armresources.ResourceGroup{
-			Location: &config.ParsedConfig.Cloud.Azure.Location,
-		},
-		nil,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating / updating Resource Group",
-		slog.String("name", resourceGroupName),
-	)
-
-	slog.InfoContext(ctx, "Created Azure Resource Group", slog.String("resource-group-name", resourceGroupName))
+		slog.InfoContext(ctx, "Created Azure Resource Group", slog.String("resource-group-name", resourceGroupName))
+	}
 
 	return &Azure{
 		credentials,

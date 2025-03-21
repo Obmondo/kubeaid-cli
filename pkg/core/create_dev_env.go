@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -28,7 +29,8 @@ func CreateDevEnv(ctx context.Context,
 		aws.CreateIAMCloudFormationStack()
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
+		azureCloudProvider.SetupWorkloadIdentityProvider(ctx)
 
 	case constants.CloudProviderHetzner:
 		break

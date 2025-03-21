@@ -63,7 +63,16 @@ func validateConfig(config *Config) {
 		}
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		for _, nodeGroup := range config.Cloud.Azure.NodeGroups {
+			// Validate auto-scaling options.
+			assert.Assert(ctx,
+				nodeGroup.MinSize <= nodeGroup.Maxsize,
+				"replica count should be <= its max-size", slog.String("node-group", nodeGroup.Name),
+			)
+
+			// Validate labels and taints.
+			validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
+		}
 
 	case constants.CloudProviderHetzner:
 		break

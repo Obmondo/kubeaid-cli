@@ -51,12 +51,34 @@ devenv-create-aws-dev:
 		--debug \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 
+.PHONY: devenv-create-azure-dev
+devenv-create-azure-dev:
+	@go run ./cmd/ devenv create azure \
+		--debug \
+		--config ./outputs/kubeaid-bootstrap-script.azure.config.yaml
+
 .PHONY: bootstrap-cluster-aws-dev
 bootstrap-cluster-aws-dev:
 	@go run ./cmd/ cluster bootstrap aws \
 		--debug \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 # --skip-kube-prometheus-build
+# --skip-clusterctl-move
+
+.PHONY: bootstrap-cluster-azure-dev
+bootstrap-cluster-azure-dev:
+	@go run ./cmd/ cluster bootstrap azure \
+		--debug \
+		--config ./outputs/kubeaid-bootstrap-script.azure.config.yaml
+# --skip-kube-prometheus-build
+# --skip-clusterctl-move
+
+.PHONY: bootstrap-cluster-hetzner-dev
+bootstrap-cluster-hetzner-dev:
+	@go run ./cmd/ cluster bootstrap hetzner \
+		--debug \
+    --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
+    --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
 .PHONY: upgrade-cluster-aws-dev
@@ -66,18 +88,22 @@ upgrade-cluster-aws-dev:
     --config ./outputs/kubeaid-bootstrap-script.aws.config.yaml \
 		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
 
+.PHONY: upgrade-cluster-azure-dev
+upgrade-cluster-azure-dev:
+	@go run ./cmd/ cluster upgrade azure \
+		--debug \
+    --config ./outputs/kubeaid-bootstrap-script.azure.config.yaml \
+		--k8s-version "v1.32.0"
+
 .PHONY: delete-provisioned-cluster-aws-dev
 delete-provisioned-cluster-aws-dev:
 	@go run ./cmd/ cluster delete \
 		--config ./outputs/kubeaid-bootstrap-script.aws.config.yaml
 
-.PHONY: bootstrap-cluster-hetzner-dev
-bootstrap-cluster-hetzner-dev:
-	@go run ./cmd/ cluster bootstrap hetzner \
-		--debug \
-    --config ./outputs/kubeaid-bootstrap-script.hetzner.config.yaml \
-    --skip-kube-prometheus-build
-# --skip-clusterctl-move
+.PHONY: delete-provisioned-cluster-azure-dev
+delete-provisioned-cluster-azure-dev:
+	@go run ./cmd/ cluster delete \
+		--config ./outputs/kubeaid-bootstrap-script.azure.config.yaml
 
 .PHONY: delete-provisioned-cluster-hetzner-dev
 delete-provisioned-cluster-hetzner-dev:
