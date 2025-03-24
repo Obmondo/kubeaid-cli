@@ -12,6 +12,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 )
 
 func CreateDevEnv(ctx context.Context,
@@ -31,7 +32,6 @@ func CreateDevEnv(ctx context.Context,
 	case constants.CloudProviderAzure:
 		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
 		azureCloudProvider.SetupWorkloadIdentityProvider(ctx)
-		panic("checkpoint")
 
 	case constants.CloudProviderHetzner:
 		break
@@ -42,7 +42,7 @@ func CreateDevEnv(ctx context.Context,
 	os.Setenv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 	//
 	// and then create the K3D management cluster (if it doesn't already exist).
-	kubernetes.CreateK3DCluster(ctx, managementClusterName)
+	k3d.CreateK3DCluster(ctx, managementClusterName)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	_ = git.CloneRepo(ctx,

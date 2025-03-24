@@ -1,0 +1,27 @@
+{{/* You can view all the available configuration options here :
+     https://k3d.io/v5.5.1/usage/configfile/ */}}
+
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: {{ .Name }}
+
+network: k3d-{{ .Name }}
+
+registries:
+  create:
+    name: {{ .Name }}
+    hostPort: "5555"
+    volumes:
+      - {{ .TempDir }}/registry:/var/lib/registry
+
+image: rancher/k3s:{{ .K8sVersion }}-k3s1
+servers: 1
+agents: 1
+
+options:
+  k3s:
+    extraArgs:
+      - arg: --tls-san=0.0.0.0
+        nodeFilters:
+          - server:*

@@ -1,5 +1,7 @@
 package constants
 
+import "path"
+
 // Environment variable names.
 const (
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
@@ -59,15 +61,18 @@ const (
 )
 
 // Output paths.
-const (
-	OutputPathGeneratedConfig = "./outputs/kubeaid-bootstrap-script.config.yaml"
+var (
+	OutputDirectory = "./outputs"
 
-	OutputPathManagementClusterHostKubeconfig      = "./outputs/management-cluster.host.kubeconfig.yaml"
-	OutputPathManagementClusterContainerKubeconfig = "./outputs/management-cluster.container.kubeconfig.yaml"
+	OutputPathGeneratedConfig = path.Join(OutputDirectory, "kubeaid-bootstrap-script.config.yaml")
 
-	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
+	OutputPathManagementClusterK3DConfig           = path.Join(OutputDirectory, "management-cluster.config.yaml")
+	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
+	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
 
-	OutputPathJWKSDocument = "./outputs/jwks.json"
+	OutputPathProvisionedClusterKubeconfig = path.Join(OutputDirectory, "provisioned-cluster.kubeconfig.yaml")
+
+	OutputPathJWKSDocument = path.Join(OutputDirectory, "jwks.json")
 )
 
 // ArgoCD.
@@ -114,6 +119,8 @@ var (
 	TemplateNameLocalSampleConfig   = "files/templates/local.sample.config.yaml.tmpl"
 
 	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
+
+	TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.

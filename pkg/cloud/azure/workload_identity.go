@@ -299,8 +299,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		// You can read more about OpenID provider issuer discovery document here :
 		// https://openid.net/specs/openid-connect-discovery-1_0.html.
 		openIDConfig := templateUtils.ParseAndExecuteTemplate(ctx,
-			&templates,
-			constants.TemplateNameOpenIDConfig,
+			&templates, constants.TemplateNameOpenIDConfig,
 			&TemplateArgs{
 				StorageAccountName: storageAccountName,
 				BlobContainerName:  constants.BlobContainerNameWorkloadIdentity,
