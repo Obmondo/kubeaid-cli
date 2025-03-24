@@ -102,9 +102,6 @@ var (
 		"argocd-apps/Chart.yaml",
 		"argocd-apps/templates/root.yaml.tmpl",
 
-		// For KubePrometheus.
-		"argocd-apps/templates/kube-prometheus.app.yaml.tmpl",
-
 		// For CertManager.
 		"argocd-apps/templates/cert-manager.app.yaml.tmpl",
 		"argocd-apps/cert-manager.values.yaml.tmpl",
@@ -114,6 +111,10 @@ var (
 		"argocd-apps/sealed-secrets.values.yaml.tmpl",
 		"argocd-apps/templates/secrets.app.yaml.tmpl",
 	}
+
+	// For KubePrometheus.
+	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.app.yaml.tmpl"
+	TemplateNameKubePrometheusVars      = "cluster-vars.jsonnet.tmpl"
 
 	CommonCloudNonSecretTemplateNames = []string{
 		// For Cilium
@@ -179,6 +180,4 @@ var (
 		// "sealed-secrets/capi-cluster/hetzner-robot-ssh-keypair.yaml.tmpl",
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 	}
-
-	TemplateNameJsonnet = "cluster-vars.jsonnet.tmpl"
 )

@@ -84,16 +84,17 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 	templateValues := getTemplateValues()
-	//
+
+	// Build KubePrometheus.
+	if !skipKubePrometheusBuild {
+		embeddedTemplateNames = append(embeddedTemplateNames, constants.TemplateNameKubePrometheusArgoCDApp)
+		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+	}
+
 	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
 		destinationFilePath := path.Join(clusterDir, strings.TrimSuffix(embeddedTemplateName, ".tmpl"))
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
-	}
-
-	// Build KubePrometheus.
-	if !skipKubePrometheusBuild {
-		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
 	}
 }
 
@@ -140,7 +141,7 @@ func createFileFromTemplate(ctx context.Context,
 func buildKubePrometheus(ctx context.Context, clusterDir string, gitAuthMethod transport.AuthMethod, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
 	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet", clusterDir, config.ParsedConfig.Cluster.Name)
-	createFileFromTemplate(ctx, jsonnetVarsFilePath, constants.TemplateNameJsonnet, templateValues)
+	createFileFromTemplate(ctx, jsonnetVarsFilePath, constants.TemplateNameKubePrometheusVars, templateValues)
 
 	// Create the kube-prometheus folder.
 	kubePrometheusDir := fmt.Sprintf("%s/kube-prometheus", clusterDir)

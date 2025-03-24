@@ -61,6 +61,11 @@ func SetupCluster(ctx context.Context,
 		"cert-manager",
 		"secrets",
 	}
+
+	if !skipKubePrometheusBuild {
+		argocdAppsToBeSynced = append(argocdAppsToBeSynced, []string{constants.ArgoCDAppKubePrometheus}...)
+	}
+
 	for _, argoCDApp := range argocdAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
