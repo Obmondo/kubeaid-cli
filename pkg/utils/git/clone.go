@@ -48,11 +48,13 @@ func CloneRepo(ctx context.Context,
 
 	var auth transport.AuthMethod
 
-	isPrivate, err := IsRepoPrivate(ctx, url)
-	assert.AssertErrNil(ctx, err, "failed to determine git repo type")
+	if len(config.ParsedConfig.Git.Password) > 0 {
+		isPrivate, err := IsRepoPrivate(ctx, url)
+		assert.AssertErrNil(ctx, err, "failed to determine git repo type")
 
-	if isPrivate {
-		auth = authMethod
+		if isPrivate {
+			auth = authMethod
+		}
 	}
 
 	opts := &goGit.CloneOptions{
