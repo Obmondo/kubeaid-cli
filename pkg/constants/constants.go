@@ -96,8 +96,8 @@ const (
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
 
-	CAPZDefaultServiceAccountName = "capz-manager"
-	ASODefaultServiceAccountName  = "azureserviceoperator-default"
+	ServiceAccountNameCAPZ = "capz-manager"
+	ServiceAccountNameASO  = "azureserviceoperator-default"
 )
 
 // Uncategorized.

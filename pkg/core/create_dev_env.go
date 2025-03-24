@@ -31,6 +31,7 @@ func CreateDevEnv(ctx context.Context,
 	case constants.CloudProviderAzure:
 		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
 		azureCloudProvider.SetupWorkloadIdentityProvider(ctx)
+		panic("checkpoint")
 
 	case constants.CloudProviderHetzner:
 		break

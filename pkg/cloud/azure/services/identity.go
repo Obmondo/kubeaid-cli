@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"path"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/google/uuid"
 )
 
 type CreateUserAssignedIdentityArgs struct {
@@ -43,13 +46,19 @@ There are two types of managed identities :
 	REFERENCE : https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities.
 */
 func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIdentityArgs) string {
-	identityName := args.Name
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("name", args.Name),
+	})
+
+	azureConfig := config.ParsedConfig.Cloud.Azure
+
+	slog.InfoContext(ctx, "Creating User Assigned Identity and assigning Contributor Role to it")
 
 	response, err := args.UserAssignedIdentitiesClient.CreateOrUpdate(ctx,
 		args.ResourceGroupName,
-		identityName,
+		args.Name,
 		armmsi.Identity{
-			Location: &config.ParsedConfig.Cloud.Azure.Location,
+			Location: &azureConfig.Location,
 			Tags: map[string]*string{
 				"cluster": &config.ParsedConfig.Cluster.Name,
 			},
@@ -58,7 +67,7 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 	)
 	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identity")
 
-	userAssignedIdentityID := *response.ID
+	userAssignedIdentityID := *response.Properties.PrincipalID
 
 	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
 	// subscription where the main cluster will be created.
@@ -71,22 +80,21 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 	*/
 
 	var (
-		subscriptionID = config.ParsedConfig.Cloud.Azure.SubscriptionID
-
-		roleScope          = ("/subscriptions/" + subscriptionID)
-		roleAssignmentName = fmt.Sprintf("%s-contributor-subscription-%s", identityName, subscriptionID)
-		//
-		// You can see the Azure Role definition ID format here :
-		// https://learn.microsoft.com/en-us/cli/azure/role/definition?view=azure-cli-latest.
-		roleDefinitionID = fmt.Sprintf("/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s", subscriptionID, constants.AzureRoleIDContributor)
+		roleDefinitionID = fmt.Sprintf(
+			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
+			azureConfig.SubscriptionID,
+			constants.AzureRoleIDContributor,
+		)
+		roleScope        = path.Join("/subscriptions/", azureConfig.SubscriptionID)
+		roleAssignmentID = uuid.New().String()
 	)
 
 	_, err = args.RoleAssignmentsClient.Create(ctx,
 		roleScope,
-		roleAssignmentName,
+		roleAssignmentID,
 		armauthorization.RoleAssignmentCreateParameters{
 			Properties: &armauthorization.RoleAssignmentProperties{
-				PrincipalID:      response.ID,
+				PrincipalID:      &userAssignedIdentityID,
 				RoleDefinitionID: &roleDefinitionID,
 			},
 		},

@@ -79,8 +79,10 @@
               kubectl
               kubeseal
               clusterctl
+
               clusterawsadm
               azwi
+              azure-cli
 
               k9s
               gnumake

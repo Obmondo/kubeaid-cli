@@ -8,11 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
-	"path"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
-	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
@@ -93,6 +94,30 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
 
+	userAssignedIdentityName := config.ParsedConfig.Cluster.Name
+
+	// Prerequisites for the main cluster to be provisioned.
+	{
+		userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(
+			a.subscriptionID, a.credentials, nil,
+		)
+		assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
+
+		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(
+			a.subscriptionID, a.credentials, nil,
+		)
+		assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
+
+		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
+		// subscription being used.
+		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
+			RoleAssignmentsClient:        roleAssignmentsClient,
+			ResourceGroupName:            a.resourceGroupName,
+			Name:                         userAssignedIdentityName,
+		})
+	}
+
 	// Prerequisites for the K3D management cluster.
 	/*
 		Not all ServiceAccount tokens can be exchanged for a valid AAD (Azure Active Directory)
@@ -137,69 +162,51 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		NOTE : Microsoft Entra ID is the new name fro AAD.
 	*/
 	{
-		aadApplicationName := config.ParsedConfig.Cloud.Azure.AADApplication.Name
-
 		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
 		// So, the CAPZ can exchange the ServiceAccount token it uses, for AAD token.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			`
-        azwi serviceaccount create phase federated-identity \
-          --aad-application-name %s \
-          --service-account-namespace %s \
-          --service-account-name %s  \
-          --service-account-issuer-url %s
+        az identity federated-credential create \
+          --name "capz-federated-identity" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
       `,
-			aadApplicationName,
-			kubernetes.GetCapiClusterNamespace(),
-			constants.CAPZDefaultServiceAccountName,
+			userAssignedIdentityName,
+			a.resourceGroupName,
 			serviceAccountIssuerURL,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.ServiceAccountNameCAPZ,
 		))
 
 		// Create Federated Identity credential for Azure Service Operator (ASO).
 		// So, the ASO can exchange the ServiceAccount token it uses, for AAD token.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			`
-        azwi serviceaccount create phase federated-identity \
-          --aad-application-name %s \
-          --service-account-namespace %s \
-          --service-account-name %s \
-          --service-account-issuer-url %s
+        az identity federated-credential create \
+          --name "aso-federated-identity" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
       `,
-			aadApplicationName,
-			kubernetes.GetCapiClusterNamespace(),
-			constants.ASODefaultServiceAccountName,
+			userAssignedIdentityName,
+			a.resourceGroupName,
 			serviceAccountIssuerURL,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.ServiceAccountNameASO,
 		))
 
 		slog.InfoContext(ctx, "Created Azure Federated Identity for both CAPZ and ASO")
-	}
-
-	// Prerequisites for the main cluster to be provisioned.
-	{
-		userAssignedIdentitiesClient, err := armmsi.NewUserAssignedIdentitiesClient(
-			a.subscriptionID, a.credentials, nil,
-		)
-		assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identities client")
-
-		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(
-			a.subscriptionID, a.credentials, nil,
-		)
-		assert.AssertErrNil(ctx, err, "Failed creating Role Assignments client")
-
-		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
-		// subscription being used.
-		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
-			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
-			RoleAssignmentsClient:        roleAssignmentsClient,
-			ResourceGroupName:            a.resourceGroupName,
-			Name:                         config.ParsedConfig.Cluster.Name,
-		})
 	}
 
 	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
 }
 
 func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
+	slog.InfoContext(ctx, "Creating external OpenID provider")
+
 	azureConfig := config.ParsedConfig.Cloud.Azure
 
 	// Create Azure Storage Account, if it doesn't already exist.
@@ -216,8 +223,12 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	})
 
 	// Allow the AAD app to access everything in this Azure Storage Container.
-	{
-		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(a.subscriptionID, a.credentials, nil)
+	(func() {
+		roleAssignmentsClient, err := armauthorization.NewRoleAssignmentsClient(
+			a.subscriptionID,
+			a.credentials,
+			nil,
+		)
 		assert.AssertErrNil(ctx, err, "Failed creating role assignments client")
 
 		var (
@@ -242,14 +253,27 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			roleAssignmentID,
 			armauthorization.RoleAssignmentCreateParameters{
 				Properties: &armauthorization.RoleAssignmentProperties{
-					PrincipalID:      to.Ptr(azureConfig.AADApplication.ObjectID),
+					PrincipalID:   to.Ptr(azureConfig.AADApplication.ServicePrincipalID),
+					PrincipalType: to.Ptr(armauthorization.PrincipalTypeServicePrincipal),
+
 					RoleDefinitionID: to.Ptr(roleDefinitionID),
 				},
 			},
 			nil,
 		)
-		assert.AssertErrNil(ctx, err, "Failed assigning Storage Blob Data Owner role to AAD application")
-	}
+		if err != nil {
+			// Skip, if the Storage Account already exists.
+			responseError, ok := err.(*azcore.ResponseError)
+			if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+				slog.InfoContext(ctx, "Storage Blob Data Owner role is already assigned to AAD application")
+				return
+			}
+
+			assert.AssertErrNil(ctx, err, "Failed assigning Storage Blob Data Owner role to AAD application")
+		}
+
+		slog.InfoContext(ctx, "Assigned Storage Blob Data Owner role to AAD application")
+	})()
 
 	// Create Azure Storage Container, if it doesn't already exist.
 	services.CreateBlobContainer(ctx, &services.CreateBlobContainerArgs{
@@ -260,6 +284,12 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	})
 
 	storageAccountURL := fmt.Sprintf("https://%s.blob.core.windows.net/", storageAccountName)
+
+	serviceAccountIssuerURL, err := url.JoinPath(
+		storageAccountURL,
+		constants.BlobContainerNameWorkloadIdentity,
+	)
+	assert.AssertErrNil(ctx, err, "Failed constructing ServiceAccount issuer URL")
 
 	blobClient, err := azblob.NewClient(storageAccountURL, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
@@ -289,11 +319,11 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 		// Verify that the OpenID provider issuer discovery document is publicly accessible.
 
-		openIDConfigURL := path.Join(
-			storageAccountURL,
-			constants.BlobContainerNameWorkloadIdentity,
+		openIDConfigURL, err := url.JoinPath(
+			serviceAccountIssuerURL,
 			constants.AzureBlobNameOpenIDConfiguration,
 		)
+		assert.AssertErrNil(ctx, err, "Failed constructing OpenID config URL path")
 
 		response, err := http.Get(openIDConfigURL)
 		assert.AssertErrNil(ctx, err, "Failed fetching uploaded openid-configuration.json")
@@ -332,11 +362,11 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 		// Verify that the JWKS document is publicly accessible.
 
-		jwksDocumentConfigURL := path.Join(
-			storageAccountURL,
-			constants.BlobContainerNameWorkloadIdentity,
+		jwksDocumentConfigURL, err := url.JoinPath(
+			serviceAccountIssuerURL,
 			constants.AzureBlobNameJWKSDocument,
 		)
+		assert.AssertErrNil(ctx, err, "Failed constructing OpenID config URL path")
 
 		response, err := http.Get(jwksDocumentConfigURL)
 		assert.AssertErrNil(ctx, err, "Failed fetching uploaded JWKS document")
@@ -355,6 +385,5 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 	slog.InfoContext(ctx, "Created external OpenID provider")
 
-	serviceAccountIssuerURL := path.Join(storageAccountURL, constants.BlobContainerNameWorkloadIdentity)
 	return serviceAccountIssuerURL
 }

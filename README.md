@@ -1,99 +1,58 @@
-# KubeAid Bootstrap Script
+# Azure AD Workload Identity
 
-The `KubeAid Bootstrap Script` is used to bootstrap Kubernetes clusters using Cluster API and [KubeAid](https://github.com/Obmondo/KubeAid).
+[![Build Status][14]][13]
+[![OpenSSF Scorecard][23]][24]
 
-> Currently it only supports bootstrapping self-managed clusters in AWS.
+Azure AD Workload Identity is the next iteration of [Azure AD Pod Identity][1] that enables Kubernetes applications to access Azure cloud resources securely with [Azure Active Directory][2] based on annotated [service accounts][3].
 
-## Official Guides
+| Kubernetes Version | Supported |
+|--------------------| --------- |
+| 1.31               | ✅         |
+| 1.30               | ✅         |
+| 1.29               | ✅         |
+| 1.28               | ✅         |
 
-- [Bootstrapping a self-managed cluster in AWS](https://github.com/Obmondo/KubeAid/blob/master/docs/aws/capi/cluster.md)
+## Installation
 
-## Developer Guide (AWS edition)
+Check out the [installation guide][12] on how to deploy the Azure AD Workload Identity webhook.
 
-> Make sure, you've Docker installed and running in your system.
+## Quick Start
 
-Run `make build-image-dev` to build the KubeAid Bootstrap Script container image (development version).
+Check out the Azure AD Workload Identity [Quick Start][4] on how to securely access Azure cloud resources from your Kubernetes workload using the Microsoft Authentication Library (MSAL).
 
-Then run `make run-container-dev` to run the container.
+## Code of Conduct
 
-Use `make exec-container-dev` to execute into the container.
+This project has adopted the [Microsoft Open Source Code of Conduct][17]. For more information, see the [Code of Conduct FAQ][18] or contact [opencode@microsoft.com][19] with any additional questions or comments.
 
-Once you're inside the container, use `make generate-sample-config-aws-dev` to generate a sample config file at [./outputs/kubeaid-bootstrap-script.config.yaml](./outputs/kubeaid-bootstrap-script.config.yaml), targetting the AWS cloud provider. Adjust the config file according to your needs.
+## Release
 
-Export your AWS credentials as environment variables like such :
+Currently, Azure Workload Identity releases on a monthly basis, targeting the last week of the month.
 
-```sh
-export AWS_REGION=""
-export AWS_ACCESS_KEY_ID=""
-export AWS_SECRET_ACCESS_KEY=""
-export AWS_SESSION_TOKEN=""
-```
+## Support
 
-Then run `make bootstrap-cluster-dev-aws` to bootstrap the cluster!
+Azure AD Workload Identity is an open source project that is [**not** covered by the Microsoft Azure support policy][20]. [Please search open issues here][21], and if your issue isn't already represented please [open a new one][22]. The project maintainers will respond to the best of their abilities.
 
-> [!NOTE]
-> If the `clusterawsadm bootstrap iam create-cloudformation-stack` command errors out with this message :
->
->      the IAM CloudFormation Stack create / update failed and it's currently in a `ROLLBACK_COMPLETE` state
->
-> then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
+<!-- - Ensure backward compatibility when upgrading from [AAD Pod Identity](https://github.com/Azure/aad-pod-identity). -->
 
-If cluster provisioning gets stuck, then debug by :
-
-- checking logs of ClusterAPI related pod.
-
-- SSHing into the control-plane node. You can view cloud-init output logs stored at `/var/log/cloud-init-output.log`.
-
-If you want to delete the provisioned cluster, then execute : `make delete-provisioned-cluster-dev-aws`.
-
-## TODOs
-
-- [ ] Check Git URL if SSH agent is used.
-- [ ] Validation for sshagentauth (should not accept https url).
-- [x] `--debug` flag to print command execution outputs.
-- [x] Support adding multiple SSH keys via config file.
-- [ ] Support using HTTPS for ArgoCD apps.
-- [x] Support enabling `Audit Logging`.
-- [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
-- [x] ETCD metrics enabled.
-- [x] Support scale to / from zero for the node-groups.
-  > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
-  > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
-- [ ] In case of AWS, pick up AWS credentials from `~/.aws/credentials` (if present).
-- [ ] `recover cluster` command
-
-## REFERENCES
-
-- [Server-Side Apply](https://kubernetes.io/docs/reference/using-api/server-side-apply/#comparison-with-client-side-apply)
-
-- [The definitive guide to building Golang based CLI](https://www.youtube.com/watch?v=SSRIn5DAmyw)
-
-- [AWS S3 Sync Command – Guide with Examples](https://spacelift.io/blog/aws-s3-sync)
-
-- How KubeAid backs up Sealed Secrets using a CRONJob : <https://github.com/Obmondo/kubeaid/blob/master/argocd-helm-charts/sealed-secrets/templates/configmap.yaml>
-
-- [Key Management](https://playbook.stakater.com/content/workshop/sealed-secrets/management.html)
-
-- [Secret Rotation](https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation)
-
-- [Kubernetes Backups, Upgrades, Migrations - with Velero](https://youtu.be/zybLTQER0yY?si=qOZcizBqPOeouJ7y)
-
-- [Failover](https://docs.hetzner.com/robot/dedicated-server/ip/failover/)
-
-- [Auditing](https://kubernetes.io/docs/tasks/debug/debug-cluster/audit/)
-
-- [Kube API server args](https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/)
-
-- [Using IAM roles in management cluster instead of AWS credentials](https://cluster-api-aws.sigs.k8s.io/topics/using-iam-roles-in-mgmt-cluster)
-
-- [KubeadmControlPlane CRD](https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml)
-
-- [How can you call a helm 'helper' template from a subchart with the correct context?](https://stackoverflow.com/questions/47791971/how-can-you-call-a-helm-helper-template-from-a-subchart-with-the-correct-conte)
-
-- [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)
-
-- [azure-sdk-for-go-samples](https://github.com/Azure-Samples/azure-sdk-for-go-samples/tree/main)
-
-- [Workload Identity : The Cluster API Provider Azure Book](https://capz.sigs.k8s.io/topics/workload-identity)
-
-- [List of all Azure regions and Availability Zones](https://holori.com/list-of-all-azure-regions-and/)
+[1]: https://github.com/Azure/aad-pod-identity
+<!-- markdown-link-check-disable-next-line -->
+[2]: https://azure.microsoft.com/products/active-directory/
+[3]: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/
+[4]: https://azure.github.io/azure-workload-identity/docs/quick-start.html
+[5]: https://azure.github.io/azure-workload-identity/docs/installation/mutating-admission-webhook.html
+[8]: https://azure.github.io/aad-pod-identity/docs/getting-started/role-assignment/
+[9]: https://docs.microsoft.com/en-us/azure/virtual-machines/windows/instance-metadata-service?tabs=windows
+[10]: https://kubernetes.io/docs/concepts/extend-kubernetes/api-extension/custom-resources/#customresourcedefinitions
+[11]: https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/#service-account-token-volume-projection
+[12]: https://azure.github.io/azure-workload-identity/docs/installation.html
+[13]: https://dev.azure.com/AzureContainerUpstream/Azure%20Workload%20Identity/_build/latest?definitionId=365&branchName=main
+[14]: https://dev.azure.com/AzureContainerUpstream/Azure%20Workload%20Identity/_apis/build/status/Azure%20Workload%20Identity%20Nightly?branchName=main
+[15]: https://azure.github.io/azure-workload-identity/docs/known-issues.html#permission-denied-when-reading-the-projected-service-account-token-file
+[17]: https://opensource.microsoft.com/codeofconduct/
+[18]: https://opensource.microsoft.com/codeofconduct/faq
+[19]: mailto:opencode@microsoft.com
+[20]: https://support.microsoft.com/en-us/help/2941892/support-for-linux-and-open-source-technology-in-azure
+[21]: https://github.com/Azure/azure-workload-identity/issues
+[22]: https://github.com/Azure/azure-workload-identity/issues/new/choose
+[23]: https://api.securityscorecards.dev/projects/github.com/Azure/azure-workload-identity/badge
+[24]: https://api.securityscorecards.dev/projects/github.com/Azure/azure-workload-identity

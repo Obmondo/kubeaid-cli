@@ -32,6 +32,8 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 		slog.String("storage-account-name", args.Name),
 	})
 
+	// BUG : throws error with code : SubscriptionNotFound.
+	//
 	// Verify that Storage Account name is available.
 	// {
 	// 	response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
@@ -145,4 +147,6 @@ func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 
 		assert.AssertErrNil(ctx, err, "Failed creating Azure Blob Container")
 	}
+
+	slog.InfoContext(ctx, "Created Azure Blob Container")
 }
