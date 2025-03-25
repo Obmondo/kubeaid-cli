@@ -69,7 +69,7 @@ func getTemplateValues() *TemplateValues {
 
 		kubeConfigPaths := []string{
 			kubernetes.GetManagementClusterKubeconfigPath(ctx),
-			constants.OutputPathProvisionedClusterKubeconfig,
+			constants.OutputPathMainClusterKubeconfig,
 		}
 
 		for _, kubeConfigPath := range kubeConfigPaths {

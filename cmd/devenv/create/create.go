@@ -14,8 +14,10 @@ var CreateCmd = &cobra.Command{
 }
 
 var (
-	managementClusterName   string
-	skipKubePrometheusBuild bool
+	managementClusterName string
+	skipMonitoringSetup,
+	skipKubePrometheusBuild,
+	skipPRFlow bool
 )
 
 func init() {
@@ -31,7 +33,17 @@ func init() {
 		)
 
 	CreateCmd.PersistentFlags().
+		BoolVar(&skipMonitoringSetup, constants.FlagNameSkipMonitoringSetup, false,
+			"Skip KubePrometheus installation",
+		)
+
+	CreateCmd.PersistentFlags().
 		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
 			"Skip the Kube Prometheus build step while setting up KubeAid Config",
+		)
+
+	CreateCmd.PersistentFlags().
+		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 }

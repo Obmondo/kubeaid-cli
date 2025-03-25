@@ -274,7 +274,7 @@ func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 
 	kubeConfig := secret.Data["value"]
 
-	err := os.WriteFile(constants.OutputPathProvisionedClusterKubeconfig, kubeConfig, 0644)
+	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, 0644)
 	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
 
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")

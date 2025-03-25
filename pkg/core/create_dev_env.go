@@ -15,11 +15,17 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 )
 
-func CreateDevEnv(ctx context.Context,
-	managementClusterName string,
-	skipKubePrometheusBuild,
-	isPartOfDisasterRecovery bool,
-) {
+type CreateDevEnvArgs struct {
+	ManagementClusterName string
+
+	SkipMonitoringSetup,
+	SkipKubePrometheusBuild,
+	SkipPRFlow,
+
+	IsPartOfDisasterRecovery bool
+}
+
+func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
@@ -42,7 +48,7 @@ func CreateDevEnv(ctx context.Context,
 	os.Setenv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 	//
 	// and then create the K3D management cluster (if it doesn't already exist).
-	k3d.CreateK3DCluster(ctx, managementClusterName)
+	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	_ = git.CloneRepo(ctx,
@@ -54,10 +60,10 @@ func CreateDevEnv(ctx context.Context,
 	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
 
 	// Setup the management cluster.
-	SetupCluster(ctx,
-		managementClusterClient,
-		gitAuthMethod,
-		skipKubePrometheusBuild,
-		isPartOfDisasterRecovery,
-	)
+	SetupCluster(ctx, SetupClusterArgs{
+		CreateDevEnvArgs:    args,
+		IsManagementCluster: true,
+		ClusterClient:       managementClusterClient,
+		GitAuthMethod:       gitAuthMethod,
+	})
 }

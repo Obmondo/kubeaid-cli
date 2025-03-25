@@ -29,14 +29,14 @@ type (
 	}
 )
 
-func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
+func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArgs) {
 	// Update the capi-cluster.values.yaml file in the kubeaid-config repo.
 	updateCapiClusterValuesFile(ctx, args)
 
 	// Construct the Kubernetes (management / provisioned) cluster client.
 	var clusterClient client.Client
 	{
-		provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
+		provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig, true)
 		clusterClient = provisionedClusterClient
 
 		// If `clusterctl move` wasn't executed, then we need to communicate with the management

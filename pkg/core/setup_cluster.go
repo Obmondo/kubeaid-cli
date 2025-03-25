@@ -20,20 +20,29 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func SetupCluster(ctx context.Context,
-	kubeClient client.Client,
-	gitAuthMethod transport.AuthMethod,
-	skipKubePrometheusBuild,
-	isPartOfDisasterRecovery bool,
-) {
-	slog.InfoContext(ctx, "Setting up cluster")
+type SetupClusterArgs struct {
+	*CreateDevEnvArgs
+
+	IsManagementCluster bool
+	ClusterClient       client.Client
+
+	GitAuthMethod transport.AuthMethod
+}
+
+func SetupCluster(ctx context.Context, args SetupClusterArgs) {
+	clusterType := constants.ClusterTypeManagement
+	if !args.IsManagementCluster {
+		clusterType = constants.ClusterTypeMain
+	}
+
+	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", clusterType))
 
 	// Install Sealed Secrets.
 	kubernetes.InstallSealedSecrets(ctx)
 
 	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
 	// keys from a previous cluster which got destroyed.
-	if isPartOfDisasterRecovery {
+	if args.IsPartOfDisasterRecovery {
 		sealedSecretsKeysBackupBucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsKeysBackupBucketName)
 
@@ -46,14 +55,17 @@ func SetupCluster(ctx context.Context,
 	}
 
 	// Setup cluster directory in the user's KubeAid config repo.
-	SetupKubeAidConfig(ctx, gitAuthMethod, skipKubePrometheusBuild)
+	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+		CreateDevEnvArgs: args.CreateDevEnvArgs,
+		GitAuthMethod:    args.GitAuthMethod,
+	})
 
 	// Install and setup ArgoCD.
-	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), kubeClient)
+	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 	// Kubernetes Secret will exist.
-	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), kubeClient)
+	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
 
 	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
 	argocdAppsToBeSynced := []string{
@@ -62,31 +74,29 @@ func SetupCluster(ctx context.Context,
 		"secrets",
 	}
 
-	if !skipKubePrometheusBuild {
-		argocdAppsToBeSynced = append(argocdAppsToBeSynced, []string{constants.ArgoCDAppKubePrometheus}...)
-	}
-
 	for _, argoCDApp := range argocdAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	if config.ParsedConfig.Cloud.Local == nil {
-		// Sync ClusterAPI ArgoCD App.
-
-		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
-
-		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
-		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
-		// Provider component first.
-		syncInfrastructureProvider(ctx, kubeClient)
+	if config.ParsedConfig.Cloud.Local != nil {
+		return
 	}
+
+	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
+	// Sync ClusterAPI ArgoCD App.
+	kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
+	//
+	// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
+	// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
+	//        Provider component first.
+	syncInfrastructureProvider(ctx, args.ClusterClient)
+
+	printHelpTextForArgoCDDashboardAccess(clusterType)
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
 // infrastructure specific CRDs to be installed and pod to be running.
-func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
-	// Determine the name of the Infrastructure Provider component.
-
+func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client) {
 	// Sync the Infrastructure Provider component.
 	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{
 		{
@@ -107,7 +117,7 @@ func syncInfrastructureProvider(ctx context.Context, kubeClient client.Client) {
 
 	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
 		podList := &coreV1.PodList{}
-		err := kubeClient.List(ctx, podList, &client.ListOptions{
+		err := clusterClient.List(ctx, podList, &client.ListOptions{
 			Namespace: capiClusterNamespace,
 		})
 		assert.AssertErrNil(ctx, err, "Failed listing pods")
@@ -130,4 +140,39 @@ func getInfrastructureProviderName() string {
 	}
 
 	return infrastructureProviderName
+}
+
+func printHelpTextForArgoCDDashboardAccess(clusterType string) {
+	clusterKubeconfigPath := constants.OutputPathManagementClusterHostKubeconfig
+	if clusterType == constants.ClusterTypeMain {
+		clusterKubeconfigPath = constants.OutputPathMainClusterKubeconfig
+	}
+
+	// Print out help text for the user to access ArgoCD admin dashboard.
+	helpText := fmt.Sprintf(
+		`
+Finished setting up %s cluster.
+
+To access the ArgoCD admin dashboard :
+
+  (1) In your host machine's terminal, navigate to the directory from where you executed the
+      script (you'll notice the outputs/ directory there). Do :
+
+        export KUBECONFIG=%s
+
+  (2) Retrieve the ArgoCD admin password :
+
+        kubectl get secret argo-cd-argocd-initial-admin-secret --namespace argo-cd \
+          -o jsonpath="{.data.password}" | base64 -d
+
+  (3) Port forward ArgoCD server :
+
+  kubectl port-forward svc/argo-cd-argocd-server --namespace argo-cd 8080:443
+
+  (4) Visit https://localhost:8080 in a browser and login to ArgoCD as admin.
+    `,
+		clusterType,
+		clusterKubeconfigPath,
+	)
+	println(helpText)
 }

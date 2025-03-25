@@ -65,7 +65,7 @@
               };
             in
             [
-              go
+              go_1_24
               golangci-lint
               golines
 
@@ -85,7 +85,7 @@
               azure-cli
 
               k9s
-              gnumake
+              go-task
             ];
         };
       }

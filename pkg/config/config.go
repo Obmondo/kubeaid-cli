@@ -139,19 +139,23 @@ type (
 	}
 
 	AWSControlPlane struct {
-		LoadBalancerScheme string `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
-		Replicas           uint32 `yaml:"replicas" validate:"required"`
-		InstanceType       string `yaml:"instanceType" validate:"required,notblank"`
-		AMIID              string `yaml:"amiID" validate:"required"`
+		LoadBalancerScheme string    `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
+		Replicas           uint32    `yaml:"replicas" validate:"required"`
+		InstanceType       string    `yaml:"instanceType" validate:"required,notblank"`
+		AMI                AMIConfig `yaml:"ami" validate:"required"`
 	}
 
 	AWSNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		AMIID          string `yaml:"amiID" validate:"required,notblank"`
-		InstanceType   string `yaml:"instanceType" validate:"required,notblank"`
-		RootVolumeSize uint32 `yaml:"rootVolumeSize" validate:"required"`
-		SSHKeyName     string `yaml:"sshKeyName" validate:"required,notblank"`
+		AMI            AMIConfig `yaml:"ami" validate:"required"`
+		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
+		RootVolumeSize uint32    `yaml:"rootVolumeSize" validate:"required"`
+		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
+	}
+
+	AMIConfig struct {
+		ID string `yaml:"id" validate:"required,notblank"`
 	}
 
 	AWSDisasterRecovery struct {

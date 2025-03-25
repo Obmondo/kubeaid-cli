@@ -21,6 +21,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
+type SetupKubeAidConfigArgs struct {
+	*CreateDevEnvArgs
+	GitAuthMethod transport.AuthMethod
+}
+
 /*
 Does the following :
 
@@ -33,10 +38,7 @@ Does the following :
 
 It expects the KubeAid Config repository to be already cloned in the temp directory.
 */
-func SetupKubeAidConfig(ctx context.Context,
-	gitAuthMethod transport.AuthMethod,
-	skipKubePrometheusBuild bool,
-) {
+func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
 	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
@@ -45,14 +47,31 @@ func SetupKubeAidConfig(ctx context.Context,
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
 
-	// Create and checkout to a new branch.
-	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
-	git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+	defaultBranchName := git.GetDefaultBranchName(ctx, args.GitAuthMethod, repo)
+
+	/*
+		Decide the branch, where we want to do the changes :
+
+		  (1) If the user has provided the --skip-pr-flow flag, then we'll do the changes in and push
+		      them directly to the default branch.
+
+		  (2) Otherwise, we'll create and checkout to a new branch. Changes will be done in and pushed
+		      to that new branch. The user then needs to manually review the changes, create a PR and
+		      merge it to the default branch.
+	*/
+	targetBranchName := defaultBranchName
+	if !args.SkipPRFlow {
+		// Create and checkout to a new branch.
+		newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
+		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, args.GitAuthMethod)
+
+		targetBranchName = newBranchName
+	}
 
 	clusterDir := utils.GetClusterDir()
 
 	// Create / update non Secret files.
-	createOrUpdateNonSecretFiles(ctx, clusterDir, gitAuthMethod, skipKubePrometheusBuild)
+	createOrUpdateNonSecretFiles(ctx, clusterDir, args.GitAuthMethod, args.SkipMonitoringSetup, args.SkipKubePrometheusBuild)
 
 	// Create / update Secret files.
 	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
@@ -62,16 +81,24 @@ func SetupKubeAidConfig(ctx context.Context,
 		"(cluster/%s) : created / updated KubeAid config files",
 		config.ParsedConfig.Cluster.Name,
 	)
-	commitHash := git.AddCommitAndPushChanges(ctx, repo, workTree, newBranchName, gitAuthMethod, config.ParsedConfig.Cluster.Name, commitMessage)
+	commitHash := git.AddCommitAndPushChanges(ctx,
+		repo,
+		workTree,
+		targetBranchName,
+		args.GitAuthMethod,
+		config.ParsedConfig.Cluster.Name,
+		commitMessage,
+	)
 
-	// The user now needs to go ahead and create a PR from the new to the default branch. Then he
-	// needs to merge that branch.
-	// We can't create the PR for the user, since PRs are not part of the core git lib. They are
-	// specific to the git platform the user is on.
+	if !args.SkipPRFlow {
+		// The user now needs to go ahead and create a PR from the new to the default branch. Then he
+		// needs to merge that branch.
+		// NOTE : We can't create the PR for the user, since PRs are not part of the core git lib.
+		//        They are specific to the git platform the user is on.
 
-	// Wait until the PR gets merged.
-	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
-	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
+		// Wait until the PR gets merged.
+		git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, args.GitAuthMethod, targetBranchName)
+	}
 }
 
 // Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
@@ -79,16 +106,21 @@ func SetupKubeAidConfig(ctx context.Context,
 func createOrUpdateNonSecretFiles(ctx context.Context,
 	clusterDir string,
 	gitAuthMethod transport.AuthMethod,
+	skipMonitoringSetup,
 	skipKubePrometheusBuild bool,
 ) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 	templateValues := getTemplateValues()
 
-	// Build KubePrometheus.
-	if !skipKubePrometheusBuild {
+	// Add KubePrometheus specific templates.
+	// Then execute the Obmondo's KubePrometheus build script.
+	if !skipMonitoringSetup {
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.TemplateNameKubePrometheusArgoCDApp)
-		buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+
+		if !skipKubePrometheusBuild {
+			buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+		}
 	}
 
 	// Create a file from each template.

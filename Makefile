@@ -115,7 +115,9 @@ bootstrap-cluster-local-dev:
 	@go run ./cmd/ cluster bootstrap local \
 		--debug \
     --config ./outputs/kubeaid-bootstrap-script.local.config.yaml \
-    --skip-kube-prometheus-build
+    --skip-monitoring-setup \
+    --skip-kube-prometheus-build \
+    --skip-pr-flow
 
 .PHONY: use-management-cluster
 use-management-cluster:

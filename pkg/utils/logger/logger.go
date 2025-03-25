@@ -3,6 +3,9 @@ package logger
 import (
 	"log/slog"
 	"os"
+
+	"github.com/go-logr/logr/slogr"
+	controllerRuntimeLogger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Initializes the logger.
@@ -25,6 +28,10 @@ func InitLogger(isDebugModeEnabled bool) {
 
 	logger := slog.New(withContextualSlogAttributesHandler(textHandler))
 	slog.SetDefault(logger)
+
+	// Initialize controller-runtime's (or kubebuilder's) base logger with the default slog logger.
+	// REFER : https://pkg.go.dev/sigs.k8s.io/controller-runtime/pkg/log.
+	controllerRuntimeLogger.SetLogger(slogr.NewLogr(slog.Default().Handler()))
 }
 
 func Error(err error) slog.Attr {

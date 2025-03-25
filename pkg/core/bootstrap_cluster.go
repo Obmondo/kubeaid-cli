@@ -16,42 +16,48 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
-func BootstrapCluster(ctx context.Context,
-	managementClusterName string,
-	skipKubePrometheusBuild,
-	skipClusterctlMove,
-	isPartOfDisasterRecovery bool,
-) {
+type BootstrapClusterArgs struct {
+	*CreateDevEnvArgs
+	SkipClusterctlMove bool
+}
+
+func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create local dev environment.
-	CreateDevEnv(ctx, managementClusterName, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	if config.ParsedConfig.Cloud.Local == nil {
-		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, false)
+		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+			false,
+		)
 		isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
 		if !isClusterctlMoveExecuted {
 			// Provision and setup the main cluster.
-			provisionAndSetupMainCluster(ctx, gitAuthMethod, skipKubePrometheusBuild, isPartOfDisasterRecovery)
+			provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
+				CreateDevEnvArgs: args.CreateDevEnvArgs,
+				GitAuthMethod:    gitAuthMethod,
+			})
 
-			if !skipClusterctlMove {
+			if !args.SkipClusterctlMove {
 				// Pivot ClusterAPI (the provisioned cluster will manage itself).
-				pivotCluster(ctx, gitAuthMethod, skipClusterctlMove, isPartOfDisasterRecovery)
+				pivotCluster(ctx, gitAuthMethod, args.SkipClusterctlMove, args.IsPartOfDisasterRecovery)
 			}
 		} else {
 			// We're retrying running the script.
 
 			// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 			// All Kubernetes operations from now on, will be done against the provisioned cluster.
-			os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
+			os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 
 			// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
 			kubernetes.RecreateArgoCDApplicationClient(ctx, provisionedClusterClient)
 		}
 	}
 
-	// If the diasterRecovery section is specified in the cloud-provider specific config, then
+	// If the disasterRecovery section is specified in the cloud-provider specific config, then
 	// setup Disaster Recovery.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
@@ -66,11 +72,12 @@ func BootstrapCluster(ctx context.Context,
 	slog.InfoContext(ctx, "Cluster has been bootsrapped successfully 🎊")
 }
 
-func provisionAndSetupMainCluster(ctx context.Context,
-	gitAuthMethod transport.AuthMethod,
-	skipKubePrometheusBuild bool,
-	isPartOfDisasterRecovery bool,
-) {
+type ProvisionAndSetupMainClusterArgs struct {
+	*CreateDevEnvArgs
+	GitAuthMethod transport.AuthMethod
+}
+
+func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMainClusterArgs) {
 	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
 		kubernetes.GetManagementClusterKubeconfigPath(ctx),
 		true,
@@ -88,12 +95,12 @@ func provisionAndSetupMainCluster(ctx context.Context,
 	// Save kubeconfig locally.
 	kubernetes.SaveKubeconfig(ctx, managementClusterClient)
 
-	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathProvisionedClusterKubeconfig))
+	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig))
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	// All Kubernetes operations from now on, will be done against the provisioned cluster.
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathProvisionedClusterKubeconfig)
-	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathProvisionedClusterKubeconfig, true)
+	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
+	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig, true)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
 	// workloads.
@@ -106,7 +113,12 @@ func provisionAndSetupMainCluster(ctx context.Context,
 	// Secrets controller installed in the K3d management cluster.
 	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
 	// key of the Sealed Secrets controller installed in the provisioned main cluster.
-	SetupCluster(ctx, provisionedClusterClient, gitAuthMethod, true, isPartOfDisasterRecovery)
+	SetupCluster(ctx, SetupClusterArgs{
+		CreateDevEnvArgs:    args.CreateDevEnvArgs,
+		IsManagementCluster: false,
+		ClusterClient:       provisionedClusterClient,
+		GitAuthMethod:       args.GitAuthMethod,
+	})
 }
 
 func pivotCluster(ctx context.Context,
@@ -132,7 +144,7 @@ func pivotCluster(ctx context.Context,
 	utils.ExecuteCommandOrDie(fmt.Sprintf(
 		"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
 		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
-		constants.OutputPathProvisionedClusterKubeconfig,
+		constants.OutputPathMainClusterKubeconfig,
 	))
 
 	// Sync cluster-autoscaler ArgoCD App.

@@ -88,7 +88,7 @@ azure:
     name: azure-client-secret
     namespace: {{ .CAPIClusterNamespace }}
 
-  controlPlane: {{ .AzureConfig.AzureControlPlane | toYaml | nindent 4 }}
+  controlPlane: {{ .AzureConfig.ControlPlane | toYaml | nindent 4 }}
 
   nodeGroups: {{ .AzureConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}

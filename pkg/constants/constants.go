@@ -28,10 +28,10 @@ const (
 
 	FlagNameConfig = "config"
 
+	FlagNameSkipMonitoringSetup     = "skip-monitoring-setup"
 	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
+	FlagNameSkipPRFlow              = "skip-pr-flow"
 	FlagNameSkipClusterctlMove      = "skip-clusterctl-move"
-
-	FlagNameDeleteOldCluster = "delete-old-cluster"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
@@ -70,7 +70,7 @@ var (
 	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
 	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
 
-	OutputPathProvisionedClusterKubeconfig = path.Join(OutputDirectory, "provisioned-cluster.kubeconfig.yaml")
+	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "main-cluster.kubeconfig.yaml")
 
 	OutputPathJWKSDocument = path.Join(OutputDirectory, "jwks.json")
 )
@@ -110,6 +110,9 @@ const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	NamespaceArgoCD = "argo-cd"
+
+	ClusterTypeManagement = "management"
+	ClusterTypeMain       = "main"
 )
 
 // Template names.
