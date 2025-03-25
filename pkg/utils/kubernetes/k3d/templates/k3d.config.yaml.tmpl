@@ -8,12 +8,27 @@ metadata:
 
 network: k3d-{{ .Name }}
 
+# By default, K3D creates its own container registry (inside one of those containers spun up by
+# K3D).
+# The problem is, when we delete the K3D cluster, that container registry (along with the pulled
+# container images) go away. So, next time when we re-spinup the cluster, those container images
+# need to be repulled.
+# We're using ligfx/k3d-registry-dockerd to proxy all container pull requests to dockerd. This way,
+# container images pulled by K3D, get persisted in the user's host machine. They stay, even when
+# we delete the K3D cluster. And get reused when we re-spinup the K3D cluster.
 registries:
   create:
     name: {{ .Name }}
-    hostPort: "5555"
+    image: ligfx/k3d-registry-dockerd:v0.8
+    proxy:
+      remoteURL: "*"
     volumes:
-      - {{ .TempDir }}/registry:/var/lib/registry
+      - /var/run/docker.sock:/var/run/docker.sock
+  config: |
+    mirrors:
+      "*":
+        endpoint:
+          - http://{{ .Name }}:5000
 
 image: rancher/k3s:{{ .K8sVersion }}-k3s1
 servers: 1
