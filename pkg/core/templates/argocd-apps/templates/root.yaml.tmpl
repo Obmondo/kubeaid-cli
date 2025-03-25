@@ -6,13 +6,13 @@ metadata:
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
   name: root
-  namespace: argo-cd
+  namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
     server: https://kubernetes.default.svc
-    namespace: argo-cd
+    namespace: argocd
   project: kubeaid
   source:
     path: k8s/{{ .ClusterConfig.Name }}/argocd-apps

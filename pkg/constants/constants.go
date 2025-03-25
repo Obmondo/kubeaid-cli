@@ -109,7 +109,7 @@ const (
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
-	NamespaceArgoCD = "argo-cd"
+	NamespaceArgoCD = "argocd"
 
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
@@ -127,8 +127,8 @@ var (
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"argocd-apps/templates/argo-cd.app.yaml.tmpl",
-		"argocd-apps/argo-cd.values.yaml.tmpl",
+		"argocd-apps/templates/argocd.app.yaml.tmpl",
+		"argocd-apps/argocd.values.yaml.tmpl",
 
 		// For Root ArgoCD App.
 		"argocd-apps/Chart.yaml",
@@ -168,7 +168,7 @@ var (
 
 	CommonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"sealed-secrets/argo-cd/kubeaid-config.yaml.tmpl",
+		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
 	}
 
 	CommonCloudSecretTemplateNames = []string{

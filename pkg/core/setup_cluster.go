@@ -78,18 +78,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	if config.ParsedConfig.Cloud.Local != nil {
-		return
-	}
-
 	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
-	// Sync ClusterAPI ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
-	//
-	// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
-	// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
-	//        Provider component first.
-	syncInfrastructureProvider(ctx, args.ClusterClient)
+	if config.ParsedConfig.Cloud.Local == nil {
+		// Sync ClusterAPI ArgoCD App.
+		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
+
+		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
+		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
+		//        Provider component first.
+		syncInfrastructureProvider(ctx, args.ClusterClient)
+	}
 
 	printHelpTextForArgoCDDashboardAccess(clusterType)
 }
@@ -162,12 +160,13 @@ To access the ArgoCD admin dashboard :
 
   (2) Retrieve the ArgoCD admin password :
 
-        kubectl get secret argo-cd-argocd-initial-admin-secret --namespace argo-cd \
+        echo "ArgoCD admin password : "
+        kubectl get secret argocd-initial-admin-secret --namespace argocd \
           -o jsonpath="{.data.password}" | base64 -d
 
   (3) Port forward ArgoCD server :
 
-  kubectl port-forward svc/argo-cd-argocd-server --namespace argo-cd 8080:443
+        kubectl port-forward svc/argocd-server --namespace argocd 8080:443
 
   (4) Visit https://localhost:8080 in a browser and login to ArgoCD as admin.
     `,

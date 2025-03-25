@@ -34,12 +34,12 @@ import (
 func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient client.Client) {
 	// Install ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
-		RepoName:    "argo-cd",
+		RepoName:    "argo",
 		RepoURL:     "https://argoproj.github.io/argo-helm",
 		ChartName:   "argo-cd",
 		Version:     "7.8.7",
-		Namespace:   "argo-cd",
-		ReleaseName: "argo-cd",
+		Namespace:   "argocd",
+		ReleaseName: "argocd",
 		Values: map[string]interface{}{
 			"notification": map[string]interface{}{
 				"enabled": false,
@@ -66,7 +66,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 	}
 
 	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
-	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argo-cd/kubeaid-config.yaml")
+	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")
 	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
 
 	// Create the root ArgoCD App.
@@ -283,7 +283,7 @@ func isArgoCDAppSynced(ctx context.Context, name string, resources []*argoCDV1Ap
 		argoCDApp *argoCDV1Aplha1.Application
 		err       error
 	)
-	// We need a retrial mechanism, because when we sync the argo-cd ArgoCD App, the ArgoCD pod may
+	// We need a retrial mechanism, because when we sync the argocd ArgoCD App, the ArgoCD pod may
 	// get restarted, which will cause a failure. Then, we need to again port-forward the ArgoCD
 	// server and completely reconstruct the ArgoCD Application client.
 	for {

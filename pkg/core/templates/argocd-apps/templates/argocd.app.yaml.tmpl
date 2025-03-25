@@ -5,14 +5,14 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: argo-cd
-  namespace: argo-cd
+  name: argocd
+  namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
     server: https://kubernetes.default.svc
-    namespace: argo-cd
+    namespace: argocd
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
@@ -20,7 +20,7 @@ spec:
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .Name }}/argocd-apps/argo-cd.values.yaml
+          - $values/k8s/{{ .Name }}/argocd-apps/argocd.values.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
