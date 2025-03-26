@@ -29,25 +29,30 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// Installs ArgoCD Helm chart and creates the root ArgoCD App.
+// Installs the ArgoCD Helm chart and creates the root ArgoCD App.
 // Then creates and returns an ArgoCD Application client.
 func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient client.Client) {
-	// Install ArgoCD Helm chart.
+	// Install the ArgoCD AppProject CRD.
+	// Otherwise, we'll get error while installing the ArgoCD Helm chart, since it tries to create
+	// the kubeaid ArgoCD App Project during installation.
+	utils.ExecuteCommandOrDie(fmt.Sprintf(
+		`
+      kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
+
+      kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
+      kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
+      kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
+    `,
+		constants.ReleaseNameArgoCD,
+		constants.NamespaceArgoCD,
+	))
+
+	// Install the ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
-		RepoName:    "argo",
-		RepoURL:     "https://argoproj.github.io/argo-helm",
-		ChartName:   "argo-cd",
-		Version:     "7.8.7",
-		Namespace:   "argocd",
-		ReleaseName: "argocd",
-		Values: map[string]interface{}{
-			"notification": map[string]interface{}{
-				"enabled": false,
-			},
-			"dex": map[string]interface{}{
-				"enabled": false,
-			},
-		},
+		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
+		Namespace:   constants.NamespaceArgoCD,
+		ReleaseName: constants.ReleaseNameArgoCD,
+		Values:      map[string]interface{}{},
 	})
 
 	// Port-forward ArgoCD and create ArgoCD client.
@@ -55,15 +60,6 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 
 	// Create ArgoCD Application client.
 	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
-
-	{
-		// Create ArgoCD Project client.
-		argoCDProjectClientCloser, argoCDProjectClient := argoCDClient.NewProjectClientOrDie()
-		defer argoCDProjectClientCloser.Close()
-
-		// Create the kubeaid ArgoCD Project, under which all the ArgoCD Apps will be.
-		CreateArgoCDProject(ctx, argoCDProjectClient, constants.ArgoCDProjectKubeAid)
-	}
 
 	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
 	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")

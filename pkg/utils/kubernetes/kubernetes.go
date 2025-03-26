@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path"
 	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -146,14 +147,15 @@ func CreateNamespace(ctx context.Context, namespaceName string, kubeClient clien
 // Installs Sealed Secrets in the underlying Kubernetes cluster.
 func InstallSealedSecrets(ctx context.Context) {
 	HelmInstall(ctx, &HelmInstallArgs{
-		RepoName:    "sealed-secrets",
-		RepoURL:     "https://bitnami-labs.github.io/sealed-secrets/",
-		ChartName:   "sealed-secrets",
-		Version:     "2.17.1",
+		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
 		Namespace:   "sealed-secrets",
 		ReleaseName: "sealed-secrets",
 		Values: map[string]interface{}{
-			"fullnameOverride": "sealed-secrets-controller",
+			"sealed-secrets": map[string]interface{}{
+				"namespace":        "sealed-secrets",
+				"fullnameOverride": "sealed-secrets-controller",
+			},
+			"backup": map[string]interface{}{},
 		},
 	})
 }

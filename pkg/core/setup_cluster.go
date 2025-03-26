@@ -11,6 +11,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -36,6 +37,18 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", clusterType))
+
+	{
+		gitAuthMethod := args.GitAuthMethod
+		// If we're going to use the original KubeAid repo (https://github.com/Obmondo/KubeAid), then we
+		// don't need any Git authentication method
+		if config.ParsedConfig.Forks.KubeaidForkURL == constants.RepoURLObmondoKubeAid {
+			gitAuthMethod = nil
+		}
+
+		// Clone the KubeAid fork locally (if not already cloned).
+		git.CloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, utils.GetKubeAidDir(), gitAuthMethod)
+	}
 
 	// Install Sealed Secrets.
 	kubernetes.InstallSealedSecrets(ctx)

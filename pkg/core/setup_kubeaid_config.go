@@ -11,7 +11,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
@@ -119,7 +118,7 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.TemplateNameKubePrometheusArgoCDApp)
 
 		if !skipKubePrometheusBuild {
-			buildKubePrometheus(ctx, clusterDir, gitAuthMethod, templateValues)
+			buildKubePrometheus(ctx, clusterDir, templateValues)
 		}
 	}
 
@@ -170,7 +169,7 @@ func createFileFromTemplate(ctx context.Context,
 
 // Creates the jsonnet vars file for the cluster.
 // Then executes KubeAid's kube-prometheus build script.
-func buildKubePrometheus(ctx context.Context, clusterDir string, gitAuthMethod transport.AuthMethod, templateValues *TemplateValues) {
+func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
 	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet", clusterDir, config.ParsedConfig.Cluster.Name)
 	createFileFromTemplate(ctx, jsonnetVarsFilePath, constants.TemplateNameKubePrometheusVars, templateValues)
@@ -180,18 +179,8 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, gitAuthMethod t
 	err := os.MkdirAll(kubePrometheusDir, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed creating intermediate paths", slog.String("path", kubePrometheusDir))
 
-	// If we're going to use the original KubeAid repo (https://github.com/Obmondo/KubeAid), then we
-	// don't need any Git authentication method
-	if config.ParsedConfig.Forks.KubeaidForkURL == constants.RepoURLObmondoKubeAid {
-		gitAuthMethod = nil
-	}
-
-	// Clone the KubeAid fork locally (if not already cloned).
-	kubeaidForkDir := globals.TempDir + "/kubeaid"
-	git.CloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, kubeaidForkDir, gitAuthMethod)
-
 	// Run the KubePrometheus build script.
 	slog.Info("Running KubePrometheus build script...")
-	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh", kubeaidForkDir)
+	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh", utils.GetKubeAidDir())
 	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
 }

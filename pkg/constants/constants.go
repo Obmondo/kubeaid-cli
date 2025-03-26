@@ -109,7 +109,8 @@ const (
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
-	NamespaceArgoCD = "argocd"
+	NamespaceArgoCD   = "argocd"
+	ReleaseNameArgoCD = "argocd"
 
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
