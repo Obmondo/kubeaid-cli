@@ -298,17 +298,21 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-// When importing Argo CD packages, face "unknown revision v0.0.0" errors when downloading the
-// dependencies.
-// This is because Argo CD directly depends on some Kubernetes packages which have these unknown
-// v0.0.0 versions in their go.mod.
-// REFER : https://argo-cd.readthedocs.io/en/stable/user-guide/import/.
-//
-// You can view ArgoCD's go.mod replace section for release v2.2 here :
-// https://github.com/argoproj/argo-cd/blob/release-2.2/go.mod.
 replace (
-	k8s.io/controller-manager => k8s.io/controller-manager v0.32.0
+	// We need this, otherwise Github Actions CI run will fail with this error :
+	// https://github.com/Obmondo/kubeaid-bootstrap-script/actions/runs/14102269130/job/39500847660#step:6:5993.
+	// REFER : https://github.com/argoproj/argo-cd/issues/22007.
+	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
 
+	// When importing Argo CD packages, face "unknown revision v0.0.0" errors when downloading the
+	// dependencies.
+	// This is because Argo CD directly depends on some Kubernetes packages which have these unknown
+	// v0.0.0 versions in their go.mod.
+	// REFER : https://argo-cd.readthedocs.io/en/stable/user-guide/import/.
+	//
+	// You can view ArgoCD's go.mod replace section for release v2.2 here :
+	// https://github.com/argoproj/argo-cd/blob/release-2.2/go.mod.
+	k8s.io/controller-manager => k8s.io/controller-manager v0.32.0
 	// REFER : https://github.com/kubernetes-sigs/cluster-api-provider-aws/issues/5446.
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.6
 )

@@ -7,6 +7,7 @@ import (
 
 var BootstrapCmd = &cobra.Command{
 	Use: "bootstrap",
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
