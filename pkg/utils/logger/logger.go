@@ -31,7 +31,13 @@ func InitLogger(isDebugModeEnabled bool) {
 		},
 	})
 
-	logger := slog.New(withContextualSlogAttributesHandler(textHandler))
+	logger := slog.New(
+		withContextualSlogAttributesHandler(withColorHandler(
+			os.Stderr,
+			textHandler,
+			isDebugModeEnabled,
+		)),
+	)
 	slog.SetDefault(logger)
 
 	// Initialize controller-runtime's (or kubebuilder's) base logger with the default slog logger.
