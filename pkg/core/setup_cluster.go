@@ -11,10 +11,12 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -47,7 +49,38 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		}
 
 		// Clone the KubeAid fork locally (if not already cloned).
-		git.CloneRepo(ctx, config.ParsedConfig.Forks.KubeaidForkURL, utils.GetKubeAidDir(), gitAuthMethod)
+		kubeAidRepo := gitUtils.CloneRepo(ctx,
+			config.ParsedConfig.Forks.KubeaidForkURL,
+			utils.GetKubeAidDir(),
+			gitAuthMethod,
+		)
+
+		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
+		// TODO : Move this to gitUtils.CloneRepo( )?
+
+		kubeaidVersion := config.ParsedConfig.Cluster.KubeaidVersion
+
+		slog.InfoContext(ctx, "Hard resetting the KubeAid repo to tag", slog.String("tag", kubeaidVersion))
+
+		kubeAidRepoWorktree, err := kubeAidRepo.Worktree()
+		assert.AssertErrNil(ctx, err, "Failed getting KubeAid repo worktree")
+
+		tagReference, err := kubeAidRepo.Reference(plumbing.NewTagReferenceName(kubeaidVersion), true)
+		assert.AssertErrNil(ctx, err, "Failed resolving reference for provided tag in KubeAid repo")
+
+		targetCommitHash := tagReference.Hash()
+
+		tagObject, err := kubeAidRepo.TagObject(tagReference.Hash())
+		if err == nil {
+			// Resolve the tag reference hash to the tag object / corresponding commit hash.
+			targetCommitHash = tagObject.Target
+		}
+
+		err = kubeAidRepoWorktree.Reset(&git.ResetOptions{
+			Commit: targetCommitHash,
+			Mode:   git.HardReset,
+		})
+		assert.AssertErrNil(ctx, err, "Failed hard resetting KubeAid repo to provided tag")
 	}
 
 	// Install Sealed Secrets.

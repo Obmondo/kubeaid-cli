@@ -10,7 +10,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 )
@@ -27,7 +27,7 @@ type CreateDevEnvArgs struct {
 
 func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx)
 
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
@@ -51,7 +51,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
-	_ = git.CloneRepo(ctx,
+	_ = gitUtils.CloneRepo(ctx,
 		config.ParsedConfig.Forks.KubeaidConfigForkURL,
 		utils.GetKubeAidConfigDir(),
 		gitAuthMethod,
