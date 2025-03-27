@@ -20,7 +20,7 @@ spec:
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .Name }}/argocd-apps/argocd.values.yaml
+          - $values/k8s/{{ .Name }}/argocd-apps/values-argocd.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values

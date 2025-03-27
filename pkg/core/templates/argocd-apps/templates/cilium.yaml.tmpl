@@ -5,20 +5,20 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: ccm-aws
-  namespace: argocd
+  name: cilium
+  namespace: cilium
 spec:
   destination:
-    namespace: kube-system
+    namespace: cilium
     server: https://kubernetes.default.svc
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/ccm-aws
+      path: argocd-helm-charts/cilium
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/ccm-aws.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cilium.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values

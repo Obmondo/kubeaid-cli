@@ -85,7 +85,6 @@
               azure-cli
 
               k9s
-              go-task
             ];
         };
       }

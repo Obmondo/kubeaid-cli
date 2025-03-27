@@ -20,10 +20,17 @@ import (
 var rootCmd = &cobra.Command{
 	Use: "kubeaid-bootstrap-script",
 
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Initialize logger.
+		logger.InitLogger(isDebugModeEnabled)
+	},
+
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
 }
+
+var isDebugModeEnabled bool
 
 func init() {
 	// Subcommands.
@@ -32,18 +39,18 @@ func init() {
 	rootCmd.AddCommand(cluster.ClusterCmd)
 
 	// Flags.
-	var isDebugModeEnabled bool
 	rootCmd.PersistentFlags().
 		BoolVar(&isDebugModeEnabled, constants.FlagNameDebug, false, "Generate debug logs")
-
-	// Initialization tasks.
-
-	// Initialize logger.
-	logger.InitLogger(isDebugModeEnabled)
 }
 
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	// By default, parent's PersistentPreRun gets overriden by a child's PersistentPreRun.
+	// We want to disable this overriding behaviour and chain all the PersistentPreRuns.
+	// REFERENCE : https://github.com/spf13/cobra/pull/2044.
+	cobra.EnableTraverseRunHooks = true
+
+	err := rootCmd.Execute()
+	if err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)
 	}

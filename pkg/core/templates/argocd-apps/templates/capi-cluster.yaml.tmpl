@@ -5,23 +5,23 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: hetzner-robot
+  name: capi-cluster
   namespace: argocd
 spec:
   destination:
-    namespace: kube-system
+    namespace: {{ .CAPIClusterNamespace }}
     server: https://kubernetes.default.svc
-  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/hetzner-robot
+      path: argocd-helm-charts/capi-cluster
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/hetzner-robot.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-capi-cluster.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
+  project: kubeaid
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

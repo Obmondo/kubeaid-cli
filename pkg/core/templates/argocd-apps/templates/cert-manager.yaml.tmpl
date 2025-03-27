@@ -5,20 +5,20 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: cilium
-  namespace: cilium
+  name: cert-manager
+  namespace: argocd
 spec:
   destination:
-    namespace: cilium
+    namespace: cert-manager
     server: https://kubernetes.default.svc
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/cilium
+      path: argocd-helm-charts/cert-manager
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/cilium.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cert-manager.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values

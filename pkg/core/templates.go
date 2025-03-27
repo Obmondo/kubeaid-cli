@@ -118,8 +118,8 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Add Obmondo K8s Agent related templates, if 'monitoring.connectObmondo' is set to true.
 	if config.ParsedConfig.Monitoring.ConnectObmondo {
 		embeddedTemplateNames = append(embeddedTemplateNames,
-			"argocd-apps/templates/obmondo-k8s-agent.app.yaml.tmpl",
-			"argocd-apps/obmondo-k8s-agent.values.yaml.tmpl",
+			"argocd-apps/templates/obmondo-k8s-agent.yaml.tmpl",
+			"argocd-apps/values-obmondo-k8s-agent.yaml.tmpl",
 		)
 	}
 

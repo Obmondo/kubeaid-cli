@@ -25,7 +25,9 @@ type HelmInstallArgs struct {
 // We clone the KubeAid repository locally and then use absolute path to one of it's Helm chart
 // (like argo-cd / sealed-secrets), to install that corresponding Helm chart.
 func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{slog.String("release-name", args.ReleaseName)})
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("release-name", args.ReleaseName),
+	})
 
 	settings := cli.New()
 

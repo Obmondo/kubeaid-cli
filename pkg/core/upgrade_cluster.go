@@ -30,7 +30,7 @@ type (
 )
 
 func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArgs) {
-	// Update the capi-cluster.values.yaml file in the kubeaid-config repo.
+	// Update the values-capi-cluster.yaml file in the kubeaid-config repo.
 	updateCapiClusterValuesFile(ctx, args)
 
 	// Construct the Kubernetes (management / provisioned) cluster client.
@@ -65,7 +65,7 @@ func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArg
 	}
 }
 
-// Update the capi-cluster.values.yaml file in the kubeaid-config repo.
+// Update the values-capi-cluster.yaml file in the kubeaid-config repo.
 // Once the changes get merged, only then we'll trigger the actual rollout process.
 func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	// Detect git authentication method.
@@ -85,9 +85,9 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
 	git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
 
-	// Update capi-cluster.values.yaml file (using yq).
+	// Update values-capi-cluster.yaml file (using yq).
 	{
-		capiClusterValuesFilePath := path.Join(utils.GetClusterDir(), "argocd-apps/capi-cluster.values.yaml")
+		capiClusterValuesFilePath := path.Join(utils.GetClusterDir(), "argocd-apps/values-capi-cluster.yaml")
 
 		// Update Kubernetes version.
 		_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
@@ -104,7 +104,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
-		"(cluster/%s) : updated capi-cluster.values.yaml for Kubernetes version upgrade to %s",
+		"(cluster/%s) : updated values-capi-cluster.yaml for Kubernetes version upgrade to %s",
 		config.ParsedConfig.Cluster.Name, args.NewKubernetesVersion,
 	)
 	commitHash := git.AddCommitAndPushChanges(ctx,
