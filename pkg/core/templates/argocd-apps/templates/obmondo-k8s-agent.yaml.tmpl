@@ -20,7 +20,7 @@ spec:
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/obmondo-k8s-agent.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-obmondo-k8s-agent.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values

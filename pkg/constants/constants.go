@@ -128,43 +128,43 @@ var (
 
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"argocd-apps/templates/argocd.app.yaml.tmpl",
-		"argocd-apps/argocd.values.yaml.tmpl",
+		"argocd-apps/templates/argocd.yaml.tmpl",
+		"argocd-apps/values-argocd.yaml.tmpl",
 
 		// For Root ArgoCD App.
 		"argocd-apps/Chart.yaml",
 		"argocd-apps/templates/root.yaml.tmpl",
 
 		// For CertManager.
-		"argocd-apps/templates/cert-manager.app.yaml.tmpl",
-		"argocd-apps/cert-manager.values.yaml.tmpl",
+		"argocd-apps/templates/cert-manager.yaml.tmpl",
+		"argocd-apps/values-cert-manager.yaml.tmpl",
 
 		// For Sealed Secrets.
-		"argocd-apps/templates/sealed-secrets.app.yaml.tmpl",
-		"argocd-apps/sealed-secrets.values.yaml.tmpl",
-		"argocd-apps/templates/secrets.app.yaml.tmpl",
+		"argocd-apps/templates/sealed-secrets.yaml.tmpl",
+		"argocd-apps/values-sealed-secrets.yaml.tmpl",
+		"argocd-apps/templates/secrets.yaml.tmpl",
 	}
 
 	// For KubePrometheus.
-	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.app.yaml.tmpl"
+	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.yaml.tmpl"
 	TemplateNameKubePrometheusVars      = "cluster-vars.jsonnet.tmpl"
 
 	CommonCloudNonSecretTemplateNames = []string{
 		// For Cilium
-		"argocd-apps/templates/cilium.app.yaml.tmpl",
-		"argocd-apps/cilium.values.yaml.tmpl",
+		"argocd-apps/templates/cilium.yaml.tmpl",
+		"argocd-apps/values-cilium.yaml.tmpl",
 
 		// For Cluster API.
-		"argocd-apps/templates/cluster-api.app.yaml.tmpl",
-		"argocd-apps/cluster-api.values.yaml.tmpl",
+		"argocd-apps/templates/cluster-api.yaml.tmpl",
+		"argocd-apps/values-cluster-api.yaml.tmpl",
 
 		// For CAPI Cluster.
-		"argocd-apps/templates/capi-cluster.app.yaml.tmpl",
-		"argocd-apps/capi-cluster.values.yaml.tmpl",
+		"argocd-apps/templates/capi-cluster.yaml.tmpl",
+		"argocd-apps/values-capi-cluster.yaml.tmpl",
 
 		// For Cluster Autoscaler.
-		"argocd-apps/templates/cluster-autoscaler.app.yaml.tmpl",
-		"argocd-apps/cluster-autoscaler.values.yaml.tmpl",
+		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
+		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
 	}
 
 	CommonSecretTemplateNames = []string{
@@ -179,39 +179,39 @@ var (
 
 	AWSSpecificNonSecretTemplateNames = []string{
 		// For AWS Cloud Controller Manager.
-		"argocd-apps/templates/ccm-aws.app.yaml.tmpl",
-		"argocd-apps/ccm-aws.values.yaml.tmpl",
+		"argocd-apps/templates/ccm-aws.yaml.tmpl",
+		"argocd-apps/values-ccm-aws.yaml.tmpl",
 	}
 
 	AWSDisasterRecoverySpecificTemplateNames = []string{
 		// For Kube2IAM.
-		"argocd-apps/templates/kube2iam.app.yaml.tmpl",
-		"argocd-apps/kube2iam.values.yaml.tmpl",
+		"argocd-apps/templates/kube2iam.yaml.tmpl",
+		"argocd-apps/values-kube2iam.yaml.tmpl",
 
 		// For Velero.
-		"argocd-apps/templates/velero.app.yaml.tmpl",
-		"argocd-apps/velero.values.yaml.tmpl",
+		"argocd-apps/templates/velero.yaml.tmpl",
+		"argocd-apps/values-velero.yaml.tmpl",
 
 		// For K8sConfigs.
-		"argocd-apps/templates/k8s-configs.app.yaml.tmpl",
+		"argocd-apps/templates/k8s-configs.yaml.tmpl",
 		"k8s-configs/sealed-secrets.namespace.yaml.tmpl",
 		"k8s-configs/velero.namespace.yaml.tmpl",
 	}
 
 	AzureSpecificNonSecretTemplateNames = []string{
 		// For Azure Cloud Controller Manager.
-		"argocd-apps/templates/ccm-azure.app.yaml.tmpl",
-		"argocd-apps/ccm-azure.values.yaml.tmpl",
+		"argocd-apps/templates/ccm-azure.yaml.tmpl",
+		"argocd-apps/values-ccm-azure.yaml.tmpl",
 	}
 
 	HetznerSpecificNonSecretTemplateNames = []string{
 		// For Hetzner Robot Failover.
-		// "argocd-apps/templates/hetzner-robot.app.yaml.tmpl",
-		// "argocd-apps/hetzner-robot.values.yaml.tmpl",
+		// "argocd-apps/templates/hetzner-robot.yaml.tmpl",
+		// "argocd-apps/values-hetzner-robot.yaml.tmpl",
 
 		// For Hetzner Cloud Controller Manager.
-		"argocd-apps/templates/ccm-hetzner.app.yaml.tmpl",
-		"argocd-apps/ccm-hetzner.values.yaml.tmpl",
+		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
+		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 	}
 
 	HetznerSpecificSecretTemplateNames = []string{

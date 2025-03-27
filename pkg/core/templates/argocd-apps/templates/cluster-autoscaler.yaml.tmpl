@@ -5,23 +5,23 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: ccm-azure
+  name: cluster-autoscaler
   namespace: argocd
 spec:
   destination:
-    namespace: kube-system
+    namespace: cluster-autoscaler
     server: https://kubernetes.default.svc
-  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/ccm-azure
+      path: argocd-helm-charts/cluster-autoscaler
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/ccm-azure.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cluster-autoscaler.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
+  project: kubeaid
   syncPolicy:
     syncOptions:
       - CreateNamespace=true

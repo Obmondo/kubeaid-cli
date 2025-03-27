@@ -5,24 +5,25 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: cert-manager
+  name: kube2iam
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
-    namespace: cert-manager
     server: https://kubernetes.default.svc
+    namespace: aws
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/cert-manager
+      path: argocd-helm-charts/kube2iam
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/cert-manager.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-kube2iam.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
-      - ApplyOutOfSyncOnly=true

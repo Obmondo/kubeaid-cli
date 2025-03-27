@@ -5,24 +5,26 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: cluster-api
+  name: velero
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   destination:
-    namespace: cluster-api
     server: https://kubernetes.default.svc
+    namespace: velero
+  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/cluster-api
+      path: argocd-helm-charts/velero
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/cluster-api.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-velero.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
-  project: kubeaid
   syncPolicy:
     syncOptions:
-      - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true

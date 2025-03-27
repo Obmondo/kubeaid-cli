@@ -5,7 +5,7 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: ccm-hetzner
+  name: ccm-azure
   namespace: argocd
 spec:
   destination:
@@ -14,11 +14,11 @@ spec:
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/ccm-hetzner
+      path: argocd-helm-charts/ccm-azure
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/ccm-hetzner.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-ccm-azure.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
