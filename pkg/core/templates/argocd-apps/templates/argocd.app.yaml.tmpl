@@ -1,0 +1,53 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/priority: "default"
+  name: argocd
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/argo-cd
+      targetRevision: {{ .KubeaidVersion }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .Name }}/argocd-apps/argocd.values.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true # When syncing changes, respect fields ignored by the
+                                      # ignoreDifferences configuration.
+  # Will ignore differences between live and desired states during the diff.
+  # NOTE : these configurations are not used during the sync process unless the
+  #        RespectIgnoreDifferences=true sync option is enabled.
+  ignoreDifferences:
+    # Why do we need to do this?
+    #
+    # We're installing the ArgoCD Helm chart. Then creating argocd ArgoCD App to manage that ArgoCD
+    # installation.
+    # Now, initially, when we create the argocd ArgoCD App, it isn't managing ArgoCD. All the
+    # Kubernetes resources associated with the App, thus doesn't have the
+    # "argocd.argoproj.io/instance: argocd" label.
+    # It's only when we sync the App, it starts managing ArgoCD, thus adding labels to all the
+    # resources managed by it. This causes checksum changes, which triggers pod restarts.
+    #
+    # We are preventing the "argocd.argoproj.io/instance: argocd" label to be considered during
+    # checksum calculation. So there will be no checksum change (and thus Pod restarts) when we
+    # sync the argocd ArgoCD App.
+    - kind: "*"
+      namespace: argocd
+      jqPathExpressions:
+        - '.metadata.labels."argocd.argoproj.io/instance"'

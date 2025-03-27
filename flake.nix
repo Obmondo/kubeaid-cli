@@ -42,9 +42,30 @@
                   chmod +x $out/bin/clusterawsadm
                 '';
               };
+              azwi = pkgs.stdenv.mkDerivation rec {
+                pname = "azwi";
+                version = "v1.4.1";
+
+                src = pkgs.fetchurl {
+                  url =
+                    "https://github.com/Azure/azure-workload-identity/releases/download/${version}/azwi-${version}-"
+                    + (if pkgs.stdenv.isDarwin then "darwin-arm64.tar.gz" else "linux-arm64.tar.gz");
+
+                  sha256 = "sha256-Cejrlh4CDtDpv7k93DDwbS4/mSA+AfhjvhMVKHItaHw=";
+                };
+
+                unpackPhase = ''
+                  tar -xzf $src
+                '';
+                installPhase = ''
+                  mkdir -p $out/bin
+                  cp azwi $out/bin/azwi
+                  chmod +x $out/bin/azwi
+                '';
+              };
             in
             [
-              go
+              go_1_24
               golangci-lint
               golines
 
@@ -52,15 +73,19 @@
               jsonnet
               jq
 
+              yq
+
               k3d
               kubectl
               kubeseal
               clusterctl
+
               clusterawsadm
-							yq
+              azwi
+              azure-cli
 
               k9s
-              gnumake
+              go-task
             ];
         };
       }

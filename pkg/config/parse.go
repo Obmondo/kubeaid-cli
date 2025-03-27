@@ -81,7 +81,7 @@ func detectCloudProvider() {
 
 	case ParsedConfig.Cloud.Azure != nil:
 		globals.CloudProviderName = constants.CloudProviderAzure
-		panic("unimplemented")
+		globals.CloudProvider = NewAzureCloudProvider()
 
 	case ParsedConfig.Cloud.Hetzner != nil:
 		globals.CloudProviderName = constants.CloudProviderHetzner
@@ -146,7 +146,20 @@ func readCloudCredentialsFromFlagsToConfig(ctx context.Context) {
 		}
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		// Try to capture the Azure credentials from CLI flags (or corresponding environment
+		// variables).
+		if len(AzureClientSecret) != 0 {
+			ParsedConfig.Cloud.Azure.ClientSecret = AzureClientSecret
+
+			slog.InfoContext(ctx,
+				"Using Azure credentials captured from the CLI flags (or corresponding environment variables)",
+			)
+
+			return
+		}
+
+		// The Azure credentials must be then provided in the config file.
+		// Otherwise config validation will fail.
 
 	case constants.CloudProviderHetzner:
 		// Try to capture the Hetzner credentials from CLI flags (or corresponding environment
@@ -251,7 +264,12 @@ func hydrateVMSpecs(ctx context.Context) {
 		}
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		for i, nodeGroup := range ParsedConfig.Cloud.Azure.NodeGroups {
+			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
+
+			ParsedConfig.Cloud.Azure.NodeGroups[i].CPU = instanceSpecs.CPU
+			ParsedConfig.Cloud.Azure.NodeGroups[i].Memory = instanceSpecs.Memory
+		}
 
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")

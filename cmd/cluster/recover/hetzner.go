@@ -10,7 +10,7 @@ import (
 var HetznerCmd = &cobra.Command{
 	Use: "hetzner",
 	Run: func(cmd *cobra.Command, args []string) {
-		core.RecoverCluster(cmd.Context(), constants.FlagNameManagementClusterNameDefaultValue)
+		core.RecoverCluster(cmd.Context(), constants.FlagNameManagementClusterNameDefaultValue, skipPRFlow)
 	},
 }
 

@@ -13,7 +13,10 @@ var UpgradeCmd = &cobra.Command{
 	},
 }
 
-var kubernetesVersion string
+var (
+	kubernetesVersion string
+	skipPRFlow        bool
+)
 
 func init() {
 	// Subcommands.
@@ -23,4 +26,9 @@ func init() {
 
 	UpgradeCmd.PersistentFlags().
 		StringVar(&kubernetesVersion, constants.FlagNameK8sVersion, "", "New Kubernetes version the cluster will be upgraded to")
+
+	UpgradeCmd.PersistentFlags().
+		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
+		)
 }

@@ -8,27 +8,24 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/avast/retry-go/v4"
 	"helm.sh/helm/v3/pkg/action"
-	"helm.sh/helm/v3/pkg/chart"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
 )
 
 type HelmInstallArgs struct {
-	RepoURL,
-	RepoName,
-	ChartName,
-	Version,
+	ChartPath,
 	ReleaseName,
 	Namespace string
 	Values map[string]interface{}
 }
 
-// Installs the given Helm chart (if not already deployed).
+// Installs the Helm chart (if not already deployed), present at the given local path.
+// We clone the KubeAid repository locally and then use absolute path to one of it's Helm chart
+// (like argo-cd / sealed-secrets), to install that corresponding Helm chart.
 func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{slog.String("chart", args.ChartName)})
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{slog.String("release-name", args.ReleaseName)})
 
 	settings := cli.New()
 
@@ -44,8 +41,8 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 		return
 	}
 
-	// CASE : Helm chart installation is stuck in pending-install state. So delete it first. Then
-	// we'll try to install it again.
+	// CASE : Helm chart installation is stuck in pending-install state. So delete it first.
+	//        Then we'll try to install it again.
 	if (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusPendingInstall) {
 		slog.InfoContext(ctx, "Uninstalling Helm chart, stuck in pending-install state")
 
@@ -57,8 +54,25 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 		assert.AssertErrNil(ctx, err, "Failed uninstalling Helm chart")
 	}
 
-	// Install the Helm chart.
-	helmInstall(ctx, settings, actionConfig, args)
+	// Load and install the Helm chart.
+	{
+		// Load Helm chart from the local chart path.
+		chart, err := loader.Load(args.ChartPath)
+		assert.AssertErrNil(ctx, err, "Failed loading Helm chart", slog.String("path", args.ChartPath))
+
+		// Install the Helm chart.
+		slog.InfoContext(ctx, "Installing Helm chart....")
+
+		installAction := action.NewInstall(actionConfig)
+		installAction.ReleaseName = args.ReleaseName
+		installAction.Namespace = args.Namespace
+		installAction.CreateNamespace = true
+		installAction.Timeout = 10 * time.Minute
+		installAction.Wait = true
+
+		_, err = installAction.Run(chart, args.Values)
+		assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
+	}
 }
 
 // Looks whether a Helm release with the given name exists or not.
@@ -91,50 +105,4 @@ func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configura
 		}
 	}
 	return nil
-}
-
-// Installs the given Helm chart.
-func helmInstall(ctx context.Context,
-	settings *cli.EnvSettings,
-	actionConfig *action.Configuration,
-	args *HelmInstallArgs,
-) {
-	slog.InfoContext(ctx, "Installing Helm chart")
-
-	installAction := action.NewInstall(actionConfig)
-	installAction.RepoURL = args.RepoURL
-	installAction.Version = args.Version
-	installAction.ReleaseName = args.ReleaseName
-	installAction.Namespace = args.Namespace
-	installAction.CreateNamespace = true
-	installAction.Timeout = 10 * time.Minute
-	installAction.Wait = true
-
-	/*
-		Determine the path to the Helm chart.
-		We need to retry, since in some rare scenario we get this type of error :
-
-		  Get "https://bitnami-labs.github.io/sealed-secrets/index.yaml": dial tcp: lookup
-		  bitnami-labs.github.io on 127.0.0.11:53: server misbehaving
-		  looks like "https://bitnami-labs.github.io/sealed-secrets/" is not a valid chart repository
-		  or cannot be reached
-	*/
-	chartPath, _ := retry.DoWithData(func() (string, error) {
-		return installAction.ChartPathOptions.LocateChart(args.ChartName, settings)
-	})
-
-	/*
-		Load the Helm chart from that chart path.
-		We need to retry, since sometimes on the first try, we get this error :
-
-			looks like args.RepoURL is not a valid chart repository or cannot be reached.
-			helm.sh/helm/v3/pkg/repo.FindChartInAuthAndTLSAndPassRepoURL
-	*/
-	chart, _ := retry.DoWithData(func() (*chart.Chart, error) {
-		return loader.Load(chartPath)
-	})
-
-	// Install the Helm chart.
-	_, err := installAction.Run(chart, args.Values)
-	assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
 }

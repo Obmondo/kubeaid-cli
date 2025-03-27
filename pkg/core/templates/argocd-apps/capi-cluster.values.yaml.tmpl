@@ -70,3 +70,25 @@ hetzner:
   robot: {{- toYaml .HetznerConfig.HetznerBareMetal | nindent 4 }}
   {{- end }}
 {{- end }}
+
+{{- if .AzureConfig }}
+provider:
+  azure: true
+
+azure:
+  tenantID: {{ .AzureConfig.TenantID }}
+  subscriptionID: {{ .AzureConfig.SubscriptionID }}
+  location: {{ .AzureConfig.Location }}
+  resourceGroup: {{ .ClusterConfig.Name }}
+
+  sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
+
+  clientIDUserAssignedIdentity: {{ .ClusterConfig.Name }}
+  clientSecretSecret:
+    name: azure-client-secret
+    namespace: {{ .CAPIClusterNamespace }}
+
+  controlPlane: {{ .AzureConfig.ControlPlane | toYaml | nindent 4 }}
+
+  nodeGroups: {{ .AzureConfig.NodeGroups | toYaml | nindent 4 }}
+{{- end }}

@@ -1,5 +1,7 @@
 package constants
 
+import "path"
+
 // Environment variable names.
 const (
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
@@ -26,20 +28,22 @@ const (
 
 	FlagNameConfig = "config"
 
+	FlagNameSkipMonitoringSetup     = "skip-monitoring-setup"
 	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
+	FlagNameSkipPRFlow              = "skip-pr-flow"
 	FlagNameSkipClusterctlMove      = "skip-clusterctl-move"
-
-	FlagNameDeleteOldCluster = "delete-old-cluster"
-
-	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
-	FlagNameHetznerRobotUsername = "hetzner-robot-username"
-	FlagNameHetznerRobotPassword = "hetzner-robot-password"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
 	FlagNameAWSSessionToken    = "aws-session-token"
 	FlagNameAWSRegion          = "aws-region"
 	FlagNameAMIID              = "ami-id"
+
+	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
+	FlagNameHetznerRobotUsername = "hetzner-robot-username"
+	FlagNameHetznerRobotPassword = "hetzner-robot-password"
+
+	FlagNameAzureClientSecret = "azure-client-secret"
 )
 
 // Kube API server CLI flags.
@@ -57,13 +61,18 @@ const (
 )
 
 // Output paths.
-const (
-	OutputPathGeneratedConfig = "./outputs/kubeaid-bootstrap-script.config.yaml"
+var (
+	OutputDirectory = "./outputs"
 
-	OutputPathManagementClusterHostKubeconfig      = "./outputs/management-cluster.host.kubeconfig.yaml"
-	OutputPathManagementClusterContainerKubeconfig = "./outputs/management-cluster.container.kubeconfig.yaml"
+	OutputPathGeneratedConfig = path.Join(OutputDirectory, "kubeaid-bootstrap-script.config.yaml")
 
-	OutputPathProvisionedClusterKubeconfig = "./outputs/provisioned-cluster.kubeconfig.yaml"
+	OutputPathManagementClusterK3DConfig           = path.Join(OutputDirectory, "management-cluster.config.yaml")
+	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
+	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
+
+	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "main-cluster.kubeconfig.yaml")
+
+	OutputPathJWKSDocument = path.Join(OutputDirectory, "jwks.json")
 )
 
 // ArgoCD.
@@ -80,11 +89,31 @@ const (
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 )
 
+// Azure
+const (
+	BlobContainerNameWorkloadIdentity = "workload-identity-oidc-provider"
+
+	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
+	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
+
+	AzureRoleIDContributor    = "b24988ac-6180-42a0-ab88-20f7382dd24c"
+	AzureStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
+
+	AzureResponseStatusCodeResourceAlreadyExists = 409
+
+	ServiceAccountNameCAPZ = "capz-manager"
+	ServiceAccountNameASO  = "azureserviceoperator-default"
+)
+
 // Uncategorized.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
-	NamespaceArgoCD = "argo-cd"
+	NamespaceArgoCD   = "argocd"
+	ReleaseNameArgoCD = "argocd"
+
+	ClusterTypeManagement = "management"
+	ClusterTypeMain       = "main"
 )
 
 // Template names.
@@ -93,10 +122,14 @@ var (
 	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
 	TemplateNameLocalSampleConfig   = "files/templates/local.sample.config.yaml.tmpl"
 
+	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
+
+	TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
+
 	CommonNonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"argocd-apps/templates/argo-cd.app.yaml.tmpl",
-		"argocd-apps/argo-cd.values.yaml.tmpl",
+		"argocd-apps/templates/argocd.app.yaml.tmpl",
+		"argocd-apps/argocd.values.yaml.tmpl",
 
 		// For Root ArgoCD App.
 		"argocd-apps/Chart.yaml",
@@ -136,7 +169,7 @@ var (
 
 	CommonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"sealed-secrets/argo-cd/kubeaid-config.yaml.tmpl",
+		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
 	}
 
 	CommonCloudSecretTemplateNames = []string{
@@ -163,6 +196,12 @@ var (
 		"argocd-apps/templates/k8s-configs.app.yaml.tmpl",
 		"k8s-configs/sealed-secrets.namespace.yaml.tmpl",
 		"k8s-configs/velero.namespace.yaml.tmpl",
+	}
+
+	AzureSpecificNonSecretTemplateNames = []string{
+		// For Azure Cloud Controller Manager.
+		"argocd-apps/templates/ccm-azure.app.yaml.tmpl",
+		"argocd-apps/ccm-azure.values.yaml.tmpl",
 	}
 
 	HetznerSpecificNonSecretTemplateNames = []string{

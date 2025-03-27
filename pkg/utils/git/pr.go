@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -47,7 +46,6 @@ func AddCommitAndPushChanges(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed getting commit object")
 
 	err = repo.Push(&goGit.PushOptions{
-		Progress:   os.Stdout,
 		RemoteName: "origin",
 		RefSpecs: []gitConfig.RefSpec{
 			gitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),

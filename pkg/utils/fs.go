@@ -68,8 +68,13 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 	assert.AssertErrNil(ctx, err, "Failed creating intermediate directories for file", slog.String("path", filePath))
 }
 
-// Returns path to the directory (in temp directory), where the customer's KubeAid Config is / will
-// be cloned.
+// Returns path to the directory (in temp directory), where the KubeAid repo is / will be cloned.
+func GetKubeAidDir() string {
+	return path.Join(globals.TempDir, "KubeAid")
+}
+
+// Returns path to the directory (in temp directory), where the customer's KubeAid Config repo
+// is / will be cloned.
 func GetKubeAidConfigDir() string {
 	return path.Join(globals.TempDir, "kubeaid-config")
 }

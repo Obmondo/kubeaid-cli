@@ -3,12 +3,9 @@ package aws
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
@@ -35,25 +32,6 @@ func NewAWSCloudProvider() cloud.CloudProvider {
 		s3Client:  s3.NewFromConfig(awsSDKConfig),
 		ec2Client: ec2.NewFromConfig(awsSDKConfig),
 	}
-}
-
-// Sets AWS specific environment variables, required by the 'clusterawsadm bootstrap iam' command /
-// core.getTemplateValues( ) / AWS SDK.
-func SetAWSSpecificEnvs() {
-	awsCredentials := config.ParsedConfig.Cloud.AWS.Credentials
-
-	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
-	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
-	os.Setenv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
-	os.Setenv(constants.EnvNameAWSRegion, config.ParsedConfig.Cloud.AWS.Region)
-
-	awsB64EncodedCredentials := strings.TrimSpace(
-		strings.Split(
-			utils.ExecuteCommandOrDie("clusterawsadm bootstrap credentials encode-as-profile"),
-			"WARNING: `encode-as-profile` should only be used for bootstrapping.",
-		)[1],
-	)
-	os.Setenv(constants.EnvNameAWSB64EcodedCredentials, awsB64EncodedCredentials)
 }
 
 func (*AWS) GetSealedSecretsBackupBucketName() string {

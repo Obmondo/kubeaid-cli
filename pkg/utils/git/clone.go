@@ -36,9 +36,11 @@ func CloneRepo(ctx context.Context,
 		workTree, err := repo.Worktree()
 		assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
 
-		// Checkout to default branch and fetch latest changes.
-		// All changes in the current branch get discarded.
-		CheckoutToDefaultBranch(ctx, repo, workTree, authMethod)
+		if url == config.ParsedConfig.Forks.KubeaidConfigForkURL {
+			// Checkout to default branch and fetch latest changes.
+			// All changes in the current branch get discarded.
+			CheckoutToDefaultBranch(ctx, repo, workTree, authMethod)
+		}
 
 		return repo
 	}

@@ -5,26 +5,24 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: argo-cd
-  namespace: argo-cd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  name: ccm-azure
+  namespace: argocd
 spec:
   destination:
+    namespace: kube-system
     server: https://kubernetes.default.svc
-    namespace: argo-cd
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/argo-cd
+      path: argocd-helm-charts/ccm-azure
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .Name }}/argocd-apps/argo-cd.values.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/ccm-azure.values.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:
     syncOptions:
-      - ApplyOutOfSyncOnly=true
       - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

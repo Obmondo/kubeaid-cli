@@ -85,11 +85,11 @@ type (
 	NodeGroup struct {
 		Name string `yaml:"name" validate:"required,notblank"`
 
+		CPU    uint32 `validate:"required"`
+		Memory uint32 `validate:"required"`
+
 		MinSize uint `yaml:"minSize" validate:"required"`
 		Maxsize uint `yaml:"maxSize" validate:"required"`
-
-		CPU    uint32 `yaml:"cpu"`
-		Memory uint32 `yaml:"memory"`
 
 		Labels map[string]string `yaml:"labels" default:"[]"`
 		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
@@ -139,21 +139,22 @@ type (
 	}
 
 	AWSControlPlane struct {
-		LoadBalancerScheme string `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
-		Replicas           uint   `yaml:"replicas" validate:"required"`
-		InstanceType       string `yaml:"instanceType" validate:"required,notblank"`
-		AMI                AMI    `yaml:"ami" validate:"required"`
+		LoadBalancerScheme string    `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
+		Replicas           uint32    `yaml:"replicas" validate:"required"`
+		InstanceType       string    `yaml:"instanceType" validate:"required,notblank"`
+		AMI                AMIConfig `yaml:"ami" validate:"required"`
 	}
 
 	AWSNodeGroup struct {
-		NodeGroup      `yaml:",inline"`
-		InstanceType   string `yaml:"instanceType" validate:"required,notblank"`
-		SSHKeyName     string `yaml:"sshKeyName" validate:"required,notblank"`
-		AMI            AMI    `yaml:"ami" validate:"required"`
-		RootVolumeSize uint   `yaml:"rootVolumeSize" validate:"required"`
+		NodeGroup `yaml:",inline"`
+
+		AMI            AMIConfig `yaml:"ami" validate:"required"`
+		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
+		RootVolumeSize uint32    `yaml:"rootVolumeSize" validate:"required"`
+		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
 	}
 
-	AMI struct {
+	AMIConfig struct {
 		ID string `yaml:"id" validate:"required,notblank"`
 	}
 
@@ -198,8 +199,8 @@ type (
 	}
 
 	HCloudNodeGroup struct {
-		NodeGroup     `yaml:",inline"`
-		MachineType   string                  `yaml:"machineType" validate:"required,notblank"`
+		NodeGroup `yaml:",inline"`
+
 		FailureDomain string                  `yaml:"failureDomain" validate:"required,notblank"`
 		SSHKeys       []HCloudNodeGroupSSHKey `yaml:"sshKeys" validate:"required"`
 	}
@@ -227,7 +228,8 @@ type (
 
 	HetznerBareMetalNodeGroup struct {
 		NodeGroup `yaml:",inline"`
-		Nodes     []HetznerBareMetalNode `yaml:"nodes" validate:"required"`
+
+		Nodes []HetznerBareMetalNode `yaml:"nodes" validate:"required"`
 	}
 
 	HetznerBareMetalNode struct {
@@ -240,7 +242,46 @@ type (
 
 // Azure specific.
 type (
-	AzureConfig struct{}
+	AzureConfig struct {
+		TenantID       string         `yaml:"tenantID" validate:"required,notblank"`
+		SubscriptionID string         `yaml:"subscriptionID" validate:"required,notblank"`
+		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
+		ClientID       string         `yaml:"clientID" validate:"required,notblank"`
+		ClientSecret   string         `yaml:"clientSecret" validate:"required,notblank"`
+		Location       string         `yaml:"location" validate:"required,notblank"`
+
+		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
+
+		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
+
+		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
+		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups" validate:"required,gt=0"`
+	}
+
+	AADApplication struct {
+		Name               string `yaml:"name" validate:"required,notblank"`
+		ObjectID           string `yaml:"objectID" validate:"required,notblank"`
+		ServicePrincipalID string `yaml:"servicePrincipalID" validate:"required,notblank"`
+	}
+
+	WorkloadIdentity struct {
+		StorageAccountName   string `yaml:"storageAccountName" validate:"required,notblank"`
+		SSHPublicKeyFilePath string `yaml:"sshPublicKeyFilePath" validate:"required,notblank"`
+	}
+
+	AzureControlPlane struct {
+		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
+		DiskSizeGB       uint32 `yaml:"diskSizeGB" validate:"required,gt=100"`
+		VMSize           string `yaml:"vmSize" validate:"required,notblank"`
+		Replicas         uint32 `yaml:"replicas" validate:"required"`
+	}
+
+	AzureNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+
+		VMSize     string `yaml:"vmSize" validate:"required,notblank"`
+		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
+	}
 )
 
 // Local specific.
