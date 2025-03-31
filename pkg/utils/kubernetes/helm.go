@@ -32,7 +32,7 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 	settings := cli.New()
 
 	actionConfig := &action.Configuration{}
-	err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER"), slog.Debug)
+	err := actionConfig.Init(settings.RESTClientGetter(), settings.Namespace(), os.Getenv("HELM_DRIVER"), nil)
 	assert.AssertErrNil(ctx, err, "Failed initializing Helm action config")
 
 	existingHelmRelease := findExistingHelmRelease(ctx, actionConfig, args)
