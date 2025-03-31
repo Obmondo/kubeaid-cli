@@ -4,24 +4,34 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
+	"strings"
 
 	"github.com/fatih/color"
 )
 
-type ColorHandler struct {
-	slog.Handler
-	logLogger          *log.Logger
-	isDebugModeEnabled bool
+type CustomTextHandler struct {
+	writer  io.Writer
+	options *slog.HandlerOptions
 }
 
-func (c *ColorHandler) Handle(ctx context.Context, record slog.Record) error {
-	logParts := []any{}
+func NewCustomTextHandler(writer io.Writer, options *slog.HandlerOptions) *CustomTextHandler {
+	return &CustomTextHandler{
+		writer,
+		options,
+	}
+}
 
-	// Time (only shown in debug mode).
-	if c.isDebugModeEnabled {
-		logParts = append(logParts,
+func (c *CustomTextHandler) Enabled(ctx context.Context, logLevel slog.Level) bool {
+	return (logLevel >= c.options.Level.Level())
+}
+
+func (c *CustomTextHandler) Handle(ctx context.Context, record slog.Record) error {
+	logSections := []string{}
+
+	// Time.
+	if c.options.Level == slog.LevelDebug {
+		logSections = append(logSections,
 			fmt.Sprintf("(%s)", record.Time.Format("15:04")),
 		)
 	}
@@ -38,29 +48,32 @@ func (c *ColorHandler) Handle(ctx context.Context, record slog.Record) error {
 	case slog.LevelError:
 		logLevel = color.RedString(logLevel)
 	}
-	logParts = append(logParts, logLevel)
+	logSections = append(logSections, logLevel)
 
 	// Message.
 	message := color.WhiteString(record.Message)
-	logParts = append(logParts, message)
+	logSections = append(logSections, message)
 
 	// Attributes.
 	record.Attrs(func(attribute slog.Attr) bool {
-		logParts = append(logParts,
+		logSections = append(logSections,
 			fmt.Sprintf("%s=%s", color.CyanString(attribute.Key), attribute.Value.String()),
 		)
 
 		return true
 	})
 
-	c.logLogger.Println(logParts...)
+	// Write out the log.
+	log := strings.Join(logSections, " ") + "\n"
+	c.writer.Write([]byte(log))
+
 	return nil
 }
 
-func withColorHandler(out io.Writer, handler slog.Handler, isDebugModeEnabled bool) *ColorHandler {
-	return &ColorHandler{
-		Handler:            handler,
-		logLogger:          log.New(out, "", 0),
-		isDebugModeEnabled: isDebugModeEnabled,
-	}
+func (c *CustomTextHandler) WithAttrs(attributes []slog.Attr) slog.Handler {
+	panic("unimplemented")
+}
+
+func (c *CustomTextHandler) WithGroup(name string) slog.Handler {
+	panic("unimplemented")
 }

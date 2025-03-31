@@ -64,19 +64,25 @@ const (
 var (
 	OutputDirectory = "./outputs"
 
-	OutputPathGeneratedConfig = path.Join(OutputDirectory, "kubeaid-bootstrap-script.config.yaml")
+	OutputPathGeneratedConfig = path.Join(OutputDirectory, "config.yaml")
 
-	OutputPathManagementClusterK3DConfig           = path.Join(OutputDirectory, "management-cluster.config.yaml")
-	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
-	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
+	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 
-	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "main-cluster.kubeconfig.yaml")
+	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "k3d.config.yaml")
 
-	OutputPathJWKSDocument = path.Join(OutputDirectory, "jwks.json")
+	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "kubeconfigs/clusters/management/host.yaml")
+	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/management/container.yaml")
+
+	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/main.yaml")
+
+	OutputPathJWKSDocument = path.Join(OutputDirectory, "workload-identity/openid-provider/jwks.json")
 )
 
 // ArgoCD.
 const (
+	NamespaceArgoCD   = "argocd"
+	ReleaseNameArgoCD = "argocd"
+
 	// Project.
 	ArgoCDProjectKubeAid = "kubeaid"
 
@@ -105,12 +111,9 @@ const (
 	ServiceAccountNameASO  = "azureserviceoperator-default"
 )
 
-// Uncategorized.
+// Miscellaneous.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
-
-	NamespaceArgoCD   = "argocd"
-	ReleaseNameArgoCD = "argocd"
 
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
