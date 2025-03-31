@@ -66,7 +66,10 @@ var (
 
 	OutputPathGeneratedConfig = path.Join(OutputDirectory, "kubeaid-bootstrap-script.config.yaml")
 
-	OutputPathManagementClusterK3DConfig           = path.Join(OutputDirectory, "management-cluster.config.yaml")
+	OutputPathLogFile = path.Join(OutputDirectory, ".log")
+
+	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "management-cluster.config.yaml")
+
 	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
 	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
 
@@ -77,6 +80,9 @@ var (
 
 // ArgoCD.
 const (
+	NamespaceArgoCD   = "argocd"
+	ReleaseNameArgoCD = "argocd"
+
 	// Project.
 	ArgoCDProjectKubeAid = "kubeaid"
 
@@ -105,12 +111,9 @@ const (
 	ServiceAccountNameASO  = "azureserviceoperator-default"
 )
 
-// Uncategorized.
+// Miscellaneous.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
-
-	NamespaceArgoCD   = "argocd"
-	ReleaseNameArgoCD = "argocd"
 
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
