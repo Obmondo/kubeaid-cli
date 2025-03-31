@@ -64,18 +64,18 @@ const (
 var (
 	OutputDirectory = "./outputs"
 
-	OutputPathGeneratedConfig = path.Join(OutputDirectory, "kubeaid-bootstrap-script.config.yaml")
+	OutputPathGeneratedConfig = path.Join(OutputDirectory, "config.yaml")
 
 	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 
-	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "management-cluster.config.yaml")
+	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "k3d.config.yaml")
 
-	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "management-cluster.host.kubeconfig.yaml")
-	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "management-cluster.container.kubeconfig.yaml")
+	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "kubeconfigs/clusters/management/host.yaml")
+	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/management/container.yaml")
 
-	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "main-cluster.kubeconfig.yaml")
+	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/main.yaml")
 
-	OutputPathJWKSDocument = path.Join(OutputDirectory, "jwks.json")
+	OutputPathJWKSDocument = path.Join(OutputDirectory, "workload-identity/openid-provider/jwks.json")
 )
 
 // ArgoCD.
