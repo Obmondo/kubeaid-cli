@@ -91,7 +91,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 
 		// Update Kubernetes version.
 		_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"yq -i -y '(.global.kubernetes.version) = \"%s\"' %s",
+			"yq --in-place --yaml-output --yaml-roundtrip '(.global.kubernetes.version) = \"%s\"' %s",
 			args.NewKubernetesVersion, capiClusterValuesFilePath,
 		))
 
