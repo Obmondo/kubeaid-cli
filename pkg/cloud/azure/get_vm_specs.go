@@ -11,7 +11,7 @@ import (
 )
 
 func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
-	vmSizesListPager := a.vmSizesClient.NewListPager(config.ParsedConfig.Cloud.Azure.Location, nil)
+	vmSizesListPager := a.vmSizesClient.NewListPager(config.ParsedGeneralConfig.Cloud.Azure.Location, nil)
 
 	for {
 		if !vmSizesListPager.More() {

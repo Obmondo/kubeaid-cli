@@ -1,26 +1,21 @@
 package config
 
 import (
-	"context"
-
 	coreV1 "k8s.io/api/core/v1"
 )
 
 type (
-	Config struct {
+	GeneralConfig struct {
 		CustomerID string           `yaml:"customerID"`
-		Git        GitConfig        `yaml:"git" validate:"required"`
+		Git        GitConfig        `yaml:"git"`
 		Cluster    ClusterConfig    `yaml:"cluster" validate:"required"`
-		Forks      ForksConfig      `yaml:"forks" validate:"required"`
+		Forks      ForksConfig      `yaml:"forkURLs" validate:"required"`
 		Cloud      CloudConfig      `yaml:"cloud" validate:"required"`
 		Monitoring MonitoringConfig `yaml:"monitoring"`
 	}
 
 	GitConfig struct {
-		Username        string `yaml:"username"`
-		Password        string `yaml:"password"`
-		SSHPrivateKey   string `yaml:"sshPrivateKey"`
-		UseSSHAgentAuth bool   `yaml:"useSSHAgentAuth"`
+		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
 	}
 
 	ForksConfig struct {
@@ -120,22 +115,15 @@ type (
 // AWS specific.
 type (
 	AWSConfig struct {
-		Credentials AWSCredentials `yaml:"credentials"`
-		Region      string         `yaml:"region" validate:"required,notblank"`
+		Region string `yaml:"region" validate:"required,notblank"`
 
-		BastionEnabled bool            `yaml:"bastionEnabled" default:"True"`
+		SSHKeyName     string          `yaml:"sshKeyName" validate:"required,notblank"`
 		VPCID          *string         `yaml:"vpcID"`
+		BastionEnabled bool            `yaml:"bastionEnabled" default:"True"`
 		ControlPlane   AWSControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups" validate:"required"`
-		SSHKeyName     string          `yaml:"sshKeyName" validate:"required,notblank"`
 
 		DisasterRecovery *AWSDisasterRecovery `yaml:"disasterRecovery"`
-	}
-
-	AWSCredentials struct {
-		AWSAccessKeyID     string `yaml:"accessKeyID" validate:"required,notblank"`
-		AWSSecretAccessKey string `yaml:"secretAccessKey" validate:"required,notblank"`
-		AWSSessionToken    string `yaml:"sessionToken"`
 	}
 
 	AWSControlPlane struct {
@@ -167,16 +155,8 @@ type (
 // Hetzner specific.
 type (
 	HetznerConfig struct {
-		Credentials HetznerCredentials
-
 		HCloud           HCloud            `yaml:"hcloud" validate:"required"`
 		HetznerBareMetal *HetznerBareMetal `yaml:"robot"`
-	}
-
-	HetznerCredentials struct {
-		HetznerAPIToken      string `validate:"required,notblank"`
-		HetznerRobotUsername string `validate:"required,notblank"`
-		HetznerRobotPassword string `validate:"required,notblank"`
 	}
 
 	HCloud struct {
@@ -246,8 +226,6 @@ type (
 		TenantID       string         `yaml:"tenantID" validate:"required,notblank"`
 		SubscriptionID string         `yaml:"subscriptionID" validate:"required,notblank"`
 		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
-		ClientID       string         `yaml:"clientID" validate:"required,notblank"`
-		ClientSecret   string         `yaml:"clientSecret" validate:"required,notblank"`
 		Location       string         `yaml:"location" validate:"required,notblank"`
 
 		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
@@ -288,10 +266,3 @@ type (
 type (
 	LocalConfig struct{}
 )
-
-var ParsedConfig = &Config{}
-
-// Read config file from the given file path. Then, parse and validate it.
-func InitConfig() {
-	parseConfigFile(context.Background(), ConfigFilePath)
-}

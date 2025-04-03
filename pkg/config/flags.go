@@ -12,14 +12,14 @@ import (
 	"github.com/spf13/pflag"
 )
 
-var ConfigFilePath string
+var ConfigsDirectory string
 
-func RegisterConfigFilePathFlag(command *cobra.Command) {
+func RegisterConfigsDirectoryFlag(command *cobra.Command) {
 	command.PersistentFlags().StringVar(
-		&ConfigFilePath,
-		constants.FlagNameConfig,
-		constants.OutputPathGeneratedConfig,
-		"Path to the KubeAid Bootstrap Script config file",
+		&ConfigsDirectory,
+		constants.FlagNameConfigsDirectoy,
+		constants.OutputPathGeneratedConfigsDirectory,
+		"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
 	)
 }
 

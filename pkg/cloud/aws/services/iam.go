@@ -45,7 +45,7 @@ func CreateIAMRoleForPolicy(ctx context.Context,
 		slog.String("iam-role", name),
 	})
 
-	iamPath := fmt.Sprintf("/%s/", config.ParsedConfig.Cluster.Name)
+	iamPath := fmt.Sprintf("/%s/", config.ParsedGeneralConfig.Cluster.Name)
 
 	// Create the IAM policy.
 	_, err := iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{

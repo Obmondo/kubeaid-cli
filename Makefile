@@ -49,19 +49,19 @@ sample-config-generate-aws-dev:
 devenv-create-aws-dev:
 	@go run ./cmd/ devenv create aws \
 		--debug \
-		--config ./outputs/configs/aws.yaml
+    --configs-directory ./outputs/configs/aws/
 
 .PHONY: devenv-create-azure-dev
 devenv-create-azure-dev:
 	@go run ./cmd/ devenv create azure \
 		--debug \
-		--config ./outputs/configs/azure.yaml
+    --configs-directory ./outputs/configs/azure/
 
 .PHONY: bootstrap-cluster-aws-dev
 bootstrap-cluster-aws-dev:
 	@go run ./cmd/ cluster bootstrap aws \
 		--debug \
-		--config ./outputs/configs/aws.yaml
+    --configs-directory ./outputs/configs/aws/
 # --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
@@ -69,7 +69,7 @@ bootstrap-cluster-aws-dev:
 bootstrap-cluster-azure-dev:
 	@go run ./cmd/ cluster bootstrap azure \
 		--debug \
-		--config ./outputs/configs/azure.yaml
+    --configs-directory ./outputs/configs/azure/
 # --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
@@ -77,7 +77,7 @@ bootstrap-cluster-azure-dev:
 bootstrap-cluster-hetzner-dev:
 	@go run ./cmd/ cluster bootstrap hetzner \
 		--debug \
-    --config ./outputs/configs/hetzner/hcloud.yaml \
+    --configs-directory ./outputs/configs/hcloud/ \
     --skip-kube-prometheus-build
 # --skip-clusterctl-move
 
@@ -85,36 +85,36 @@ bootstrap-cluster-hetzner-dev:
 upgrade-cluster-aws-dev:
 	@go run ./cmd/ cluster upgrade aws \
 		--debug \
-    --config ./outputs/configs/aws.yaml \
+    --configs-directory ./outputs/configs/aws/ \
 		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
 
 .PHONY: upgrade-cluster-azure-dev
 upgrade-cluster-azure-dev:
 	@go run ./cmd/ cluster upgrade azure \
 		--debug \
-    --config ./outputs/configs/azure.yaml \
+    --configs-directory ./outputs/configs/azure/ \
 		--k8s-version "v1.32.0"
 
 .PHONY: delete-provisioned-cluster-aws-dev
 delete-provisioned-cluster-aws-dev:
 	@go run ./cmd/ cluster delete \
-		--config ./outputs/configs/aws.yaml
+    --configs-directory ./outputs/configs/aws/
 
 .PHONY: delete-provisioned-cluster-azure-dev
 delete-provisioned-cluster-azure-dev:
 	@go run ./cmd/ cluster delete \
-		--config ./outputs/./outputs/configs/azure.yaml
+    --configs-directory ./outputs/configs/azure/
 
 .PHONY: delete-provisioned-cluster-hetzner-dev
 delete-provisioned-cluster-hetzner-dev:
 	@go run ./cmd/ cluster delete \
-		--config ./outputs/configs/hetzner/hcloud.yaml
+    --configs-directory ./outputs/configs/hcloud/
 
 .PHONY: bootstrap-cluster-local-dev
 bootstrap-cluster-local-dev:
 	@go run ./cmd/ cluster bootstrap local \
 		--debug \
-    --config ./outputs/configs/local.yaml \
+    --configs-directory ./outputs/configs/local/ \
     --skip-monitoring-setup \
     --skip-kube-prometheus-build \
     --skip-pr-flow

@@ -44,13 +44,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		gitAuthMethod := args.GitAuthMethod
 		// If we're going to use the original KubeAid repo (https://github.com/Obmondo/KubeAid), then we
 		// don't need any Git authentication method
-		if config.ParsedConfig.Forks.KubeaidForkURL == constants.RepoURLObmondoKubeAid {
+		if config.ParsedGeneralConfig.Forks.KubeaidForkURL == constants.RepoURLObmondoKubeAid {
 			gitAuthMethod = nil
 		}
 
 		// Clone the KubeAid fork locally (if not already cloned).
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
-			config.ParsedConfig.Forks.KubeaidForkURL,
+			config.ParsedGeneralConfig.Forks.KubeaidForkURL,
 			utils.GetKubeAidDir(),
 			gitAuthMethod,
 		)
@@ -58,7 +58,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
 		// TODO : Move this to gitUtils.CloneRepo( )?
 
-		kubeaidVersion := config.ParsedConfig.Cluster.KubeaidVersion
+		kubeaidVersion := config.ParsedGeneralConfig.Cluster.KubeaidVersion
 
 		slog.InfoContext(ctx, "Hard resetting the KubeAid repo to tag", slog.String("tag", kubeaidVersion))
 
@@ -89,7 +89,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
 	// keys from a previous cluster which got destroyed.
 	if args.IsPartOfDisasterRecovery {
-		sealedSecretsKeysBackupBucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsKeysBackupBucketName)
 
 		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))
@@ -125,7 +125,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
-	if config.ParsedConfig.Cloud.Local == nil {
+	if globals.CloudProviderName != constants.CloudProviderLocal {
 		// Sync ClusterAPI ArgoCD App.
 		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
 
@@ -179,8 +179,8 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 func getInfrastructureProviderName() string {
 	infrastructureProviderName := globals.CloudProviderName
 
-	if len(config.ParsedConfig.CustomerID) > 0 {
-		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedConfig.CustomerID
+	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedGeneralConfig.CustomerID
 	}
 
 	return infrastructureProviderName

@@ -66,7 +66,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 				Name: to.Ptr(armstorage.SKUNameStandardLRS), // Standard Locally Redundant Storage.
 			},
 
-			Location: &config.ParsedConfig.Cloud.Azure.Location,
+			Location: &config.ParsedGeneralConfig.Cloud.Azure.Location,
 
 			Properties: &armstorage.AccountPropertiesCreateParameters{
 				// Since very frequent resources will be coming from all the Kubernetes workloads, we
@@ -82,7 +82,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 			},
 
 			Tags: map[string]*string{
-				"cluster": &config.ParsedConfig.Cluster.Name,
+				"cluster": &config.ParsedGeneralConfig.Cluster.Name,
 			},
 		},
 		nil,

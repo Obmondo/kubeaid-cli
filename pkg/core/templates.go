@@ -38,16 +38,16 @@ type TemplateValues struct {
 
 func getTemplateValues() *TemplateValues {
 	templateValues := &TemplateValues{
-		CustomerID:           config.ParsedConfig.CustomerID,
-		GitUsername:          config.ParsedConfig.Git.Username,
-		GitPassword:          config.ParsedConfig.Git.Password,
-		ForksConfig:          config.ParsedConfig.Forks,
-		ClusterConfig:        config.ParsedConfig.Cluster,
-		MonitoringConfig:     config.ParsedConfig.Monitoring,
+		CustomerID:           config.ParsedGeneralConfig.CustomerID,
+		GitUsername:          config.ParsedSecretsConfig.Git.Username,
+		GitPassword:          config.ParsedSecretsConfig.Git.Password,
+		ForksConfig:          config.ParsedGeneralConfig.Forks,
+		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
+		MonitoringConfig:     config.ParsedGeneralConfig.Monitoring,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
-		AWSConfig:            config.ParsedConfig.Cloud.AWS,
-		HetznerConfig:        config.ParsedConfig.Cloud.Hetzner,
-		AzureConfig:          config.ParsedConfig.Cloud.Azure,
+		AWSConfig:            config.ParsedGeneralConfig.Cloud.AWS,
+		HetznerConfig:        config.ParsedGeneralConfig.Cloud.Hetzner,
+		AzureConfig:          config.ParsedGeneralConfig.Cloud.Azure,
 	}
 
 	// Set cloud provider specific values.
@@ -101,7 +101,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		//
 		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
 		// cloud-provider specific config.
-		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
 		}
 
@@ -116,7 +116,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	// Add Obmondo K8s Agent related templates, if 'monitoring.connectObmondo' is set to true.
-	if config.ParsedConfig.Monitoring.ConnectObmondo {
+	if config.ParsedGeneralConfig.Monitoring.ConnectObmondo {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			"argocd-apps/templates/obmondo-k8s-agent.yaml.tmpl",
 			"argocd-apps/values-obmondo-k8s-agent.yaml.tmpl",

@@ -52,7 +52,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	_ = gitUtils.CloneRepo(ctx,
-		config.ParsedConfig.Forks.KubeaidConfigForkURL,
+		config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
 		utils.GetKubeAidConfigDir(),
 		gitAuthMethod,
 	)

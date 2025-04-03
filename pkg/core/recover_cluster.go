@@ -15,13 +15,13 @@ import (
 func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlow bool) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		assert.AssertNotNil(ctx, config.ParsedConfig.Cloud.AWS.DisasterRecovery, "disasterRecovery section in the config file, can't be empty")
+		assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery, "disasterRecovery section in the config file, can't be empty")
 
 	case constants.CloudProviderAzure:
 		panic("unimplemented")
 
 	case constants.CloudProviderHetzner:
-		assert.AssertNil(ctx, config.ParsedConfig.Cloud.Hetzner, "Disaster recovery isn't supported for Hetzner")
+		assert.AssertNil(ctx, config.ParsedGeneralConfig.Cloud.Hetzner, "Disaster recovery isn't supported for Hetzner")
 
 	default:
 		panic("unreachable")
@@ -44,7 +44,7 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 			(1) https://playbook.stakater.com/content/workshop/sealed-secrets/management.html.
 			(2) https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation
 	*/
-	sealedSecretsKeysBackupBucketName := config.ParsedConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+	sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
 	services.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupBucketName, true)
 
 	// Bootstrap the new cluster.

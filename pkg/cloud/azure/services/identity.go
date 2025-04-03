@@ -50,7 +50,7 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 		slog.String("name", args.Name),
 	})
 
-	azureConfig := config.ParsedConfig.Cloud.Azure
+	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
 	slog.InfoContext(ctx, "Creating User Assigned Identity and assigning Contributor Role to it")
 
@@ -60,7 +60,7 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 		armmsi.Identity{
 			Location: &azureConfig.Location,
 			Tags: map[string]*string{
-				"cluster": &config.ParsedConfig.Cluster.Name,
+				"cluster": &config.ParsedGeneralConfig.Cluster.Name,
 			},
 		},
 		nil,

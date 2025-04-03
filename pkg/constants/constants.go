@@ -26,7 +26,7 @@ const (
 	FlagNameManagementClusterName             = "management-cluster-name"
 	FlagNameManagementClusterNameDefaultValue = "management-cluster"
 
-	FlagNameConfig = "config"
+	FlagNameConfigsDirectoy = "configs-directory"
 
 	FlagNameSkipMonitoringSetup     = "skip-monitoring-setup"
 	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
@@ -64,7 +64,7 @@ const (
 var (
 	OutputDirectory = "./outputs"
 
-	OutputPathGeneratedConfig = path.Join(OutputDirectory, "config.yaml")
+	OutputPathGeneratedConfigsDirectory = path.Join(OutputDirectory, "configs/")
 
 	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 
@@ -121,9 +121,17 @@ const (
 
 // Template names.
 var (
-	TemplateNameAWSSampleConfig     = "files/templates/aws.sample.config.yaml.tmpl"
-	TemplateNameHetznerSampleConfig = "files/templates/hetzner.sample.config.yaml.tmpl"
-	TemplateNameLocalSampleConfig   = "files/templates/local.sample.config.yaml.tmpl"
+	TemplateNameAWSGeneralConfig = "files/templates/aws.general.config.yaml.tmpl"
+	TemplateNameAWSSecretsConfig = "files/templates/aws.secrets.config.yaml.tmpl"
+
+	TemplateNameAzureGeneralConfig = "files/templates/azure.general.config.yaml.tmpl"
+	TemplateNameAzureSecretsConfig = "files/templates/azure.secrets.config.yaml.tmpl"
+
+	TemplateNameHetznerGeneralConfig = "files/templates/hetzner.general.config.yaml.tmpl"
+	TemplateNameHetznerSecretsConfig = "files/templates/hetzner.secrets.config.yaml.tmpl"
+
+	TemplateNameLocalGeneralConfig = "files/templates/local.general.config.yaml.tmpl"
+	TemplateNameLocalSecretsConfig = "files/templates/local.secrets.config.yaml.tmpl"
 
 	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
 

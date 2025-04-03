@@ -1,7 +1,6 @@
 package generate
 
 import (
-	"context"
 	"log/slog"
 	"os"
 
@@ -13,9 +12,13 @@ var GenerateCmd = &cobra.Command{
 	Use: "generate",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Verify that file doesn't already exist.
-		if _, err := os.Stat(constants.OutputPathGeneratedConfig); err == nil {
-			slog.ErrorContext(context.Background(), "Config file already exists", slog.String("path", constants.OutputPathGeneratedConfig))
+		// Verify that config files directory doesn't already exist.
+		if _, err := os.Stat(constants.OutputPathGeneratedConfigsDirectory); err == nil {
+			slog.ErrorContext(
+				cmd.Context(),
+				"Config files directory already exists",
+				slog.String("path", constants.OutputPathGeneratedConfigsDirectory),
+			)
 			os.Exit(1)
 		}
 	},

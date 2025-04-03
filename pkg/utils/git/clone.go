@@ -36,7 +36,7 @@ func CloneRepo(ctx context.Context,
 		workTree, err := repo.Worktree()
 		assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
 
-		if url == config.ParsedConfig.Forks.KubeaidConfigForkURL {
+		if url == config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL {
 			// Checkout to default branch and fetch latest changes.
 			// All changes in the current branch get discarded.
 			CheckoutToDefaultBranch(ctx, repo, workTree, authMethod)
@@ -50,7 +50,7 @@ func CloneRepo(ctx context.Context,
 
 	var auth transport.AuthMethod
 
-	if len(config.ParsedConfig.Git.Password) > 0 {
+	if len(config.ParsedSecretsConfig.Git.Password) > 0 {
 		isPrivate, err := IsRepoPrivate(ctx, url)
 		assert.AssertErrNil(ctx, err, "failed to determine git repo type")
 
@@ -64,7 +64,7 @@ func CloneRepo(ctx context.Context,
 		URL:  url,
 	}
 
-	if url == config.ParsedConfig.Forks.KubeaidForkURL {
+	if url == config.ParsedGeneralConfig.Forks.KubeaidForkURL {
 		opts.Depth = 1
 	}
 

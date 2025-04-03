@@ -81,7 +81,7 @@ func GetKubeAidConfigDir() string {
 
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
 func GetClusterDir() string {
-	clusterDir := path.Join(GetKubeAidConfigDir(), "k8s", config.ParsedConfig.Cluster.Name)
+	clusterDir := path.Join(GetKubeAidConfigDir(), "k8s", config.ParsedGeneralConfig.Cluster.Name)
 	return clusterDir
 }
 

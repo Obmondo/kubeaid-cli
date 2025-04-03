@@ -22,7 +22,7 @@ import (
 )
 
 // Validates the parsed config.
-func validateConfig(config *Config) {
+func validateConfig() {
 	ctx := context.Background()
 
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
@@ -30,14 +30,34 @@ func validateConfig(config *Config) {
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
 
 	// Validate based on struct tags.
-	err = validator.Struct(config)
-	assert.AssertErrNil(ctx, err, "Config validation failed")
+	{
+		err = validator.Struct(ParsedGeneralConfig)
+		assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
+
+		err = validator.Struct(ParsedSecretsConfig)
+		assert.AssertErrNil(ctx, err, "Struct validation failed for secrets config")
+	}
+
+	// Validate that cloud provider credentials have been provided.
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		assert.Assert(ctx, (ParsedSecretsConfig.AWSCredentials != nil), "AWS credentials not provided")
+
+	case constants.CloudProviderAzure:
+		assert.Assert(ctx, (ParsedSecretsConfig.AzureCredentials != nil), "Azure credentials not provided")
+
+	case constants.CloudProviderHetzner:
+		assert.Assert(ctx,
+			(ParsedSecretsConfig.HetznerCredentials != nil),
+			"Hetzner credentials not provided",
+		)
+	}
 
 	// Validate K8s version.
-	ValidateK8sVersion(ctx, config.Cluster.K8sVersion)
+	ValidateK8sVersion(ctx, ParsedGeneralConfig.Cluster.K8sVersion)
 
 	// Validate additional users.
-	for _, additionalUser := range config.Cluster.AdditionalUsers {
+	for _, additionalUser := range ParsedGeneralConfig.Cluster.AdditionalUsers {
 		// Additional user name cannot be ubuntu.
 		assert.Assert(ctx, additionalUser.Name != "ubuntu", "additional user name cannot be ubuntu")
 
@@ -51,7 +71,7 @@ func validateConfig(config *Config) {
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for _, nodeGroup := range config.Cloud.AWS.NodeGroups {
+		for _, nodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
 				nodeGroup.MinSize <= nodeGroup.Maxsize,
@@ -63,7 +83,7 @@ func validateConfig(config *Config) {
 		}
 
 	case constants.CloudProviderAzure:
-		for _, nodeGroup := range config.Cloud.Azure.NodeGroups {
+		for _, nodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
 				nodeGroup.MinSize <= nodeGroup.Maxsize,

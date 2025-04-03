@@ -2,6 +2,7 @@ package logger
 
 import (
 	"io"
+	"log"
 	"log/slog"
 	"os"
 
@@ -19,8 +20,7 @@ func InitLogger(isDebugModeEnabled bool) {
 
 	logFile, err := os.OpenFile(constants.OutputPathLogFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		println("Failed opening log file")
-		os.Exit(1)
+		log.Fatal("Failed opening log file")
 	}
 
 	logger := slog.New(withContextualSlogAttributesHandler(NewCustomTextHandler(
