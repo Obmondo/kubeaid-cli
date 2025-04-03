@@ -28,7 +28,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create local dev environment.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	if config.ParsedConfig.Cloud.Local == nil {
+	if globals.CloudProviderName != constants.CloudProviderLocal {
 		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 			constants.OutputPathMainClusterKubeconfig,
 			false,
@@ -61,7 +61,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// setup Disaster Recovery.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		if config.ParsedConfig.Cloud.AWS.DisasterRecovery != nil {
+		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
 			globals.CloudProvider.SetupDisasterRecovery(ctx)
 		}
 	}
@@ -131,7 +131,7 @@ func pivotCluster(ctx context.Context,
 	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
 	//        a master node.
 	//        And, the master node count should be more than 1.
-	if config.ParsedConfig.Cloud.AWS != nil {
+	if globals.CloudProviderName == constants.CloudProviderAWS {
 		// Zero the credentials CAPA controller started with.
 		// This will force the CAPA controller to fall back to use the attached instance profiles.
 		utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")

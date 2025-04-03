@@ -51,7 +51,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 			&K3DConfigTemplateValues{
 				TempDir:    globals.TempDir,
 				Name:       name,
-				K8sVersion: config.ParsedConfig.Cluster.K8sVersion,
+				K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
 			},
 		)
 

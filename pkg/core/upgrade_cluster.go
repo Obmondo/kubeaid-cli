@@ -56,7 +56,7 @@ func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArg
 	// (2) Upgrading each node-group one by one.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for _, nodeGroup := range config.ParsedConfig.Cloud.AWS.NodeGroups {
+		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
 			upgradeNodeGroup(ctx, args, clusterClient, nodeGroup.Name)
 		}
 
@@ -73,7 +73,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	repo := git.CloneRepo(ctx,
-		config.ParsedConfig.Forks.KubeaidConfigForkURL,
+		config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
 		utils.GetKubeAidConfigDir(),
 		gitAuthMethod,
 	)
@@ -82,7 +82,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
 
 	// Create and checkout to a new branch.
-	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
+	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedGeneralConfig.Cluster.Name, time.Now().Unix())
 	git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
 
 	// Update values-capi-cluster.yaml file (using yq).
@@ -91,7 +91,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 
 		// Update Kubernetes version.
 		_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"yq -i -y '(.global.kubernetes.version) = \"%s\"' %s",
+			"yq --in-place --yaml-output --yaml-roundtrip '(.global.kubernetes.version) = \"%s\"' %s",
 			args.NewKubernetesVersion, capiClusterValuesFilePath,
 		))
 
@@ -105,10 +105,10 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
 		"(cluster/%s) : updated values-capi-cluster.yaml for Kubernetes version upgrade to %s",
-		config.ParsedConfig.Cluster.Name, args.NewKubernetesVersion,
+		config.ParsedGeneralConfig.Cluster.Name, args.NewKubernetesVersion,
 	)
 	commitHash := git.AddCommitAndPushChanges(ctx,
-		repo, workTree, newBranchName, gitAuthMethod, config.ParsedConfig.Cluster.Name, commitMessage,
+		repo, workTree, newBranchName, gitAuthMethod, config.ParsedGeneralConfig.Cluster.Name, commitMessage,
 	)
 
 	// The user now needs to go ahead and create a PR from the new to the default branch. Then he
@@ -136,7 +136,7 @@ func upgradeControlPlane(ctx context.Context, args UpgradeClusterArgs, clusterCl
 
 	// Update the Kubernetes version in the KubeadmControlPlane resource.
 
-	kubeadmControlPlaneName := fmt.Sprintf("%s-control-plane", config.ParsedConfig.Cluster.Name)
+	kubeadmControlPlaneName := fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
 
 	kubeadmControlPlane := &kcpV1Beta1.KubeadmControlPlane{
 		ObjectMeta: v1.ObjectMeta{
@@ -175,7 +175,7 @@ func upgradeNodeGroup(ctx context.Context,
 
 	// Update the corresponding MachineDeployment.
 
-	machineDeploymentName := fmt.Sprintf("%s-%s", config.ParsedConfig.Cluster.Name, nodeGroupName)
+	machineDeploymentName := fmt.Sprintf("%s-%s", config.ParsedGeneralConfig.Cluster.Name, nodeGroupName)
 
 	machineDeployment := &clusterAPIV1Beta1.MachineDeployment{
 		ObjectMeta: v1.ObjectMeta{

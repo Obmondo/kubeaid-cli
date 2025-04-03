@@ -123,8 +123,8 @@ func pingKubernetesCluster(ctx context.Context, kubeClient client.Client) error 
 // with the underlying cloud provider.
 func GetCapiClusterNamespace() string {
 	capiClusterNamespace := "capi-cluster"
-	if len(config.ParsedConfig.CustomerID) > 0 {
-		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", config.ParsedConfig.CustomerID)
+	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		capiClusterNamespace = fmt.Sprintf("capi-cluster-%s", config.ParsedGeneralConfig.CustomerID)
 	}
 	return capiClusterNamespace
 }
@@ -262,7 +262,7 @@ func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 	for {
 		err := kubeClient.Get(ctx,
 			types.NamespacedName{
-				Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedConfig.Cluster.Name),
+				Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedGeneralConfig.Cluster.Name),
 				Namespace: GetCapiClusterNamespace(),
 			},
 			secret,
@@ -288,7 +288,7 @@ func GetClusterResource(ctx context.Context,
 ) (*clusterAPIV1Beta1.Cluster, error) {
 	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      config.ParsedConfig.Cluster.Name,
+			Name:      config.ParsedGeneralConfig.Cluster.Name,
 			Namespace: GetCapiClusterNamespace(),
 		},
 	}

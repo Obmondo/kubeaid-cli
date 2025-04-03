@@ -24,7 +24,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	// Get the AWSMachineTemplate resource referred by KubeadmControlPlane resource.
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-control-plane", config.ParsedConfig.Cluster.Name),
+			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}

@@ -23,7 +23,7 @@ import (
 func DeleteCluster(ctx context.Context) {
 	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      config.ParsedConfig.Cluster.Name,
+			Name:      config.ParsedGeneralConfig.Cluster.Name,
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}

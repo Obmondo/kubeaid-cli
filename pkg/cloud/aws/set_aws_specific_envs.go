@@ -12,12 +12,12 @@ import (
 // Sets AWS specific environment variables, required by the 'clusterawsadm bootstrap iam' command /
 // core.getTemplateValues( ) / AWS SDK.
 func SetAWSSpecificEnvs() {
-	awsCredentials := config.ParsedConfig.Cloud.AWS.Credentials
+	awsCredentials := config.ParsedSecretsConfig.AWS
 
 	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
 	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
 	os.Setenv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
-	os.Setenv(constants.EnvNameAWSRegion, config.ParsedConfig.Cloud.AWS.Region)
+	os.Setenv(constants.EnvNameAWSRegion, config.ParsedGeneralConfig.Cloud.AWS.Region)
 
 	awsB64EncodedCredentials := strings.TrimSpace(
 		strings.Split(

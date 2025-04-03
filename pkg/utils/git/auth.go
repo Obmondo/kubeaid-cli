@@ -18,18 +18,18 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 
 	switch {
 	// SSH private key and password.
-	case len(config.ParsedConfig.Git.SSHPrivateKey) > 0:
-		authMethod, err = ssh.NewPublicKeysFromFile("git", config.ParsedConfig.Git.SSHPrivateKey, config.ParsedConfig.Git.Password)
+	case len(config.ParsedSecretsConfig.Git.SSHPrivateKey) > 0:
+		authMethod, err = ssh.NewPublicKeysFromFile("git", config.ParsedSecretsConfig.Git.SSHPrivateKey, config.ParsedSecretsConfig.Git.Password)
 		assert.AssertErrNil(ctx, err,
 			"Failed generating SSH public key from SSH private key and password for git",
 		)
 		slog.Info("Using SSH private key and password")
 
 	// Username and password.
-	case len(config.ParsedConfig.Git.Password) > 0:
+	case len(config.ParsedSecretsConfig.Git.Password) > 0:
 		authMethod = &http.BasicAuth{
-			Username: config.ParsedConfig.Git.Username,
-			Password: config.ParsedConfig.Git.Password,
+			Username: config.ParsedSecretsConfig.Git.Username,
+			Password: config.ParsedSecretsConfig.Git.Password,
 		}
 		slog.Info("Using username and password")
 

@@ -61,7 +61,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	targetBranchName := defaultBranchName
 	if !args.SkipPRFlow {
 		// Create and checkout to a new branch.
-		newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedConfig.Cluster.Name, time.Now().Unix())
+		newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedGeneralConfig.Cluster.Name, time.Now().Unix())
 		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, args.GitAuthMethod)
 
 		targetBranchName = newBranchName
@@ -78,14 +78,14 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
 		"(cluster/%s) : created / updated KubeAid config files",
-		config.ParsedConfig.Cluster.Name,
+		config.ParsedGeneralConfig.Cluster.Name,
 	)
 	commitHash := git.AddCommitAndPushChanges(ctx,
 		repo,
 		workTree,
 		targetBranchName,
 		args.GitAuthMethod,
-		config.ParsedConfig.Cluster.Name,
+		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
 	)
 
@@ -171,7 +171,7 @@ func createFileFromTemplate(ctx context.Context,
 // Then executes KubeAid's kube-prometheus build script.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
-	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet", clusterDir, config.ParsedConfig.Cluster.Name)
+	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet", clusterDir, config.ParsedGeneralConfig.Cluster.Name)
 	createFileFromTemplate(ctx, jsonnetVarsFilePath, constants.TemplateNameKubePrometheusVars, templateValues)
 
 	// Create the kube-prometheus folder.

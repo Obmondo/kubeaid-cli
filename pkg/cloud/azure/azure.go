@@ -24,17 +24,15 @@ type Azure struct {
 func NewAzureCloudProvider() cloud.CloudProvider {
 	ctx := context.Background()
 
-	azureConfig := config.ParsedConfig.Cloud.Azure
-
 	credentials, err := azidentity.NewClientSecretCredential(
-		azureConfig.TenantID,
-		azureConfig.ClientID,
-		azureConfig.ClientSecret,
+		config.ParsedGeneralConfig.Cloud.Azure.TenantID,
+		config.ParsedSecretsConfig.Azure.ClientID,
+		config.ParsedSecretsConfig.Azure.ClientSecret,
 		nil,
 	)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure credentials")
 
-	subscriptionID := azureConfig.SubscriptionID
+	subscriptionID := config.ParsedGeneralConfig.Cloud.Azure.SubscriptionID
 
 	armClientFactory, err := armresources.NewClientFactory(subscriptionID, credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure Resource Manager (ARM) client factory")
@@ -45,11 +43,11 @@ func NewAzureCloudProvider() cloud.CloudProvider {
 	assert.AssertErrNil(ctx, err, "Failed constructing Azure VM sizes client")
 
 	// Create Azure Resource Group, if it doesn't already exist.
-	resourceGroupName := config.ParsedConfig.Cluster.Name
+	resourceGroupName := config.ParsedGeneralConfig.Cluster.Name
 	{
 		_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
 			armresources.ResourceGroup{
-				Location: &config.ParsedConfig.Cloud.Azure.Location,
+				Location: &config.ParsedGeneralConfig.Cloud.Azure.Location,
 			},
 			nil,
 		)

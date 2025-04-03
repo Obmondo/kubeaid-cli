@@ -12,7 +12,7 @@ var DevenvCmd = &cobra.Command{
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize config.
-		config.InitConfig()
+		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
 
 		// Initialize temp directory.
 		utils.InitTempDir()
@@ -28,5 +28,5 @@ func init() {
 	DevenvCmd.AddCommand(create.CreateCmd)
 
 	// Flags.
-	config.RegisterConfigFilePathFlag(DevenvCmd)
+	config.RegisterConfigsDirectoryFlag(DevenvCmd)
 }

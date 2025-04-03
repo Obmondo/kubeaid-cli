@@ -16,7 +16,11 @@ func executeCommand(command string, panicOnExecutionFailure bool) (string, error
 		assert.AssertErrNil(context.Background(), err, "Command execution failed", slog.String("output", string(output)))
 	}
 
-	slog.Debug("Command executed", slog.String("output", string(output)))
+	// Print out command execution output (if any).
+	if len(output) > 0 {
+		slog.Debug("Command executed", slog.String("output", string(output)))
+	}
+
 	return string(output), err
 }
 

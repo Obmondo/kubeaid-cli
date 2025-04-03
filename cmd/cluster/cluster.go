@@ -15,7 +15,7 @@ var ClusterCmd = &cobra.Command{
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize config.
-		config.InitConfig()
+		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
 
 		// Initialize temp directory.
 		utils.InitTempDir()
@@ -34,5 +34,5 @@ func init() {
 	ClusterCmd.AddCommand(recover_.RecoverCmd)
 
 	// Flags.
-	config.RegisterConfigFilePathFlag(ClusterCmd)
+	config.RegisterConfigsDirectoryFlag(ClusterCmd)
 }

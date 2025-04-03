@@ -5,6 +5,7 @@ import (
 	"embed"
 	"log/slog"
 	"os"
+	"path"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -15,36 +16,64 @@ import (
 var SampleConfigs embed.FS
 
 func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
-	var templateName string
+	var generalTemplateName,
+		secretsTemplateName string
 	switch cloudProvider {
 	case constants.CloudProviderAWS:
-		templateName = constants.TemplateNameAWSSampleConfig
+		generalTemplateName = constants.TemplateNameAWSGeneralConfig
+		secretsTemplateName = constants.TemplateNameAWSSecretsConfig
 
 	case constants.CloudProviderAzure:
-		panic("unimplemented")
+		generalTemplateName = constants.TemplateNameAzureGeneralConfig
+		secretsTemplateName = constants.TemplateNameAzureSecretsConfig
 
 	case constants.CloudProviderHetzner:
-		templateName = constants.TemplateNameHetznerSampleConfig
+		generalTemplateName = constants.TemplateNameHetznerGeneralConfig
+		secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
 
 	case constants.CloudProviderLocal:
-		templateName = constants.TemplateNameLocalSampleConfig
+		generalTemplateName = constants.TemplateNameLocalGeneralConfig
+		secretsTemplateName = constants.TemplateNameLocalSecretsConfig
 
 	default:
 		panic("unreachable")
 	}
 
-	content := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, templateName, nil)
+	{
+		sampleGeneralConfigContent := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, generalTemplateName, nil)
 
-	destinationFile, err := os.OpenFile(constants.OutputPathGeneratedConfig, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	assert.AssertErrNil(ctx, err,
-		"Failed opening file",
-		slog.String("path", constants.OutputPathGeneratedConfig),
-	)
-	defer destinationFile.Close()
+		sampleGeneralConfigFilePath := path.Join(constants.OutputPathGeneratedConfigsDirectory, generalTemplateName)
 
-	_, err = destinationFile.Write(content)
-	assert.AssertErrNil(ctx, err,
-		"Failed writing sample config to file",
-		slog.String("path", constants.OutputPathGeneratedConfig),
-	)
+		sampleConfigFile, err := os.OpenFile(sampleGeneralConfigFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		assert.AssertErrNil(ctx, err,
+			"Failed opening file",
+			slog.String("path", sampleGeneralConfigFilePath),
+		)
+		defer sampleConfigFile.Close()
+
+		_, err = sampleConfigFile.Write(sampleGeneralConfigContent)
+		assert.AssertErrNil(ctx, err,
+			"Failed writing sample config to file",
+			slog.String("path", sampleGeneralConfigFilePath),
+		)
+	}
+
+	{
+		sampleSecretsConfigContent := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, secretsTemplateName, nil)
+
+		sampleSecretsConfigFilePath := path.Join(constants.OutputPathGeneratedConfigsDirectory, secretsTemplateName)
+
+		sampleConfigFile, err := os.OpenFile(sampleSecretsConfigFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		assert.AssertErrNil(ctx, err,
+			"Failed opening file",
+			slog.String("path", sampleSecretsConfigFilePath),
+		)
+		defer sampleConfigFile.Close()
+
+		_, err = sampleConfigFile.Write(sampleSecretsConfigContent)
+		assert.AssertErrNil(ctx, err,
+			"Failed writing sample config to file",
+			slog.String("path", sampleSecretsConfigFilePath),
+		)
+	}
 }

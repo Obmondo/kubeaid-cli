@@ -94,7 +94,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
 
-	userAssignedIdentityName := config.ParsedConfig.Cluster.Name
+	userAssignedIdentityName := config.ParsedGeneralConfig.Cluster.Name
 
 	// Prerequisites for the main cluster to be provisioned.
 	{
@@ -207,7 +207,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	slog.InfoContext(ctx, "Creating external OpenID provider")
 
-	azureConfig := config.ParsedConfig.Cloud.Azure
+	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
 	// Create Azure Storage Account, if it doesn't already exist.
 

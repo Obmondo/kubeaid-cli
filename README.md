@@ -50,16 +50,10 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 
 - [ ] Check Git URL if SSH agent is used.
 - [ ] Validation for sshagentauth (should not accept https url).
-- [x] `--debug` flag to print command execution outputs.
-- [x] Support adding multiple SSH keys via config file.
 - [ ] Support using HTTPS for ArgoCD apps.
-- [x] Support enabling `Audit Logging`.
-- [x] Switch to IAM Role from (temporary) credentials after cluster bootstrap.
-- [x] ETCD metrics enabled.
 - [x] Support scale to / from zero for the node-groups.
   > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
   > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
-- [ ] In case of AWS, pick up AWS credentials from `~/.aws/credentials` (if present).
 - [ ] `recover cluster` command
 
 ## REFERENCES

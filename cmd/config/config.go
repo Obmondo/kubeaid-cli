@@ -14,7 +14,7 @@ var ConfigCmd = &cobra.Command{
 	},
 }
 
-var ConfigFilePath string
+var ConfigFilesDirectory string
 
 func init() {
 	// Subcommands.
@@ -22,5 +22,10 @@ func init() {
 
 	// Flags
 	ConfigCmd.PersistentFlags().
-		StringVar(&ConfigFilePath, constants.FlagNameConfig, constants.OutputPathGeneratedConfig, "Path to the KubeAid Bootstrap Script config file")
+		StringVar(
+			&ConfigFilesDirectory,
+			constants.FlagNameConfigsDirectoy,
+			constants.OutputPathGeneratedConfigsDirectory,
+			"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
+		)
 }
