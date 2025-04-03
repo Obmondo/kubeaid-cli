@@ -41,14 +41,14 @@ func validateConfig() {
 	// Validate that cloud provider credentials have been provided.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		assert.Assert(ctx, (ParsedSecretsConfig.AWSCredentials != nil), "AWS credentials not provided")
+		assert.Assert(ctx, (ParsedSecretsConfig.AWS != nil), "AWS credentials not provided")
 
 	case constants.CloudProviderAzure:
-		assert.Assert(ctx, (ParsedSecretsConfig.AzureCredentials != nil), "Azure credentials not provided")
+		assert.Assert(ctx, (ParsedSecretsConfig.Azure != nil), "Azure credentials not provided")
 
 	case constants.CloudProviderHetzner:
 		assert.Assert(ctx,
-			(ParsedSecretsConfig.HetznerCredentials != nil),
+			(ParsedSecretsConfig.Hetzner != nil),
 			"Hetzner credentials not provided",
 		)
 	}
