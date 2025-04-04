@@ -65,6 +65,8 @@ var (
 	OutputDirectory = "./outputs"
 
 	OutputPathGeneratedConfigsDirectory = path.Join(OutputDirectory, "configs/")
+	FileNameGeneralConfig               = "general.yaml"
+	FileNameSecretsConfig               = "secrets.yaml"
 
 	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 

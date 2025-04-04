@@ -23,9 +23,38 @@ var (
 )
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
+	// Read contents of the secrets config file into ParsedSecretsConfig.
+	// This needs to be done before reading the general config.
+	{
+		secretsConfigFilePath := path.Join(configsDirectory, constants.FileNameSecretsConfig)
+
+		secretsConfigFileContents, err := os.ReadFile(secretsConfigFilePath)
+		assert.AssertErrNil(ctx, err, "Failed reading secrets config file")
+
+		err = yaml.Unmarshal([]byte(secretsConfigFileContents), ParsedSecretsConfig)
+		assert.AssertErrNil(ctx, err, "Failed unmarshalling secrets config")
+
+		// The AWS credentials and region were not provided via the config file.
+		// We'll retrieve them using the files in ~/.aws.
+		// And we panic if any error occurs.
+
+		usingAWS := (ParsedSecretsConfig.Azure == nil) && (ParsedSecretsConfig.Hetzner == nil)
+
+		if usingAWS && (ParsedSecretsConfig.AWS == nil) {
+			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
+
+			slog.InfoContext(ctx, "Using AWS credentials from ~/.aws/config")
+			ParsedSecretsConfig.AWS = &AWSCredentials{
+				AWSAccessKeyID:     awsCredentials.AccessKeyID,
+				AWSSecretAccessKey: awsCredentials.SecretAccessKey,
+				AWSSessionToken:    awsCredentials.SessionToken,
+			}
+		}
+	}
+
 	// Read contents of the general config file into ParsedGeneralConfig.
 	{
-		generalConfigFilePath := path.Join(configsDirectory, "general.yaml")
+		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
 
 		generalConfigFileContents, err := os.ReadFile(generalConfigFilePath)
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
@@ -60,31 +89,6 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		//        since the cloud credentials from the parsed config are required to construct the
 		//        cloud client.
 		hydrateVMSpecs(ctx)
-	}
-
-	// Read contents of the secrets config file into ParsedSecretsConfig.
-	{
-		secretsConfigFilePath := path.Join(configsDirectory, "secrets.yaml")
-
-		secretsConfigFileContents, err := os.ReadFile(secretsConfigFilePath)
-		assert.AssertErrNil(ctx, err, "Failed reading secrets config file")
-
-		err = yaml.Unmarshal([]byte(secretsConfigFileContents), ParsedSecretsConfig)
-		assert.AssertErrNil(ctx, err, "Failed unmarshalling secrets config")
-
-		// The AWS credentials and region were not provided via the config file.
-		// We'll retrieve them using the files in ~/.aws.
-		// And we panic if any error occurs.
-		if (globals.CloudProviderName == constants.CloudProviderAWS) && (len(ParsedSecretsConfig.AWS.AWSAccessKeyID) == 0) {
-			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
-
-			slog.InfoContext(ctx, "Using AWS credentials from ~/.aws/config")
-			ParsedSecretsConfig.AWS = &AWSCredentials{
-				AWSAccessKeyID:     awsCredentials.AccessKeyID,
-				AWSSecretAccessKey: awsCredentials.SecretAccessKey,
-				AWSSessionToken:    awsCredentials.SessionToken,
-			}
-		}
 	}
 
 	// Validate.
