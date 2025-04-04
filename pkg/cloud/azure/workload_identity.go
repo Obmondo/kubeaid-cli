@@ -162,6 +162,20 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		NOTE : Microsoft Entra ID is the new name fro AAD.
 	*/
 	{
+		// Do `az login`.
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az login \
+          --service-principal \
+          --username %s \
+          --password %s \
+          --tenant %s
+      `,
+			config.ParsedSecretsConfig.Azure.ClientID,
+			config.ParsedSecretsConfig.Azure.ClientSecret,
+			config.ParsedGeneralConfig.Cloud.Azure.TenantID,
+		))
+
 		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
 		// So, the CAPZ can exchange the ServiceAccount token it uses, for AAD token.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
