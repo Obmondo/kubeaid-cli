@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -21,11 +22,22 @@ import (
 //go:embed templates/*
 var templates embed.FS
 
-type K3DConfigTemplateValues struct {
-	TempDir,
-	Name,
-	K8sVersion string
-}
+type (
+	K3DConfigTemplateValues struct {
+		TempDir,
+		Name,
+		K8sVersion string
+
+		WorkloadIdentity *WorkloadIdentity
+	}
+
+	WorkloadIdentity struct {
+		ServiceAccountIssuerURL,
+
+		SSHPublicKeyFilePath,
+		SSHPrivateKeyFilePath string
+	}
+)
 
 /*
 Creates a K3D cluster with the given name, if it doesn't already exist.
@@ -46,13 +58,24 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 	// Generate the K3D config file.
 	{
+		k3dConfigTemplateValues := &K3DConfigTemplateValues{
+			TempDir:    globals.TempDir,
+			Name:       name,
+			K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
+		}
+		if globals.CloudProviderName == constants.CloudProviderAzure {
+			workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
+
+			k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
+				ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
+
+				SSHPublicKeyFilePath:  utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPublicKeyFilePath),
+				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPrivateKeyFilePath),
+			}
+		}
+
 		k3dConfigAsBytes := templateUtils.ParseAndExecuteTemplate(ctx,
-			&templates, constants.TemplateNameK3DConfig,
-			&K3DConfigTemplateValues{
-				TempDir:    globals.TempDir,
-				Name:       name,
-				K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
-			},
+			&templates, constants.TemplateNameK3DConfig, k3dConfigTemplateValues,
 		)
 
 		k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,

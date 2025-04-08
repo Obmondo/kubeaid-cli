@@ -40,3 +40,27 @@ options:
       - arg: --tls-san=0.0.0.0
         nodeFilters:
           - server:*
+      {{- if .WorkloadIdentity }}
+      - arg: "--kube-apiserver-arg=service-account-issuer={{ .WorkloadIdentity.ServiceAccountIssuerURL }}"
+        nodeFilters:
+          - server:*
+      - arg: "--kube-apiserver-arg=service-account-key-file=/etc/kubernetes/pki/sa.pub"
+        nodeFilters:
+          - server:*
+      - arg: "--kube-apiserver-arg=service-account-signing-key-file=/etc/kubernetes/pki/sa.key"
+        nodeFilters:
+          - server:*
+      - arg: "--kube-controller-manager-arg=service-account-private-key-file=/etc/kubernetes/pki/sa.key"
+        nodeFilters:
+          - server:*
+      {{ end }}
+
+{{- if .WorkloadIdentity }}
+volumes:
+  - volume: "{{ .WorkloadIdentity.SSHPublicKeyFilePath }}:/etc/kubernetes/pki/sa.pub"
+    nodeFilters:
+      - server:*
+  - volume: "{{ .WorkloadIdentity.SSHPrivateKeyFilePath }}:/etc/kubernetes/pki/sa.key"
+    nodeFilters:
+      - server:*
+{{ end }}

@@ -73,9 +73,9 @@ bootstrap-cluster-azure-dev:
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-monitoring-setup \
-    --skip-pr-flow
-# --skip-kube-prometheus-build
-# --skip-clusterctl-move
+    --skip-pr-flow \
+    --skip-kube-prometheus-build \
+    --skip-clusterctl-move
 
 .PHONY: bootstrap-cluster-hetzner-dev
 bootstrap-cluster-hetzner-dev:

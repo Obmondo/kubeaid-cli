@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -89,4 +90,18 @@ func GetClusterDir() string {
 // will be / is downloaded.
 func GetDownloadedStorageBucketContentsDir(bucketName string) string {
 	return path.Join(globals.TempDir, "buckets", bucketName)
+}
+
+// Converts the given relative path to an absolute path.
+func ToAbsolutePath(ctx context.Context, relativePath string) string {
+	currentWorkingDirectory, err := os.Getwd()
+	assert.AssertErrNil(ctx, err, "Failed getting current working directory")
+
+	absolutePath, err := url.JoinPath(currentWorkingDirectory, relativePath)
+	assert.AssertErrNil(ctx, err,
+		"Failed joining current working directory with given relative path",
+		slog.String("relative-path", relativePath),
+	)
+
+	return absolutePath
 }

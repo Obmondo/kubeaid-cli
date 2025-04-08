@@ -299,11 +299,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 	storageAccountURL := fmt.Sprintf("https://%s.blob.core.windows.net/", storageAccountName)
 
-	serviceAccountIssuerURL, err := url.JoinPath(
-		storageAccountURL,
-		constants.BlobContainerNameWorkloadIdentity,
-	)
-	assert.AssertErrNil(ctx, err, "Failed constructing ServiceAccount issuer URL")
+	serviceAccountIssuerURL := GetServiceAccountIssuerURL(ctx)
 
 	blobClient, err := azblob.NewClient(storageAccountURL, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")

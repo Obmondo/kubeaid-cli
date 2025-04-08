@@ -243,8 +243,9 @@ type (
 	}
 
 	WorkloadIdentity struct {
-		StorageAccountName   string `yaml:"storageAccountName" validate:"required,notblank"`
-		SSHPublicKeyFilePath string `yaml:"sshPublicKeyFilePath" validate:"required,notblank"`
+		StorageAccountName    string `yaml:"storageAccountName" validate:"required,notblank"`
+		SSHPublicKeyFilePath  string `yaml:"sshPublicKeyFilePath" validate:"required,notblank"`
+		SSHPrivateKeyFilePath string `yaml:"sshPrivateKeyFilePath" validate:"required,notblank"`
 	}
 
 	AzureControlPlane struct {
