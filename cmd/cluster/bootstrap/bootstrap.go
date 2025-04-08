@@ -25,6 +25,7 @@ var (
 func init() {
 	// Subcommands.
 	BootstrapCmd.AddCommand(AWSCmd)
+	BootstrapCmd.AddCommand(AzureCmd)
 	BootstrapCmd.AddCommand(HetznerCmd)
 	BootstrapCmd.AddCommand(LocalCmd)
 

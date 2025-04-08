@@ -55,7 +55,9 @@ devenv-create-aws-dev:
 devenv-create-azure-dev:
 	@go run ./cmd/ devenv create azure \
 		--debug \
-    --configs-directory ./outputs/configs/azure/
+    --configs-directory ./outputs/configs/azure/ \
+    --skip-pr-flow \
+    --skip-kube-prometheus-build
 
 .PHONY: bootstrap-cluster-aws-dev
 bootstrap-cluster-aws-dev:
@@ -69,7 +71,9 @@ bootstrap-cluster-aws-dev:
 bootstrap-cluster-azure-dev:
 	@go run ./cmd/ cluster bootstrap azure \
 		--debug \
-    --configs-directory ./outputs/configs/azure/
+    --configs-directory ./outputs/configs/azure/ \
+    --skip-monitoring-setup \
+    --skip-pr-flow
 # --skip-kube-prometheus-build
 # --skip-clusterctl-move
 

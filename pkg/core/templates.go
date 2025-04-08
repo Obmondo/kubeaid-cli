@@ -29,7 +29,8 @@ type TemplateValues struct {
 	AWSB64EncodedCredentials,
 	AWSAccountID string
 
-	AzureConfig *config.AzureConfig
+	AzureConfig      *config.AzureConfig
+	AzureCredentials *config.AzureCredentials
 
 	HetznerConfig *config.HetznerConfig
 
@@ -45,9 +46,13 @@ func getTemplateValues() *TemplateValues {
 		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
 		MonitoringConfig:     config.ParsedGeneralConfig.Monitoring,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
-		AWSConfig:            config.ParsedGeneralConfig.Cloud.AWS,
-		HetznerConfig:        config.ParsedGeneralConfig.Cloud.Hetzner,
-		AzureConfig:          config.ParsedGeneralConfig.Cloud.Azure,
+
+		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
+
+		AzureConfig:      config.ParsedGeneralConfig.Cloud.Azure,
+		AzureCredentials: config.ParsedSecretsConfig.Azure,
+
+		HetznerConfig: config.ParsedGeneralConfig.Cloud.Hetzner,
 	}
 
 	// Set cloud provider specific values.

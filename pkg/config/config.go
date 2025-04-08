@@ -251,7 +251,7 @@ type (
 		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
 		DiskSizeGB       uint32 `yaml:"diskSizeGB" validate:"required,gt=100"`
 		VMSize           string `yaml:"vmSize" validate:"required,notblank"`
-		Replicas         uint32 `yaml:"replicas" validate:"required"`
+		Replicas         uint32 `yaml:"replicas" validate:"required,gt=0"`
 	}
 
 	AzureNodeGroup struct {
