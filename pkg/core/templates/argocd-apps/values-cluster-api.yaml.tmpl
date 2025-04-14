@@ -1,4 +1,7 @@
+---
+{{- if not .AzureConfig }}
 cluster-api-operator:
   configSecret:
     name: cloud-credentials
     namespace: {{ .CAPIClusterNamespace }}
+{{- end }}

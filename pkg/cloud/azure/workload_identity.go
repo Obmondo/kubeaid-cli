@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
@@ -110,7 +111,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
 		// subscription being used.
-		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+		_, globals.UserAssignedIdentityClientID = services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
 			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
 			RoleAssignmentsClient:        roleAssignmentsClient,
 			ResourceGroupName:            a.resourceGroupName,

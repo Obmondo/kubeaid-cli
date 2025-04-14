@@ -83,10 +83,9 @@ azure:
 
   sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
 
-  clientIDUserAssignedIdentity: {{ .ClusterConfig.Name }}
-  clientSecretSecret:
-    name: cloud-credentials
-    namespace: {{ .CAPIClusterNamespace }}
+  userAssignedIdentity:
+    name: {{ .ClusterConfig.Name }}
+    clientID: {{ .UserAssignedIdentityClientID }}
 
   controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 
