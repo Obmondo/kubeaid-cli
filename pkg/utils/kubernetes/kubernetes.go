@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/clientcmd"
+	cloudProviderAPI "k8s.io/cloud-provider/api"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -226,10 +227,9 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 
 			isUninitialized := false
 			//
-			// Check whether the 'node.cluster.x-k8s.io/uninitialized' taint exists for the node or not.
-			// If yes, that means the node is still uninitialized.
+			// Check for existence of taints which indicate that the node is uninitialized.
 			for _, taint := range node.Spec.Taints {
-				if taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key {
+				if (taint.Key == cloudProviderAPI.TaintExternalCloudProvider) || (taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key) {
 					isUninitialized = true
 				}
 			}
