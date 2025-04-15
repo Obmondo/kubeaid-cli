@@ -64,10 +64,6 @@ func CloneRepo(ctx context.Context,
 		URL:  url,
 	}
 
-	if url == config.ParsedGeneralConfig.Forks.KubeaidForkURL {
-		opts.Depth = 1
-	}
-
 	repo, err := goGit.PlainClone(dirPath, false, opts)
 	assert.AssertErrNil(ctx, err, "Failed cloning repo")
 	return repo

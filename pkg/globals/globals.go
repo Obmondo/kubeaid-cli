@@ -15,4 +15,7 @@ var (
 
 	ArgoCDApplicationClientCloser io.Closer
 	ArgoCDApplicationClient       application.ApplicationServiceClient
+
+	// Azure specific.
+	UserAssignedIdentityClientID string
 )

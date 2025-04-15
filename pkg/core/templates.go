@@ -29,7 +29,8 @@ type TemplateValues struct {
 	AWSB64EncodedCredentials,
 	AWSAccountID string
 
-	AzureConfig *config.AzureConfig
+	AzureConfig                  *config.AzureConfig
+	UserAssignedIdentityClientID string
 
 	HetznerConfig *config.HetznerConfig
 
@@ -45,9 +46,13 @@ func getTemplateValues() *TemplateValues {
 		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
 		MonitoringConfig:     config.ParsedGeneralConfig.Monitoring,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
-		AWSConfig:            config.ParsedGeneralConfig.Cloud.AWS,
-		HetznerConfig:        config.ParsedGeneralConfig.Cloud.Hetzner,
-		AzureConfig:          config.ParsedGeneralConfig.Cloud.Azure,
+
+		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
+
+		AzureConfig:                  config.ParsedGeneralConfig.Cloud.Azure,
+		UserAssignedIdentityClientID: globals.UserAssignedIdentityClientID,
+
+		HetznerConfig: config.ParsedGeneralConfig.Cloud.Hetzner,
 	}
 
 	// Set cloud provider specific values.
@@ -129,10 +134,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 // Returns the list of embedded Secret template names based on the underlying cloud provider.
 func getEmbeddedSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
-	embeddedTemplateNames := append(constants.CommonSecretTemplateNames, constants.CommonCloudSecretTemplateNames...)
+	embeddedTemplateNames := constants.CommonSecretTemplateNames
 
 	// Add cloud provider specific templates, if required.
 	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificSecretTemplateNames...)
+
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificSecretTemplateNames...)
 

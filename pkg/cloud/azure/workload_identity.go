@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
@@ -110,7 +111,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 
 		// Create a User Assigned Managed Identity and assign it the Contributor role scoped to the
 		// subscription being used.
-		services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
+		_, globals.UserAssignedIdentityClientID = services.CreateUserAssignedIdentity(ctx, services.CreateUserAssignedIdentityArgs{
 			UserAssignedIdentitiesClient: userAssignedIdentitiesClient,
 			RoleAssignmentsClient:        roleAssignmentsClient,
 			ResourceGroupName:            a.resourceGroupName,
@@ -162,6 +163,20 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		NOTE : Microsoft Entra ID is the new name fro AAD.
 	*/
 	{
+		// Do `az login`.
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az login \
+          --service-principal \
+          --username %s \
+          --password %s \
+          --tenant %s
+      `,
+			config.ParsedSecretsConfig.Azure.ClientID,
+			config.ParsedSecretsConfig.Azure.ClientSecret,
+			config.ParsedGeneralConfig.Cloud.Azure.TenantID,
+		))
+
 		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
 		// So, the CAPZ can exchange the ServiceAccount token it uses, for AAD token.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
@@ -285,11 +300,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 	storageAccountURL := fmt.Sprintf("https://%s.blob.core.windows.net/", storageAccountName)
 
-	serviceAccountIssuerURL, err := url.JoinPath(
-		storageAccountURL,
-		constants.BlobContainerNameWorkloadIdentity,
-	)
-	assert.AssertErrNil(ctx, err, "Failed constructing ServiceAccount issuer URL")
+	serviceAccountIssuerURL := GetServiceAccountIssuerURL(ctx)
 
 	blobClient, err := azblob.NewClient(storageAccountURL, a.credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")

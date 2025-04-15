@@ -65,6 +65,8 @@ var (
 	OutputDirectory = "./outputs"
 
 	OutputPathGeneratedConfigsDirectory = path.Join(OutputDirectory, "configs/")
+	FileNameGeneralConfig               = "general.yaml"
+	FileNameSecretsConfig               = "secrets.yaml"
 
 	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 
@@ -156,6 +158,11 @@ var (
 		"argocd-apps/templates/secrets.yaml.tmpl",
 	}
 
+	CommonSecretTemplateNames = []string{
+		// For ArgoCD.
+		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
+	}
+
 	// For KubePrometheus.
 	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.yaml.tmpl"
 	TemplateNameKubePrometheusVars      = "cluster-vars.jsonnet.tmpl"
@@ -178,20 +185,15 @@ var (
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
 	}
 
-	CommonSecretTemplateNames = []string{
-		// For ArgoCD.
-		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
-	}
-
-	CommonCloudSecretTemplateNames = []string{
-		// For Cluster API.
-		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
-	}
-
 	AWSSpecificNonSecretTemplateNames = []string{
 		// For AWS Cloud Controller Manager.
 		"argocd-apps/templates/ccm-aws.yaml.tmpl",
 		"argocd-apps/values-ccm-aws.yaml.tmpl",
+	}
+
+	AWSSpecificSecretTemplateNames = []string{
+		// For Cluster API.
+		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 	}
 
 	AWSDisasterRecoverySpecificTemplateNames = []string{
@@ -228,6 +230,7 @@ var (
 	HetznerSpecificSecretTemplateNames = []string{
 		// For Cluster API.
 		// "sealed-secrets/capi-cluster/hetzner-robot-ssh-keypair.yaml.tmpl",
+		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 	}
 )

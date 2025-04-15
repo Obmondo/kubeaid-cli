@@ -9,7 +9,9 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/go-sprout/sprout/sprigin"
+	"github.com/go-sprout/sprout"
+	"github.com/go-sprout/sprout/registry/encoding"
+	"github.com/go-sprout/sprout/registry/strings"
 )
 
 func ParseAndExecuteTemplate(ctx context.Context, embeddedFS *embed.FS, templateFileName string, values any) []byte {
@@ -20,7 +22,12 @@ func ParseAndExecuteTemplate(ctx context.Context, embeddedFS *embed.FS, template
 	contentsAsBytes, err := embeddedFS.ReadFile(templateFileName)
 	assert.AssertErrNil(ctx, err, "Failed getting template from embedded file-system")
 
-	parsedTemplate, err := template.New(templateFileName).Funcs(sprigin.FuncMap()).Parse(string(contentsAsBytes))
+	sproutFuncs := sprout.New(sprout.WithRegistries(
+		encoding.NewRegistry(),
+		strings.NewRegistry(),
+	)).Build()
+
+	parsedTemplate, err := template.New(templateFileName).Funcs(sproutFuncs).Parse(string(contentsAsBytes))
 	assert.AssertErrNil(ctx, err, "Failed parsing template")
 
 	var executedTemplate bytes.Buffer

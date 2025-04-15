@@ -83,12 +83,11 @@ azure:
 
   sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
 
-  clientIDUserAssignedIdentity: {{ .ClusterConfig.Name }}
-  clientSecretSecret:
-    name: azure-client-secret
-    namespace: {{ .CAPIClusterNamespace }}
+  userAssignedIdentity:
+    name: {{ .ClusterConfig.Name }}
+    clientID: {{ .UserAssignedIdentityClientID }}
 
-  controlPlane: {{ .AzureConfig.ControlPlane | toYaml | nindent 4 }}
+  controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 
-  nodeGroups: {{ .AzureConfig.NodeGroups | toYaml | nindent 4 }}
+  nodeGroups: {{ .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
 {{- end }}

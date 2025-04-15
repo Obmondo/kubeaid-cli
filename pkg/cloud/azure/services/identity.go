@@ -45,7 +45,9 @@ There are two types of managed identities :
 
 	REFERENCE : https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities.
 */
-func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIdentityArgs) string {
+func CreateUserAssignedIdentity(ctx context.Context,
+	args CreateUserAssignedIdentityArgs,
+) (userAssignedIdentityID string, userAssignedIdentityClientID string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("name", args.Name),
 	})
@@ -67,7 +69,8 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 	)
 	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identity")
 
-	userAssignedIdentityID := *response.Properties.PrincipalID
+	userAssignedIdentityID = *response.Properties.PrincipalID
+	userAssignedIdentityClientID = *response.Properties.ClientID
 
 	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
 	// subscription where the main cluster will be created.
@@ -105,11 +108,11 @@ func CreateUserAssignedIdentity(ctx context.Context, args CreateUserAssignedIden
 		responseError, ok := err.(*azcore.ResponseError)
 		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
-			return userAssignedIdentityID
+			return
 		}
 
 		assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
 	}
 
-	return userAssignedIdentityID
+	return
 }
