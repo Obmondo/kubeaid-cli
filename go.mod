@@ -278,12 +278,13 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8s.io/apiextensions-apiserver v0.32.2 // indirect
-	k8s.io/apiserver v0.32.2 // indirect
+	k8s.io/apiserver v0.32.3 // indirect
 	k8s.io/cli-runtime v0.32.2 // indirect
+	k8s.io/cloud-provider v0.32.3 // indirect
 	k8s.io/cluster-bootstrap v0.31.3 // indirect
-	k8s.io/component-base v0.32.2 // indirect
-	k8s.io/component-helpers v0.32.2 // indirect
-	k8s.io/controller-manager v0.0.0 // indirect
+	k8s.io/component-base v0.32.3 // indirect
+	k8s.io/component-helpers v0.32.3 // indirect
+	k8s.io/controller-manager v0.32.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-aggregator v0.31.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
@@ -13,6 +14,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/avast/retry-go/v4"
 	"github.com/google/uuid"
 )
 
@@ -74,6 +76,8 @@ func CreateUserAssignedIdentity(ctx context.Context,
 
 	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
 	// subscription where the main cluster will be created.
+	// NOTE : We need to retry, since this fails until around a minute has passed after the creation
+	//        of the User Assigned Managed Identity (UAMI).
 	/*
 		The Azure built-in Contributor role grants full access to manage all resources, but does not
 		allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share
@@ -92,27 +96,34 @@ func CreateUserAssignedIdentity(ctx context.Context,
 		roleAssignmentID = uuid.New().String()
 	)
 
-	_, err = args.RoleAssignmentsClient.Create(ctx,
-		roleScope,
-		roleAssignmentID,
-		armauthorization.RoleAssignmentCreateParameters{
-			Properties: &armauthorization.RoleAssignmentProperties{
-				PrincipalID:      &userAssignedIdentityID,
-				RoleDefinitionID: &roleDefinitionID,
-			},
+	err = retry.Do(
+		func() error {
+			_, err := args.RoleAssignmentsClient.Create(ctx,
+				roleScope,
+				roleAssignmentID,
+				armauthorization.RoleAssignmentCreateParameters{
+					Properties: &armauthorization.RoleAssignmentProperties{
+						PrincipalID:      &userAssignedIdentityID,
+						RoleDefinitionID: &roleDefinitionID,
+					},
+				},
+				nil,
+			)
+			if err != nil {
+				// Skip, if the Contributor role is already assigned to the User Assigned Managed Identity.
+				responseError, ok := err.(*azcore.ResponseError)
+				if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+					slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
+					return nil
+				}
+			}
+			return err
 		},
-		nil,
+		retry.DelayType(retry.FixedDelay),
+		retry.Delay(10*time.Second),
+		retry.Attempts(6),
 	)
-	if err != nil {
-		// Skip, if the Contributor role is already assigned to the User Assigned Managed Identity.
-		responseError, ok := err.(*azcore.ResponseError)
-		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
-			slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
-			return
-		}
-
-		assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
-	}
+	assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
 
 	return
 }

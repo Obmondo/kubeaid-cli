@@ -21,8 +21,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 )
 
-// Validates the parsed config.
-func validateConfig() {
+// Validates the parsed general and secrets config.
+func validateConfigs() {
 	ctx := context.Background()
 
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
