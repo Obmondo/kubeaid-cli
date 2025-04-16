@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
@@ -25,6 +26,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
+	"github.com/avast/retry-go/v4"
 	"github.com/google/uuid"
 
 	_ "embed"
@@ -319,11 +321,21 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 		// Upload the OpenID provider issuer discovery document to the Azure Storage Container,
 		// at path .well-known/openid-configuration.
-		_, err := blobClient.UploadBuffer(ctx,
-			constants.BlobContainerNameWorkloadIdentity,
-			constants.AzureBlobNameOpenIDConfiguration,
-			openIDConfig,
-			nil,
+		// NOTE : We need to retry, since this fails until around a minute has passed after the creation
+		//        of the Azure Blob Container.
+		err = retry.Do(
+			func() error {
+				_, err := blobClient.UploadBuffer(ctx,
+					constants.BlobContainerNameWorkloadIdentity,
+					constants.AzureBlobNameOpenIDConfiguration,
+					openIDConfig,
+					nil,
+				)
+				return err
+			},
+			retry.DelayType(retry.FixedDelay),
+			retry.Delay(10*time.Second),
+			retry.Attempts(6),
 		)
 		assert.AssertErrNil(ctx, err, "Failed uploading openid-configuration.json to Azure Blob Container")
 

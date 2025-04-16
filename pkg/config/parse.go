@@ -23,6 +23,30 @@ var (
 )
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
+	// Read contents of the general config file into ParsedGeneralConfig.
+	{
+		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
+
+		generalConfigFileContents, err := os.ReadFile(generalConfigFilePath)
+		assert.AssertErrNil(ctx, err, "Failed reading general config file")
+
+		err = yaml.Unmarshal([]byte(generalConfigFileContents), ParsedGeneralConfig)
+		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
+
+		// Set globals.CloudProviderName by detecting the underlying cloud-provider being used.
+		detectCloudProviderName()
+
+		// Set defaults.
+		err = defaults.Set(ParsedGeneralConfig)
+		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
+
+		// Read SSH key-pairs from provided file paths and store them in config.
+		hydrateSSHKeyConfigs()
+
+		// Hydrate with Audit Logging options (if required).
+		hydrateWithAuditLoggingOptions()
+	}
+
 	// Read contents of the secrets config file into ParsedSecretsConfig.
 	// This needs to be done before reading the general config.
 	{
@@ -36,14 +60,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 		// The AWS credentials and region were not provided via the config file.
 		// We'll retrieve them using the files in ~/.aws.
-		// And we panic if any error occurs.
+		// And we panic on failure.
 
-		usingAWS := (ParsedSecretsConfig.Azure == nil) && (ParsedSecretsConfig.Hetzner == nil)
-
-		if usingAWS && (ParsedSecretsConfig.AWS == nil) {
+		if (globals.CloudProviderName == constants.CloudProviderAWS) && (ParsedSecretsConfig.AWS == nil) {
 			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
 
-			slog.InfoContext(ctx, "Using AWS credentials from ~/.aws/config")
 			ParsedSecretsConfig.AWS = &AWSCredentials{
 				AWSAccessKeyID:     awsCredentials.AccessKeyID,
 				AWSSecretAccessKey: awsCredentials.SecretAccessKey,
@@ -52,78 +73,64 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		}
 	}
 
-	// Read contents of the general config file into ParsedGeneralConfig.
-	{
-		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
+	// Set globals.CloudProvider based on the underlying cloud-provider being used.
+	setCloudProvider()
 
-		generalConfigFileContents, err := os.ReadFile(generalConfigFilePath)
-		assert.AssertErrNil(ctx, err, "Failed reading general config file")
+	/*
+		For each node-group (in the general config), the CPU and memory of the corresponding VM type
+		need to specified. This is required by Cluster AutoScaler, for 2 things to work :
 
-		err = yaml.Unmarshal([]byte(generalConfigFileContents), ParsedGeneralConfig)
-		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
+		  (1) scale from zero
 
-		// Set globals.CloudProviderName and globals.CloudProvider by detecting the underlying
-		// cloud-platform being used.
-		detectCloudProvider()
+		  (2) when a node in a node-group is cordoned and there is workload-pressure, the node-group
+		      gets scaled up.
+	*/
+	hydrateVMSpecs(ctx)
 
-		// Set defaults.
-		err = defaults.Set(ParsedGeneralConfig)
-		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
-
-		// Read SSH key-pairs from provided file paths and store them in config.
-		hydrateSSHKeyConfigs()
-
-		// Hydrate with Audit Logging options (if required).
-		hydrateWithAuditLoggingOptions()
-
-		/*
-			For each node-group, the CPU and memory of the corresponding VM type need to specified.
-			This is required by Cluster AutoScaler, for 2 things to work :
-
-			(1) scale from zero
-
-			(2) when a node in a node-group is cordoned and there is workload-pressure, the node-group
-					gets scaled up.
-		*/
-		// NOTE : Always make sure this gets called after readCloudCredentialsFromFlagsToConfig(),
-		//        since the cloud credentials from the parsed config are required to construct the
-		//        cloud client.
-		hydrateVMSpecs(ctx)
-	}
-
-	// Validate.
-	validateConfig()
+	// Validate the general and secrets configs.
+	validateConfigs()
 }
 
 // Based on the parsed config, detects the underlying cloud-provider name.
-// It then sets the value of globals.CloudProviderName and globals.CloudProvider.
-func detectCloudProvider() {
+// And sets the value of globals.CloudProviderName.
+func detectCloudProviderName() {
 	switch {
 	case ParsedGeneralConfig.Cloud.AWS != nil:
 		globals.CloudProviderName = constants.CloudProviderAWS
-		globals.CloudProvider = NewAWSCloudProvider()
 
 	case ParsedGeneralConfig.Cloud.Azure != nil:
 		globals.CloudProviderName = constants.CloudProviderAzure
-		globals.CloudProvider = NewAzureCloudProvider()
 
 	case ParsedGeneralConfig.Cloud.Hetzner != nil:
 		globals.CloudProviderName = constants.CloudProviderHetzner
-		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
 
 	case ParsedGeneralConfig.Cloud.Local != nil:
 		globals.CloudProviderName = constants.CloudProviderLocal
 
 	default:
-		slog.Error("No cloud specific details provided")
+		slog.Error("No cloud-provider specific details provided")
 		os.Exit(1)
+	}
+}
+
+// Based on the cloud-provider we're using, sets the value of globals.CloudProvider.
+func setCloudProvider() {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		globals.CloudProvider = NewAWSCloudProvider()
+
+	case constants.CloudProviderAzure:
+		globals.CloudProvider = NewAzureCloudProvider()
+
+	case constants.CloudProviderHetzner:
+		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
 	}
 }
 
 // Retrieve AWS credentials using the files in ~/.aws.
 // Panics on any error.
 func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
-	slog.InfoContext(ctx, "Detected ~/.aws")
+	slog.InfoContext(ctx, "Trying to pickup AWS credentials from ~/.aws/config")
 
 	awsConfig, err := config.LoadDefaultConfig(ctx)
 	assert.AssertErrNil(ctx, err, "Failed constructing AWS config using files in ~/.aws")
