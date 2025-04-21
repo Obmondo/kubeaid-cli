@@ -91,7 +91,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
 	// keys from a previous cluster which got destroyed.
 	if args.IsPartOfDisasterRecovery {
-		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsKeysBackupBucketName)
 
 		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))

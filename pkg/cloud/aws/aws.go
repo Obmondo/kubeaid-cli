@@ -35,7 +35,7 @@ func NewAWSCloudProvider() cloud.CloudProvider {
 }
 
 func (*AWS) GetSealedSecretsBackupBucketName() string {
-	return config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+	return config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
 }
 
 func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,

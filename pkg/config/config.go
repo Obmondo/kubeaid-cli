@@ -35,14 +35,16 @@ type (
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
 	}
 
-	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
-	//
-	// NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
-	//        source types linked below.
-	//        There are some configuration options which appear in the corresponding GoLang source type,
-	//        but not in the CRD. If you set those fields, then they get removed by the Kubeadm
-	//        control-plane provider. This causes the capi-cluster ArgoCD App to always be in an
-	//        OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
+	/*
+		REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
+
+		NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
+		       source types linked below.
+		       There are some configuration options which appear in the corresponding GoLang source
+		       type, but not in the CRD. If you set those fields, then they get removed by the Kubeadm
+		       control-plane provider. This causes the capi-cluster ArgoCD App to always be in an
+		       OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
+	*/
 	APIServerConfig struct {
 		ExtraArgs    map[string]string     `yaml:"extraArgs" default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
@@ -56,13 +58,15 @@ type (
 		MountPath string              `yaml:"mountPath" validate:"required,notblank"`
 		PathType  coreV1.HostPathType `yaml:"pathType" validate:"required"`
 
-		// Whether the mount should be read-only or not.
-		// Defaults to true.
-		//
-		// NOTE : If you want the mount to be read-only, then set this true.
-		//        Otherwise, omit setting this field. It gets removed by the Kubeadm control-plane
-		//        provider component, which results to the capi-cluster ArgoCD App always being in
-		//        OutOfSync state.
+		/*
+			Whether the mount should be read-only or not.
+			Defaults to true.
+
+			NOTE : If you want the mount to be read-only, then set this true.
+			       Otherwise, omit setting this field. It gets removed by the Kubeadm control-plane
+			       provider component, which results to the capi-cluster ArgoCD App always being in
+			       OutOfSync state.
+		*/
 		ReadOnly bool `yaml:"readOnly,omitempty"`
 	}
 
@@ -147,8 +151,8 @@ type (
 	}
 
 	AWSDisasterRecovery struct {
-		VeleroBackupsS3BucketName       string `yaml:"veleroBackupsS3BucketName" validate:"required,notblank"`
-		SealedSecretsBackupS3BucketName string `yaml:"sealedSecretsBackupS3BucketName" validate:"required,notblank"`
+		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName" validate:"required,notblank"`
+		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )
 
@@ -228,12 +232,16 @@ type (
 		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
 		Location       string         `yaml:"location" validate:"required,notblank"`
 
+		StorageAccount string `yaml:"storageAccount" validate:"required,notblank"`
+
 		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
 
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
 
 		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups" validate:"required,gt=0"`
+
+		DisasterRecovery *AzureDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AADApplication struct {
@@ -243,9 +251,7 @@ type (
 	}
 
 	WorkloadIdentity struct {
-		StorageAccountName    string `yaml:"storageAccountName" validate:"required,notblank"`
-		SSHPublicKeyFilePath  string `yaml:"sshPublicKeyFilePath" validate:"required,notblank"`
-		SSHPrivateKeyFilePath string `yaml:"sshPrivateKeyFilePath" validate:"required,notblank"`
+		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"required,notblank"`
 	}
 
 	AzureControlPlane struct {
@@ -260,6 +266,11 @@ type (
 
 		VMSize     string `yaml:"vmSize" validate:"required,notblank"`
 		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
+	}
+
+	AzureDisasterRecovery struct {
+		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName" validate:"required,notblank"`
+		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )
 

@@ -15,17 +15,18 @@ import (
 // Sets up the provisioned cluster for Disaster Recovery.
 // NOTE : Picks up AWS credentials from the environment.
 func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
-	assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery, "No AWS disaster-recovery config provided")
+	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
+	assert.AssertNotNil(ctx, awsConfig.DisasterRecovery, "No AWS disaster-recovery config provided")
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
 
 	// Create S3 bucket where Sealed Secrets will be backed up.
-	sealedSecretBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
-	services.CreateS3Bucket(ctx, a.s3Client, sealedSecretBackupsS3BucketName)
+	sealedSecretBackupsBucketName := awsConfig.DisasterRecovery.SealedSecretsBackupBucketName
+	services.CreateS3Bucket(ctx, a.s3Client, sealedSecretBackupsBucketName)
 	//
 	// Create S3 bucket where Kubernetes Objects will be backed up (by Velero).
-	veleroBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsS3BucketName
-	services.CreateS3Bucket(ctx, a.s3Client, veleroBackupsS3BucketName)
+	veleroBackupsBucketName := awsConfig.DisasterRecovery.VeleroBackupsBucketName
+	services.CreateS3Bucket(ctx, a.s3Client, veleroBackupsBucketName)
 
 	var (
 		clusterName = config.ParsedGeneralConfig.Cluster.Name
@@ -41,7 +42,7 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 		getSealedSecretsBackuperIAMPolicy(),
 		getIAMTrustPolicy(ctx),
 	)
-	//
+
 	// Create IAM Policy for Velero.
 	veleroIAMPolicyName := fmt.Sprintf("velero-%s", clusterName)
 	services.CreateIAMRoleForPolicy(ctx,

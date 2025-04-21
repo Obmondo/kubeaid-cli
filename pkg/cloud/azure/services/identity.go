@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"path"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -12,20 +11,24 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/avast/retry-go/v4"
 	"github.com/google/uuid"
 )
 
-type CreateUserAssignedIdentityArgs struct {
-	UserAssignedIdentitiesClient *armmsi.UserAssignedIdentitiesClient
-	RoleAssignmentsClient        *armauthorization.RoleAssignmentsClient
+type CreateUAMIArgs struct {
+	UAMIClient            *armmsi.UserAssignedIdentitiesClient
+	RoleAssignmentsClient *armauthorization.RoleAssignmentsClient
+
 	ResourceGroupName,
-	Name string
+	Name,
+
+	RoleID,
+	RoleAssignmentScope string
 }
 
-// Creates a User Assigned Managed Identity, if it doesn't already exist.
+// Creates a User Assigned Managed Identity (UAMI), if it doesn't already exist.
 // Returns its ID.
 /*
 Managed identities for Azure resources eliminate the need to manage credentials in code. You can
@@ -47,18 +50,17 @@ There are two types of managed identities :
 
 	REFERENCE : https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/how-manage-user-assigned-managed-identities.
 */
-func CreateUserAssignedIdentity(ctx context.Context,
-	args CreateUserAssignedIdentityArgs,
-) (userAssignedIdentityID string, userAssignedIdentityClientID string) {
+func CreateUAMI(ctx context.Context,
+	args CreateUAMIArgs,
+) (uamiID string, uamiClientID string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("name", args.Name),
 	})
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
-	slog.InfoContext(ctx, "Creating User Assigned Identity and assigning Contributor Role to it")
-
-	response, err := args.UserAssignedIdentitiesClient.CreateOrUpdate(ctx,
+	slog.InfoContext(ctx, "Creating UAMI")
+	response, err := args.UAMIClient.CreateOrUpdate(ctx,
 		args.ResourceGroupName,
 		args.Name,
 		armmsi.Identity{
@@ -69,61 +71,48 @@ func CreateUserAssignedIdentity(ctx context.Context,
 		},
 		nil,
 	)
-	assert.AssertErrNil(ctx, err, "Failed creating User Assigned Identity")
+	assert.AssertErrNil(ctx, err, "Failed creating UAMI")
 
-	userAssignedIdentityID = *response.Properties.PrincipalID
-	userAssignedIdentityClientID = *response.Properties.ClientID
+	uamiID = *response.Properties.PrincipalID
+	uamiClientID = *response.Properties.ClientID
 
-	// Create a role assignment to give the User Assigned Identity Contributor access to the Azure
-	// subscription where the main cluster will be created.
-	// NOTE : We need to retry, since this fails until around a minute has passed after the creation
-	//        of the User Assigned Managed Identity (UAMI).
-	/*
-		The Azure built-in Contributor role grants full access to manage all resources, but does not
-		allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share
-		image galleries.
+	// Assign role to the UAMI.
+	{
+		ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+			slog.String("role", args.RoleID),
+		})
 
-		REFERENCE : https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
-	*/
-
-	var (
-		roleDefinitionID = fmt.Sprintf(
+		roleDefinitionID := fmt.Sprintf(
 			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
 			azureConfig.SubscriptionID,
-			constants.AzureRoleIDContributor,
+			args.RoleID,
 		)
-		roleScope        = path.Join("/subscriptions/", azureConfig.SubscriptionID)
-		roleAssignmentID = uuid.New().String()
-	)
 
-	err = retry.Do(
-		func() error {
+		slog.InfoContext(ctx, "Assigning role to UAMI")
+		err := utils.WithRetry(10*time.Second, 6, func() error {
 			_, err := args.RoleAssignmentsClient.Create(ctx,
-				roleScope,
-				roleAssignmentID,
+				args.RoleAssignmentScope,
+				uuid.New().String(),
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{
-						PrincipalID:      &userAssignedIdentityID,
+						PrincipalID:      &uamiID,
 						RoleDefinitionID: &roleDefinitionID,
 					},
 				},
 				nil,
 			)
 			if err != nil {
-				// Skip, if the Contributor role is already assigned to the User Assigned Managed Identity.
+				// Skip, if the role is already assigned to the User Assigned Managed Identity.
 				responseError, ok := err.(*azcore.ResponseError)
 				if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
-					slog.InfoContext(ctx, "Contributor role is already assigned to Azure User Assigned Managed Identity")
+					slog.InfoContext(ctx, "Role is already assigned to UAMI")
 					return nil
 				}
 			}
 			return err
-		},
-		retry.DelayType(retry.FixedDelay),
-		retry.Delay(10*time.Second),
-		retry.Attempts(6),
-	)
-	assert.AssertErrNil(ctx, err, "Failed creating Role assignment for User Assigned Identity")
+		})
+		assert.AssertErrNil(ctx, err, "Failed assigning role to UAMI")
+	}
 
 	return
 }

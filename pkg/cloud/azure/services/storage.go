@@ -32,25 +32,6 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 		slog.String("storage-account-name", args.Name),
 	})
 
-	// BUG : throws error with code : SubscriptionNotFound.
-	//
-	// Verify that Storage Account name is available.
-	// {
-	// 	response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
-	// 		armstorage.AccountCheckNameAvailabilityParameters{
-	// 			Name: to.Ptr(args.Name),
-	// 			Type: to.Ptr("Microsoft.Storage/storageAccounts"),
-	// 		},
-	// 		nil,
-	// 	)
-	// 	assert.AssertErrNil(ctx, err, "Failed verifying whether Azure Storage Account name is available or not")
-	//
-	// 	assert.Assert(ctx,
-	// 		*response.CheckNameAvailabilityResult.NameAvailable,
-	// 		"Azure Storage Account name not available",
-	// 	)
-	// }
-
 	slog.InfoContext(ctx, "Creating / updating Azure Storage Account")
 
 	responsePoller, err := args.StorageAccountsClient.BeginCreate(ctx,

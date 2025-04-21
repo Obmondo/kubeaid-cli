@@ -85,7 +85,6 @@ const (
 	NamespaceArgoCD   = "argocd"
 	ReleaseNameArgoCD = "argocd"
 
-	// Project.
 	ArgoCDProjectKubeAid = "kubeaid"
 
 	// Apps.
@@ -104,13 +103,28 @@ const (
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
 
+	/*
+		The Azure built-in Contributor role grants full access to manage all resources, but does not
+		allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share
+		image galleries.
+
+		REFERENCE : https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
+	*/
 	AzureRoleIDContributor    = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 	AzureStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
+)
 
-	ServiceAccountNameCAPZ = "capz-manager"
-	ServiceAccountNameASO  = "azureserviceoperator-default"
+const (
+	// Namespaces.
+	NamespaceVelero        = "velero"
+	NamespaceSealedSecrets = "sealed-secrets"
+
+	// Service Accounts.
+	ServiceAccountCAPZ   = "capz-manager"
+	ServiceAccountASO    = "azureserviceoperator-default"
+	ServiceAccountVelero = "velero"
 )
 
 // Miscellaneous.
@@ -119,6 +133,9 @@ const (
 
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
+
+	SSHPublicKeyPrefixOpenSSH = "ssh-rsa "
+	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
 )
 
 // Template names.
@@ -215,6 +232,12 @@ var (
 		// For Azure Cloud Controller Manager.
 		"argocd-apps/templates/ccm-azure.yaml.tmpl",
 		"argocd-apps/values-ccm-azure.yaml.tmpl",
+	}
+
+	AzureDisasterRecoverySpecificTemplateNames = []string{
+		// For Velero.
+		"argocd-apps/templates/velero.yaml.tmpl",
+		"argocd-apps/values-velero.yaml.tmpl",
 	}
 
 	HetznerSpecificNonSecretTemplateNames = []string{

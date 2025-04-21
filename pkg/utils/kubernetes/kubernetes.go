@@ -114,7 +114,7 @@ func pingKubernetesCluster(ctx context.Context, kubeClient client.Client) error 
 		Namespace: "default",
 	})
 	if err != nil {
-		return fmt.Errorf("Failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %v", err)
+		return fmt.Errorf("failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %v", err)
 	}
 	return nil
 }
@@ -210,13 +210,13 @@ func GetKubernetesResource(ctx context.Context, kubeClient client.Client, resour
 
 // Waits for the main cluster to be ready to run our application workloads.
 func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) {
-	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
+	for {
 		slog.Info("Waiting for the provisioned cluster's Kubernetes API server to be reachable and atleast 1 worker node to be initialized....")
 
 		// List the nodes.
 		nodes := &coreV1.NodeList{}
 		if err := kubeClient.List(ctx, nodes); err != nil {
-			return false, err
+			continue
 		}
 
 		initializedWorkerNodeCount := 0
@@ -225,33 +225,36 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 				continue
 			}
 
-			isUninitialized := false
+			isInitialized := true
 			//
 			// Check for existence of taints which indicate that the node is uninitialized.
 			for _, taint := range node.Spec.Taints {
 				if (taint.Key == cloudProviderAPI.TaintExternalCloudProvider) || (taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key) {
-					isUninitialized = true
+					isInitialized = false
 				}
 			}
 
-			if !isUninitialized {
+			if isInitialized {
 				initializedWorkerNodeCount++
 			}
 		}
-		isClusterReady := (initializedWorkerNodeCount > 0)
-		return isClusterReady, nil
-	})
+
+		if initializedWorkerNodeCount > 0 {
+			return
+		}
+
+		time.Sleep(time.Minute)
+	}
 }
 
 // Returns whether the given node object is part of the control plane or not.
 func isControlPlaneNode(node *coreV1.Node) bool {
-	isControlPlaneNode := false
 	for key := range node.Labels {
 		if key == kubeadmConstants.LabelNodeRoleControlPlane {
-			isControlPlaneNode = true
+			return true
 		}
 	}
-	return isControlPlaneNode
+	return false
 }
 
 // Saves kubeconfig of the provisioned cluster locally.

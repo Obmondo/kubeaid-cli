@@ -11,7 +11,6 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.7.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.0
 	github.com/argoproj/argo-cd/v2 v2.14.8
-	github.com/avast/retry-go/v4 v4.6.1
 	github.com/aws/aws-sdk-go-v2 v1.36.3
 	github.com/aws/aws-sdk-go-v2/config v1.29.10
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.210.1
@@ -37,6 +36,8 @@ require (
 	k8s.io/api v0.32.3
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
+	k8s.io/cloud-provider v0.32.3
+	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.32.3
 	sigs.k8s.io/cluster-api v1.9.6
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.8.2
@@ -280,12 +281,10 @@ require (
 	k8s.io/apiextensions-apiserver v0.32.2 // indirect
 	k8s.io/apiserver v0.32.3 // indirect
 	k8s.io/cli-runtime v0.32.2 // indirect
-	k8s.io/cloud-provider v0.32.3 // indirect
 	k8s.io/cluster-bootstrap v0.31.3 // indirect
 	k8s.io/component-base v0.32.3 // indirect
 	k8s.io/component-helpers v0.32.3 // indirect
 	k8s.io/controller-manager v0.32.3 // indirect
-	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-aggregator v0.31.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
 	k8s.io/kubectl v0.32.2 // indirect

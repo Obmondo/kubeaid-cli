@@ -69,8 +69,8 @@ func CreateK3DCluster(ctx context.Context, name string) {
 			k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
 				ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
 
-				SSHPublicKeyFilePath:  utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPublicKeyFilePath),
-				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPrivateKeyFilePath),
+				SSHPublicKeyFilePath:  utils.ToAbsolutePath(ctx, workloadIdentityConfig.OpenIDProviderSSHKeyPair.PublicKeyFilePath),
+				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx, workloadIdentityConfig.OpenIDProviderSSHKeyPair.PrivateKeyFilePath),
 			}
 		}
 

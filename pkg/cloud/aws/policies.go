@@ -24,7 +24,7 @@ func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
 }
 
 func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
-	sealedSecretBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupS3BucketName
+	sealedSecretBackupsBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
 
 	return services.PolicyDocument{
 		Version: "2012-10-17",
@@ -36,14 +36,14 @@ func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
 					"s3:ListMultipartUploadParts",
 				},
 				Effect:   "Allow",
-				Resource: fmt.Sprintf("arn:aws:s3:::%s/*", sealedSecretBackupsS3BucketName),
+				Resource: fmt.Sprintf("arn:aws:s3:::%s/*", sealedSecretBackupsBucketName),
 			},
 		},
 	}
 }
 
 func getVeleroIAMPolicy() services.PolicyDocument {
-	veleroBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsS3BucketName
+	veleroBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsBucketName
 
 	return services.PolicyDocument{
 		Version: "2012-10-17",

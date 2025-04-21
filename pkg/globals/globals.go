@@ -17,5 +17,6 @@ var (
 	ArgoCDApplicationClient       application.ApplicationServiceClient
 
 	// Azure specific.
-	UserAssignedIdentityClientID string
+	UAMIClientIDClusterAPI,
+	UAMIClientIDVelero string
 )

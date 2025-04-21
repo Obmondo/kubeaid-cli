@@ -3,6 +3,7 @@ package utils
 import (
 	"log/slog"
 	"os"
+	"time"
 )
 
 // Returns value of the given environment variable.
@@ -15,4 +16,21 @@ func GetEnv(name string) string {
 	}
 
 	return value
+}
+
+func WithRetry(delay time.Duration, attempts uint8, fn func() error) error {
+	var err error = nil
+
+	for i := range attempts {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+
+		if i < (attempts - 1) { // We don't need to sleep after the last attempt.
+			time.Sleep(delay)
+		}
+	}
+
+	return err
 }

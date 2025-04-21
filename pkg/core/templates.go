@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -29,8 +30,10 @@ type TemplateValues struct {
 	AWSB64EncodedCredentials,
 	AWSAccountID string
 
-	AzureConfig                  *config.AzureConfig
-	UserAssignedIdentityClientID string
+	AzureConfig *config.AzureConfig
+	ServiceAccountIssuerURL,
+	UAMIClientIDClusterAPI,
+	UAMIClientIDVelero string
 
 	HetznerConfig *config.HetznerConfig
 
@@ -49,8 +52,9 @@ func getTemplateValues() *TemplateValues {
 
 		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
 
-		AzureConfig:                  config.ParsedGeneralConfig.Cloud.Azure,
-		UserAssignedIdentityClientID: globals.UserAssignedIdentityClientID,
+		AzureConfig:            config.ParsedGeneralConfig.Cloud.Azure,
+		UAMIClientIDClusterAPI: globals.UAMIClientIDClusterAPI,
+		UAMIClientIDVelero:     globals.UAMIClientIDVelero,
 
 		HetznerConfig: config.ParsedGeneralConfig.Cloud.Hetzner,
 	}
@@ -60,15 +64,20 @@ func getTemplateValues() *TemplateValues {
 	case constants.CloudProviderAWS:
 		templateValues.AWSAccountID = aws.GetAccountID(context.Background())
 		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
+
+	case constants.CloudProviderAzure:
+		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(context.Background())
 	}
 
-	// Set control-plane endpoint, if cluster has been provisioned (detects by trying to query the
-	// Cluster resource from the management / provisioned cluster).
-	// The control-plane endpoint will be used to create the Cilium ArgoCD App.
-	//
-	// NOTE : Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
-	//        the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
-	//        provisioned, we bring it in the GitOPs cycle.
+	/*
+		Set control-plane endpoint, if cluster has been provisioned (detects by trying to query the
+		Cluster resource from the management / provisioned cluster).
+		The control-plane endpoint will be used to create the Cilium ArgoCD App.
+
+		NOTE : Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
+		       the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
+		       provisioned, we bring it in the GitOPs cycle.
+	*/
 	{
 		ctx := context.Background()
 
@@ -103,7 +112,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificNonSecretTemplateNames...)
-		//
+
 		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
 		// cloud-provider specific config.
 		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
@@ -112,6 +121,12 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	case constants.CloudProviderAzure:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.AzureSpecificNonSecretTemplateNames...)
+
+		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
+		// cloud-provider specific config.
+		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
+			embeddedTemplateNames = append(embeddedTemplateNames, constants.AzureDisasterRecoverySpecificTemplateNames...)
+		}
 
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)

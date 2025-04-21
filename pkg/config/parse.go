@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -143,6 +144,9 @@ func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
 
 func hydrateSSHKeyConfigs() {
 	switch globals.CloudProviderName {
+	case constants.CloudProviderAzure:
+		hydrateSSHKeyConfig(&ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair)
+
 	case constants.CloudProviderHetzner:
 		// When using Hetzner Bare Metal.
 		if (ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal != nil) && ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
@@ -156,37 +160,48 @@ func hydrateSSHKeyConfigs() {
 func hydrateSSHKeyConfig(sshKeyConfig *SSHKeyPairConfig) {
 	ctx := context.Background()
 
-	// Read and validate the SSH public key.
+	// Read the SSH key-pair.
 
 	publicKey, err := os.ReadFile(sshKeyConfig.PublicKeyFilePath)
 	assert.AssertErrNil(ctx, err,
 		"Failed reading file",
 		slog.String("path", sshKeyConfig.PublicKeyFilePath),
 	)
-
-	_, _, _, _, err = ssh.ParseAuthorizedKey(publicKey)
-	assert.AssertErrNil(ctx, err,
-		"SSH public key is invalid : failed parsing",
-		slog.String("path", sshKeyConfig.PublicKeyFilePath),
-	)
-
 	sshKeyConfig.PublicKey = string(publicKey)
-
-	// Read and validate the SSH private key.
 
 	privateKey, err := os.ReadFile(sshKeyConfig.PrivateKeyFilePath)
 	assert.AssertErrNil(ctx, err,
 		"Failed reading file",
 		slog.String("path", sshKeyConfig.PrivateKeyFilePath),
 	)
-
-	_, err = ssh.ParsePrivateKey(privateKey)
-	assert.AssertErrNil(ctx, err,
-		"SSH private key is invalid : failed parsing",
-		slog.String("path", sshKeyConfig.PrivateKeyFilePath),
-	)
-
 	sshKeyConfig.PrivateKey = string(privateKey)
+
+	// Validate the SSH key-pair based on its type.
+
+	switch {
+	// OpenSSH.
+	case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSH):
+
+		_, _, _, _, err = ssh.ParseAuthorizedKey(publicKey)
+		assert.AssertErrNil(ctx, err,
+			"SSH public key is invalid : failed parsing",
+			slog.String("path", sshKeyConfig.PublicKeyFilePath),
+		)
+
+		_, err = ssh.ParsePrivateKey(privateKey)
+		assert.AssertErrNil(ctx, err,
+			"SSH private key is invalid : failed parsing",
+			slog.String("path", sshKeyConfig.PrivateKeyFilePath),
+		)
+
+	// TODO : PEM.
+	case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixPEM):
+		break
+
+	default:
+		slog.ErrorContext(ctx, "Failed identifying SSH key-pair type using SSH public key prefix")
+		os.Exit(1)
+	}
 }
 
 // For each node-group, fills up the cpu and memory (fetched using the corresponding cloud SDK) of

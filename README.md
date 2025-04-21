@@ -87,3 +87,7 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)
 
 - [Logging in Go with Slog: The Ultimate Guide](https://betterstack.com/community/guides/logging/logging-in-go/)
+
+- [Velero plugins for Microsoft Azure : Use Azure AD Workload Identity](https://github.com/vmware-tanzu/velero-plugin-for-microsoft-azure/blob/main/README.md#option-3-use-azure-ad-workload-identity)
+
+- [Azure Workload Identity authentication with AD fails](https://github.com/vmware-tanzu/velero/issues/8324)

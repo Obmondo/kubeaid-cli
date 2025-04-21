@@ -64,6 +64,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
 			globals.CloudProvider.SetupDisasterRecovery(ctx)
 		}
+
+	case constants.CloudProviderAzure:
+		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
+			globals.CloudProvider.SetupDisasterRecovery(ctx)
+		}
 	}
 
 	// Sync all ArgoCD Apps.

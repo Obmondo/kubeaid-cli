@@ -11,7 +11,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	"github.com/avast/retry-go/v4"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,13 +53,16 @@ func DeleteCluster(ctx context.Context) {
 		// Move back the ClusterAPI manifests back from the provisioned cluster to the management
 		// cluster.
 		// NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
-		retry.Do(func() error {
+		err := utils.WithRetry(10*time.Second, 12, func() error {
 			_, err := utils.ExecuteCommand(fmt.Sprintf(
 				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-				constants.OutputPathMainClusterKubeconfig, managementClusterKubeconfigPath, kubernetes.GetCapiClusterNamespace(),
+				constants.OutputPathMainClusterKubeconfig,
+				managementClusterKubeconfigPath,
+				kubernetes.GetCapiClusterNamespace(),
 			))
 			return err
 		})
+		assert.AssertErrNil(ctx, err, "Failed doing clusterctl move")
 	}
 
 	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
