@@ -62,6 +62,11 @@ cilium:
   # Each individual node is made aware of all pod IPs of all other nodes and routes are
   # inserted into the Linux Kernel routing table to represent this.
   autoDirectNodeRoutes: true
+  #
+  # If a BGP daemon is running and there is multiple native subnets to the cluster network, this
+  # gives each node L2 connectivity in each zone without traffic always needing to be routed by the
+  # BGP routers.
+  directRoutingSkipUnreachable: true
 
   bpf:
     # IPv4 addresses used for pods are typically allocated from RFC1918 private address blocks
