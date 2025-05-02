@@ -1,15 +1,28 @@
-package bootstrap
+package cluster
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 )
 
 var BootstrapCmd = &cobra.Command{
 	Use: "bootstrap",
 
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
+	Short: "Bootstrap a Kubernetes cluster and setup KubeAid",
+
+	Run: func(cmd *cobra.Command, args []string) {
+		core.BootstrapCluster(cmd.Context(), core.BootstrapClusterArgs{
+			CreateDevEnvArgs: &core.CreateDevEnvArgs{
+				ManagementClusterName:    managementClusterName,
+				SkipMonitoringSetup:      skipMonitoringSetup,
+				SkipKubePrometheusBuild:  skipKubePrometheusBuild,
+				SkipPRFlow:               skipPRFlow,
+				IsPartOfDisasterRecovery: false,
+			},
+			SkipClusterctlMove: skipClusterctlMove,
+		})
 	},
 }
 
@@ -18,17 +31,10 @@ var (
 
 	skipMonitoringSetup,
 	skipKubePrometheusBuild,
-	skipPRFlow,
 	skipClusterctlMove bool
 )
 
 func init() {
-	// Subcommands.
-	BootstrapCmd.AddCommand(AWSCmd)
-	BootstrapCmd.AddCommand(AzureCmd)
-	BootstrapCmd.AddCommand(HetznerCmd)
-	BootstrapCmd.AddCommand(LocalCmd)
-
 	// Flags.
 
 	BootstrapCmd.PersistentFlags().
@@ -44,11 +50,6 @@ func init() {
 	BootstrapCmd.PersistentFlags().
 		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
 			"Skip the Kube Prometheus build step while setting up KubeAid Config",
-		)
-
-	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
-			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 
 	BootstrapCmd.PersistentFlags().

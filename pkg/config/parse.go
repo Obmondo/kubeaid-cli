@@ -7,15 +7,16 @@ import (
 	"path"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/creasty/defaults"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 var (
@@ -63,7 +64,8 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// We'll retrieve them using the files in ~/.aws.
 		// And we panic on failure.
 
-		if (globals.CloudProviderName == constants.CloudProviderAWS) && (ParsedSecretsConfig.AWS == nil) {
+		if (globals.CloudProviderName == constants.CloudProviderAWS) &&
+			(ParsedSecretsConfig.AWS == nil) {
 			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
 
 			ParsedSecretsConfig.AWS = &AWSCredentials{
@@ -145,11 +147,14 @@ func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
 func hydrateSSHKeyConfigs() {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
-		hydrateSSHKeyConfig(&ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair)
+		hydrateSSHKeyConfig(
+			&ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
+		)
 
 	case constants.CloudProviderHetzner:
 		// When using Hetzner Bare Metal.
-		if (ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal != nil) && ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
+		if (ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal != nil) &&
+			ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
 			hydrateSSHKeyConfig(&ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.RobotSSHKeyPair)
 		}
 	}

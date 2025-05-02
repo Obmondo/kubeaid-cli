@@ -3,8 +3,9 @@ package config
 import (
 	_ "embed"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	v1 "k8s.io/api/core/v1"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 var (
@@ -51,10 +52,13 @@ func hydrateWithAuditLoggingOptions() {
 		}
 
 		if !isAuditPolicyFileProvidedByUser {
-			ParsedGeneralConfig.Cluster.APIServer.Files = append(ParsedGeneralConfig.Cluster.APIServer.Files, FileConfig{
-				Path:    auditPolicyFileHostPath,
-				Content: defaultAuditPolicy,
-			})
+			ParsedGeneralConfig.Cluster.APIServer.Files = append(
+				ParsedGeneralConfig.Cluster.APIServer.Files,
+				FileConfig{
+					Path:    auditPolicyFileHostPath,
+					Content: defaultAuditPolicy,
+				},
+			)
 		}
 	}
 
@@ -92,6 +96,9 @@ func ensureHostPathGetsMounted(volume HostPathMountConfig) {
 	}
 
 	if !hostPathAlreadyMounted {
-		ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes = append(ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes, volume)
+		ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes = append(
+			ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes,
+			volume,
+		)
 	}
 }

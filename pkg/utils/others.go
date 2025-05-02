@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"context"
 	"log/slog"
 	"os"
 	"time"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 // Returns value of the given environment variable.
@@ -18,8 +21,18 @@ func GetEnv(name string) string {
 	return value
 }
 
+// Sets value of the given environment variable.
+// Panics on error.
+func MustSetEnv(name, value string) {
+	err := os.Setenv(name, value)
+	assert.AssertErrNil(context.Background(), err,
+		"Failed setting environment variable",
+		slog.String("name", name),
+	)
+}
+
 func WithRetry(delay time.Duration, attempts uint8, fn func() error) error {
-	var err error = nil
+	var err error
 
 	for i := range attempts {
 		err = fn()

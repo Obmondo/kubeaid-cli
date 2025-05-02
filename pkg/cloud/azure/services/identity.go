@@ -9,23 +9,25 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
+	"github.com/google/uuid"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/google/uuid"
 )
 
 type CreateUAMIArgs struct {
 	UAMIClient            *armmsi.UserAssignedIdentitiesClient
 	RoleAssignmentsClient *armauthorization.RoleAssignmentsClient
 
+	SubscriptionID,
 	ResourceGroupName,
-	Name,
 
 	RoleID,
-	RoleAssignmentScope string
+	RoleAssignmentScope,
+	Name string
 }
 
 // Creates a User Assigned Managed Identity (UAMI), if it doesn't already exist.
@@ -54,7 +56,7 @@ func CreateUAMI(ctx context.Context,
 	args CreateUAMIArgs,
 ) (uamiID string, uamiClientID string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("name", args.Name),
+		slog.String("uami-name", args.Name),
 	})
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
@@ -79,20 +81,23 @@ func CreateUAMI(ctx context.Context,
 	// Assign role to the UAMI.
 	{
 		ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-			slog.String("role", args.RoleID),
+			slog.String("role-id", args.RoleID),
 		})
 
-		roleDefinitionID := fmt.Sprintf(
-			"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
-			azureConfig.SubscriptionID,
-			args.RoleID,
+		var (
+			roleDefinitionID = fmt.Sprintf(
+				"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
+				azureConfig.SubscriptionID,
+				constants.AzureRoleIDContributor,
+			)
+			roleAssignmentID = uuid.New().String()
 		)
 
 		slog.InfoContext(ctx, "Assigning role to UAMI")
 		err := utils.WithRetry(10*time.Second, 6, func() error {
 			_, err := args.RoleAssignmentsClient.Create(ctx,
 				args.RoleAssignmentScope,
-				uuid.New().String(),
+				roleAssignmentID,
 				armauthorization.RoleAssignmentCreateParameters{
 					Properties: &armauthorization.RoleAssignmentProperties{
 						PrincipalID:      &uamiID,
@@ -104,7 +109,8 @@ func CreateUAMI(ctx context.Context,
 			if err != nil {
 				// Skip, if the role is already assigned to the User Assigned Managed Identity.
 				responseError, ok := err.(*azcore.ResponseError)
-				if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+				if ok &&
+					responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 					slog.InfoContext(ctx, "Role is already assigned to UAMI")
 					return nil
 				}

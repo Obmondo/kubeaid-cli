@@ -9,16 +9,17 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	validatorV10 "github.com/go-playground/validator/v10"
 	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 // Validates the parsed general and secrets config.
@@ -75,7 +76,8 @@ func validateConfigs() {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
 				nodeGroup.MinSize <= nodeGroup.Maxsize,
-				"replica count should be <= its max-size", slog.String("node-group", nodeGroup.Name),
+				"replica count should be <= its max-size",
+				slog.String("node-group", nodeGroup.Name),
 			)
 
 			// Validate labels and taints.
@@ -87,7 +89,8 @@ func validateConfigs() {
 			// Validate auto-scaling options.
 			assert.Assert(ctx,
 				nodeGroup.MinSize <= nodeGroup.Maxsize,
-				"replica count should be <= its max-size", slog.String("node-group", nodeGroup.Name),
+				"replica count should be <= its max-size",
+				slog.String("node-group", nodeGroup.Name),
 			)
 
 			// Validate labels and taints.
@@ -119,6 +122,8 @@ func ValidateK8sVersion(ctx context.Context, k8sVersion string) {
 	parsedLatestStableK8sVersion, err := version.ParseSemantic(latestStableK8sVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing latest stable K8s version")
 
+	// least supported version <= user provided version <= latest stable version.
+	//nolint:staticcheck
 	if !parsedK8sVersion.AtLeast(parsedLeastSupportedK8sVersion) &&
 		!(parsedK8sVersion.LessThan(parsedLatestStableK8sVersion) || parsedK8sVersion.EqualTo(parsedLatestStableK8sVersion)) {
 
@@ -156,7 +161,12 @@ var validNodeGroupLabelDomains = []string{
 }
 
 // Validates node-group labels and taints.
-func validateLabelsAndTaints(ctx context.Context, nodeGroupName string, labels map[string]string, taints []*coreV1.Taint) {
+func validateLabelsAndTaints(
+	ctx context.Context,
+	nodeGroupName string,
+	labels map[string]string,
+	taints []*coreV1.Taint,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("node-group", nodeGroupName),
 	})
@@ -178,7 +188,10 @@ func validateLabelsAndTaints(ctx context.Context, nodeGroupName string, labels m
 			}
 		}
 		if !isValidNodeGroupLabelDomain {
-			slog.Error("NodeGroup label key should belong to one of these domains", slog.Any("domains", validNodeGroupLabelDomains))
+			slog.ErrorContext(ctx,
+				"NodeGroup label key should belong to one of these domains",
+				slog.Any("domains", validNodeGroupLabelDomains),
+			)
 			os.Exit(1)
 		}
 	}

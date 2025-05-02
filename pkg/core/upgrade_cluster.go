@@ -7,6 +7,11 @@ import (
 	"path"
 	"time"
 
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -15,10 +20,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type (
@@ -36,17 +37,16 @@ func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArg
 	// Construct the Kubernetes (management / provisioned) cluster client.
 	var clusterClient client.Client
 	{
-		provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig, true)
-		clusterClient = provisionedClusterClient
+		clusterClient = kubernetes.MustCreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+		)
 
 		// If `clusterctl move` wasn't executed, then we need to communicate with the management
 		// cluster instead.
-		if !kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
-			managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+		if !kubernetes.IsClusterctlMoveExecuted(ctx, clusterClient) {
+			clusterClient = kubernetes.MustCreateKubernetesClient(ctx,
 				kubernetes.GetManagementClusterKubeconfigPath(ctx),
-				true,
 			)
-			clusterClient = managementClusterClient
 		}
 	}
 
@@ -82,17 +82,25 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
 
 	// Create and checkout to a new branch.
-	newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedGeneralConfig.Cluster.Name, time.Now().Unix())
+	newBranchName := fmt.Sprintf(
+		"kubeaid-%s-%d",
+		config.ParsedGeneralConfig.Cluster.Name,
+		time.Now().Unix(),
+	)
 	git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
 
 	// Update values-capi-cluster.yaml file (using yq).
 	{
-		capiClusterValuesFilePath := path.Join(utils.GetClusterDir(), "argocd-apps/values-capi-cluster.yaml")
+		capiClusterValuesFilePath := path.Join(
+			utils.GetClusterDir(),
+			"argocd-apps/values-capi-cluster.yaml",
+		)
 
 		// Update Kubernetes version.
 		_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"yq --in-place --yaml-output --yaml-roundtrip '(.global.kubernetes.version) = \"%s\"' %s",
-			args.NewKubernetesVersion, capiClusterValuesFilePath,
+			args.NewKubernetesVersion,
+			capiClusterValuesFilePath,
 		))
 
 		// Update with cloud-specific details.
@@ -108,7 +116,12 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 		config.ParsedGeneralConfig.Cluster.Name, args.NewKubernetesVersion,
 	)
 	commitHash := git.AddCommitAndPushChanges(ctx,
-		repo, workTree, newBranchName, gitAuthMethod, config.ParsedGeneralConfig.Cluster.Name, commitMessage,
+		repo,
+		workTree,
+		newBranchName,
+		gitAuthMethod,
+		config.ParsedGeneralConfig.Cluster.Name,
+		commitMessage,
 	)
 
 	// The user now needs to go ahead and create a PR from the new to the default branch. Then he
@@ -121,7 +134,11 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 	git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, newBranchName)
 }
 
-func upgradeControlPlane(ctx context.Context, args UpgradeClusterArgs, clusterClient client.Client) {
+func upgradeControlPlane(
+	ctx context.Context,
+	args UpgradeClusterArgs,
+	clusterClient client.Client,
+) {
 	slog.InfoContext(ctx, "Triggering Kubernetes version upgrade for the control plane....")
 
 	// Delete and recreate the corresponding machine template with updated options (like AMI in
@@ -136,7 +153,10 @@ func upgradeControlPlane(ctx context.Context, args UpgradeClusterArgs, clusterCl
 
 	// Update the Kubernetes version in the KubeadmControlPlane resource.
 
-	kubeadmControlPlaneName := fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
+	kubeadmControlPlaneName := fmt.Sprintf(
+		"%s-control-plane",
+		config.ParsedGeneralConfig.Cluster.Name,
+	)
 
 	kubeadmControlPlane := &kcpV1Beta1.KubeadmControlPlane{
 		ObjectMeta: v1.ObjectMeta{
@@ -175,7 +195,11 @@ func upgradeNodeGroup(ctx context.Context,
 
 	// Update the corresponding MachineDeployment.
 
-	machineDeploymentName := fmt.Sprintf("%s-%s", config.ParsedGeneralConfig.Cluster.Name, nodeGroupName)
+	machineDeploymentName := fmt.Sprintf(
+		"%s-%s",
+		config.ParsedGeneralConfig.Cluster.Name,
+		nodeGroupName,
+	)
 
 	machineDeployment := &clusterAPIV1Beta1.MachineDeployment{
 		ObjectMeta: v1.ObjectMeta{

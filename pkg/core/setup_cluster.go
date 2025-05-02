@@ -6,6 +6,14 @@ import (
 	"log/slog"
 	"time"
 
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -14,13 +22,6 @@ import (
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport"
-	coreV1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type SetupClusterArgs struct {
@@ -61,13 +62,21 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
 			// TODO : Move this to gitUtils.CloneRepo( )?
 
-			slog.InfoContext(ctx, "Hard resetting the KubeAid repo to tag", slog.String("tag", kubeaidVersion))
+			slog.InfoContext(ctx,
+				"Hard resetting the KubeAid repo to tag",
+				slog.String("tag", kubeaidVersion),
+			)
 
 			kubeAidRepoWorktree, err := kubeAidRepo.Worktree()
 			assert.AssertErrNil(ctx, err, "Failed getting KubeAid repo worktree")
 
-			tagReference, err := kubeAidRepo.Reference(plumbing.NewTagReferenceName(kubeaidVersion), true)
-			assert.AssertErrNil(ctx, err, "Failed resolving reference for provided tag in KubeAid repo")
+			tagReference, err := kubeAidRepo.Reference(
+				plumbing.NewTagReferenceName(kubeaidVersion),
+				true,
+			)
+			assert.AssertErrNil(ctx, err,
+				"Failed resolving reference for provided tag in KubeAid repo",
+			)
 
 			targetCommitHash := tagReference.Hash()
 
@@ -92,7 +101,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// keys from a previous cluster which got destroyed.
 	if args.IsPartOfDisasterRecovery {
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
-		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(sealedSecretsKeysBackupBucketName)
+		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
+			sealedSecretsKeysBackupBucketName,
+		)
 
 		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))
 
@@ -117,7 +128,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
 	argocdAppsToBeSynced := []string{
-		"root",
+		constants.ArgoCDAppRoot,
 		"cert-manager",
 		"secrets",
 	}
@@ -144,13 +155,15 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 // infrastructure specific CRDs to be installed and pod to be running.
 func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client) {
 	// Sync the Infrastructure Provider component.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{
-		{
-			Group: "operator.cluster.x-k8s.io",
-			Kind:  "InfrastructureProvider",
-			Name:  getInfrastructureProviderName(),
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		[]*argoCDV1Alpha1.SyncOperationResource{
+			{
+				Group: "operator.cluster.x-k8s.io",
+				Kind:  "InfrastructureProvider",
+				Name:  getInfrastructureProviderName(),
+			},
 		},
-	})
+	)
 
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
@@ -161,20 +174,29 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		slog.String("namespace", capiClusterNamespace),
 	})
 
-	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
-		podList := &coreV1.PodList{}
-		err := clusterClient.List(ctx, podList, &client.ListOptions{
-			Namespace: capiClusterNamespace,
-		})
-		assert.AssertErrNil(ctx, err, "Failed listing pods")
+	err := wait.PollUntilContextCancel(ctx,
+		time.Minute,
+		false,
+		func(ctx context.Context) (bool, error) {
+			podList := &coreV1.PodList{}
+			err := clusterClient.List(ctx, podList, &client.ListOptions{
+				Namespace: capiClusterNamespace,
+			})
+			assert.AssertErrNil(ctx, err, "Failed listing pods")
 
-		if (len(podList.Items) > 0) && (podList.Items[0].Status.Phase == coreV1.PodRunning) {
-			return true, nil
-		}
+			if (len(podList.Items) > 0) && (podList.Items[0].Status.Phase == coreV1.PodRunning) {
+				return true, nil
+			}
 
-		slog.InfoContext(ctx, "Waiting for the infrastructure provider component pod to come up")
-		return false, nil
-	})
+			slog.InfoContext(ctx,
+				"Waiting for the infrastructure provider component pod to come up",
+			)
+			return false, nil
+		},
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed waiting for the infrastructure provider component to come up",
+	)
 }
 
 // Returns the name of the InfrastructureProvider component.

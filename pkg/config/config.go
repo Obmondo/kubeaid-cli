@@ -8,9 +8,9 @@ type (
 	GeneralConfig struct {
 		CustomerID string           `yaml:"customerID"`
 		Git        GitConfig        `yaml:"git"`
-		Cluster    ClusterConfig    `yaml:"cluster" validate:"required"`
-		Forks      ForksConfig      `yaml:"forkURLs" validate:"required"`
-		Cloud      CloudConfig      `yaml:"cloud" validate:"required"`
+		Cluster    ClusterConfig    `yaml:"cluster"    validate:"required"`
+		Forks      ForksConfig      `yaml:"forkURLs"   validate:"required"`
+		Cloud      CloudConfig      `yaml:"cloud"      validate:"required"`
 		Monitoring MonitoringConfig `yaml:"monitoring"`
 	}
 
@@ -19,13 +19,13 @@ type (
 	}
 
 	ForksConfig struct {
-		KubeaidForkURL       string `yaml:"kubeaid" default:"https://github.com/Obmondo/KubeAid"`
-		KubeaidConfigForkURL string `yaml:"kubeaidConfig" validate:"required,notblank"`
+		KubeaidForkURL       string `yaml:"kubeaid"       default:"https://github.com/Obmondo/KubeAid"`
+		KubeaidConfigForkURL string `yaml:"kubeaidConfig"                                              validate:"required,notblank"`
 	}
 
 	ClusterConfig struct {
-		Name           string `yaml:"name" validate:"required,notblank"`
-		K8sVersion     string `yaml:"k8sVersion" validate:"required,notblank"`
+		Name           string `yaml:"name"           validate:"required,notblank"`
+		K8sVersion     string `yaml:"k8sVersion"     validate:"required,notblank"`
 		KubeaidVersion string `yaml:"kubeaidVersion" validate:"required,notblank"`
 
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
@@ -46,17 +46,17 @@ type (
 		       OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
 	*/
 	APIServerConfig struct {
-		ExtraArgs    map[string]string     `yaml:"extraArgs" default:"{}"`
+		ExtraArgs    map[string]string     `yaml:"extraArgs"    default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
-		Files        []FileConfig          `yaml:"files" default:"[]"`
+		Files        []FileConfig          `yaml:"files"        default:"[]"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount
 	HostPathMountConfig struct {
-		Name      string              `yaml:"name" validate:"required,notblank"`
-		HostPath  string              `yaml:"hostPath" validate:"required,notblank"`
+		Name      string              `yaml:"name"      validate:"required,notblank"`
+		HostPath  string              `yaml:"hostPath"  validate:"required,notblank"`
 		MountPath string              `yaml:"mountPath" validate:"required,notblank"`
-		PathType  coreV1.HostPathType `yaml:"pathType" validate:"required"`
+		PathType  coreV1.HostPathType `yaml:"pathType"  validate:"required"`
 
 		/*
 			Whether the mount should be read-only or not.
@@ -72,12 +72,12 @@ type (
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File
 	FileConfig struct {
-		Path    string `yaml:"path" validate:"required,notblank"`
+		Path    string `yaml:"path"    validate:"required,notblank"`
 		Content string `yaml:"content" validate:"required,notblank"`
 	}
 
 	UserConfig struct {
-		Name         string `yaml:"name" validate:"required"`
+		Name         string `yaml:"name"         validate:"required"`
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"required"`
 	}
 
@@ -103,16 +103,16 @@ type (
 
 	SSHKeyPairConfig struct {
 		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"required,notblank"`
-		PublicKey         string `validate:"required,notblank"`
+		PublicKey         string `                         validate:"required,notblank"`
 
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"required,notblank"`
-		PrivateKey         string `validate:"required,notblank"`
+		PrivateKey         string `                          validate:"required,notblank"`
 	}
 
 	MonitoringConfig struct {
 		KubePrometheusVersion string `yaml:"kubePrometheusVersion" default:"v0.14.0"`
 		GrafanaURL            string `yaml:"grafanaURL"`
-		ConnectObmondo        bool   `yaml:"connectObmondo" default:"False"`
+		ConnectObmondo        bool   `yaml:"connectObmondo"        default:"False"`
 	}
 )
 
@@ -121,29 +121,29 @@ type (
 	AWSConfig struct {
 		Region string `yaml:"region" validate:"required,notblank"`
 
-		SSHKeyName     string          `yaml:"sshKeyName" validate:"required,notblank"`
+		SSHKeyName     string          `yaml:"sshKeyName"     validate:"required,notblank"`
 		VPCID          *string         `yaml:"vpcID"`
-		BastionEnabled bool            `yaml:"bastionEnabled" default:"True"`
-		ControlPlane   AWSControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups" validate:"required"`
+		BastionEnabled bool            `yaml:"bastionEnabled"                              default:"True"`
+		ControlPlane   AWSControlPlane `yaml:"controlPlane"   validate:"required"`
+		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups"     validate:"required"`
 
 		DisasterRecovery *AWSDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AWSControlPlane struct {
 		LoadBalancerScheme string    `yaml:"loadBalancerScheme" default:"internet-facing" validate:"required,notblank"`
-		Replicas           uint32    `yaml:"replicas" validate:"required"`
-		InstanceType       string    `yaml:"instanceType" validate:"required,notblank"`
-		AMI                AMIConfig `yaml:"ami" validate:"required"`
+		Replicas           uint32    `yaml:"replicas"                                     validate:"required"`
+		InstanceType       string    `yaml:"instanceType"                                 validate:"required,notblank"`
+		AMI                AMIConfig `yaml:"ami"                                          validate:"required"`
 	}
 
 	AWSNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		AMI            AMIConfig `yaml:"ami" validate:"required"`
-		InstanceType   string    `yaml:"instanceType" validate:"required,notblank"`
+		AMI            AMIConfig `yaml:"ami"            validate:"required"`
+		InstanceType   string    `yaml:"instanceType"   validate:"required,notblank"`
 		RootVolumeSize uint32    `yaml:"rootVolumeSize" validate:"required"`
-		SSHKeyName     string    `yaml:"sshKeyName" validate:"required,notblank"`
+		SSHKeyName     string    `yaml:"sshKeyName"     validate:"required,notblank"`
 	}
 
 	AMIConfig struct {
@@ -151,7 +151,7 @@ type (
 	}
 
 	AWSDisasterRecovery struct {
-		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName" validate:"required,notblank"`
+		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName"       validate:"required,notblank"`
 		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )
@@ -164,7 +164,7 @@ type (
 	}
 
 	HCloud struct {
-		SSHKeyName   string             `yaml:"sshKeyName" validate:"required,notblank"`
+		SSHKeyName   string             `yaml:"sshKeyName"   validate:"required,notblank"`
 		Enabled      bool               `yaml:"enabled"`
 		ControlPlane HCloudControlPlane `yaml:"controlPlane"`
 		NodeGroups   []HCloudNodeGroup  `yaml:"nodeGroups"`
@@ -173,20 +173,20 @@ type (
 	HCloudControlPlane struct {
 		LoadBalancer HetznerControlPlaneLoadBalancer `yaml:"loadBalancer"`
 		Regions      []string                        `yaml:"regions"`
-		MachineType  string                          `yaml:"machineType" validate:"required,notblank"`
-		Replicas     int                             `yaml:"replicas" validate:"required"`
+		MachineType  string                          `yaml:"machineType"  validate:"required,notblank"`
+		Replicas     int                             `yaml:"replicas"     validate:"required"`
 	}
 
 	HetznerControlPlaneLoadBalancer struct {
 		Enabled bool   `yaml:"enabled" validate:"required"`
-		Region  string `yaml:"region" validate:"required,notblank"`
+		Region  string `yaml:"region"  validate:"required,notblank"`
 	}
 
 	HCloudNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
 		FailureDomain string                  `yaml:"failureDomain" validate:"required,notblank"`
-		SSHKeys       []HCloudNodeGroupSSHKey `yaml:"sshKeys" validate:"required"`
+		SSHKeys       []HCloudNodeGroupSSHKey `yaml:"sshKeys"       validate:"required"`
 	}
 
 	HCloudNodeGroupSSHKey struct {
@@ -194,8 +194,8 @@ type (
 	}
 
 	HetznerBareMetal struct {
-		Enabled         bool                         `yaml:"enabled" validate:"required"`
-		RobotSSHKeyPair SSHKeyPairConfig             `yaml:"robotSSHKey" validate:"required"`
+		Enabled         bool                         `yaml:"enabled"      validate:"required"`
+		RobotSSHKeyPair SSHKeyPairConfig             `yaml:"robotSSHKey"  validate:"required"`
 		ControlPlane    HetznerBareMetalControlPlane `yaml:"controlPlane"`
 		NodeGroups      []HetznerBareMetalNodeGroup  `yaml:"nodeGroups"`
 	}
@@ -227,10 +227,10 @@ type (
 // Azure specific.
 type (
 	AzureConfig struct {
-		TenantID       string         `yaml:"tenantID" validate:"required,notblank"`
+		TenantID       string         `yaml:"tenantID"       validate:"required,notblank"`
 		SubscriptionID string         `yaml:"subscriptionID" validate:"required,notblank"`
 		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
-		Location       string         `yaml:"location" validate:"required,notblank"`
+		Location       string         `yaml:"location"       validate:"required,notblank"`
 
 		StorageAccount string `yaml:"storageAccount" validate:"required,notblank"`
 
@@ -239,14 +239,14 @@ type (
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
 
 		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups" validate:"required,gt=0"`
+		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
 
 		DisasterRecovery *AzureDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AADApplication struct {
-		Name               string `yaml:"name" validate:"required,notblank"`
-		ObjectID           string `yaml:"objectID" validate:"required,notblank"`
+		Name               string `yaml:"name"               validate:"required,notblank"`
+		ObjectID           string `yaml:"objectID"           validate:"required,notblank"`
 		ServicePrincipalID string `yaml:"servicePrincipalID" validate:"required,notblank"`
 	}
 
@@ -256,20 +256,20 @@ type (
 
 	AzureControlPlane struct {
 		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
-		DiskSizeGB       uint32 `yaml:"diskSizeGB" validate:"required,gt=100"`
-		VMSize           string `yaml:"vmSize" validate:"required,notblank"`
-		Replicas         uint32 `yaml:"replicas" validate:"required,gt=0"`
+		DiskSizeGB       uint32 `yaml:"diskSizeGB"       validate:"required,gt=100"`
+		VMSize           string `yaml:"vmSize"           validate:"required,notblank"`
+		Replicas         uint32 `yaml:"replicas"         validate:"required,gt=0"`
 	}
 
 	AzureNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		VMSize     string `yaml:"vmSize" validate:"required,notblank"`
+		VMSize     string `yaml:"vmSize"     validate:"required,notblank"`
 		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
 	}
 
 	AzureDisasterRecovery struct {
-		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName" validate:"required,notblank"`
+		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName"       validate:"required,notblank"`
 		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )

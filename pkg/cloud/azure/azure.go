@@ -10,10 +10,11 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type Azure struct {
@@ -97,7 +98,11 @@ func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 ) {
 }
 
-func (a *Azure) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any) {
+func (a *Azure) UpdateMachineTemplate(
+	ctx context.Context,
+	clusterClient client.Client,
+	_updates any,
+) {
 }
 
 func (a *Azure) GetSealedSecretsBackupBucketName() string {

@@ -4,8 +4,9 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 var GenerateCmd = &cobra.Command{

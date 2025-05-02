@@ -4,11 +4,12 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
@@ -19,7 +20,11 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 	switch {
 	// SSH private key and password.
 	case len(config.ParsedSecretsConfig.Git.SSHPrivateKey) > 0:
-		authMethod, err = ssh.NewPublicKeysFromFile("git", config.ParsedSecretsConfig.Git.SSHPrivateKey, config.ParsedSecretsConfig.Git.Password)
+		authMethod, err = ssh.NewPublicKeysFromFile(
+			"git",
+			config.ParsedSecretsConfig.Git.SSHPrivateKey,
+			config.ParsedSecretsConfig.Git.Password,
+		)
 		assert.AssertErrNil(ctx, err,
 			"Failed generating SSH public key from SSH private key and password for git",
 		)

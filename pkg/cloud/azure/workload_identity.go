@@ -17,6 +17,8 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/google/uuid"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -25,7 +27,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
-	"github.com/google/uuid"
 )
 
 //go:embed templates/*
@@ -60,83 +61,85 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 	// Create the Service Account token issuer.
 	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
 
-	// Create a User Assigned Managed Identity (dedicated to ClusterAPI).
-	// Assign it the Contributor role scoped to the subscription being used.
-	uamiName := config.ParsedGeneralConfig.Cluster.Name
-	_, globals.UAMIClientIDClusterAPI = services.CreateUAMI(ctx,
-		services.CreateUAMIArgs{
-			UAMIClient:            a.uamiClient,
-			RoleAssignmentsClient: a.roleAssignmentsClient,
+	{
+		// Create a User Assigned Managed Identity, dedicated to ClusterAPI.
+		// Assign it the Contributor role scoped to the subscription being used.
+		_, globals.UAMIClientIDClusterAPI = services.CreateUAMI(ctx,
+			services.CreateUAMIArgs{
+				UAMIClient:            a.uamiClient,
+				RoleAssignmentsClient: a.roleAssignmentsClient,
 
-			ResourceGroupName: a.resourceGroupName,
-			Name:              uamiName,
+				SubscriptionID:    a.subscriptionID,
+				ResourceGroupName: a.resourceGroupName,
 
-			RoleID:              constants.AzureRoleIDContributor,
-			RoleAssignmentScope: path.Join("/subscriptions/", azureConfig.SubscriptionID),
-		},
-	)
+				RoleID:              constants.AzureRoleIDContributor,
+				RoleAssignmentScope: path.Join("/subscriptions/", a.subscriptionID),
+				Name:                constants.UAMIClusterAPI,
+			},
+		)
 
-	// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
-	slog.InfoContext(ctx, "Creating Azure Federated Identity for CAPZ")
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		`
-      az identity federated-credential create \
-        --name "capz-federated-identity" \
-        --identity-name "%s" \
-        --resource-group "%s" \
-        --issuer "%s" \
-        --subject "system:serviceaccount:%s:%s"
-    `,
-		uamiName,
-		a.resourceGroupName,
-		serviceAccountIssuerURL,
-		kubernetes.GetCapiClusterNamespace(),
-		constants.ServiceAccountCAPZ,
-	))
+		// Create Federated Identity credential for Cluster API Provider Azure (CAPZ).
+		slog.InfoContext(ctx, "Creating Azure Federated Identity for CAPZ")
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az identity federated-credential create \
+          --name "capz-federated-identity" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
+      `,
+			constants.UAMIClusterAPI,
+			a.resourceGroupName,
+			serviceAccountIssuerURL,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.ServiceAccountCAPZ,
+		))
 
-	/*
-		Create Federated Identity credential for Azure Service Operator (ASO).
+		/*
+			Create Federated Identity credential for Azure Service Operator (ASO).
 
-		NOTE : CAPZ interfaces with Azure to create and manage some types of resources using Azure
-		       Service Operator (ASO).
-		       You can read about ASO here : https://azure.github.io/azure-service-operator/.
-	*/
-	slog.InfoContext(ctx, "Creating Azure Federated Identity for ASO")
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		`
-      az identity federated-credential create \
-        --name "aso-federated-identity" \
-        --identity-name "%s" \
-        --resource-group "%s" \
-        --issuer "%s" \
-        --subject "system:serviceaccount:%s:%s"
-    `,
-		uamiName,
-		a.resourceGroupName,
-		serviceAccountIssuerURL,
-		kubernetes.GetCapiClusterNamespace(),
-		constants.ServiceAccountASO,
-	))
+			NOTE : CAPZ interfaces with Azure to create and manage some types of resources using Azure
+			       Service Operator (ASO).
+			       You can read about ASO here : https://azure.github.io/azure-service-operator/.
+		*/
+		slog.InfoContext(ctx, "Creating Azure Federated Identity for Azure Service Operator (ASO)")
+		utils.ExecuteCommandOrDie(fmt.Sprintf(
+			`
+        az identity federated-credential create \
+          --name "aso-federated-identity" \
+          --identity-name "%s" \
+          --resource-group "%s" \
+          --issuer "%s" \
+          --subject "system:serviceaccount:%s:%s"
+      `,
+			constants.UAMIClusterAPI,
+			a.resourceGroupName,
+			serviceAccountIssuerURL,
+			kubernetes.GetCapiClusterNamespace(),
+			constants.ServiceAccountASO,
+		))
+	}
 
 	if azureConfig.DisasterRecovery != nil {
 		// Create a User Assigned Managed Identity (dedicated to Velero).
 		// Assign it the Storage Data Owner role scoped to the Storage Account being used.
-		uamiName := fmt.Sprintf("%s-velero", config.ParsedGeneralConfig.Cluster.Name)
 		_, globals.UAMIClientIDVelero = services.CreateUAMI(ctx,
 			services.CreateUAMIArgs{
 				UAMIClient:            a.uamiClient,
 				RoleAssignmentsClient: a.roleAssignmentsClient,
 
+				SubscriptionID:    a.subscriptionID,
 				ResourceGroupName: a.resourceGroupName,
-				Name:              uamiName,
 
-				RoleID: constants.AzureStorageBlobDataOwner,
+				RoleID: constants.AzureRoleIDStorageBlobDataOwner,
 				RoleAssignmentScope: fmt.Sprintf(
 					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s",
 					a.subscriptionID,
 					a.resourceGroupName,
 					config.ParsedGeneralConfig.Cloud.Azure.StorageAccount,
 				),
+				Name: constants.UAMIVelero,
 			},
 		)
 
@@ -151,9 +154,9 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
           --issuer "%s" \
           --subject "system:serviceaccount:%s:%s"
       `,
-			uamiName,
+			constants.UAMIVelero,
 			a.resourceGroupName,
-			GetServiceAccountIssuerURL(ctx),
+			serviceAccountIssuerURL,
 			constants.NamespaceVelero,
 			constants.ServiceAccountVelero,
 		))
@@ -163,7 +166,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 }
 
 func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
-	slog.InfoContext(ctx, "Creating external OpenID provider")
+	slog.InfoContext(ctx, "Setting up external OpenID provider...")
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
@@ -185,7 +188,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			roleDefinitionID = fmt.Sprintf(
 				"/subscriptions/%s/providers/Microsoft.Authorization/roleDefinitions/%s",
 				a.subscriptionID,
-				constants.AzureStorageBlobDataOwner,
+				constants.AzureRoleIDStorageBlobDataOwner,
 			)
 
 			roleScope = fmt.Sprintf(
@@ -214,8 +217,11 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		if err != nil {
 			// Skip, if the Storage Account already exists.
 			responseError, ok := err.(*azcore.ResponseError)
-			if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
-				slog.InfoContext(ctx, "Storage Blob Data Owner role is already assigned to AAD application")
+			if ok &&
+				responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+				slog.InfoContext(ctx,
+					"Storage Blob Data Owner role is already assigned to AAD application",
+				)
 			} else {
 				assert.AssertErrNil(ctx, err, "Failed assigning Storage Blob Data Owner role to AAD application")
 			}
@@ -238,6 +244,8 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
 
 	{
+		slog.InfoContext(ctx, "Generating and uploading openid-configuration.json")
+
 		// Generate the OpenID provider issuer discovery document.
 		// You can read more about OpenID provider issuer discovery document here :
 		// https://openid.net/specs/openid-connect-discovery-1_0.html.
@@ -256,7 +264,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			NOTE : We need to retry, since this fails until around a minute has passed after the creation
 			       of the Azure Blob Container.
 		*/
-		utils.WithRetry(10*time.Second, 6, func() error {
+		err = utils.WithRetry(10*time.Second, 6, func() error {
 			_, err := blobClient.UploadBuffer(ctx,
 				constants.BlobContainerNameWorkloadIdentity,
 				constants.AzureBlobNameOpenIDConfiguration,
@@ -265,7 +273,9 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			)
 			return err
 		})
-		assert.AssertErrNil(ctx, err, "Failed uploading openid-configuration.json to Azure Blob Container")
+		assert.AssertErrNil(ctx, err,
+			"Failed uploading openid-configuration.json to Azure Blob Container",
+		)
 
 		// Verify that the OpenID provider issuer discovery document is publicly accessible.
 
@@ -286,11 +296,11 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			bytes.Equal(responseBody, openIDConfig),
 			"Fetched openid-configuration.json, isn't as expected",
 		)
-
-		slog.InfoContext(ctx, "Uploaded openid-configuration.json to Azure Blob Container")
 	}
 
 	{
+		slog.InfoContext(ctx, "Generating and uploading JWKS document")
+
 		// Generate the JWKS document.
 		utils.ExecuteCommandOrDie(fmt.Sprintf(
 			"azwi jwks --public-keys %s --output-file %s",
@@ -329,11 +339,9 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			bytes.Equal(responseBody, jwksDocument),
 			"Fetched JWKS document, isn't as expected",
 		)
-
-		slog.InfoContext(ctx, "Uploaded JWKS document to Azure Blob Container")
 	}
 
-	slog.InfoContext(ctx, "Created external OpenID provider")
+	slog.InfoContext(ctx, "Finished setting up external OpenID provider")
 
 	return serviceAccountIssuerURL
 }

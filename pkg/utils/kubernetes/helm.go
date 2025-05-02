@@ -6,12 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/release"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 type HelmInstallArgs struct {
@@ -50,7 +51,8 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 
 	// CASE : Helm chart installation is stuck in pending-install state. So delete it first.
 	//        Then we'll try to install it again.
-	if (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusPendingInstall) {
+	if (existingHelmRelease != nil) &&
+		(existingHelmRelease.Info.Status == release.StatusPendingInstall) {
 		slog.InfoContext(ctx, "Uninstalling Helm chart, stuck in pending-install state")
 
 		uninstallAction := action.NewUninstall(actionConfig)
@@ -65,7 +67,10 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 	{
 		// Load Helm chart from the local chart path.
 		chart, err := loader.Load(args.ChartPath)
-		assert.AssertErrNil(ctx, err, "Failed loading Helm chart", slog.String("path", args.ChartPath))
+		assert.AssertErrNil(ctx, err,
+			"Failed loading Helm chart",
+			slog.String("path", args.ChartPath),
+		)
 
 		// Install the Helm chart.
 		slog.InfoContext(ctx, "Installing Helm chart....")
@@ -84,7 +89,11 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 
 // Looks whether a Helm release with the given name exists or not.
 // If yes, then returns it.
-func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configuration, args *HelmInstallArgs) *release.Release {
+func findExistingHelmRelease(
+	ctx context.Context,
+	actionConfig *action.Configuration,
+	args *HelmInstallArgs,
+) *release.Release {
 	listAction := action.NewList(actionConfig)
 	listAction.AllNamespaces = true
 	listAction.StateMask = action.ListAll
@@ -102,7 +111,10 @@ func findExistingHelmRelease(ctx context.Context, actionConfig *action.Configura
 			break
 		}
 
-		slog.ErrorContext(ctx, "Failed searching for existing Helm release. Retrying after 10 seconds....", logger.Error(err))
+		slog.ErrorContext(ctx,
+			"Failed searching for existing Helm release. Retrying after 10 seconds....",
+			logger.Error(err),
+		)
 		time.Sleep(10 * time.Second)
 	}
 

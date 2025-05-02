@@ -3,8 +3,9 @@ package globals
 import (
 	"io"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 )
 
 var (
@@ -17,6 +18,9 @@ var (
 	ArgoCDApplicationClient       application.ApplicationServiceClient
 
 	// Azure specific.
+
 	UAMIClientIDClusterAPI,
-	UAMIClientIDVelero string
+	UAMIClientIDVelero,
+
+	AzureStorageAccountAccessKey string
 )

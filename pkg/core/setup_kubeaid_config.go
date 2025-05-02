@@ -9,15 +9,17 @@ import (
 	"strings"
 	"time"
 
+	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
-	goGit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 type SetupKubeAidConfigArgs struct {
@@ -61,7 +63,11 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	targetBranchName := defaultBranchName
 	if !args.SkipPRFlow {
 		// Create and checkout to a new branch.
-		newBranchName := fmt.Sprintf("kubeaid-%s-%d", config.ParsedGeneralConfig.Cluster.Name, time.Now().Unix())
+		newBranchName := fmt.Sprintf(
+			"kubeaid-%s-%d",
+			config.ParsedGeneralConfig.Cluster.Name,
+			time.Now().Unix(),
+		)
 		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, args.GitAuthMethod)
 
 		targetBranchName = newBranchName
@@ -70,7 +76,11 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	clusterDir := utils.GetClusterDir()
 
 	// Create / update non Secret files.
-	createOrUpdateNonSecretFiles(ctx, clusterDir, args.GitAuthMethod, args.SkipMonitoringSetup, args.SkipKubePrometheusBuild)
+	createOrUpdateNonSecretFiles(ctx,
+		clusterDir,
+		args.SkipMonitoringSetup,
+		args.SkipKubePrometheusBuild,
+	)
 
 	// Create / update Secret files.
 	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
@@ -96,7 +106,13 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		//        They are specific to the git platform the user is on.
 
 		// Wait until the PR gets merged.
-		git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, args.GitAuthMethod, targetBranchName)
+		git.WaitUntilPRMerged(ctx,
+			repo,
+			defaultBranchName,
+			commitHash,
+			args.GitAuthMethod,
+			targetBranchName,
+		)
 	}
 }
 
@@ -104,18 +120,20 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 // repository.
 func createOrUpdateNonSecretFiles(ctx context.Context,
 	clusterDir string,
-	gitAuthMethod transport.AuthMethod,
 	skipMonitoringSetup,
 	skipKubePrometheusBuild bool,
 ) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
-	templateValues := getTemplateValues()
+	templateValues := getTemplateValues(ctx)
 
 	// Add KubePrometheus specific templates.
 	// Then execute the Obmondo's KubePrometheus build script.
 	if !skipMonitoringSetup {
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.TemplateNameKubePrometheusArgoCDApp)
+		embeddedTemplateNames = append(
+			embeddedTemplateNames,
+			constants.TemplateNameKubePrometheusArgoCDApp,
+		)
 
 		if !skipKubePrometheusBuild {
 			buildKubePrometheus(ctx, clusterDir, templateValues)
@@ -124,7 +142,10 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 
 	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
-		destinationFilePath := path.Join(clusterDir, strings.TrimSuffix(embeddedTemplateName, ".tmpl"))
+		destinationFilePath := path.Join(
+			clusterDir,
+			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
+		)
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 	}
 }
@@ -134,11 +155,14 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 func CreateOrUpdateSealedSecretFiles(ctx context.Context, clusterDir string) {
 	// Get Secret templates.
 	embeddedTemplateNames := getEmbeddedSecretTemplateNames()
-	templateValues := getTemplateValues()
+	templateValues := getTemplateValues(ctx)
 
 	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
-		destinationFilePath := path.Join(clusterDir, strings.TrimSuffix(embeddedTemplateName, ".tmpl"))
+		destinationFilePath := path.Join(
+			clusterDir,
+			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
+		)
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 
 		// Encrypt the Secret to a Sealed Secret.
@@ -154,33 +178,60 @@ func createFileFromTemplate(ctx context.Context,
 ) {
 	utils.CreateIntermediateDirsForFile(ctx, destinationFilePath)
 
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("path", destinationFilePath),
+	})
+
 	// Open the destination file.
-	destinationFile, err := os.OpenFile(destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	assert.AssertErrNil(ctx, err, "Failed opening file", slog.String("path", destinationFilePath))
+	destinationFile, err := os.OpenFile(
+		destinationFilePath,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		0644,
+	)
+	assert.AssertErrNil(ctx, err, "Failed opening file")
 	defer destinationFile.Close()
 
 	// Execute the corresponding template with the template values. Then write the execution result
 	// to that file.
-	content := templates.ParseAndExecuteTemplate(ctx, &KubeaidConfigFileTemplates, path.Join("templates/", embeddedTemplateName), templateValues)
-	destinationFile.Write(content)
+	content := templates.ParseAndExecuteTemplate(ctx,
+		&KubeaidConfigFileTemplates,
+		path.Join("templates/", embeddedTemplateName),
+		templateValues,
+	)
+	_, err = destinationFile.Write(content)
+	assert.AssertErrNil(ctx, err, "Failed writing template execution result to file")
 
-	slog.Info("Created file in KubeAid config fork", slog.String("file-path", destinationFilePath))
+	slog.InfoContext(ctx, "Created file in KubeAid config fork")
 }
 
 // Creates the jsonnet vars file for the cluster.
 // Then executes KubeAid's kube-prometheus build script.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
-	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet", clusterDir, config.ParsedGeneralConfig.Cluster.Name)
-	createFileFromTemplate(ctx, jsonnetVarsFilePath, constants.TemplateNameKubePrometheusVars, templateValues)
+	jsonnetVarsFilePath := fmt.Sprintf(
+		"%s/%s-vars.jsonnet",
+		clusterDir,
+		config.ParsedGeneralConfig.Cluster.Name,
+	)
+	createFileFromTemplate(ctx,
+		jsonnetVarsFilePath,
+		constants.TemplateNameKubePrometheusVars,
+		templateValues,
+	)
 
 	// Create the kube-prometheus folder.
 	kubePrometheusDir := fmt.Sprintf("%s/kube-prometheus", clusterDir)
 	err := os.MkdirAll(kubePrometheusDir, os.ModePerm)
-	assert.AssertErrNil(ctx, err, "Failed creating intermediate paths", slog.String("path", kubePrometheusDir))
+	assert.AssertErrNil(ctx, err,
+		"Failed creating intermediate paths",
+		slog.String("path", kubePrometheusDir),
+	)
 
 	// Run the KubePrometheus build script.
 	slog.Info("Running KubePrometheus build script...")
-	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh", utils.GetKubeAidDir())
+	kubePrometheusBuildScriptPath := fmt.Sprintf(
+		"%s/build/kube-prometheus/build.sh",
+		utils.GetKubeAidDir(),
+	)
 	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
 }

@@ -5,13 +5,14 @@ import (
 	"embed"
 	"os"
 
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
 //go:embed templates/*
@@ -33,14 +34,15 @@ type TemplateValues struct {
 	AzureConfig *config.AzureConfig
 	ServiceAccountIssuerURL,
 	UAMIClientIDClusterAPI,
-	UAMIClientIDVelero string
+	UAMIClientIDVelero,
+	AzureStorageAccountAccessKey string
 
 	HetznerConfig *config.HetznerConfig
 
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
 
-func getTemplateValues() *TemplateValues {
+func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
 		CustomerID:           config.ParsedGeneralConfig.CustomerID,
 		GitUsername:          config.ParsedSecretsConfig.Git.Username,
@@ -50,23 +52,24 @@ func getTemplateValues() *TemplateValues {
 		MonitoringConfig:     config.ParsedGeneralConfig.Monitoring,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 
-		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
-
-		AzureConfig:            config.ParsedGeneralConfig.Cloud.Azure,
-		UAMIClientIDClusterAPI: globals.UAMIClientIDClusterAPI,
-		UAMIClientIDVelero:     globals.UAMIClientIDVelero,
-
+		AWSConfig:     config.ParsedGeneralConfig.Cloud.AWS,
+		AzureConfig:   config.ParsedGeneralConfig.Cloud.Azure,
 		HetznerConfig: config.ParsedGeneralConfig.Cloud.Hetzner,
 	}
 
 	// Set cloud provider specific values.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		templateValues.AWSAccountID = aws.GetAccountID(context.Background())
-		templateValues.AWSB64EncodedCredentials = os.Getenv(constants.EnvNameAWSB64EcodedCredentials)
+		templateValues.AWSAccountID = aws.GetAccountID(ctx)
+		templateValues.AWSB64EncodedCredentials = os.Getenv(
+			constants.EnvNameAWSB64EcodedCredentials,
+		)
 
 	case constants.CloudProviderAzure:
-		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(context.Background())
+		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(ctx)
+		templateValues.UAMIClientIDClusterAPI = globals.UAMIClientIDClusterAPI
+		templateValues.UAMIClientIDVelero = globals.UAMIClientIDVelero
+		templateValues.AzureStorageAccountAccessKey = globals.AzureStorageAccountAccessKey
 	}
 
 	/*
@@ -87,7 +90,7 @@ func getTemplateValues() *TemplateValues {
 		}
 
 		for _, kubeConfigPath := range kubeConfigPaths {
-			clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath, true)
+			clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath)
 			if err != nil {
 				continue
 			}
@@ -106,30 +109,40 @@ func getTemplateValues() *TemplateValues {
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
 func getEmbeddedNonSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
-	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames, constants.CommonCloudNonSecretTemplateNames...)
+	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames,
+		constants.CommonCloudNonSecretTemplateNames...,
+	)
 
 	// Add cloud provider specific templates.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificNonSecretTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.AWSSpecificNonSecretTemplateNames...,
+		)
 
-		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
-		// cloud-provider specific config.
+		// Add Disaster Recovery related templates, if the user wants disaster recover.
 		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
-			embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSDisasterRecoverySpecificTemplateNames...)
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
+			)
 		}
 
 	case constants.CloudProviderAzure:
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.AzureSpecificNonSecretTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.AzureSpecificNonSecretTemplateNames...,
+		)
 
-		// Add Disaster Recovery related templates, if disasterRecovery section is specified in the
-		// cloud-provider specific config.
+		// Add Disaster Recovery related templates, if the user wants disaster recover.
 		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
-			embeddedTemplateNames = append(embeddedTemplateNames, constants.AzureDisasterRecoverySpecificTemplateNames...)
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
+			)
 		}
 
 	case constants.CloudProviderHetzner:
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificNonSecretTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.HetznerSpecificNonSecretTemplateNames...,
+		)
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
@@ -154,10 +167,26 @@ func getEmbeddedSecretTemplateNames() []string {
 	// Add cloud provider specific templates, if required.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.AWSSpecificSecretTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.AWSSpecificSecretTemplateNames...,
+		)
+
+	case constants.CloudProviderAzure:
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.AzureSpecificSecretTemplateNames...,
+		)
+
+		// Add Disaster Recovery related templates, if the user wants disaster recover.
+		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.AzureDisasterRecoverySpecificSecretTemplateNames...,
+			)
+		}
 
 	case constants.CloudProviderHetzner:
-		embeddedTemplateNames = append(embeddedTemplateNames, constants.HetznerSpecificSecretTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.HetznerSpecificSecretTemplateNames...,
+		)
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonSecretTemplateNames

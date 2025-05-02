@@ -84,15 +84,11 @@ azure:
   sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
 
   userAssignedIdentity:
-    name: {{ .ClusterConfig.Name }}
+    name: cluster-api
     clientID: {{ .UAMIClientIDClusterAPI }}
 
   serviceAccountIssuer:
     url: {{ .ServiceAccountIssuerURL }}
-    publicKey: |
-{{- .AzureConfig.WorkloadIdentity.OpenIDProviderSSHKeyPair.PublicKey | nindent 6 }}
-    privateKey: |
-{{- .AzureConfig.WorkloadIdentity.OpenIDProviderSSHKeyPair.PrivateKey | nindent 6 }}
 
   controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 

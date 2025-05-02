@@ -9,14 +9,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3Types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/sagikazarmark/slog-shim"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 // Creates S3 Bucket.
@@ -30,7 +31,9 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 	}
 	if config.ParsedGeneralConfig.Cloud.AWS.Region != "us-east-1" {
 		createBucketInput.CreateBucketConfiguration = &s3Types.CreateBucketConfiguration{
-			LocationConstraint: s3Types.BucketLocationConstraint(config.ParsedGeneralConfig.Cloud.AWS.Region),
+			LocationConstraint: s3Types.BucketLocationConstraint(
+				config.ParsedGeneralConfig.Cloud.AWS.Region,
+			),
 		}
 	}
 	_, err := s3Client.CreateBucket(ctx, createBucketInput)
@@ -89,7 +92,12 @@ func DownloadS3BucketContents(ctx context.Context,
 }
 
 // Downloads the content of the given S3 object locally.
-func downloadS3Object(ctx context.Context, s3Client *s3.Client, bucketName, downloadDir, objectKey *string, gzipDecode bool) {
+func downloadS3Object(
+	ctx context.Context,
+	s3Client *s3.Client,
+	bucketName, downloadDir, objectKey *string,
+	gzipDecode bool,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("object", *objectKey),
 	})
@@ -99,7 +107,10 @@ func downloadS3Object(ctx context.Context, s3Client *s3.Client, bucketName, down
 	// Create intermediate directories (if required).
 	if strings.Contains(*objectKey, "/") {
 		err := os.MkdirAll(filePath, os.ModePerm)
-		assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", *downloadDir))
+		assert.AssertErrNil(ctx, err,
+			"Failed creating directory",
+			slog.String("path", *downloadDir),
+		)
 	}
 
 	// Create the file where the contents of the given S3 object will be stored.

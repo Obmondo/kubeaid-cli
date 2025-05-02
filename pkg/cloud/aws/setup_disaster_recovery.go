@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/sagikazarmark/slog-shim"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 // Sets up the provisioned cluster for Disaster Recovery.
@@ -57,7 +59,7 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 	argocdAppsToBeSynced := []string{
 		"kube2iam",
 		"k8s-configs",
-		"velero",
+		constants.ArgoCDAppVelero,
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {

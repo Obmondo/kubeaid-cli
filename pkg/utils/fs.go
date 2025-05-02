@@ -32,7 +32,10 @@ func InitTempDir() {
 	for _, item := range filesAndFolders {
 		if item.IsDir() && strings.HasPrefix(item.Name(), namePrefix) {
 			path := "/tmp/" + item.Name()
-			slog.Info("Skipped creating temp dir, since it already exists", slog.String("path", path))
+			slog.Info(
+				"Skipped creating temp dir, since it already exists",
+				slog.String("path", path),
+			)
 
 			globals.TempDir = path
 
@@ -45,7 +48,10 @@ func InitTempDir() {
 	dirName := fmt.Sprintf("%s%d", namePrefix, time.Now().Unix())
 
 	path, err := os.MkdirTemp("/tmp", dirName)
-	assert.AssertErrNil(context.Background(), err, "Failed creating temp dir", slog.String("path", path))
+	assert.AssertErrNil(context.Background(), err,
+		"Failed creating temp dir",
+		slog.String("path", path),
+	)
 
 	slog.Info("Created temp dir", slog.String("path", path))
 
@@ -66,7 +72,10 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 	parentDir := filepath.Dir(filePath)
 
 	err := os.MkdirAll(parentDir, os.ModePerm)
-	assert.AssertErrNil(ctx, err, "Failed creating intermediate directories for file", slog.String("path", filePath))
+	assert.AssertErrNil(ctx, err,
+		"Failed creating intermediate directories for file",
+		slog.String("path", filePath),
+	)
 }
 
 // Returns path to the directory (in temp directory), where the KubeAid repo is / will be cloned.

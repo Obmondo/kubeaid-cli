@@ -1,14 +1,15 @@
-package delete
+package cluster
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 )
 
 var DeleteCmd = &cobra.Command{
 	Use: "delete",
 
-	Short: "Delete the provisioned cluster",
+	Short: "Delete a KubeAid + ClusterAPI managed cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.DeleteCluster(cmd.Context())

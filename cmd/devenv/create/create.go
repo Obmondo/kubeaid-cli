@@ -1,8 +1,9 @@
 package create
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 var CreateCmd = &cobra.Command{

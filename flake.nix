@@ -1,4 +1,6 @@
 {
+  description = "KubeAid Bootstrap Script";
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
@@ -21,71 +23,26 @@
       with pkgs;
       {
         devShells.default = mkShell {
-          buildInputs =
-            let
-              clusterawsadm = pkgs.stdenv.mkDerivation rec {
-                pname = "clusterawsadm";
-                version = "v2.7.1";
+          nativeBuildInputs = [
+            go
+            golangci-lint
+            golines
 
-                src = pkgs.fetchurl {
-                  url =
-                    "https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/${version}/"
-                    + (if pkgs.stdenv.isDarwin then "clusterawsadm-darwin-arm64" else "clusterawsadm-linux-amd64");
+            gojsontoyaml
+            jsonnet
+            jq
+            yq
 
-                  sha256 = "sha256-J4MJ8NZwJVqJJSes6pP+1Zro+v0Kc+1p89N6r74i+oI=";
-                };
+            k3d
+            kubectl
+            kubeseal
+            clusterctl
+            (import ./build/nix/pkgs/clusterawsadm.nix { inherit pkgs; })
+            (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
+            azure-cli
 
-                dontUnpack = true;
-                installPhase = ''
-                  mkdir -p $out/bin
-                  cp $src $out/bin/clusterawsadm
-                  chmod +x $out/bin/clusterawsadm
-                '';
-              };
-              azwi = pkgs.stdenv.mkDerivation rec {
-                pname = "azwi";
-                version = "v1.4.1";
-
-                src = pkgs.fetchurl {
-                  url =
-                    "https://github.com/Azure/azure-workload-identity/releases/download/${version}/azwi-${version}-"
-                    + (if pkgs.stdenv.isDarwin then "darwin-arm64.tar.gz" else "linux-arm64.tar.gz");
-
-                  sha256 = "sha256-Cejrlh4CDtDpv7k93DDwbS4/mSA+AfhjvhMVKHItaHw=";
-                };
-
-                unpackPhase = ''
-                  tar -xzf $src
-                '';
-                installPhase = ''
-                  mkdir -p $out/bin
-                  cp azwi $out/bin/azwi
-                  chmod +x $out/bin/azwi
-                '';
-              };
-            in
-            [
-              go_1_24
-              golangci-lint
-              golines
-
-              gojsontoyaml
-              jsonnet
-              jq
-
-              yq
-
-              k3d
-              kubectl
-              kubeseal
-              clusterctl
-
-              clusterawsadm
-              azwi
-              azure-cli
-
-              k9s
-            ];
+            k9s
+          ];
         };
       }
     );

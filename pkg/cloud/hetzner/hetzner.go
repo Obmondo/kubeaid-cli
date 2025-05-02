@@ -3,8 +3,9 @@ package hetzner
 import (
 	"context"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 )
 
 type Hetzner struct{}
@@ -35,6 +36,10 @@ func (*Hetzner) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 ) {
 }
 
-func (*Hetzner) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any) {
+func (*Hetzner) UpdateMachineTemplate(
+	ctx context.Context,
+	clusterClient client.Client,
+	_updates any,
+) {
 	panic("unreachable")
 }

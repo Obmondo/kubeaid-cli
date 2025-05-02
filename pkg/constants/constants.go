@@ -72,12 +72,21 @@ var (
 
 	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "k3d.config.yaml")
 
-	OutputPathManagementClusterHostKubeconfig      = path.Join(OutputDirectory, "kubeconfigs/clusters/management/host.yaml")
-	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/management/container.yaml")
+	OutputPathManagementClusterHostKubeconfig = path.Join(
+		OutputDirectory,
+		"kubeconfigs/clusters/management/host.yaml",
+	)
+	OutputPathManagementClusterContainerKubeconfig = path.Join(
+		OutputDirectory,
+		"kubeconfigs/clusters/management/container.yaml",
+	)
 
 	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/main.yaml")
 
-	OutputPathJWKSDocument = path.Join(OutputDirectory, "workload-identity/openid-provider/jwks.json")
+	OutputPathJWKSDocument = path.Join(
+		OutputDirectory,
+		"workload-identity/openid-provider/jwks.json",
+	)
 )
 
 // ArgoCD.
@@ -103,17 +112,20 @@ const (
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
 
-	/*
-		The Azure built-in Contributor role grants full access to manage all resources, but does not
-		allow you to assign roles in Azure RBAC, manage assignments in Azure Blueprints, or share
-		image galleries.
-
-		REFERENCE : https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
-	*/
-	AzureRoleIDContributor    = "b24988ac-6180-42a0-ab88-20f7382dd24c"
-	AzureStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
+	// Grants full access to manage all resources, but does not allow you to assign roles in Azure
+	// RBAC, manage assignments in Azure Blueprints, or share image galleries.
+	AzureRoleIDContributor = "b24988ac-6180-42a0-ab88-20f7382dd24c"
+	// Provides full access to Azure Storage blob containers and data, including assigning POSIX
+	// access control.
+	AzureRoleIDStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
+	// NOTE : You can view all the Azure built-in roles here :
+	//        https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
+
+	UAMIClusterAPI            = "cluster-api"
+	UAMIVelero                = "velero"
+	UAMISealedSecretsBackuper = "sealed-secrets-backuper"
 )
 
 const (
@@ -122,9 +134,10 @@ const (
 	NamespaceSealedSecrets = "sealed-secrets"
 
 	// Service Accounts.
-	ServiceAccountCAPZ   = "capz-manager"
-	ServiceAccountASO    = "azureserviceoperator-default"
-	ServiceAccountVelero = "velero"
+	ServiceAccountCAPZ          = "capz-manager"
+	ServiceAccountASO           = "azureserviceoperator-default"
+	ServiceAccountVelero        = "velero"
+	ServiceAccountSealedSecrets = "sealed-secrets"
 )
 
 // Miscellaneous.
@@ -136,124 +149,4 @@ const (
 
 	SSHPublicKeyPrefixOpenSSH = "ssh-rsa "
 	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
-)
-
-// Template names.
-var (
-	TemplateNameAWSGeneralConfig = "files/templates/aws.general.config.yaml.tmpl"
-	TemplateNameAWSSecretsConfig = "files/templates/aws.secrets.config.yaml.tmpl"
-
-	TemplateNameAzureGeneralConfig = "files/templates/azure.general.config.yaml.tmpl"
-	TemplateNameAzureSecretsConfig = "files/templates/azure.secrets.config.yaml.tmpl"
-
-	TemplateNameHetznerGeneralConfig = "files/templates/hetzner.general.config.yaml.tmpl"
-	TemplateNameHetznerSecretsConfig = "files/templates/hetzner.secrets.config.yaml.tmpl"
-
-	TemplateNameLocalGeneralConfig = "files/templates/local.general.config.yaml.tmpl"
-	TemplateNameLocalSecretsConfig = "files/templates/local.secrets.config.yaml.tmpl"
-
-	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
-
-	TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
-
-	CommonNonSecretTemplateNames = []string{
-		// For ArgoCD.
-		"argocd-apps/templates/argocd.yaml.tmpl",
-		"argocd-apps/values-argocd.yaml.tmpl",
-
-		// For Root ArgoCD App.
-		"argocd-apps/Chart.yaml",
-		"argocd-apps/templates/root.yaml.tmpl",
-
-		// For CertManager.
-		"argocd-apps/templates/cert-manager.yaml.tmpl",
-		"argocd-apps/values-cert-manager.yaml.tmpl",
-
-		// For Sealed Secrets.
-		"argocd-apps/templates/sealed-secrets.yaml.tmpl",
-		"argocd-apps/values-sealed-secrets.yaml.tmpl",
-		"argocd-apps/templates/secrets.yaml.tmpl",
-	}
-
-	CommonSecretTemplateNames = []string{
-		// For ArgoCD.
-		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
-	}
-
-	// For KubePrometheus.
-	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.yaml.tmpl"
-	TemplateNameKubePrometheusVars      = "cluster-vars.jsonnet.tmpl"
-
-	CommonCloudNonSecretTemplateNames = []string{
-		// For Cilium
-		"argocd-apps/templates/cilium.yaml.tmpl",
-		"argocd-apps/values-cilium.yaml.tmpl",
-
-		// For Cluster API.
-		"argocd-apps/templates/cluster-api.yaml.tmpl",
-		"argocd-apps/values-cluster-api.yaml.tmpl",
-
-		// For CAPI Cluster.
-		"argocd-apps/templates/capi-cluster.yaml.tmpl",
-		"argocd-apps/values-capi-cluster.yaml.tmpl",
-
-		// For Cluster Autoscaler.
-		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
-		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
-	}
-
-	AWSSpecificNonSecretTemplateNames = []string{
-		// For AWS Cloud Controller Manager.
-		"argocd-apps/templates/ccm-aws.yaml.tmpl",
-		"argocd-apps/values-ccm-aws.yaml.tmpl",
-	}
-
-	AWSSpecificSecretTemplateNames = []string{
-		// For Cluster API.
-		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
-	}
-
-	AWSDisasterRecoverySpecificTemplateNames = []string{
-		// For Kube2IAM.
-		"argocd-apps/templates/kube2iam.yaml.tmpl",
-		"argocd-apps/values-kube2iam.yaml.tmpl",
-
-		// For Velero.
-		"argocd-apps/templates/velero.yaml.tmpl",
-		"argocd-apps/values-velero.yaml.tmpl",
-
-		// For K8sConfigs.
-		"argocd-apps/templates/k8s-configs.yaml.tmpl",
-		"k8s-configs/sealed-secrets.namespace.yaml.tmpl",
-		"k8s-configs/velero.namespace.yaml.tmpl",
-	}
-
-	AzureSpecificNonSecretTemplateNames = []string{
-		// For Azure Cloud Controller Manager.
-		"argocd-apps/templates/ccm-azure.yaml.tmpl",
-		"argocd-apps/values-ccm-azure.yaml.tmpl",
-	}
-
-	AzureDisasterRecoverySpecificTemplateNames = []string{
-		// For Velero.
-		"argocd-apps/templates/velero.yaml.tmpl",
-		"argocd-apps/values-velero.yaml.tmpl",
-	}
-
-	HetznerSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Robot Failover.
-		// "argocd-apps/templates/hetzner-robot.yaml.tmpl",
-		// "argocd-apps/values-hetzner-robot.yaml.tmpl",
-
-		// For Hetzner Cloud Controller Manager.
-		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
-		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
-	}
-
-	HetznerSpecificSecretTemplateNames = []string{
-		// For Cluster API.
-		// "sealed-secrets/capi-cluster/hetzner-robot-ssh-keypair.yaml.tmpl",
-		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
-		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
-	}
 )

@@ -6,10 +6,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 var ConfigsDirectory string
@@ -31,8 +32,18 @@ func RegisterAWSCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("aws-credentials", pflag.ExitOnError)
 
 	flagSet.StringVar(&AWSAccessKeyID, constants.FlagNameAWSAccessKeyID, "", "AWS access key ID")
-	flagSet.StringVar(&AWSSecretAccessKey, constants.FlagNameAWSSecretAccessKey, "", "AWS secret access key")
-	flagSet.StringVar(&AWSSessionToken, constants.FlagNameAWSSessionToken, "", "AWS session token (optional)")
+	flagSet.StringVar(
+		&AWSSecretAccessKey,
+		constants.FlagNameAWSSecretAccessKey,
+		"",
+		"AWS secret access key",
+	)
+	flagSet.StringVar(
+		&AWSSessionToken,
+		constants.FlagNameAWSSessionToken,
+		"",
+		"AWS session token (optional)",
+	)
 
 	flagSet.VisitAll(bindFlagToEnv)
 
@@ -47,8 +58,18 @@ func RegisterHetznerCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("hetzner-credentials", pflag.ExitOnError)
 
 	flagSet.StringVar(&HetznerAPIToken, constants.FlagNameHetznerAPIToken, "", "Hetzner API token")
-	flagSet.StringVar(&HetznerRobotUsername, constants.FlagNameHetznerRobotUsername, "", "Hetzner robot user")
-	flagSet.StringVar(&HetznerRobotPassword, constants.FlagNameHetznerRobotPassword, "", "Hetzner robot password")
+	flagSet.StringVar(
+		&HetznerRobotUsername,
+		constants.FlagNameHetznerRobotUsername,
+		"",
+		"Hetzner robot user",
+	)
+	flagSet.StringVar(
+		&HetznerRobotPassword,
+		constants.FlagNameHetznerRobotPassword,
+		"",
+		"Hetzner robot password",
+	)
 
 	flagSet.VisitAll(bindFlagToEnv)
 
@@ -60,7 +81,12 @@ var AzureClientSecret string
 func RegisterAzureCredentialsFlags(command *cobra.Command) {
 	flagSet := pflag.NewFlagSet("azure-credentials", pflag.ExitOnError)
 
-	flagSet.StringVar(&AzureClientSecret, constants.FlagNameAzureClientSecret, "", "Azure client secret")
+	flagSet.StringVar(
+		&AzureClientSecret,
+		constants.FlagNameAzureClientSecret,
+		"",
+		"Azure client secret",
+	)
 
 	flagSet.VisitAll(bindFlagToEnv)
 
@@ -86,11 +112,17 @@ func bindFlagToEnv(flag *pflag.Flag) {
 	envValue, envFound := os.LookupEnv(correspondingEnvName)
 	if envFound {
 		err := flag.Value.Set(envValue)
-		assert.AssertErrNil(context.Background(), err, "Failed setting flag value from environment variable")
+		assert.AssertErrNil(context.Background(), err,
+			"Failed setting flag value from environment variable",
+		)
 
 		flag.Changed = true
 
-		slog.Debug("Flag value picked up from environment variable", slog.String("flag", flag.Name), slog.String("env", correspondingEnvName))
+		slog.Debug(
+			"Flag value picked up from environment variable",
+			slog.String("flag", flag.Name),
+			slog.String("env", correspondingEnvName),
+		)
 		return
 	}
 }

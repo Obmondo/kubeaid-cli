@@ -32,7 +32,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: build/Dockerfile
+          file: build/docker/Dockerfile
           # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
           # using QEMU).
           platforms: linux/amd64,linux/arm64

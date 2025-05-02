@@ -7,14 +7,20 @@ import (
 	"log/slog"
 	"text/template"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	"github.com/go-sprout/sprout"
 	"github.com/go-sprout/sprout/registry/encoding"
 	"github.com/go-sprout/sprout/registry/strings"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func ParseAndExecuteTemplate(ctx context.Context, embeddedFS *embed.FS, templateFileName string, values any) []byte {
+func ParseAndExecuteTemplate(
+	ctx context.Context,
+	embeddedFS *embed.FS,
+	templateFileName string,
+	values any,
+) []byte {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("template", templateFileName),
 	})
@@ -27,7 +33,9 @@ func ParseAndExecuteTemplate(ctx context.Context, embeddedFS *embed.FS, template
 		strings.NewRegistry(),
 	)).Build()
 
-	parsedTemplate, err := template.New(templateFileName).Funcs(sproutFuncs).Parse(string(contentsAsBytes))
+	parsedTemplate, err := template.New(templateFileName).
+		Funcs(sproutFuncs).
+		Parse(string(contentsAsBytes))
 	assert.AssertErrNil(ctx, err, "Failed parsing template")
 
 	var executedTemplate bytes.Buffer

@@ -1,7 +1,6 @@
 package aws
 
 import (
-	"os"
 	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -14,10 +13,10 @@ import (
 func SetAWSSpecificEnvs() {
 	awsCredentials := config.ParsedSecretsConfig.AWS
 
-	os.Setenv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
-	os.Setenv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
-	os.Setenv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
-	os.Setenv(constants.EnvNameAWSRegion, config.ParsedGeneralConfig.Cloud.AWS.Region)
+	utils.MustSetEnv(constants.EnvNameAWSAccessKey, awsCredentials.AWSAccessKeyID)
+	utils.MustSetEnv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
+	utils.MustSetEnv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
+	utils.MustSetEnv(constants.EnvNameAWSRegion, config.ParsedGeneralConfig.Cloud.AWS.Region)
 
 	awsB64EncodedCredentials := strings.TrimSpace(
 		strings.Split(
@@ -25,5 +24,5 @@ func SetAWSSpecificEnvs() {
 			"WARNING: `encode-as-profile` should only be used for bootstrapping.",
 		)[1],
 	)
-	os.Setenv(constants.EnvNameAWSB64EcodedCredentials, awsB64EncodedCredentials)
+	utils.MustSetEnv(constants.EnvNameAWSB64EcodedCredentials, awsB64EncodedCredentials)
 }

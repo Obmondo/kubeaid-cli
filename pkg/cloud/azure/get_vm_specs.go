@@ -11,13 +11,12 @@ import (
 )
 
 func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
-	vmSizesListPager := a.vmSizesClient.NewListPager(config.ParsedGeneralConfig.Cloud.Azure.Location, nil)
+	vmSizesListPager := a.vmSizesClient.NewListPager(
+		config.ParsedGeneralConfig.Cloud.Azure.Location,
+		nil,
+	)
 
-	for {
-		if !vmSizesListPager.More() {
-			break
-		}
-
+	for vmSizesListPager.More() {
 		response, err := vmSizesListPager.NextPage(ctx)
 		assert.AssertErrNil(ctx, err, "Failed fetching VM sizes list")
 

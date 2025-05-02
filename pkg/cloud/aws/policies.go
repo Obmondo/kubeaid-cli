@@ -16,7 +16,10 @@ func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
 				Action: []string{"sts:AssumeRole"},
 				Effect: "Allow",
 				Principal: map[string]string{
-					"AWS": fmt.Sprintf("arn:aws:iam::%s:role/nodes.cluster-api-provider-aws.sigs.k8s.io", GetAccountID(ctx)),
+					"AWS": fmt.Sprintf(
+						"arn:aws:iam::%s:role/nodes.cluster-api-provider-aws.sigs.k8s.io",
+						GetAccountID(ctx),
+					),
 				},
 			},
 		},

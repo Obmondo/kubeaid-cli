@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/sagikazarmark/slog-shim"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 type MachineTemplateUpdates struct {
@@ -29,13 +30,17 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 		},
 	}
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate)
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx,
+		err,
 		"Failed retrieving the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
 
 	// Delete that AWSMachineTemplate.
 	err = clusterClient.Delete(ctx, awsMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx,
+		err,
 		"Failed deleting the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
 	slog.InfoContext(ctx,
@@ -46,7 +51,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	awsMachineTemplate.Spec.Template.Spec.AMI = capaV1Beta2.AMIReference{
 		ID: &updates.AMIID,
 	}
-	awsMachineTemplate.ObjectMeta.ResourceVersion = ""
+	awsMachineTemplate.ResourceVersion = ""
 	err = clusterClient.Create(ctx, awsMachineTemplate, &client.CreateOptions{})
 	assert.AssertErrNil(ctx, err, "Failed recreating the AWSMachineTemplate")
 }
