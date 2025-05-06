@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/priority: "default"
+  name: azure-workload-identity-webhook
+  namespace: argocd
+spec:
+  destination:
+    namespace: azure-workload-identity-system
+    server: https://kubernetes.default.svc
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/azure-workload-identity-webhook
+      targetRevision: {{ .KubeaidVersion }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-azure-workload-identity-webhook.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  project: kubeaid
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+

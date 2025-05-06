@@ -9,13 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	goGit "github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 func AddCommitAndPushChanges(ctx context.Context,
@@ -31,7 +32,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 
 	status, err := workTree.Status()
 	assert.AssertErrNil(ctx, err, "Failed determining git status")
-	slog.Info("Determined git status", slog.Any("git-status", status))
+	slog.InfoContext(ctx, "Determined git status", slog.Any("git-status", status))
 
 	commit, err := workTree.Commit(commitMessage, &goGit.CommitOptions{
 		Author: &object.Signature{
@@ -54,8 +55,11 @@ func AddCommitAndPushChanges(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
-	slog.Info("Added, committed and pushed changes", slog.String("commit-hash", commitObject.Hash.String()))
-	slog.Info("Create and merge PR please", slog.String("URL", getCreatePRURL(branch)))
+	slog.InfoContext(ctx,
+		"Added, committed and pushed changes",
+		slog.String("commit-hash", commitObject.Hash.String()),
+	)
+	slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", getCreatePRURL(branch)))
 
 	return commitObject.Hash
 }
@@ -76,6 +80,8 @@ func getCreatePRURL(fromBranch string) string {
 
 // TODO : Sometimes we get this error while trying to detect whether the branch has been merged
 // or not : `unexpected EOF`. In that case, just retry instead of erroring out.
+//
+//nolint:godox
 func WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,
@@ -98,7 +104,10 @@ func WaitUntilPRMerged(ctx context.Context,
 			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")
 		}
 
-		defaultBranchRef, err := repo.Reference(plumbing.ReferenceName("refs/heads/"+defaultBranchName), true)
+		defaultBranchRef, err := repo.Reference(
+			plumbing.ReferenceName("refs/heads/"+defaultBranchName),
+			true,
+		)
 		assert.AssertErrNil(ctx, err, "Failed to get default branch ref")
 
 		if commitPresent := isCommitPresentInBranch(repo, commitHash, defaultBranchRef.Hash()); commitPresent {

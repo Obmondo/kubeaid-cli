@@ -7,7 +7,7 @@ IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build -f ./build/docker/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
 
 .PHONY: remove-image-dev
 remove-image-dev:
@@ -24,10 +24,6 @@ run-container-dev: build-image-dev
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v $(CURRENT_DIR):/app \
     $(IMAGE_NAME)
-
-# -e SSH_AUTH_SOCK=/ssh-agent \
-# -v /dev/bus/usb:/dev/bus/usb \
-# -v $(SSH_AUTH_SOCK):/ssh-agent \
 
 .PHONY: exec-container-dev
 exec-container-dev:
@@ -47,13 +43,13 @@ sample-config-generate-aws-dev:
 
 .PHONY: devenv-create-aws-dev
 devenv-create-aws-dev:
-	@go run ./cmd/ devenv create aws \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/aws/
 
 .PHONY: devenv-create-azure-dev
 devenv-create-azure-dev:
-	@go run ./cmd/ devenv create azure \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-flow \
@@ -61,7 +57,7 @@ devenv-create-azure-dev:
 
 .PHONY: bootstrap-cluster-aws-dev
 bootstrap-cluster-aws-dev:
-	@go run ./cmd/ cluster bootstrap aws \
+	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/aws/
 # --skip-kube-prometheus-build
@@ -69,21 +65,19 @@ bootstrap-cluster-aws-dev:
 
 .PHONY: bootstrap-cluster-azure-dev
 bootstrap-cluster-azure-dev:
-	@go run ./cmd/ cluster bootstrap azure \
+	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-monitoring-setup \
     --skip-pr-flow \
     --skip-kube-prometheus-build
-# --skip-clusterctl-move
 
 .PHONY: bootstrap-cluster-hetzner-dev
 bootstrap-cluster-hetzner-dev:
-	@go run ./cmd/ cluster bootstrap hetzner \
+	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/hcloud/ \
     --skip-kube-prometheus-build
-# --skip-clusterctl-move
 
 .PHONY: upgrade-cluster-aws-dev
 upgrade-cluster-aws-dev:
@@ -116,7 +110,7 @@ delete-provisioned-cluster-hetzner-dev:
 
 .PHONY: bootstrap-cluster-local-dev
 bootstrap-cluster-local-dev:
-	@go run ./cmd/ cluster bootstrap local \
+	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/local/ \
     --skip-monitoring-setup \

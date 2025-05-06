@@ -4,12 +4,17 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-func GetDefaultBranchName(ctx context.Context, authMethod transport.AuthMethod, repo *goGit.Repository) string {
+func GetDefaultBranchName(
+	ctx context.Context,
+	authMethod transport.AuthMethod,
+	repo *goGit.Repository,
+) string {
 	remote, err := repo.Remote("origin")
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
@@ -23,7 +28,10 @@ func GetDefaultBranchName(ctx context.Context, authMethod transport.AuthMethod, 
 			target := ref.Target().String()
 
 			defaultBranchName := target[11:] // Remove "refs/heads/" prefix.
-			slog.InfoContext(ctx, "Detected default branch name", slog.String("branch", defaultBranchName))
+			slog.InfoContext(ctx,
+				"Detected default branch name",
+				slog.String("branch", defaultBranchName),
+			)
 
 			return defaultBranchName
 		}

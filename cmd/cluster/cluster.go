@@ -1,13 +1,12 @@
 package cluster
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/bootstrap"
-	delete_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/delete"
-	recover_ "github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/recover"
+	"github.com/spf13/cobra"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/upgrade"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/spf13/cobra"
 )
 
 var ClusterCmd = &cobra.Command{
@@ -28,11 +27,17 @@ var ClusterCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
-	ClusterCmd.AddCommand(bootstrap.BootstrapCmd)
+	ClusterCmd.AddCommand(BootstrapCmd)
 	ClusterCmd.AddCommand(upgrade.UpgradeCmd)
-	ClusterCmd.AddCommand(delete_.DeleteCmd)
-	ClusterCmd.AddCommand(recover_.RecoverCmd)
+	ClusterCmd.AddCommand(DeleteCmd)
+	ClusterCmd.AddCommand(RecoverCmd)
 
 	// Flags.
+
 	config.RegisterConfigsDirectoryFlag(ClusterCmd)
+
+	ClusterCmd.PersistentFlags().
+		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
+		)
 }

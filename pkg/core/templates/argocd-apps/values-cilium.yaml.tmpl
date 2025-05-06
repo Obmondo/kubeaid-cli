@@ -1,5 +1,6 @@
 {{- if .ProvisionedClusterEndpoint }}
 cilium:
+  kubeProxyReplacement: true
   k8sServiceHost: {{ .ProvisionedClusterEndpoint.Host }}
   k8sServicePort: {{ .ProvisionedClusterEndpoint.Port }}
 {{- end }}

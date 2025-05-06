@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 
+	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	goGit "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 // Clones the given git repository into the given directory (only if the repo doesn't already exist
@@ -75,7 +76,7 @@ func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	client := &http.Client{}
 
 	// Create a new request
-	req, err := http.NewRequest("GET", repoURL, nil)
+	req, err := http.NewRequest(http.MethodGet, repoURL, nil)
 	if err != nil {
 		return false, err
 	}

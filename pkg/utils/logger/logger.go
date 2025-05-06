@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/go-logr/logr"
 	"k8s.io/klog/v2"
 	controllerRuntimeLogger "sigs.k8s.io/controller-runtime/pkg/log"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 // Initializes the logger.
@@ -19,7 +20,11 @@ func InitLogger(isDebugModeEnabled bool) {
 		logLevel = slog.LevelDebug
 	}
 
-	logFile, err := os.OpenFile(constants.OutputPathLogFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	logFile, err := os.OpenFile(
+		constants.OutputPathLogFile,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+		os.ModePerm,
+	)
 	if err != nil {
 		log.Fatal("Failed opening log file")
 	}

@@ -40,11 +40,22 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 	}
 
 	{
-		sampleGeneralConfigContent := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, generalTemplateName, nil)
+		sampleGeneralConfigContent := templates.ParseAndExecuteTemplate(ctx,
+			&SampleConfigs,
+			generalTemplateName,
+			nil,
+		)
 
-		sampleGeneralConfigFilePath := path.Join(constants.OutputPathGeneratedConfigsDirectory, generalTemplateName)
+		sampleGeneralConfigFilePath := path.Join(
+			constants.OutputPathGeneratedConfigsDirectory,
+			generalTemplateName,
+		)
 
-		sampleConfigFile, err := os.OpenFile(sampleGeneralConfigFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		sampleConfigFile, err := os.OpenFile(
+			sampleGeneralConfigFilePath,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			0644,
+		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",
 			slog.String("path", sampleGeneralConfigFilePath),
@@ -59,11 +70,22 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 	}
 
 	{
-		sampleSecretsConfigContent := templates.ParseAndExecuteTemplate(ctx, &SampleConfigs, secretsTemplateName, nil)
+		sampleSecretsConfigContent := templates.ParseAndExecuteTemplate(ctx,
+			&SampleConfigs,
+			secretsTemplateName,
+			nil,
+		)
 
-		sampleSecretsConfigFilePath := path.Join(constants.OutputPathGeneratedConfigsDirectory, secretsTemplateName)
+		sampleSecretsConfigFilePath := path.Join(
+			constants.OutputPathGeneratedConfigsDirectory,
+			secretsTemplateName,
+		)
 
-		sampleConfigFile, err := os.OpenFile(sampleSecretsConfigFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		sampleConfigFile, err := os.OpenFile(
+			sampleSecretsConfigFilePath,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			0644,
+		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",
 			slog.String("path", sampleSecretsConfigFilePath),

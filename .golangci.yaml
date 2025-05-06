@@ -1,0 +1,88 @@
+version: "2"
+
+formatters:
+  enable:
+    - goimports
+    - golines
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Obmondo/kubeaid-bootstrap-script
+    golines:
+      max-len: 100
+
+linters:
+  default: none
+  enable:
+    - usetesting
+    - unparam
+    - usestdlibvars
+    - reassign
+    - prealloc
+    - nilerr
+    - nestif
+    - musttag
+    - makezero
+    - maintidx
+    - importas
+    # - mnd # don't wanna make constants for all those timeouts, as of now :).
+    - godox
+    - goconst
+    - gocognit
+    - gocyclo
+    - forcetypeassert
+    - forbidigo
+    - copyloopvar
+    - errorlint
+    - dupword
+    - revive
+    - misspell
+    - bodyclose
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - "(io.Closer).Close"
+        - "(*database/sql.Rows).Close"
+    funlen:
+      lines: 70
+      statements: 50
+      ignore-comments: true
+    revive:
+      severity: error
+      rules:
+        - name: bool-literal-in-expr
+        - name: comment-spacings
+        - name: constant-logical-expr
+        - name: context-as-argument
+        - name: datarace
+        - name: nested-structs
+        - name: defer
+        - name: duplicated-imports
+        - name: early-return
+        - name: empty-block
+        - name: error-naming
+        - name: error-strings
+        - name: errorf
+        - name: identical-branches
+        - name: increment-decrement
+        - name: modifies-value-receiver
+        - name: range
+        - name: range-val-address
+        - name: receiver-naming
+        - name: string-of-int
+        # - name: struct-tag
+        - name: superfluous-else
+        - name: time-equal
+        - name: time-naming
+        - name: var-naming
+        - name: var-declaration
+        - name: unconditional-recursion
+        - name: unexported-naming
+        - name: unhandled-error
+        - name: unreachable-code
+        # - name: unnecessary-stmt
+        # - name: unused-parameter
+        # - name: unused-receiver
+        # - name: useless-break
+        - name: waitgroup-by-value

@@ -7,8 +7,10 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -31,25 +33,6 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("storage-account-name", args.Name),
 	})
-
-	// BUG : throws error with code : SubscriptionNotFound.
-	//
-	// Verify that Storage Account name is available.
-	// {
-	// 	response, err := args.StorageAccountsClient.CheckNameAvailability(ctx,
-	// 		armstorage.AccountCheckNameAvailabilityParameters{
-	// 			Name: to.Ptr(args.Name),
-	// 			Type: to.Ptr("Microsoft.Storage/storageAccounts"),
-	// 		},
-	// 		nil,
-	// 	)
-	// 	assert.AssertErrNil(ctx, err, "Failed verifying whether Azure Storage Account name is available or not")
-	//
-	// 	assert.Assert(ctx,
-	// 		*response.CheckNameAvailabilityResult.NameAvailable,
-	// 		"Azure Storage Account name not available",
-	// 	)
-	// }
 
 	slog.InfoContext(ctx, "Creating / updating Azure Storage Account")
 
@@ -89,8 +72,10 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	)
 	if err != nil {
 		// Skip, if the Storage Account already exists.
+		//nolint:errorlint
 		responseError, ok := err.(*azcore.ResponseError)
-		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+		if ok &&
+			responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Azure Storage Account already exists")
 			return
 		}
@@ -101,7 +86,17 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	_, err = responsePoller.PollUntilDone(ctx, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating / updating Azure Storage Account")
 
-	slog.InfoContext(ctx, "Created / updated Azure Storage Account")
+	// Save the Azure Storage Account's access key as a global variable.
+	// We need to pass it to the templates later.
+
+	response, err := args.StorageAccountsClient.ListKeys(ctx,
+		args.ResourceGroupName,
+		args.Name,
+		nil,
+	)
+	assert.AssertErrNil(ctx, err, "Failed listing Azure Storage Account keys")
+
+	globals.AzureStorageAccountAccessKey = *(response.Keys[0].Value)
 }
 
 type CreateBlobContainerArgs struct {
@@ -119,12 +114,15 @@ Creates a Blob Container in the given Storage Account, if one doesn't already ex
 	A storage account can include an unlimited number of containers, and a container can store an
 	unlimited number of blobs.
 
+
 	REFERENCE : https://learn.microsoft.com/en-us/azure/storage/blobs/storage-blobs-introduction#containers
 */
 func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("blob-container-name", args.BlobContainerName),
 	})
+
+	slog.InfoContext(ctx, "Creating Azure Blob Container")
 
 	_, err := args.BlobContainersClient.Create(ctx,
 		args.ResourceGroupName,
@@ -138,15 +136,15 @@ func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 		nil,
 	)
 	if err != nil {
-		// Skip, if the Storage Account already exists.
+		// Skip, if the Azure Blob Container already exists.
+		//nolint:errorlint
 		responseError, ok := err.(*azcore.ResponseError)
-		if ok && responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
+		if ok &&
+			responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
 			slog.InfoContext(ctx, "Azure Blob Container already exists")
 			return
 		}
 
 		assert.AssertErrNil(ctx, err, "Failed creating Azure Blob Container")
 	}
-
-	slog.InfoContext(ctx, "Created Azure Blob Container")
 }

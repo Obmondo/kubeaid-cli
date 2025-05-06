@@ -23,4 +23,8 @@ cluster-autoscaler:
     namespace: {{ .CAPIClusterNamespace }}
 
 enableClusterAPIScaleFromZeroSupport:
+  {{- if .AWSConfig }}
   aws: true
+  {{- else if .AzureConfig }}
+  azure: true
+  {{- end }}

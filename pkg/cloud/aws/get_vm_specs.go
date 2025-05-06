@@ -4,10 +4,11 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 func (a *AWS) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
@@ -18,7 +19,10 @@ func (a *AWS) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
 			instanceType,
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed to describe EC2 instance type", slog.String("instance-type", vmType))
+	assert.AssertErrNil(ctx, err,
+		"Failed to describe EC2 instance type",
+		slog.String("instance-type", vmType),
+	)
 
 	instanceDetails := output.InstanceTypes[0]
 

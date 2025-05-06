@@ -7,6 +7,9 @@ import (
 	"log/slog"
 	"os"
 
+	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
+	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -15,8 +18,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
-	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
-	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 )
 
 //go:embed templates/*
@@ -69,8 +70,12 @@ func CreateK3DCluster(ctx context.Context, name string) {
 			k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
 				ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
 
-				SSHPublicKeyFilePath:  utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPublicKeyFilePath),
-				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx, workloadIdentityConfig.SSHPrivateKeyFilePath),
+				SSHPublicKeyFilePath: utils.ToAbsolutePath(ctx,
+					workloadIdentityConfig.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
+				),
+				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx,
+					workloadIdentityConfig.OpenIDProviderSSHKeyPair.PrivateKeyFilePath,
+				),
 			}
 		}
 
@@ -79,7 +84,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		)
 
 		k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
-			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening management cluster K3D config file",
@@ -87,7 +92,8 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		)
 		defer k3dConfigFile.Close()
 
-		k3dConfigFile.Write(k3dConfigAsBytes)
+		_, err = k3dConfigFile.Write(k3dConfigAsBytes)
+		assert.AssertErrNil(ctx, err, "Failed writing K3D config to file")
 	}
 
 	// Create the K3D cluster, if it doesn't already exist.
@@ -111,14 +117,14 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
 		       The cluster won't even startup.
 	*/
-	utils.ExecuteCommandOrDie(fmt.Sprintf(`
+	utils.ExecuteCommandOrDie(`
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
 
 		for node in $master_nodes; do
 			kubectl label $node node-role.kubernetes.io/control-plane-
 			kubectl label $node node-role.kubernetes.io/control-plane=""
 		done
-	`))
+	`)
 
 	// Create the management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.

@@ -9,7 +9,7 @@ global:
     repo: {{ .KubeaidForkURL }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigForkURL }}
-  additionalUsers: {{ .AdditionalUsers | toYaml | nindent 4 }}
+  additionalUsers: {{ .AdditionalUsers | toYAML | nindent 4 }}
 
 {{- if .AWSConfig }}
 provider:
@@ -84,8 +84,11 @@ azure:
   sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
 
   userAssignedIdentity:
-    name: {{ .ClusterConfig.Name }}
-    clientID: {{ .UserAssignedIdentityClientID }}
+    name: cluster-api
+    clientID: {{ .UAMIClientIDClusterAPI }}
+
+  serviceAccountIssuer:
+    url: {{ .ServiceAccountIssuerURL }}
 
   controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 

@@ -1,0 +1,13 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.24.0
+
+WORKDIR /
+
+COPY ./scripts/install-runtime-dependencies.sh /install-runtime-dependencies.sh
+RUN chmod +x /install-runtime-dependencies.sh && \
+  /install-runtime-dependencies.sh
+
+WORKDIR /app
+
+CMD ["sleep", "infinity"]

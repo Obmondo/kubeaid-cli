@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"os"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
@@ -45,7 +44,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 
 	// Set KUBECONFIG env.
 	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
-	os.Setenv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
+	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 	//
 	// and then create the K3D management cluster (if it doesn't already exist).
 	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
@@ -57,7 +56,9 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 		gitAuthMethod,
 	)
 
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
+	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+		managementClusterKubeconfigPath,
+	)
 
 	// Setup the management cluster.
 	SetupCluster(ctx, SetupClusterArgs{

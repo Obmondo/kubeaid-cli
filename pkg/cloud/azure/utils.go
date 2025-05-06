@@ -23,7 +23,7 @@ func CloudProviderToAzure(ctx context.Context, cloudProvider cloud.CloudProvider
 func GetServiceAccountIssuerURL(ctx context.Context) string {
 	storageAccountURL := fmt.Sprintf(
 		"https://%s.blob.core.windows.net/",
-		config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.StorageAccountName,
+		config.ParsedGeneralConfig.Cloud.Azure.StorageAccount,
 	)
 
 	serviceAccountIssuerURL, err := url.JoinPath(

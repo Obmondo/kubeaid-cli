@@ -9,11 +9,6 @@ import (
 	"path"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -28,6 +23,12 @@ import (
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1" // KCP = Kubeadm Control plane Provider.
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 // Returns the management cluster kubeconfig file path, based on whether the script is running
@@ -56,7 +57,7 @@ func amContainerized(ctx context.Context) bool {
 // Creates a Kubernetes Go client using the Kubeconfig file present at the given path.
 // Panics on failure.
 func MustCreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.Client {
-	clusterClient, err := CreateKubernetesClient(ctx, kubeconfigPath, true)
+	clusterClient, err := CreateKubernetesClient(ctx, kubeconfigPath)
 	assert.AssertErrNil(ctx, err,
 		"Failed constructing Kubernetes cluster client",
 		slog.String("kubeconfig", kubeconfigPath),
@@ -67,10 +68,7 @@ func MustCreateKubernetesClient(ctx context.Context, kubeconfigPath string) clie
 
 // Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
 // Returns the Kubernetes Go client.
-func CreateKubernetesClient(ctx context.Context,
-	kubeconfigPath string,
-	panicOnKubeconfigBuildFailure bool,
-) (client.Client, error) {
+func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.Client, error) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("kubeconfig", kubeconfigPath),
 	})
@@ -92,7 +90,9 @@ func CreateKubernetesClient(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
 
 	err = kcpV1Beta1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding KCP (Kubeadm Control plane Providerr) v1beta1 scheme")
+	assert.AssertErrNil(ctx, err,
+		"Failed adding KCP (Kubeadm Control plane Providerr) v1beta1 scheme",
+	)
 
 	err = capaV1Beta2.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta1 scheme")
@@ -114,7 +114,10 @@ func pingKubernetesCluster(ctx context.Context, kubeClient client.Client) error 
 		Namespace: "default",
 	})
 	if err != nil {
-		return fmt.Errorf("Failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %v", err)
+		return utils.WrapError(
+			"Failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %w",
+			err,
+		)
 	}
 	return nil
 }
@@ -142,7 +145,10 @@ func CreateNamespace(ctx context.Context, namespaceName string, kubeClient clien
 	if k8sAPIErrors.IsAlreadyExists(err) {
 		return
 	}
-	assert.AssertErrNil(ctx, err, "Failed creating namespace", slog.String("namespace", namespaceName))
+	assert.AssertErrNil(ctx, err,
+		"Failed creating namespace",
+		slog.String("namespace", namespaceName),
+	)
 }
 
 // Installs Sealed Secrets in the underlying Kubernetes cluster.
@@ -151,12 +157,12 @@ func InstallSealedSecrets(ctx context.Context) {
 		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
 		Namespace:   "sealed-secrets",
 		ReleaseName: "sealed-secrets",
-		Values: map[string]interface{}{
-			"sealed-secrets": map[string]interface{}{
+		Values: map[string]any{
+			"sealed-secrets": map[string]any{
 				"namespace":        "sealed-secrets",
 				"fullnameOverride": "sealed-secrets-controller",
 			},
-			"backup": map[string]interface{}{},
+			"backup": map[string]any{},
 		},
 	})
 }
@@ -172,33 +178,43 @@ func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
 }
 
 // Waits for the main cluster to be provisioned.
-func WaitForMainClusterToBeProvisioned(ctx context.Context, kubeClient client.Client) {
-	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
-		slog.Info("Waiting for the main cluster to be provisioned")
+func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) {
+	err := wait.PollUntilContextCancel(ctx,
+		time.Minute,
+		false,
+		func(ctx context.Context) (bool, error) {
+			slog.InfoContext(ctx, "Waiting for the main cluster to be provisioned")
 
-		// Get the Cluster resource from the management cluster.
-		cluster := &clusterAPIV1Beta1.Cluster{}
-		if err := GetKubernetesResource(ctx, kubeClient, cluster); err != nil {
-			return false, err
-		}
-
-		// Cluster phase should be 'Provisioned'.
-		if cluster.Status.Phase != string(clusterAPIV1Beta1.ClusterPhaseProvisioned) {
-			return false, nil
-		}
-		//
-		// Cluster status should be 'Ready'.
-		for _, condition := range cluster.Status.Conditions {
-			if condition.Type == clusterAPIV1Beta1.ReadyCondition && condition.Status == "True" {
-				return true, nil
+			// Get the Cluster resource from the management cluster.
+			cluster, err := GetClusterResource(ctx, managementClusterClient)
+			if err != nil {
+				return false, err
 			}
-		}
-		return false, nil
-	})
+
+			// Cluster phase should be 'Provisioned'.
+			if cluster.Status.Phase != string(clusterAPIV1Beta1.ClusterPhaseProvisioned) {
+				return false, nil
+			}
+			//
+			// Cluster status should be 'Ready'.
+			for _, condition := range cluster.Status.Conditions {
+				if condition.Type == clusterAPIV1Beta1.ReadyCondition &&
+					condition.Status == "True" {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
+	)
+	assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.
-func GetKubernetesResource(ctx context.Context, kubeClient client.Client, resource client.Object) error {
+func GetKubernetesResource(
+	ctx context.Context,
+	kubeClient client.Client,
+	resource client.Object,
+) error {
 	return kubeClient.Get(ctx,
 		types.NamespacedName{
 			Name:      resource.GetName(),
@@ -210,13 +226,16 @@ func GetKubernetesResource(ctx context.Context, kubeClient client.Client, resour
 
 // Waits for the main cluster to be ready to run our application workloads.
 func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) {
-	wait.PollUntilContextCancel(ctx, time.Minute, false, func(ctx context.Context) (bool, error) {
-		slog.Info("Waiting for the provisioned cluster's Kubernetes API server to be reachable and atleast 1 worker node to be initialized....")
+	for {
+		slog.InfoContext(
+			ctx,
+			"Waiting for the provisioned cluster's Kubernetes API server to be reachable and atleast 1 worker node to be initialized....",
+		)
 
 		// List the nodes.
 		nodes := &coreV1.NodeList{}
 		if err := kubeClient.List(ctx, nodes); err != nil {
-			return false, err
+			continue
 		}
 
 		initializedWorkerNodeCount := 0
@@ -225,37 +244,41 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 				continue
 			}
 
-			isUninitialized := false
+			isInitialized := true
 			//
 			// Check for existence of taints which indicate that the node is uninitialized.
 			for _, taint := range node.Spec.Taints {
-				if (taint.Key == cloudProviderAPI.TaintExternalCloudProvider) || (taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key) {
-					isUninitialized = true
+				if (taint.Key == cloudProviderAPI.TaintExternalCloudProvider) ||
+					(taint.Key == clusterAPIV1Beta1.NodeUninitializedTaint.Key) {
+					isInitialized = false
 				}
 			}
 
-			if !isUninitialized {
+			if isInitialized {
 				initializedWorkerNodeCount++
 			}
 		}
-		isClusterReady := (initializedWorkerNodeCount > 0)
-		return isClusterReady, nil
-	})
+
+		if initializedWorkerNodeCount > 0 {
+			return
+		}
+
+		time.Sleep(time.Minute)
+	}
 }
 
 // Returns whether the given node object is part of the control plane or not.
 func isControlPlaneNode(node *coreV1.Node) bool {
-	isControlPlaneNode := false
 	for key := range node.Labels {
 		if key == kubeadmConstants.LabelNodeRoleControlPlane {
-			isControlPlaneNode = true
+			return true
 		}
 	}
-	return isControlPlaneNode
+	return false
 }
 
 // Saves kubeconfig of the provisioned cluster locally.
-func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
+func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Client) {
 	secret := &coreV1.Secret{}
 	// Seldom, after the cluster has been provisioned, Cluster API takes some time to create the
 	// Kubernetes secret containing the kubeconfig.
@@ -276,7 +299,7 @@ func SaveKubeconfig(ctx context.Context, kubeClient client.Client) {
 
 	kubeConfig := secret.Data["value"]
 
-	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, 0644)
+	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
 
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")

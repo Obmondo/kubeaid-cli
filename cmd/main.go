@@ -4,12 +4,13 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/spf13/cobra"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/spf13/cobra"
 
 	// These packages must be compiled, for the go:linkname directive to work in pkg/config/hack.go.
 	_ "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
@@ -44,7 +45,7 @@ func init() {
 }
 
 func main() {
-	// By default, parent's PersistentPreRun gets overriden by a child's PersistentPreRun.
+	// By default, parent's PersistentPreRun gets overridden by a child's PersistentPreRun.
 	// We want to disable this overriding behaviour and chain all the PersistentPreRuns.
 	// REFERENCE : https://github.com/spf13/cobra/pull/2044.
 	cobra.EnableTraverseRunHooks = true

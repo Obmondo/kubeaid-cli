@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
+
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -12,8 +14,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/go-git/go-git/v5/plumbing/transport"
 )
 
 type BootstrapClusterArgs struct {
@@ -31,29 +31,21 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	if globals.CloudProviderName != constants.CloudProviderLocal {
 		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 			constants.OutputPathMainClusterKubeconfig,
-			false,
 		)
-		isClusterctlMoveExecuted := (err == nil) && kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
-		if !isClusterctlMoveExecuted {
-			// Provision and setup the main cluster.
-			provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
-				CreateDevEnvArgs: args.CreateDevEnvArgs,
-				GitAuthMethod:    gitAuthMethod,
-			})
 
-			if !args.SkipClusterctlMove {
-				// Pivot ClusterAPI (the provisioned cluster will manage itself).
-				pivotCluster(ctx, gitAuthMethod, args.SkipClusterctlMove, args.IsPartOfDisasterRecovery)
-			}
-		} else {
-			// We're retrying running the script.
+		isClusterctlMoveExecuted := (err == nil) &&
+			kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
 
-			// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-			// All Kubernetes operations from now on, will be done against the provisioned cluster.
-			os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
+		// Provision and setup the main cluster.
+		provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
+			CreateDevEnvArgs:         args.CreateDevEnvArgs,
+			GitAuthMethod:            gitAuthMethod,
+			IsClusterctlMoveExecuted: isClusterctlMoveExecuted,
+		})
 
-			// We need to use the ArgoCD Application client to the provisioned cluster's ArgoCD server.
-			kubernetes.RecreateArgoCDApplicationClient(ctx, provisionedClusterClient)
+		if !args.SkipClusterctlMove && !isClusterctlMoveExecuted {
+			// Pivot ClusterAPI (the provisioned cluster will manage itself).
+			pivotCluster(ctx)
 		}
 	}
 
@@ -62,6 +54,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
+			globals.CloudProvider.SetupDisasterRecovery(ctx)
+		}
+
+	case constants.CloudProviderAzure:
+		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
 			globals.CloudProvider.SetupDisasterRecovery(ctx)
 		}
 	}
@@ -74,45 +71,56 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 type ProvisionAndSetupMainClusterArgs struct {
 	*CreateDevEnvArgs
-	GitAuthMethod transport.AuthMethod
+	GitAuthMethod            transport.AuthMethod
+	IsClusterctlMoveExecuted bool
 }
 
 func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMainClusterArgs) {
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
 		kubernetes.GetManagementClusterKubeconfigPath(ctx),
-		true,
 	)
 
-	// Sync the complete capi-cluster ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, []*argoCDV1Alpha1.SyncOperationResource{})
+	if !args.IsClusterctlMoveExecuted {
+		// Sync the complete capi-cluster ArgoCD App.
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+
+		// Wait for the main cluster to be provisioned.
+		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
+
+		// Save kubeconfig locally.
+		kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
+
+		slog.InfoContext(ctx,
+			"Cluster has been provisioned successfully 🎉🎉 !",
+			slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
+		)
+	}
 
 	// Close ArgoCD application client (to the management cluster).
-	globals.ArgoCDApplicationClientCloser.Close()
-
-	// Wait for the main cluster to be provisioned.
-	kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
-
-	// Save kubeconfig locally.
-	kubernetes.SaveKubeconfig(ctx, managementClusterClient)
-
-	slog.Info("Cluster has been provisioned successfully 🎉🎉 !", slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig))
+	_ = globals.ArgoCDApplicationClientCloser.Close()
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	// All Kubernetes operations from now on, will be done against the provisioned cluster.
-	os.Setenv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
-	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig, true)
+	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
+	provisionedClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+		constants.OutputPathMainClusterKubeconfig,
+	)
 
 	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
 	// workloads.
 	kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
 
-	// Setup the provisioned cluster.
-	//
-	// NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
-	// Currently, they represent Kubernetes Secrets encyrpted using the private key of the Sealed
-	// Secrets controller installed in the K3d management cluster.
-	// We need to update them, by encrypting the underlying Kubernetes Secrets using the private
-	// key of the Sealed Secrets controller installed in the provisioned main cluster.
+	/*
+		Setup the provisioned cluster.
+
+		NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
+		       Currently, they represent Kubernetes Secrets encrypted using the private key of the
+		       Sealed Secrets controller installed in the K3d management cluster. We need to update
+		       them, by encrypting the underlying Kubernetes Secrets using the private key of the
+		       Sealed Secrets controller installed in the provisioned main cluster.
+	*/
 	SetupCluster(ctx, SetupClusterArgs{
 		CreateDevEnvArgs:    args.CreateDevEnvArgs,
 		IsManagementCluster: false,
@@ -121,23 +129,22 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	})
 }
 
-func pivotCluster(ctx context.Context,
-	gitAuthMethod transport.AuthMethod,
-	skipClusterctlMove bool,
-	isPartOfDisasterRecovery bool,
-) {
+func pivotCluster(ctx context.Context) {
 	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 	//
 	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
 	//        a master node.
-	//        And, the master node count should be more than 1.
 	if globals.CloudProviderName == constants.CloudProviderAWS {
 		// Zero the credentials CAPA controller started with.
 		// This will force the CAPA controller to fall back to use the attached instance profiles.
-		utils.ExecuteCommandOrDie("clusterawsadm controller zero-credentials --namespace capi-cluster")
+		utils.ExecuteCommandOrDie(
+			"clusterawsadm controller zero-credentials --namespace capi-cluster",
+		)
 
 		// Rollout and restart on capa-controller-manager deployment.
-		utils.ExecuteCommandOrDie("clusterawsadm controller rollout-controller --namespace capi-cluster")
+		utils.ExecuteCommandOrDie(
+			"clusterawsadm controller rollout-controller --namespace capi-cluster",
+		)
 	}
 
 	// Move ClusterAPI manifests to the provisioned cluster.
@@ -148,5 +155,7 @@ func pivotCluster(ctx context.Context,
 	))
 
 	// Sync cluster-autoscaler ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler, []*argoCDV1Alpha1.SyncOperationResource{})
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+		[]*argoCDV1Alpha1.SyncOperationResource{},
+	)
 }

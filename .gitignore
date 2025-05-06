@@ -1,16 +1,6 @@
-scripts/export-aws-credentials.sh
-scripts/export-hetzner-credentials.sh
-
-outputs/
-
+.direnv/
 *.swp
 
-.direnv/
+vendor/
 
-# Scratchpad
-.yaml
-.log
-
-robot_id_rsa
-robot_id_rsa.pub
-kubeaid-bootstrap-script
+outputs/

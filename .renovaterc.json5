@@ -1,0 +1,28 @@
+{
+  // You can view all the default presets here : https://docs.renovatebot.com/presets-default/.
+  extends: [
+    "config:recommended",
+    ":rebaseStalePrs"
+  ],
+
+  /*
+    Renovate is based around the concept of package managers. These range from traditional package
+    managers like npm, Bundler and Composer through to less traditional concepts like CircleCI or
+    Travis config files.
+
+    The goal of Renovate is to detect and maintain all third-party dependencies in your
+    repositories, through the use of managers.
+  */
+  enabledManagers: [
+    "gomod",
+    "nix",
+    "dockerfile",
+    "github-actions"
+  ]
+
+  // Things to run after package / artifact updating.
+  postUpdateOptions: [
+    "gomodUpdateImportPaths",
+    "gomodTidy"
+  ]
+}

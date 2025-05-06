@@ -6,7 +6,7 @@ metadata:
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
   name: cilium
-  namespace: cilium
+  namespace: argocd
 spec:
   destination:
     namespace: cilium
@@ -26,3 +26,16 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+  ignoreDifferences:
+    - kind: Secret
+      name: cilium-ca
+      jsonPointers:
+        - /data
+    - kind: Secret
+      name: hubble-server-certs
+      jsonPointers:
+        - /data
+    - kind: Secret
+      name: hubble-relay-client-certs
+      jsonPointers:
+        - /data

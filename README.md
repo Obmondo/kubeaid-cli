@@ -87,3 +87,17 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [IRSA for non EKS Clusters | PlatformCon 2023](https://www.youtube.com/watch?v=otmLHWW3Tos)
 
 - [Logging in Go with Slog: The Ultimate Guide](https://betterstack.com/community/guides/logging/logging-in-go/)
+
+- [Velero plugins for Microsoft Azure : Use Azure AD Workload Identity](https://github.com/vmware-tanzu/velero-plugin-for-microsoft-azure/blob/main/README.md#option-3-use-azure-ad-workload-identity)
+
+- [Azure Workload Identity authentication with AD fails](https://github.com/vmware-tanzu/velero/issues/8324)
+
+- [Native Routing on Kubernetes with BGP](https://ardaxi.com/blog/k8s-bgp/)
+
+- [Play with Cilium native routing in Kind cluster](https://medium.com/@nahelou.j/play-with-cilium-native-routing-in-kind-cluster-5a9e586a81ca)
+
+- [Cilium BGP Control Plane](https://github.com/cilium/cilium/blob/main/pkg/bgpv1/README.md)
+
+- [Golden config for golangci-lint](https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322)
+
+- [ncdmv's flake.nix file](https://github.com/aksiksi/ncdmv/blob/main/flake.nix)

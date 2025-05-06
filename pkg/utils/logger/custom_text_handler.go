@@ -22,11 +22,11 @@ func NewCustomTextHandler(writer io.Writer, options *slog.HandlerOptions) *Custo
 	}
 }
 
-func (c *CustomTextHandler) Enabled(ctx context.Context, logLevel slog.Level) bool {
+func (c *CustomTextHandler) Enabled(_ context.Context, logLevel slog.Level) bool {
 	return (logLevel >= c.options.Level.Level())
 }
 
-func (c *CustomTextHandler) Handle(ctx context.Context, record slog.Record) error {
+func (c *CustomTextHandler) Handle(_ context.Context, record slog.Record) error {
 	logSections := []string{}
 
 	// Time.
@@ -65,15 +65,15 @@ func (c *CustomTextHandler) Handle(ctx context.Context, record slog.Record) erro
 
 	// Write out the log.
 	log := strings.Join(logSections, " ") + "\n"
-	c.writer.Write([]byte(log))
+	_, _ = c.writer.Write([]byte(log))
 
 	return nil
 }
 
-func (c *CustomTextHandler) WithAttrs(attributes []slog.Attr) slog.Handler {
+func (c *CustomTextHandler) WithAttrs(_ []slog.Attr) slog.Handler {
 	panic("unimplemented")
 }
 
-func (c *CustomTextHandler) WithGroup(name string) slog.Handler {
+func (c *CustomTextHandler) WithGroup(_ string) slog.Handler {
 	panic("unimplemented")
 }

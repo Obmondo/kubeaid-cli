@@ -6,18 +6,18 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	"github.com/avast/retry-go/v4"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 func DeleteCluster(ctx context.Context) {
@@ -28,10 +28,13 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	provisionedClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig, true)
+	provisionedClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+		constants.OutputPathMainClusterKubeconfig,
+	)
 
 	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 
+	//nolint:godox
 	/*
 	  BUG :
 
@@ -54,20 +57,27 @@ func DeleteCluster(ctx context.Context) {
 		// Move back the ClusterAPI manifests back from the provisioned cluster to the management
 		// cluster.
 		// NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
-		retry.Do(func() error {
+		err := utils.WithRetry(10*time.Second, 12, func() error {
 			_, err := utils.ExecuteCommand(fmt.Sprintf(
 				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-				constants.OutputPathMainClusterKubeconfig, managementClusterKubeconfigPath, kubernetes.GetCapiClusterNamespace(),
+				constants.OutputPathMainClusterKubeconfig,
+				managementClusterKubeconfigPath,
+				kubernetes.GetCapiClusterNamespace(),
 			))
 			return err
 		})
+		assert.AssertErrNil(ctx, err, "Failed doing clusterctl move")
 	}
 
-	managementClusterClient, _ := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath, true)
+	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+		managementClusterKubeconfigPath,
+	)
 
 	// Get the Cluster resource from the management cluster.
 	err := kubernetes.GetKubernetesResource(ctx, managementClusterClient, cluster)
-	assert.AssertErrNil(ctx, err, "Cluster resource was suppossed to be present in the management cluster")
+	assert.AssertErrNil(ctx, err,
+		"Cluster resource was suppossed to be present in the management cluster",
+	)
 
 	// If the cluster gets marked as paused, then unmark it first.
 	if cluster.Spec.Paused {
@@ -85,16 +95,24 @@ func DeleteCluster(ctx context.Context) {
 	assert.AssertErrNil(ctx, err, "Failed deleting cluster")
 
 	// Wait for the infrastructure to be destroyed.
-	wait.PollUntilContextCancel(ctx, 2*time.Minute, false, func(ctx context.Context) (bool, error) {
-		slog.InfoContext(ctx, "Waiting for cluster infrastructure to be destroyed")
+	err = wait.PollUntilContextCancel(ctx,
+		2*time.Minute,
+		false,
+		func(ctx context.Context) (bool, error) {
+			slog.InfoContext(ctx, "Waiting for cluster infrastructure to be destroyed")
 
-		err := managementClusterClient.Get(ctx, types.NamespacedName{
-			Name:      cluster.Name,
-			Namespace: cluster.Namespace,
-		}, cluster)
-		isInfrastructureDeleted := errors.IsNotFound(err)
-		return isInfrastructureDeleted, nil
-	})
+			err := managementClusterClient.Get(ctx,
+				types.NamespacedName{
+					Name:      cluster.Name,
+					Namespace: cluster.Namespace,
+				},
+				cluster,
+			)
+			isInfrastructureDeleted := errors.IsNotFound(err)
+			return isInfrastructureDeleted, nil
+		},
+	)
+	assert.AssertErrNil(ctx, err, "Failed waiting for the cluster infrastructure to be destroyed")
 
-	slog.InfoContext(ctx, "Deleted cluster successully")
+	slog.InfoContext(ctx, "Deleted cluster successuly")
 }
