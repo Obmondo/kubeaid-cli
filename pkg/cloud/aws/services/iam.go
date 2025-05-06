@@ -19,16 +19,16 @@ type (
 	// PolicyDocument defines a policy document as a Go struct that can be serialized
 	// to JSON.
 	PolicyDocument struct {
-		Version   string
-		Statement []PolicyStatement
+		Version   string            `json:"Version"`
+		Statement []PolicyStatement `json:"Statement"`
 	}
 
 	// PolicyStatement defines a statement in a policy document.
 	PolicyStatement struct {
-		Effect    string
-		Action    []string
-		Principal map[string]string `json:",omitempty"`
-		Resource  string            `json:",omitempty"`
+		Effect    string            `json:"Effect"`
+		Action    []string          `json:"Action"`
+		Principal map[string]string `json:"Principal,omitempty"`
+		Resource  string            `json:"Resource,omitempty"`
 	}
 )
 

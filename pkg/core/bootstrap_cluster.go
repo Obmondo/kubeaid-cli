@@ -116,7 +116,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		Setup the provisioned cluster.
 
 		NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
-		       Currently, they represent Kubernetes Secrets encyrpted using the private key of the
+		       Currently, they represent Kubernetes Secrets encrypted using the private key of the
 		       Sealed Secrets controller installed in the K3d management cluster. We need to update
 		       them, by encrypting the underlying Kubernetes Secrets using the private key of the
 		       Sealed Secrets controller installed in the provisioned main cluster.

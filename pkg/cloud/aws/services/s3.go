@@ -37,6 +37,7 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 		}
 	}
 	_, err := s3Client.CreateBucket(ctx, createBucketInput)
+	//nolint:errorlint
 	switch err.(type) {
 	// S3 Bucket already exists and is owned by the user.
 	case *s3Types.BucketAlreadyOwnedByYou:

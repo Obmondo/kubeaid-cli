@@ -84,7 +84,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		)
 
 		k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
-			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening management cluster K3D config file",

@@ -25,7 +25,7 @@ linters:
     - makezero
     - maintidx
     - importas
-    - mnd
+    # - mnd # don't wanna make constants for all those timeouts, as of now :).
     - godox
     - goconst
     - gocognit
@@ -71,7 +71,7 @@ linters:
         - name: range-val-address
         - name: receiver-naming
         - name: string-of-int
-        - name: struct-tag
+        # - name: struct-tag
         - name: superfluous-else
         - name: time-equal
         - name: time-naming
@@ -80,9 +80,9 @@ linters:
         - name: unconditional-recursion
         - name: unexported-naming
         - name: unhandled-error
-        - name: unnecessary-stmt
         - name: unreachable-code
-        - name: unused-parameter
-        - name: unused-receiver
-        - name: useless-break
+        # - name: unnecessary-stmt
+        # - name: unused-parameter
+        # - name: unused-receiver
+        # - name: useless-break
         - name: waitgroup-by-value

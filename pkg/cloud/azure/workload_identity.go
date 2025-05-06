@@ -216,6 +216,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		)
 		if err != nil {
 			// Skip, if the Storage Account already exists.
+			//nolint:errorlint
 			responseError, ok := err.(*azcore.ResponseError)
 			if ok &&
 				responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {

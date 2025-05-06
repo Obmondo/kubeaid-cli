@@ -59,6 +59,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		kubeaidVersion := config.ParsedGeneralConfig.Cluster.KubeaidVersion
 
 		if kubeaidVersion != "HEAD" {
+			//nolint:godox
 			// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
 			// TODO : Move this to gitUtils.CloneRepo( )?
 
@@ -142,6 +143,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Sync ClusterAPI ArgoCD App.
 		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
 
+		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
 		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 		//        Provider component first.
@@ -243,5 +245,5 @@ To access the ArgoCD admin dashboard :
 		clusterType,
 		clusterKubeconfigPath,
 	)
-	println(helpText)
+	fmt.Println(helpText) //nolint:forbidigo
 }

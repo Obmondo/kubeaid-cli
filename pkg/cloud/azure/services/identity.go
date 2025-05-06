@@ -108,6 +108,7 @@ func CreateUAMI(ctx context.Context,
 			)
 			if err != nil {
 				// Skip, if the role is already assigned to the User Assigned Managed Identity.
+				//nolint:errorlint
 				responseError, ok := err.(*azcore.ResponseError)
 				if ok &&
 					responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {

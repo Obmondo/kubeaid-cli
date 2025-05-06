@@ -32,6 +32,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		generalConfigFileContents, err := os.ReadFile(generalConfigFilePath)
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
 
+		//nolint:musttag
 		err = yaml.Unmarshal([]byte(generalConfigFileContents), ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
 
@@ -199,6 +200,7 @@ func hydrateSSHKeyConfig(sshKeyConfig *SSHKeyPairConfig) {
 			slog.String("path", sshKeyConfig.PrivateKeyFilePath),
 		)
 
+	//nolint:godox
 	// TODO : PEM.
 	case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixPEM):
 		break

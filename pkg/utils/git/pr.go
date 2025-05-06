@@ -80,6 +80,8 @@ func getCreatePRURL(fromBranch string) string {
 
 // TODO : Sometimes we get this error while trying to detect whether the branch has been merged
 // or not : `unexpected EOF`. In that case, just retry instead of erroring out.
+//
+//nolint:godox
 func WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,

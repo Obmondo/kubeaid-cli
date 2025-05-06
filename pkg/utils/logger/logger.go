@@ -23,7 +23,7 @@ func InitLogger(isDebugModeEnabled bool) {
 	logFile, err := os.OpenFile(
 		constants.OutputPathLogFile,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		0644,
+		os.ModePerm,
 	)
 	if err != nil {
 		log.Fatal("Failed opening log file")

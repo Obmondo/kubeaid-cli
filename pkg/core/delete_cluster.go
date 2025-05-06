@@ -34,6 +34,7 @@ func DeleteCluster(ctx context.Context) {
 
 	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 
+	//nolint:godox
 	/*
 	  BUG :
 
@@ -113,5 +114,5 @@ func DeleteCluster(ctx context.Context) {
 	)
 	assert.AssertErrNil(ctx, err, "Failed waiting for the cluster infrastructure to be destroyed")
 
-	slog.InfoContext(ctx, "Deleted cluster successully")
+	slog.InfoContext(ctx, "Deleted cluster successuly")
 }

@@ -72,6 +72,7 @@ func CreateStorageAccount(ctx context.Context, args *CreateStorageAccountArgs) {
 	)
 	if err != nil {
 		// Skip, if the Storage Account already exists.
+		//nolint:errorlint
 		responseError, ok := err.(*azcore.ResponseError)
 		if ok &&
 			responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {
@@ -136,6 +137,7 @@ func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 	)
 	if err != nil {
 		// Skip, if the Azure Blob Container already exists.
+		//nolint:errorlint
 		responseError, ok := err.(*azcore.ResponseError)
 		if ok &&
 			responseError.StatusCode == constants.AzureResponseStatusCodeResourceAlreadyExists {

@@ -18,6 +18,39 @@ jobs:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
 
+      - name: Create outputs directory
+        run: mkdir -p ./outputs/trivy
+
+      - name: Run Trivy vulnerability and secret scanner in fs mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: sarif
+          output: ./outputs/trivy/fs.sarif
+
+      - name: Upload the scan result as Github artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: fs.sarif
+          path: ./outputs/trivy/fs.sarif
+
+      - name: Detect IaC vulnerabilities and misconfigurations using Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: config
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: sarif
+          output: ./outputs/trivy/config.sarif
+
+      - name: Upload the scan result as Github artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: trivy.config-scan-result.sarif
+          path: ./outputs/trivy/config.sarif
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
@@ -43,3 +76,18 @@ jobs:
           # builds.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Scan container image for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ghcr.io/obmondo/kubeaid-bootstrap-script:${{ github.event.release.tag_name }}
+          vuln-type: os,library
+          trivy-config: trivy.yaml
+          format: sarif
+          output: ./outputs/trivy/container-image.sarif
+
+      - name: Upload the container image scan result as Github artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: container-image.sarif
+          path: ./outputs/trivy/container-image.sarif
