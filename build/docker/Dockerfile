@@ -21,10 +21,9 @@ LABEL org.opencontainers.image.authors="ashish@obmondo.com, archisman@obmondo.co
 
 WORKDIR /
 
-COPY ./scripts/install-prerequisites.sh /install-prerequisites.sh
-RUN chmod +x /install-prerequisites.sh
-RUN CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64") \
-  /install-prerequisites.sh
+COPY ./scripts/install-runtime-dependencies.sh /install-prerequisites.sh
+RUN chmod +x /install-runtime-dependencies.sh && \
+  /install-runtime-dependencies.sh
 
 COPY --from=builder /app/kubeaid-bootstrap-script /usr/local/bin/kubeaid-bootstrap-script
 

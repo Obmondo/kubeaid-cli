@@ -4,11 +4,16 @@ set -o verbose
 set -o errexit
 set -o nounset # Causes the shell to treat unset variables as errors and exit immediately.
 
+# Get CPU architecture.
+CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64")
+
 apt update
 
-# -------------------------- Required by KubeAid to build KubePrometheus --------------------------
+apt install -y curl wget
 
-apt install -y jsonnet jq gnupg2 scdaemon curl
+# -------------------------------- Required to build KubePrometheus -------------------------------
+
+apt install -y jsonnet jq
 
 # gojsontoyaml
 wget https://github.com/brancz/gojsontoyaml/releases/download/v0.1.0/gojsontoyaml_0.1.0_linux_"${CPU_ARCHITECTURE}".tar.gz
@@ -46,16 +51,28 @@ mv ./kubectl /usr/local/bin
 # yq
 apt install -y yq
 
-# ------------------------------------------- Utilities -------------------------------------------
+# azwi
+AZWI_VERSION="1.5.0"
+curl -OL "https://github.com/Azure/azure-workload-identity/releases/download/v${AZWI_VERSION:?}/azwi-${AZWI_VERSION:?}-linux-${CPU_ARCHITECTURE}.tar.gz"
+tar -xvzf azwi-${AZWI_VERSION:?}-linux-"${CPU_ARCHITECTURE}".tar.gz azwi
+install -m 755 azwi /usr/local/bin/azwi
 
-# K9s
-wget https://github.com/derailed/k9s/releases/download/v0.32.5/k9s_linux_"${CPU_ARCHITECTURE}".deb
-dpkg -i k9s_linux_"${CPU_ARCHITECTURE}".deb
-rm k9s_linux_"${CPU_ARCHITECTURE}".deb
+# Azure CLI
+apt-get -y update
+apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
 
-apt install -y vim
+mkdir -p /etc/apt/keyrings
+curl -sLS https://packages.microsoft.com/keys/microsoft.asc |
+  gpg --dearmor | tee /etc/apt/keyrings/microsoft.gpg >/dev/null
+chmod go+r /etc/apt/keyrings/microsoft.gpg
 
-# # ------------------------------------------ Add SSH keys -----------------------------------------
-# mkdir -p /root/.ssh
-# ssh-keyscan {github.com,gitlab.com} >>/root/.ssh/known_hosts
-# ssh-keyscan -p 2223 gitea.obmondo.com >>/root/.ssh/known_hosts
+AZ_DIST=$(lsb_release -cs)
+echo "Types: deb
+URIs: https://packages.microsoft.com/repos/azure-cli/
+Suites: ${AZ_DIST}
+Components: main
+Architectures: $(dpkg --print-architecture)
+Signed-by: /etc/apt/keyrings/microsoft.gpg" | sudo tee /etc/apt/sources.list.d/azure-cli.sources
+
+apt-get -y update
+apt-get install -y azure-cli

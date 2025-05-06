@@ -25,10 +25,6 @@ run-container-dev: build-image-dev
     -v $(CURRENT_DIR):/app \
     $(IMAGE_NAME)
 
-# -e SSH_AUTH_SOCK=/ssh-agent \
-# -v /dev/bus/usb:/dev/bus/usb \
-# -v $(SSH_AUTH_SOCK):/ssh-agent \
-
 .PHONY: exec-container-dev
 exec-container-dev:
 	@docker exec -it $(CONTAINER_NAME) /bin/sh

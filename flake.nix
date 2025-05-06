@@ -28,9 +28,16 @@
             golangci-lint
             golines
 
+            nixfmt-rfc-style
+            direnv
+          ];
+
+          buildInputs = [
+            # Required for building KubePrometheus.
             gojsontoyaml
             jsonnet
             jq
+
             yq
 
             k3d
@@ -40,8 +47,6 @@
             (import ./build/nix/pkgs/clusterawsadm.nix { inherit pkgs; })
             (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
             azure-cli
-
-            k9s
           ];
         };
       }
