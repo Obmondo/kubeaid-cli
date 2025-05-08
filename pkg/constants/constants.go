@@ -15,6 +15,8 @@ const (
 	EnvNameRobotPassword = "ROBOT_PASSWORD"
 
 	EnvNameKubeconfig = "KUBECONFIG"
+
+	EnvNameDockerHost = "DOCKER_HOST"
 )
 
 // CLI flags.
@@ -103,6 +105,7 @@ const (
 	ArgoCDAppClusterAutoscaler = "cluster-autoscaler"
 	ArgoCDAppVelero            = "velero"
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
+	ArgoCDExternalSnapshotter  = "external-snapshotter"
 )
 
 // Azure
