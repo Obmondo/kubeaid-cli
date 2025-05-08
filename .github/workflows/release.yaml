@@ -31,7 +31,7 @@ jobs:
           output: ./outputs/trivy/fs.sarif
 
       - name: Upload the scan result as Github artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: fs.sarif
           path: ./outputs/trivy/fs.sarif
@@ -46,7 +46,7 @@ jobs:
           output: ./outputs/trivy/config.sarif
 
       - name: Upload the scan result as Github artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: trivy.config-scan-result.sarif
           path: ./outputs/trivy/config.sarif
@@ -87,7 +87,7 @@ jobs:
           output: ./outputs/trivy/container-image.sarif
 
       - name: Upload the container image scan result as Github artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: container-image.sarif
           path: ./outputs/trivy/container-image.sarif
