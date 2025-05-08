@@ -21,7 +21,7 @@ LABEL org.opencontainers.image.authors="ashish@obmondo.com, archisman@obmondo.co
 
 WORKDIR /
 
-COPY ./scripts/install-runtime-dependencies.sh /install-prerequisites.sh
+COPY ./scripts/install-runtime-dependencies.sh /install-runtime-dependencies.sh
 RUN chmod +x /install-runtime-dependencies.sh && \
   /install-runtime-dependencies.sh
 
