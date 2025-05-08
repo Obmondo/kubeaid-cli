@@ -101,3 +101,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [Golden config for golangci-lint](https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322)
 
 - [ncdmv's flake.nix file](https://github.com/aksiksi/ncdmv/blob/main/flake.nix)
+
+- [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
