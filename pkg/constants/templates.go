@@ -45,6 +45,9 @@ var (
 		// For Cluster Autoscaler.
 		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
+
+		// For External Snapshotter.
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 )
 
@@ -85,6 +88,10 @@ var (
 		// For Azure Cloud Controller Manager.
 		"argocd-apps/templates/ccm-azure.yaml.tmpl",
 		"argocd-apps/values-ccm-azure.yaml.tmpl",
+
+		// For Azure Disk CSI Driver.
+		"argocd-apps/templates/azuredisk-csi-driver.yaml.tmpl",
+		"argocd-apps/values-azuredisk-csi-driver.yaml.tmpl",
 
 		// For Azure Workload Identity System Webhook.
 		"argocd-apps/templates/azure-workload-identity-webhook.yaml.tmpl",

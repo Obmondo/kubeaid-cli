@@ -127,6 +127,11 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		ClusterClient:       provisionedClusterClient,
 		GitAuthMethod:       args.GitAuthMethod,
 	})
+
+	// Sync the external-snapshotter ArgoCD App.
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+		[]*argoCDV1Alpha1.SyncOperationResource{},
+	)
 }
 
 func pivotCluster(ctx context.Context) {

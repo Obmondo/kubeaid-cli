@@ -93,8 +93,7 @@ func DownloadS3BucketContents(ctx context.Context,
 }
 
 // Downloads the content of the given S3 object locally.
-func downloadS3Object(
-	ctx context.Context,
+func downloadS3Object(ctx context.Context,
 	s3Client *s3.Client,
 	bucketName, downloadDir, objectKey *string,
 	gzipDecode bool,
@@ -107,11 +106,7 @@ func downloadS3Object(
 
 	// Create intermediate directories (if required).
 	if strings.Contains(*objectKey, "/") {
-		err := os.MkdirAll(filePath, os.ModePerm)
-		assert.AssertErrNil(ctx, err,
-			"Failed creating directory",
-			slog.String("path", *downloadDir),
-		)
+		utils.CreateIntermediateDirsForFile(ctx, filePath)
 	}
 
 	// Create the file where the contents of the given S3 object will be stored.

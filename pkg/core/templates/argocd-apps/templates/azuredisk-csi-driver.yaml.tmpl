@@ -5,23 +5,23 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: ccm-hetzner
+  name: azuredisk-csi-driver
   namespace: argocd
 spec:
   destination:
     namespace: kube-system
     server: https://kubernetes.default.svc
-  project: kubeaid
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/ccm-hetzner
+      path: argocd-helm-charts/azuredisk-csi-driver
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-ccm-hetzner.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-azuredisk-csi-driver.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
+  project: kubeaid
   syncPolicy:
     syncOptions:
       - ApplyOutOfSyncOnly=true

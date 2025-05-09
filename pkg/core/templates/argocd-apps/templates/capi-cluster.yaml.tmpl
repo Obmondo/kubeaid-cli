@@ -26,3 +26,8 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+  ignoreDifferences:
+    - group: cluster.x-k8s.io/v1beta1
+      kind: MachineDeployment
+      jsonPointers:
+        - /spec/replicas

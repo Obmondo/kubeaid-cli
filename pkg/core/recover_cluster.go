@@ -6,7 +6,7 @@ import (
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
+	awsServices "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -34,12 +34,6 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 		panic("unreachable")
 	}
 
-	// Load AWS SDK config.
-	awsSDKConfig, err := awsSDKGoV2Config.LoadDefaultConfig(ctx)
-	assert.AssertErrNil(ctx, err, "Failed initiating AWS SDK config")
-
-	s3Client := s3.NewFromConfig(awsSDKConfig)
-
 	/*
 		Pull and gzip decode backed up (by Sealed Secrets backuper CRONJob) Kubernetes Secrets from S3
 		bucket. Each Kubernetes Secret contains a Sealed Secrets encryption key.
@@ -51,8 +45,24 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 			(1) https://playbook.stakater.com/content/workshop/sealed-secrets/management.html.
 			(2) https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#secret-rotation
 	*/
-	sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
-	services.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupBucketName, true)
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		awsSDKConfig, err := awsSDKGoV2Config.LoadDefaultConfig(ctx)
+		assert.AssertErrNil(ctx, err, "Failed initiating AWS SDK config")
+
+		s3Client := s3.NewFromConfig(awsSDKConfig)
+
+		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
+		awsServices.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupBucketName, true)
+
+	case constants.CloudProviderHetzner:
+		panic("unimplemented")
+
+	case constants.CloudProviderAzure:
+
+	default:
+		panic("unreachable")
+	}
 
 	// Bootstrap the new cluster.
 	BootstrapCluster(ctx, BootstrapClusterArgs{

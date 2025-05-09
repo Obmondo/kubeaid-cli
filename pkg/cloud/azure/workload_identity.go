@@ -132,14 +132,9 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 				SubscriptionID:    a.subscriptionID,
 				ResourceGroupName: a.resourceGroupName,
 
-				RoleID: constants.AzureRoleIDStorageBlobDataOwner,
-				RoleAssignmentScope: fmt.Sprintf(
-					"/subscriptions/%s/resourceGroups/%s/providers/Microsoft.Storage/storageAccounts/%s",
-					a.subscriptionID,
-					a.resourceGroupName,
-					config.ParsedGeneralConfig.Cloud.Azure.StorageAccount,
-				),
-				Name: constants.UAMIVelero,
+				RoleID:              constants.AzureRoleIDStorageBlobDataOwner,
+				RoleAssignmentScope: path.Join("/subscriptions/", a.subscriptionID),
+				Name:                constants.UAMIVelero,
 			},
 		)
 
@@ -237,7 +232,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		BlobContainerName:    constants.BlobContainerNameWorkloadIdentity,
 	})
 
-	storageAccountURL := fmt.Sprintf("https://%s.blob.core.windows.net/", storageAccountName)
+	storageAccountURL := GetStorageAccountURL()
 
 	serviceAccountIssuerURL := GetServiceAccountIssuerURL(ctx)
 

@@ -25,7 +25,6 @@ var templates embed.FS
 
 type (
 	K3DConfigTemplateValues struct {
-		TempDir,
 		Name,
 		K8sVersion string
 
@@ -60,7 +59,6 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Generate the K3D config file.
 	{
 		k3dConfigTemplateValues := &K3DConfigTemplateValues{
-			TempDir:    globals.TempDir,
 			Name:       name,
 			K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
 		}

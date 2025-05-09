@@ -20,6 +20,14 @@ func CloudProviderToAzure(ctx context.Context, cloudProvider cloud.CloudProvider
 	return azure
 }
 
+// Returns URL of the storage account being used.
+func GetStorageAccountURL() string {
+	return fmt.Sprintf("https://%s.blob.core.windows.net/",
+		config.ParsedGeneralConfig.Cloud.Azure.StorageAccount,
+	)
+}
+
+// Returns URL of the external OpenID provider being used for Workload Identity support.
 func GetServiceAccountIssuerURL(ctx context.Context) string {
 	storageAccountURL := fmt.Sprintf(
 		"https://%s.blob.core.windows.net/",

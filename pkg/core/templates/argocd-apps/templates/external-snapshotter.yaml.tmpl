@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/priority: "default"
+  name: external-snapshotter
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  sources:
+    - repoURL: https://github.com/kubernetes-csi/external-snapshotter.git
+      targetRevision: master
+      path: client/config/crd
+    - repoURL: https://github.com/kubernetes-csi/external-snapshotter.git
+      targetRevision: master
+      path: deploy/kubernetes/snapshot-controller
+      kustomize:
+        namespace: kube-system
+  project: kubeaid
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
