@@ -15,19 +15,21 @@ import (
 
 // Sets up the provisioned cluster for Disaster Recovery.
 func (a *Azure) SetupDisasterRecovery(ctx context.Context) {
-	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
-	assert.AssertNotNil(ctx, azureConfig.DisasterRecovery,
+	disasterRecoveryConfig := config.ParsedGeneralConfig.Cloud.DisasterRecovery
+	assert.AssertNotNil(ctx, disasterRecoveryConfig,
 		"No Azure disaster-recovery config provided",
 	)
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
+
+	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
 	// Create Blob Container where Velero backups will be stored.
 	services.CreateBlobContainer(ctx, &services.CreateBlobContainerArgs{
 		ResourceGroupName:    a.resourceGroupName,
 		StorageAccountName:   azureConfig.StorageAccount,
 		BlobContainersClient: a.storageClientFactory.NewBlobContainersClient(),
-		BlobContainerName:    azureConfig.DisasterRecovery.VeleroBackupsBucketName,
+		BlobContainerName:    disasterRecoveryConfig.VeleroBackupsBucketName,
 	})
 
 	// Create Blob Container where Sealed Secrets private keys will be backed up.
@@ -35,7 +37,7 @@ func (a *Azure) SetupDisasterRecovery(ctx context.Context) {
 		ResourceGroupName:    a.resourceGroupName,
 		StorageAccountName:   azureConfig.StorageAccount,
 		BlobContainersClient: a.storageClientFactory.NewBlobContainersClient(),
-		BlobContainerName:    azureConfig.DisasterRecovery.SealedSecretsBackupBucketName,
+		BlobContainerName:    disasterRecoveryConfig.SealedSecretsBackupsBucketName,
 	})
 
 	// Sync Azure Workload Identity Webhook, Velero and SealedSecrets ArgoCD Apps.

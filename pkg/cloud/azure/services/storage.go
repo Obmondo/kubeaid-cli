@@ -157,26 +157,23 @@ func CreateBlobContainer(ctx context.Context, args *CreateBlobContainerArgs) {
 	}
 }
 
-type DownloadBlobContainerContentsArgs struct {
-	BlobClient        *azblob.Client
-	BlobContainerName string
-	GzipDecode        bool
-}
-
 // Downloads contents of the given Azure Blob Container locally.
 // If the contents are gZip encoded, then you can choose to gZip decode them after download.
 // NOTE : The download path is decided by utils.GetDownloadedStorageBucketContentsDir( ).
-func DownloadBlobContainerContents(ctx context.Context, args *DownloadBlobContainerContentsArgs) {
+func DownloadBlobContainerContents(ctx context.Context,
+	blobClient *azblob.Client,
+	blobContainerName string,
+) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("blob-container-name", args.BlobContainerName),
+		slog.String("blob-container-name", blobContainerName),
 	})
 
 	// Create directory where S3 objects will be downloaded.
-	downloadDir := utils.GetDownloadedStorageBucketContentsDir(args.BlobContainerName)
+	downloadDir := utils.GetDownloadedStorageBucketContentsDir(blobContainerName)
 	err := os.MkdirAll(downloadDir, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
 
-	blobsPager := args.BlobClient.NewListBlobsFlatPager(args.BlobContainerName,
+	blobsPager := blobClient.NewListBlobsFlatPager(blobContainerName,
 		&container.ListBlobsFlatOptions{
 			Include: container.ListBlobsInclude{
 				Snapshots: true,
@@ -191,18 +188,23 @@ func DownloadBlobContainerContents(ctx context.Context, args *DownloadBlobContai
 		// Iterate through the blobs and download content of each blob.
 		for _, blob := range response.Segment.BlobItems {
 			downloadBlobContent(ctx, &DownloadBlobContentArgs{
-				DownloadBlobContainerContentsArgs: args,
-				DownloadDir:                       downloadDir,
-				BlobName:                          *blob.Name,
+				BlobClient: blobClient,
+
+				DownloadDir: downloadDir,
+
+				BlobContainerName: blobContainerName,
+				BlobName:          *blob.Name,
 			})
 		}
 	}
 }
 
 type DownloadBlobContentArgs struct {
-	*DownloadBlobContainerContentsArgs
+	BlobClient *azblob.Client
 
 	DownloadDir,
+
+	BlobContainerName,
 	BlobName string
 }
 
@@ -211,7 +213,14 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 		slog.String("blob", args.BlobName),
 	})
 
+	isGzipped := false
 	filePath := filepath.Join(args.DownloadDir, args.BlobName)
+	//
+	// If it's a gzipped file.
+	if strings.HasSuffix(args.BlobName, constants.GzippedFilenameSuffix) {
+		isGzipped = true
+		filePath, _ = strings.CutSuffix(filePath, constants.GzippedFilenameSuffix)
+	}
 
 	// Create intermediate directories (if required).
 	if strings.Contains(filePath, "/") {
@@ -231,7 +240,7 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 	blobContentReader := response.Body
 
 	// gzip decode blob content (if required).
-	if args.GzipDecode {
+	if isGzipped {
 		gzipReader, err := gzip.NewReader(response.Body)
 		assert.AssertErrNil(ctx, err, "Failed creating a gZip reader")
 		defer gzipReader.Close()

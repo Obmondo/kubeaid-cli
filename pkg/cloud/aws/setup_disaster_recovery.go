@@ -17,18 +17,16 @@ import (
 // Sets up the provisioned cluster for Disaster Recovery.
 // NOTE : Picks up AWS credentials from the environment.
 func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
-	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
-	assert.AssertNotNil(ctx, awsConfig.DisasterRecovery, "No AWS disaster-recovery config provided")
+	disasterRecoveryConfig := config.ParsedGeneralConfig.Cloud.DisasterRecovery
+	assert.AssertNotNil(ctx, disasterRecoveryConfig, "No disaster-recovery config provided")
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
 
 	// Create S3 bucket where Sealed Secrets will be backed up.
-	sealedSecretBackupsBucketName := awsConfig.DisasterRecovery.SealedSecretsBackupBucketName
-	services.CreateS3Bucket(ctx, a.s3Client, sealedSecretBackupsBucketName)
+	services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.SealedSecretsBackupsBucketName)
 	//
 	// Create S3 bucket where Kubernetes Objects will be backed up (by Velero).
-	veleroBackupsBucketName := awsConfig.DisasterRecovery.VeleroBackupsBucketName
-	services.CreateS3Bucket(ctx, a.s3Client, veleroBackupsBucketName)
+	services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.VeleroBackupsBucketName)
 
 	var (
 		clusterName = config.ParsedGeneralConfig.Cluster.Name

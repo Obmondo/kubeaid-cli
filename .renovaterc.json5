@@ -18,7 +18,7 @@
     "nix",
     "dockerfile",
     "github-actions"
-  ]
+  ],
 
   // Things to run after package / artifact updating.
   postUpdateOptions: [

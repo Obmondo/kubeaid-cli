@@ -121,7 +121,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 		))
 	}
 
-	if azureConfig.DisasterRecovery != nil {
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		// Create a User Assigned Managed Identity (dedicated to Velero).
 		// Assign it the Storage Data Owner role scoped to the Storage Account being used.
 		_, globals.UAMIClientIDVelero = services.CreateUAMI(ctx,

@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clusterctlV1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -101,7 +102,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
 	// keys from a previous cluster which got destroyed.
 	if args.IsPartOfDisasterRecovery {
-		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
+		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
 			sealedSecretsKeysBackupBucketName,
 		)
@@ -114,11 +115,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		)
 	}
 
-	// Setup cluster directory in the user's KubeAid config repo.
-	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
-		CreateDevEnvArgs: args.CreateDevEnvArgs,
-		GitAuthMethod:    args.GitAuthMethod,
-	})
+	// If not recovering a cluster,
+	// setup / update cluster directory in the user's KubeAid config repo.
+	if !args.IsPartOfDisasterRecovery {
+		SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+			CreateDevEnvArgs: args.CreateDevEnvArgs,
+			GitAuthMethod:    args.GitAuthMethod,
+		})
+	}
 
 	// Install and setup ArgoCD.
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
@@ -161,7 +165,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
 				Group: "operator.cluster.x-k8s.io",
-				Kind:  "InfrastructureProvider",
+				Kind:  string(clusterctlV1.InfrastructureProviderType),
 				Name:  getInfrastructureProviderName(),
 			},
 		},
