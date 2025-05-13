@@ -33,13 +33,7 @@ type Azure struct {
 func NewAzureCloudProvider() cloud.CloudProvider {
 	ctx := context.Background()
 
-	credentials, err := azidentity.NewClientSecretCredential(
-		config.ParsedGeneralConfig.Cloud.Azure.TenantID,
-		config.ParsedSecretsConfig.Azure.ClientID,
-		config.ParsedSecretsConfig.Azure.ClientSecret,
-		nil,
-	)
-	assert.AssertErrNil(ctx, err, "Failed constructing Azure credentials")
+	credentials := GetClientSecretCredentials(ctx)
 
 	subscriptionID := config.ParsedGeneralConfig.Cloud.Azure.SubscriptionID
 
@@ -96,6 +90,7 @@ func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 	capiClusterValuesFilePath string,
 	_updates any,
 ) {
+	panic("unimplemented")
 }
 
 func (a *Azure) UpdateMachineTemplate(
@@ -103,8 +98,5 @@ func (a *Azure) UpdateMachineTemplate(
 	clusterClient client.Client,
 	_updates any,
 ) {
-}
-
-func (a *Azure) GetSealedSecretsBackupBucketName() string {
 	panic("unimplemented")
 }

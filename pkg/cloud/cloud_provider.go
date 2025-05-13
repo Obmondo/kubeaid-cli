@@ -12,8 +12,6 @@ type (
 
 		SetupDisasterRecovery(ctx context.Context)
 
-		GetSealedSecretsBackupBucketName() string
-
 		UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
 			capiClusterValuesFilePath string,
 			_updates any,

@@ -22,10 +22,6 @@ func (*Hetzner) SetupDisasterRecovery(ctx context.Context) {
 	panic("unimplemented")
 }
 
-func (*Hetzner) GetSealedSecretsBackupBucketName() string {
-	panic("unreachable")
-}
-
 func (*Hetzner) GetLatestBackupName(ctx context.Context) string {
 	panic("unreachable")
 }

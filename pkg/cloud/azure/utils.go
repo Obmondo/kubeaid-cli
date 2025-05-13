@@ -5,11 +5,25 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
+
+// Constructs and returns Azure client secret credentials.
+func GetClientSecretCredentials(ctx context.Context) *azidentity.ClientSecretCredential {
+	credentials, err := azidentity.NewClientSecretCredential(
+		config.ParsedGeneralConfig.Cloud.Azure.TenantID,
+		config.ParsedSecretsConfig.Azure.ClientID,
+		config.ParsedSecretsConfig.Azure.ClientSecret,
+		nil,
+	)
+	assert.AssertErrNil(ctx, err, "Failed constructing Azure credentials")
+
+	return credentials
+}
 
 // Type casts the give CloudProvider interface instance to an instance of the Azure struct.
 // Panics if the type casting fails.

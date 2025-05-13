@@ -99,6 +99,13 @@ type (
 		Hetzner *HetznerConfig `yaml:"hetzner"`
 		Azure   *AzureConfig   `yaml:"azure"`
 		Local   *LocalConfig   `yaml:"local"`
+
+		DisasterRecovery *DisasterRecoveryConfig `yaml:"disasterRecovery"`
+	}
+
+	DisasterRecoveryConfig struct {
+		VeleroBackupsBucketName        string `yaml:"veleroBackupsBucketName"        validate:"required,notblank"`
+		SealedSecretsBackupsBucketName string `yaml:"sealedSecretsBackupsBucketName" validate:"required,notblank"`
 	}
 
 	SSHKeyPairConfig struct {
@@ -126,8 +133,6 @@ type (
 		BastionEnabled bool            `yaml:"bastionEnabled"                              default:"True"`
 		ControlPlane   AWSControlPlane `yaml:"controlPlane"   validate:"required"`
 		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups"     validate:"required"`
-
-		DisasterRecovery *AWSDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AWSControlPlane struct {
@@ -148,11 +153,6 @@ type (
 
 	AMIConfig struct {
 		ID string `yaml:"id" validate:"required,notblank"`
-	}
-
-	AWSDisasterRecovery struct {
-		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName"       validate:"required,notblank"`
-		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )
 
@@ -238,10 +238,10 @@ type (
 
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
 
+		ImageID *string `yaml:"imageID" validate:"notblank"`
+
 		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
-
-		DisasterRecovery *AzureDisasterRecovery `yaml:"disasterRecovery"`
 	}
 
 	AADApplication struct {
@@ -266,11 +266,6 @@ type (
 
 		VMSize     string `yaml:"vmSize"     validate:"required,notblank"`
 		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
-	}
-
-	AzureDisasterRecovery struct {
-		VeleroBackupsBucketName       string `yaml:"veleroBackupsBucketName"       validate:"required,notblank"`
-		SealedSecretsBackupBucketName string `yaml:"sealedSecretsBackupBucketName" validate:"required,notblank"`
 	}
 )
 

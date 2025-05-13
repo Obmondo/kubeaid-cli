@@ -34,7 +34,7 @@ velero:
     backupStorageLocation:
       - name: default
         provider: azure
-        bucket: {{ .AzureConfig.DisasterRecovery.VeleroBackupsBucketName }}
+        bucket: {{ .DisasterRecoveryConfig.VeleroBackupsBucketName }}
         config:
           useAAD: true
           resourceGroup: {{ .ClusterConfig.Name }}

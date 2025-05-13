@@ -27,7 +27,7 @@ func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
 }
 
 func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
-	sealedSecretBackupsBucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
+	sealedSecretBackupsBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 
 	return services.PolicyDocument{
 		Version: "2012-10-17",
@@ -46,7 +46,7 @@ func getSealedSecretsBackuperIAMPolicy() services.PolicyDocument {
 }
 
 func getVeleroIAMPolicy() services.PolicyDocument {
-	veleroBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.VeleroBackupsBucketName
+	veleroBackupsS3BucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.VeleroBackupsBucketName
 
 	return services.PolicyDocument{
 		Version: "2012-10-17",

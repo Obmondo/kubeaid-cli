@@ -24,6 +24,7 @@ type TemplateValues struct {
 	GitPassword string
 	config.ForksConfig
 	config.ClusterConfig
+	*config.DisasterRecoveryConfig
 	config.MonitoringConfig
 	CAPIClusterNamespace string
 
@@ -44,13 +45,14 @@ type TemplateValues struct {
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
-		CustomerID:           config.ParsedGeneralConfig.CustomerID,
-		GitUsername:          config.ParsedSecretsConfig.Git.Username,
-		GitPassword:          config.ParsedSecretsConfig.Git.Password,
-		ForksConfig:          config.ParsedGeneralConfig.Forks,
-		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
-		MonitoringConfig:     config.ParsedGeneralConfig.Monitoring,
-		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
+		CustomerID:             config.ParsedGeneralConfig.CustomerID,
+		GitUsername:            config.ParsedSecretsConfig.Git.Username,
+		GitPassword:            config.ParsedSecretsConfig.Git.Password,
+		ForksConfig:            config.ParsedGeneralConfig.Forks,
+		ClusterConfig:          config.ParsedGeneralConfig.Cluster,
+		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+		MonitoringConfig:       config.ParsedGeneralConfig.Monitoring,
+		CAPIClusterNamespace:   kubernetes.GetCapiClusterNamespace(),
 
 		AWSConfig:     config.ParsedGeneralConfig.Cloud.AWS,
 		AzureConfig:   config.ParsedGeneralConfig.Cloud.Azure,
@@ -121,7 +123,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recover.
-		if config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery != nil {
+		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
 			)
@@ -133,7 +135,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recover.
-		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
+		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
 			)
@@ -176,8 +178,8 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.AzureSpecificSecretTemplateNames...,
 		)
 
-		// Add Disaster Recovery related templates, if the user wants disaster recover.
-		if config.ParsedGeneralConfig.Cloud.Azure.DisasterRecovery != nil {
+		// Add Disaster Recovery related templates, if the user wants disaster recovery.
+		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificSecretTemplateNames...,
 			)

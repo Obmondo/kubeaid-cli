@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
@@ -33,10 +32,6 @@ func NewAWSCloudProvider() cloud.CloudProvider {
 		s3Client:  s3.NewFromConfig(awsSDKConfig),
 		ec2Client: ec2.NewFromConfig(awsSDKConfig),
 	}
-}
-
-func (*AWS) GetSealedSecretsBackupBucketName() string {
-	return config.ParsedGeneralConfig.Cloud.AWS.DisasterRecovery.SealedSecretsBackupBucketName
 }
 
 func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,

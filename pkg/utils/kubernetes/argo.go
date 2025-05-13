@@ -53,7 +53,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
-		Values:      map[string]interface{}{},
+		Values:      map[string]any{},
 	})
 
 	// Port-forward ArgoCD and create ArgoCD client.

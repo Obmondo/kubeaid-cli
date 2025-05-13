@@ -15,8 +15,6 @@ const (
 	EnvNameRobotPassword = "ROBOT_PASSWORD"
 
 	EnvNameKubeconfig = "KUBECONFIG"
-
-	EnvNameDockerHost = "DOCKER_HOST"
 )
 
 // CLI flags.
@@ -152,4 +150,6 @@ const (
 
 	SSHPublicKeyPrefixOpenSSH = "ssh-rsa "
 	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
+
+	GzippedFilenameSuffix = ".tar.gz"
 )

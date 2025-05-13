@@ -48,6 +48,10 @@
             (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
             azure-cli
           ];
+
+          # Hitting this issue : https://github.com/Azure/azure-cli/issues/31419.
+          # Got the solution from here : https://github.com/dotnet/orleans/pull/9486/files
+          AZURE_CORE_USE_MSAL_HTTP_CACHE = "false";
         };
       }
     );
