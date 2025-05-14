@@ -163,3 +163,5 @@ make bootstrap-cluster-local-dev
 - [ncdmv's flake.nix file](https://github.com/aksiksi/ncdmv/blob/main/flake.nix)
 
 - [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
+
+- [What is CA bundle?](https://www.namecheap.com/support/knowledgebase/article.aspx/986/69/what-is-ca-bundle/)

@@ -1,4 +1,4 @@
-name: e2e-giteas
+name: enableitdk-gitea
 
 x-gitea-healthcheck: &gitea-healthcheck
   healthcheck:
@@ -8,30 +8,29 @@ x-gitea-healthcheck: &gitea-healthcheck
     retries: 3
 
 services:
-
   enableitdk-gitea:
     container_name: enableitdk-gitea
     image: gitea/gitea:1.22.1-rootless
     hostname: enableitdk-gitea
     environment:
+      # Controls access to the installation page.
+      # When set to true, the installation page is not accessible.
       GITEA__security__INSTALL_LOCK: true
-        # Controls access to the installation page. When set to
-        # true, the installation page is not accessible.
     volumes:
       - type: bind
-        source: ./configs/gitea/enableit/app.ini
+        source: ./configs/gitea/enableitdk/app.ini
         target: /etc/gitea/app.ini
-      - ../../certs/enableitdk-gitea.crt:/etc/ssl/certs/gitea.crt:ro
-      - ../../certs/enableitdk-gitea.key:/etc/ssl/private/gitea.key:ro
+      - ./certs/enableitdk-gitea.crt:/etc/ssl/certs/gitea.crt:ro
+      - ./certs/enableitdk-gitea.key:/etc/ssl/private/gitea.key:ro
     command:
       - bash
       - -c
       - |
         gitea migrate
         gitea admin user create \
-          --username test --password password --email test@dummy.io \
+          --email anantharam@obmondo.com --username anantharam --password password \
           --admin
         exec /usr/local/bin/docker-entrypoint.sh
     ports:
-      - 3001:3000
+      - 3000:3000
     <<: *gitea-healthcheck

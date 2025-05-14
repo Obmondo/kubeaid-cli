@@ -54,6 +54,7 @@ func CloneRepo(ctx context.Context,
 
 	opts := &goGit.CloneOptions{
 		URL:      url,
+		Auth:     nil,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 

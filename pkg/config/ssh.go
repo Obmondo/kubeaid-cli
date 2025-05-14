@@ -6,10 +6,11 @@ import (
 	"os"
 	"strings"
 
+	"golang.org/x/crypto/ssh"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"golang.org/x/crypto/ssh"
 )
 
 func hydrateSSHKeyConfigs() {
