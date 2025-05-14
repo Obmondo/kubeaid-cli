@@ -23,7 +23,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	branch string,
-	auth transport.AuthMethod,
+	authMethod transport.AuthMethod,
 	clusterName string,
 	commitMessage string,
 ) plumbing.Hash {
@@ -51,7 +51,8 @@ func AddCommitAndPushChanges(ctx context.Context,
 		RefSpecs: []gitConfig.RefSpec{
 			gitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
 		},
-		Auth: auth,
+		Auth:     authMethod,
+		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
@@ -99,6 +100,7 @@ func WaitUntilPRMerged(ctx context.Context,
 		err := repo.Fetch(&goGit.FetchOptions{
 			Auth:     auth,
 			RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
+			CABundle: config.ParsedGeneralConfig.Git.CABundle,
 		})
 		if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")

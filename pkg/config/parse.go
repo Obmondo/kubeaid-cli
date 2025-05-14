@@ -5,12 +5,10 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/creasty/defaults"
-	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
@@ -42,6 +40,10 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// Set defaults.
 		err = defaults.Set(ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
+
+		// If the user has provided a custom CA certificate path,
+		// then read and store the custom CA certificate in config.
+		hydrateCABundle(ctx)
 
 		// Read SSH key-pairs from provided file paths and store them in config.
 		hydrateSSHKeyConfigs()
@@ -145,70 +147,19 @@ func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
 	return &awsCredentials
 }
 
-func hydrateSSHKeyConfigs() {
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAzure:
-		hydrateSSHKeyConfig(
-			&ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
-		)
+// If the user has provided a custom CA certificate path,
+// then reads and stores the custom CA certificate in general config.
+func hydrateCABundle(ctx context.Context) {
+	caBundlePath := ParsedGeneralConfig.Git.CABundlePath
 
-	case constants.CloudProviderHetzner:
-		// When using Hetzner Bare Metal.
-		if (ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal != nil) &&
-			ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
-			hydrateSSHKeyConfig(&ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.RobotSSHKeyPair)
-		}
+	if len(caBundlePath) == 0 {
+		return
 	}
-}
 
-// Reads and validates an SSH key-pair from the provided file paths.
-// The key-pair is then stored in the SSH key config struct itself.
-func hydrateSSHKeyConfig(sshKeyConfig *SSHKeyPairConfig) {
-	ctx := context.Background()
+	caBundle, err := os.ReadFile(caBundlePath)
+	assert.AssertErrNil(ctx, err, "Failed reading file", slog.String("path", caBundlePath))
 
-	// Read the SSH key-pair.
-
-	publicKey, err := os.ReadFile(sshKeyConfig.PublicKeyFilePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed reading file",
-		slog.String("path", sshKeyConfig.PublicKeyFilePath),
-	)
-	sshKeyConfig.PublicKey = string(publicKey)
-
-	privateKey, err := os.ReadFile(sshKeyConfig.PrivateKeyFilePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed reading file",
-		slog.String("path", sshKeyConfig.PrivateKeyFilePath),
-	)
-	sshKeyConfig.PrivateKey = string(privateKey)
-
-	// Validate the SSH key-pair based on its type.
-
-	switch {
-	// OpenSSH.
-	case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSH):
-
-		_, _, _, _, err = ssh.ParseAuthorizedKey(publicKey)
-		assert.AssertErrNil(ctx, err,
-			"SSH public key is invalid : failed parsing",
-			slog.String("path", sshKeyConfig.PublicKeyFilePath),
-		)
-
-		_, err = ssh.ParsePrivateKey(privateKey)
-		assert.AssertErrNil(ctx, err,
-			"SSH private key is invalid : failed parsing",
-			slog.String("path", sshKeyConfig.PrivateKeyFilePath),
-		)
-
-	//nolint:godox
-	// TODO : PEM.
-	case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixPEM):
-		break
-
-	default:
-		slog.ErrorContext(ctx, "Failed identifying SSH key-pair type using SSH public key prefix")
-		os.Exit(1)
-	}
+	ParsedGeneralConfig.Git.CABundle = caBundle
 }
 
 // For each node-group, fills up the cpu and memory (fetched using the corresponding cloud SDK) of
