@@ -1,0 +1,17 @@
+# The argocd-tls-certs-cm ConfigMap will be mounted as a volume at the mount path /app/config/tls
+# in the pods of argocd-server and argocd-repo-server.
+# It will create files for each data key in the mount path directory.
+# REFERENCE : https://argo-cd.readthedocs.io/en/stable/operator-manual/declarative-setup/#repositories-using-self-signed-tls-certificates-or-are-signed-by-custom-ca.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-tls-certs-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+
+data:
+  {{ .CustomerGitServerHostname }}: |
+    {{ printf "%s" .GitConfig.CABundle }}

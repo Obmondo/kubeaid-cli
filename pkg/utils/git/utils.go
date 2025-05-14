@@ -3,6 +3,7 @@ package git
 import (
 	"context"
 	"log/slog"
+	"net/url"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -39,4 +40,12 @@ func GetDefaultBranchName(ctx context.Context,
 	}
 
 	panic("Failed detecting default branch name")
+}
+
+// Returns hostname of customer's git server.
+func GetCustomerGitServerHostName(ctx context.Context) string {
+	kubeaidConfigURL, err := url.Parse(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+	assert.AssertErrNil(ctx, err, "Failed parsing KubeAid config URL")
+
+	return kubeaidConfigURL.Hostname()
 }

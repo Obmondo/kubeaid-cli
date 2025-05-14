@@ -13,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -76,9 +77,9 @@ func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	// Create a new HTTP client
 	client := &http.Client{}
 
-	// Use CA bundle, provided by the user.
+	// Use CA bundle, provided by the user, when dealing with user's git server.
 	caBundle := config.ParsedGeneralConfig.Git.CABundle
-	if len(caBundle) > 0 {
+	if (repoURL != constants.RepoURLObmondoKubeAid) && (len(caBundle) > 0) {
 		certPool := x509.NewCertPool()
 
 		ok := certPool.AppendCertsFromPEM(caBundle)
@@ -105,11 +106,11 @@ func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	}
 	defer response.Body.Close()
 
-	// If the request was unsuccessfull, then the repo isn't public.
+	// If the request was unsuccessful, then the repo isn't public.
 	if response.StatusCode != http.StatusOK {
 		return false, nil
 	}
 
-	// Request was successfull, which means the repo is public.
+	// Request was successful, which means the repo is public.
 	return true, nil
 }

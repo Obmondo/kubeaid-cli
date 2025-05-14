@@ -11,6 +11,8 @@ services:
   enableitdk-gitea:
     container_name: enableitdk-gitea
     image: gitea/gitea:1.22.1-rootless
+    networks:
+      - k3d-management-cluster
     hostname: enableitdk-gitea
     environment:
       # Controls access to the installation page.
@@ -20,8 +22,8 @@ services:
       - type: bind
         source: ./configs/gitea/enableitdk/app.ini
         target: /etc/gitea/app.ini
-      - ./certs/enableitdk-gitea.crt:/etc/ssl/certs/gitea.crt:ro
-      - ./certs/enableitdk-gitea.key:/etc/ssl/private/gitea.key:ro
+      - ./configs/certs/gitea/gitea.crt:/etc/ssl/certs/gitea.crt:ro
+      - ./configs/certs/gitea/gitea.key:/etc/ssl/private/gitea.key:ro
     command:
       - bash
       - -c
@@ -34,3 +36,6 @@ services:
     ports:
       - 3000:3000
     <<: *gitea-healthcheck
+
+networks:
+  k3d-management-cluster:
