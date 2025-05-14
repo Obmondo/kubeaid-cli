@@ -15,5 +15,5 @@ stringData:
   name: {{ $name }}
   url: {{ .KubeaidConfigForkURL }}
   type: git
-  username: {{ .GitUsername }}
-  password: {{ .GitPassword }}
+  username: {{ .GitCredentials.Username }}
+  password: {{ .GitCredentials.Password }}

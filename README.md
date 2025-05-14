@@ -46,6 +46,66 @@ If cluster provisioning gets stuck, then debug by :
 
 If you want to delete the provisioned cluster, then execute : `make delete-provisioned-cluster-dev-aws`.
 
+## Developer Guide (Running locally)
+
+- Spin up the gitea containe using the docker compose file added in `./e2e/compose/docker-compose.yaml`
+
+ ```bash
+ cd ./e2e/compose
+ docker compose up -d
+ ```
+
+- create the `general.yaml` and `secrets.yaml` config files in `./outputs/configs/local`
+
+```bash
+touch ./outputs/configs/local/general.yaml
+touch ./outputs/configs/local/secrets.yaml
+```
+
+- add the below configs in `./outputs/configs/local/general.yaml` and `./outputs/configs/local/secrets.yaml` respectively for the bootstrap script to clone the repos and spin up k3d.
+
+```yaml
+forkURLs:
+  kubeaid: https://enableitdk-gitea:3001/test/KubeAid
+  kubeaidConfig: https://enableitdk-gitea:3001/test/kubeaid-config
+
+cluster:
+  name: kubeaid-demo-local
+  k8sVersion: v1.31.0
+  kubeaidVersion: 10.0.0 # update this accordingly
+
+cloud:
+  local: {}
+```
+
+```yaml
+git:
+  username: test
+  password: password
+  caCertPath: /home/ananth/go/src/gitea.obmondo.com/kubeaid-bootstrap-script/certs/custom-rootCA.pem # change this to match your local path
+```
+
+**NOTE** - The current gitea compose file in `./e2e/compose/` uses custom CA certs added in `./certs`. In case you don't want to use the customCA for your local gitea, update the compose file accordingly and keep `caCertPath` in `secrets.yaml` empty.
+
+- run the below command to add `enableitdk-gitea` in your local `/etc/hosts`
+
+```bash
+echo "127.0.0.1 enableitdk-gitea" >> /etc/hosts
+```
+
+- Install the necessary pre-requisites
+
+```bash
+sudo chmod 777 ./scripts/install-prerequisites.sh
+./scripts/install-prerequisites.sh
+```
+
+- Now run the script locally
+
+```bash
+make bootstrap-cluster-local-dev
+```
+
 ## TODOs
 
 - [ ] Check Git URL if SSH agent is used.
@@ -103,3 +163,5 @@ If you want to delete the provisioned cluster, then execute : `make delete-provi
 - [ncdmv's flake.nix file](https://github.com/aksiksi/ncdmv/blob/main/flake.nix)
 
 - [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
+
+- [What is CA bundle?](https://www.namecheap.com/support/knowledgebase/article.aspx/986/69/what-is-ca-bundle/)

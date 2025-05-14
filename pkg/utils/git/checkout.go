@@ -11,6 +11,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -38,6 +39,7 @@ func CheckoutToDefaultBranch(ctx context.Context,
 	err = repo.Fetch(&goGit.FetchOptions{
 		Auth:     authMethod,
 		RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
+		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")

@@ -53,7 +53,12 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 
 		s3Client := s3.NewFromConfig(awsSDKConfig)
 
-		awsServices.DownloadS3BucketContents(ctx, s3Client, sealedSecretsKeysBackupsBucketName, true)
+		awsServices.DownloadS3BucketContents(
+			ctx,
+			s3Client,
+			sealedSecretsKeysBackupsBucketName,
+			true,
+		)
 
 	case constants.CloudProviderAzure:
 		credentials := azure.GetClientSecretCredentials(ctx)
@@ -61,7 +66,11 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 		blobClient, err := azblob.NewClient(azure.GetStorageAccountURL(), credentials, nil)
 		assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
 
-		azureServices.DownloadBlobContainerContents(ctx, blobClient, sealedSecretsKeysBackupsBucketName)
+		azureServices.DownloadBlobContainerContents(
+			ctx,
+			blobClient,
+			sealedSecretsKeysBackupsBucketName,
+		)
 
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")

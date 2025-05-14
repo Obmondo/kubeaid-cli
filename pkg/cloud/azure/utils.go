@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"

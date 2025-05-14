@@ -2,6 +2,8 @@ package git
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,6 +13,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -27,7 +30,7 @@ func CloneRepo(ctx context.Context,
 		slog.String("repo", url), slog.String("dir", dirPath),
 	})
 
-	// If the repo already exists.
+	// If the repo is already cloned.
 	if _, err := os.ReadDir(dirPath); err == nil {
 		repo, err := goGit.PlainOpen(dirPath)
 		if err != nil && errors.Is(err, goGit.ErrRepositoryNotExists) {
@@ -46,27 +49,26 @@ func CloneRepo(ctx context.Context,
 		return repo
 	}
 
-	// Clone git repo.
+	// Clone the repo.
+
 	slog.InfoContext(ctx, "Cloning repo")
 
-	var auth transport.AuthMethod
-
-	if len(config.ParsedSecretsConfig.Git.Password) > 0 {
-		isPrivate, err := IsRepoPrivate(ctx, url)
-		assert.AssertErrNil(ctx, err, "failed to determine git repo type")
-
-		if isPrivate {
-			auth = authMethod
-		}
+	opts := &goGit.CloneOptions{
+		URL:      url,
+		Auth:     nil,
+		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	opts := &goGit.CloneOptions{
-		Auth: auth,
-		URL:  url,
+	// Use some authentication method, if the repository visibility is private.
+	isPrivate, err := IsRepoPrivate(ctx, url)
+	assert.AssertErrNil(ctx, err, "Failed to determine repo visibility")
+	if isPrivate {
+		opts.Auth = authMethod
 	}
 
 	repo, err := goGit.PlainClone(dirPath, false, opts)
 	assert.AssertErrNil(ctx, err, "Failed cloning repo")
+
 	return repo
 }
 
@@ -75,25 +77,40 @@ func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	// Create a new HTTP client
 	client := &http.Client{}
 
-	// Create a new request
-	req, err := http.NewRequest(http.MethodGet, repoURL, nil)
-	if err != nil {
-		return false, err
+	// Use CA bundle, provided by the user, when dealing with user's git server.
+	caBundle := config.ParsedGeneralConfig.Git.CABundle
+	if (repoURL != constants.RepoURLObmondoKubeAid) && (len(caBundle) > 0) {
+		certPool := x509.NewCertPool()
+
+		ok := certPool.AppendCertsFromPEM(caBundle)
+		if !ok {
+			slog.ErrorContext(ctx, "Failed to add custom CA bundle to cert pool")
+			os.Exit(1)
+		}
+
+		client.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: certPool,
+			},
+		}
 	}
+
+	// Construct a new request.
+	request, err := http.NewRequest(http.MethodGet, repoURL, nil)
+	assert.AssertErrNil(ctx, err, "Failed constructing HTTP request")
 
 	// Make the request
-	resp, err := client.Do(req)
+	response, err := client.Do(request)
 	if err != nil {
 		return false, err
 	}
-	defer resp.Body.Close()
+	defer response.Body.Close()
 
-	// Check if the request was successful
-	if resp.StatusCode == http.StatusOK {
-		// If the request is successful, the repo is public
+	// If the request was unsuccessful, then the repo isn't public.
+	if response.StatusCode != http.StatusOK {
 		return false, nil
 	}
 
-	slog.Info("response status code", slog.Int("status code", resp.StatusCode))
+	// Request was successful, which means the repo is public.
 	return true, nil
 }

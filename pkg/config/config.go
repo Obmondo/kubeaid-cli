@@ -15,6 +15,9 @@ type (
 	}
 
 	GitConfig struct {
+		CABundlePath string `yaml:"caBundlePath" validate:"notblank"`
+		CABundle     []byte `yaml:"caBundle"`
+
 		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -20,8 +21,9 @@ var KubeaidConfigFileTemplates embed.FS
 
 type TemplateValues struct {
 	CustomerID,
-	GitUsername,
-	GitPassword string
+	CustomerGitServerHostname string
+	config.GitConfig
+	config.GitCredentials
 	config.ForksConfig
 	config.ClusterConfig
 	*config.DisasterRecoveryConfig
@@ -45,14 +47,15 @@ type TemplateValues struct {
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
-		CustomerID:             config.ParsedGeneralConfig.CustomerID,
-		GitUsername:            config.ParsedSecretsConfig.Git.Username,
-		GitPassword:            config.ParsedSecretsConfig.Git.Password,
-		ForksConfig:            config.ParsedGeneralConfig.Forks,
-		ClusterConfig:          config.ParsedGeneralConfig.Cluster,
-		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-		MonitoringConfig:       config.ParsedGeneralConfig.Monitoring,
-		CAPIClusterNamespace:   kubernetes.GetCapiClusterNamespace(),
+		CustomerID:                config.ParsedGeneralConfig.CustomerID,
+		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
+		GitConfig:                 config.ParsedGeneralConfig.Git,
+		GitCredentials:            config.ParsedSecretsConfig.Git,
+		ForksConfig:               config.ParsedGeneralConfig.Forks,
+		ClusterConfig:             config.ParsedGeneralConfig.Cluster,
+		DisasterRecoveryConfig:    config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+		MonitoringConfig:          config.ParsedGeneralConfig.Monitoring,
+		CAPIClusterNamespace:      kubernetes.GetCapiClusterNamespace(),
 
 		AWSConfig:     config.ParsedGeneralConfig.Cloud.AWS,
 		AzureConfig:   config.ParsedGeneralConfig.Cloud.Azure,
@@ -113,6 +116,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames,
 		constants.CommonCloudNonSecretTemplateNames...,
+	)
+
+	// If the user has provided a CA bundle for accessing his / her Git repository,
+	// then we need to provide that CA bundle to ArgoCD via a ConfigMap.
+	embeddedTemplateNames = append(embeddedTemplateNames,
+		"argocd-apps/templates/k8s-configs.yaml.tmpl",
+		"k8s-configs/argocd-tls-certs-cm.configmap.yaml.tmpl",
 	)
 
 	// Add cloud provider specific templates.

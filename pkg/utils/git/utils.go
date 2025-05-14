@@ -3,15 +3,16 @@ package git
 import (
 	"context"
 	"log/slog"
+	"net/url"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-func GetDefaultBranchName(
-	ctx context.Context,
+func GetDefaultBranchName(ctx context.Context,
 	authMethod transport.AuthMethod,
 	repo *goGit.Repository,
 ) string {
@@ -19,7 +20,8 @@ func GetDefaultBranchName(
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
 	refs, err := remote.List(&goGit.ListOptions{
-		Auth: authMethod,
+		Auth:     authMethod,
+		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
@@ -38,4 +40,12 @@ func GetDefaultBranchName(
 	}
 
 	panic("Failed detecting default branch name")
+}
+
+// Returns hostname of customer's git server.
+func GetCustomerGitServerHostName(ctx context.Context) string {
+	kubeaidConfigURL, err := url.Parse(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+	assert.AssertErrNil(ctx, err, "Failed parsing KubeAid config URL")
+
+	return kubeaidConfigURL.Hostname()
 }

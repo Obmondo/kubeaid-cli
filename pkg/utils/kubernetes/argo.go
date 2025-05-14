@@ -11,6 +11,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/certificate"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
@@ -23,10 +24,12 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -61,6 +64,28 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 
 	// Create ArgoCD Application client.
 	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
+
+	// Add CA bundle for accessing customer's git server to ArgoCD.
+	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
+		certClientCloser, certClient := argoCDClient.NewCertClientOrDie()
+		defer certClientCloser.Close()
+
+		_, err := certClient.CreateCertificate(ctx, &certificate.RepositoryCertificateCreateRequest{
+			Upsert: true,
+			Certificates: &argoCDV1Aplha1.RepositoryCertificateList{
+				Items: []argoCDV1Aplha1.RepositoryCertificate{{
+					ServerName: git.GetCustomerGitServerHostName(ctx),
+					CertType:   "https",
+					CertData:   config.ParsedGeneralConfig.Git.CABundle,
+				}},
+			},
+		})
+		assert.AssertErrNil(ctx, err,
+			"Failed adding CA bundle (for accessing customer's git server) to ArgoCD",
+		)
+
+		slog.InfoContext(ctx, "Added CA bundle (for accessing customer's git server) to ArgoCD")
+	}
 
 	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
 	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")

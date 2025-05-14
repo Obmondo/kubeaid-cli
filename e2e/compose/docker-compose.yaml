@@ -1,0 +1,41 @@
+name: enableitdk-gitea
+
+x-gitea-healthcheck: &gitea-healthcheck
+  healthcheck:
+    test: [ "CMD-SHELL", "curl -kf https://localhost:3000/api/v1/version/ || exit 1" ]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+
+services:
+  enableitdk-gitea:
+    container_name: enableitdk-gitea
+    image: gitea/gitea:1.22.1-rootless
+    networks:
+      - k3d-management-cluster
+    hostname: enableitdk-gitea
+    environment:
+      # Controls access to the installation page.
+      # When set to true, the installation page is not accessible.
+      GITEA__security__INSTALL_LOCK: true
+    volumes:
+      - type: bind
+        source: ./configs/gitea/enableitdk/app.ini
+        target: /etc/gitea/app.ini
+      - ./configs/certs/gitea/gitea.crt:/etc/ssl/certs/gitea.crt:ro
+      - ./configs/certs/gitea/gitea.key:/etc/ssl/private/gitea.key:ro
+    command:
+      - bash
+      - -c
+      - |
+        gitea migrate
+        gitea admin user create \
+          --email anantharam@obmondo.com --username anantharam --password password \
+          --admin
+        exec /usr/local/bin/docker-entrypoint.sh
+    ports:
+      - 3000:3000
+    <<: *gitea-healthcheck
+
+networks:
+  k3d-management-cluster:
