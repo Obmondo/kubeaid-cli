@@ -305,7 +305,7 @@ replace (
 	// We need this, otherwise Github Actions CI run will fail with this error :
 	// https://github.com/Obmondo/kubeaid-bootstrap-script/actions/runs/14102269130/job/39500847660#step:6:5993.
 	// REFER : https://github.com/argoproj/argo-cd/issues/22007.
-	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
+	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.4.1
 
 	// When importing Argo CD packages, face "unknown revision v0.0.0" errors when downloading the
 	// dependencies.
