@@ -15,7 +15,7 @@ type (
 	}
 
 	GitConfig struct {
-		CABundlePath string `yaml:"caBundlePath" validate:"notblank"`
+		CABundlePath string `yaml:"caBundlePath"`
 		CABundle     []byte `yaml:"caBundle"`
 
 		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
@@ -241,7 +241,7 @@ type (
 
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
 
-		ImageID *string `yaml:"imageID" validate:"notblank"`
+		ImageID *string `yaml:"imageID"`
 
 		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
