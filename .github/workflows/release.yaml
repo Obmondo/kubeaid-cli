@@ -1,9 +1,5 @@
 name: Release
 
-permissions:
-  contents: read
-  security-events: write
-
 # This Github Action workflow is triggered, when a new release is published.
 on:
   release:
@@ -15,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+      security-events: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
