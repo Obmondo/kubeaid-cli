@@ -16,7 +16,7 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Golang CI lint
-        uses: https://gitea.obmondo.com/Obmondo/golangci-lint-action@v7.0.0
+        uses: https://gitea.obmondo.com/Obmondo/golangci-lint-action@v7.0.1
         with:
           version: v2.0.0
           args: --timeout=5m --config=.golangci.yaml
