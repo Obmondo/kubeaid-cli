@@ -2,7 +2,7 @@
 
 #--- Builder stage ---
 
-FROM golang:1.24.0 AS builder
+FROM golang:1.24.3 AS builder
 
 WORKDIR /app
 
@@ -14,7 +14,7 @@ RUN go build -o kubeaid-bootstrap-script ./cmd
 
 #--- Packager stage ---
 
-FROM golang:1.24.0 AS packager
+FROM golang:1.24.3 AS packager
 
 # Set the maintainer label
 LABEL org.opencontainers.image.authors="ashish@obmondo.com, archisman@obmondo.com"
