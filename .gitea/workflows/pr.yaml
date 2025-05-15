@@ -10,7 +10,7 @@ jobs:
         uses: https://gitea.obmondo.com/Obmondo/checkout@v4.2.2
 
       - name: Setup Go
-        uses: https://gitea.obmondo.com/Obmondo/setup-go@v5.4.0
+        uses: https://gitea.obmondo.com/Obmondo/setup-go@v5.5.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
