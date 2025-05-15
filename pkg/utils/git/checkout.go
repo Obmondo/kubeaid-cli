@@ -39,6 +39,7 @@ func CheckoutToDefaultBranch(ctx context.Context,
 	err = repo.Fetch(&goGit.FetchOptions{
 		Auth:     authMethod,
 		RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
+		Tags:     goGit.AllTags,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
