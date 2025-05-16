@@ -3,6 +3,9 @@ package constants
 // Common template names.
 var (
 	CommonNonSecretTemplateNames = []string{
+		// For KubeAid Bootstrap Script general config.
+		"kubeaid-bootstrap-script.general.yaml.tmpl",
+
 		// For ArgoCD.
 		"argocd-apps/templates/argocd.yaml.tmpl",
 		"argocd-apps/values-argocd.yaml.tmpl",

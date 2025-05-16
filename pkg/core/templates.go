@@ -20,6 +20,8 @@ import (
 var KubeaidConfigFileTemplates embed.FS
 
 type TemplateValues struct {
+	GeneralConfigFileContents string
+
 	CustomerID,
 	CustomerGitServerHostname string
 	config.GitConfig
@@ -47,6 +49,8 @@ type TemplateValues struct {
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
+		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
+
 		CustomerID:                config.ParsedGeneralConfig.CustomerID,
 		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
 		GitConfig:                 config.ParsedGeneralConfig.Git,
