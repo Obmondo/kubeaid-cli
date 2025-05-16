@@ -106,10 +106,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			sealedSecretsKeysBackupBucketName,
 		)
 
-		// Restore the Sealed Secrets controller private keys.
-		// NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
-		//        Because of which, doing kubectl apply for the second time errors out, thus hindering
-		//        the script's idempotency.
+		/*
+			Restore the Sealed Secrets controller private keys.
+
+			NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
+			       Because of which, doing kubectl apply for the second time errors out, thus hindering
+			       the script's idempotency.
+		*/
 		utils.ExecuteCommandOrDie(
 			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath),
 		)
@@ -123,16 +126,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// Install Sealed Secrets.
 	kubernetes.InstallSealedSecrets(ctx)
 
-	// If not recovering a cluster,
-	// setup / update cluster directory in the user's KubeAid config repo.
-	if !args.IsPartOfDisasterRecovery {
-		SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
-			CreateDevEnvArgs: args.CreateDevEnvArgs,
-			GitAuthMethod:    args.GitAuthMethod,
-		})
-	}
-	// TODO : Otherwise, we just need to update the Kubernetes API server host and port in Cilium
-	//        values file.
+	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+		CreateDevEnvArgs: args.CreateDevEnvArgs,
+		GitAuthMethod:    args.GitAuthMethod,
+	})
 
 	// Install and setup ArgoCD.
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)

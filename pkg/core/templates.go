@@ -86,27 +86,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		       the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
 		       provisioned, we bring it in the GitOPs cycle.
 	*/
-	{
-		ctx := context.Background()
-
-		kubeConfigPaths := []string{
-			kubernetes.GetManagementClusterKubeconfigPath(ctx),
-			constants.OutputPathMainClusterKubeconfig,
-		}
-
-		for _, kubeConfigPath := range kubeConfigPaths {
-			clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeConfigPath)
-			if err != nil {
-				continue
-			}
-
-			cluster, err := kubernetes.GetClusterResource(ctx, clusterClient)
-			if err == nil {
-				templateValues.ProvisionedClusterEndpoint = &cluster.Spec.ControlPlaneEndpoint
-				break
-			}
-		}
-	}
+	templateValues.ProvisionedClusterEndpoint = kubernetes.GetMainClusterEndpoint(ctx)
 
 	return templateValues
 }

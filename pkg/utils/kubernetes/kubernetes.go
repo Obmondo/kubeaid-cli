@@ -329,3 +329,26 @@ func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient clie
 	_, err := GetClusterResource(ctx, provisionedClusterClient)
 	return err == nil
 }
+
+// Returns API endpoint of the main cluster, if provisioned.
+// Otherwise returns nil.
+func GetMainClusterEndpoint(ctx context.Context) *clusterAPIV1Beta1.APIEndpoint {
+	kubeConfigPaths := []string{
+		GetManagementClusterKubeconfigPath(ctx),
+		constants.OutputPathMainClusterKubeconfig,
+	}
+
+	for _, kubeConfigPath := range kubeConfigPaths {
+		clusterClient, err := CreateKubernetesClient(ctx, kubeConfigPath)
+		if err != nil {
+			continue
+		}
+
+		cluster, err := GetClusterResource(ctx, clusterClient)
+		if err == nil {
+			return &cluster.Spec.ControlPlaneEndpoint
+		}
+	}
+
+	return nil
+}

@@ -43,7 +43,7 @@ func CloneRepo(ctx context.Context,
 		if url == config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL {
 			// Checkout to default branch and fetch latest changes.
 			// All changes in the current branch get discarded.
-			CheckoutToDefaultBranch(ctx, repo, workTree, authMethod)
+			CheckoutToDefaultBranchAndFetchUpdates(ctx, repo, workTree, authMethod)
 		}
 
 		return repo

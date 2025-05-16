@@ -18,7 +18,7 @@ import (
 
 // Removes any unstaged changes in the current branch. Then checks out to the default branch and
 // fetches all updates.
-func CheckoutToDefaultBranch(ctx context.Context,
+func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	authMethod transport.AuthMethod,
@@ -38,9 +38,9 @@ func CheckoutToDefaultBranch(ctx context.Context,
 	// Fetch all the changes.
 	err = repo.Fetch(&goGit.FetchOptions{
 		Auth:     authMethod,
+		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 		RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
 		Tags:     goGit.AllTags,
-		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")
@@ -63,7 +63,7 @@ func CreateAndCheckoutToBranch(ctx context.Context,
 
 	// Checkout to default branch and fetch latest changes.
 	// All changes in the current branch get discarded.
-	CheckoutToDefaultBranch(ctx, repo, workTree, authMethod)
+	CheckoutToDefaultBranchAndFetchUpdates(ctx, repo, workTree, authMethod)
 
 	// Error out if the branch already exists.
 	branchRef, err := repo.Reference(plumbing.ReferenceName("refs/heads/"+branch), true)
