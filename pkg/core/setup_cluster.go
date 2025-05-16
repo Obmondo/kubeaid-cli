@@ -96,29 +96,32 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		}
 	}
 
-	// Install Sealed Secrets.
-	kubernetes.InstallSealedSecrets(ctx)
-
-	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
-	// keys from a previous cluster which got destroyed.
+	// If recovering a cluster, then restore the Sealed Secrets controller private keys.
 	if args.IsPartOfDisasterRecovery {
+		// Create the sealed-secrets namespace.
+		kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
+
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
 			sealedSecretsKeysBackupBucketName,
 		)
 
-		// The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
-		// Because of which, doing kubectl apply for the second time errors out, thus hindering the
-		// script's idempotency.
+		// Restore the Sealed Secrets controller private keys.
+		// NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
+		//        Because of which, doing kubectl apply for the second time errors out, thus hindering
+		//        the script's idempotency.
 		utils.ExecuteCommandOrDie(
 			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath),
 		)
 
 		slog.InfoContext(ctx,
-			"Restored Sealed Secrets controller private keys from a previous cluster",
+			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
 	}
+
+	// Install Sealed Secrets.
+	kubernetes.InstallSealedSecrets(ctx)
 
 	// If not recovering a cluster,
 	// setup / update cluster directory in the user's KubeAid config repo.
@@ -128,6 +131,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			GitAuthMethod:    args.GitAuthMethod,
 		})
 	}
+	// TODO : Otherwise, we just need to update the Kubernetes API server host and port in Cilium
+	//        values file.
 
 	// Install and setup ArgoCD.
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
