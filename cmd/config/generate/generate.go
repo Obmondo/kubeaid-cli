@@ -15,8 +15,7 @@ var GenerateCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Verify that config files directory doesn't already exist.
 		if _, err := os.Stat(constants.OutputPathGeneratedConfigsDirectory); err == nil {
-			slog.ErrorContext(
-				cmd.Context(),
+			slog.ErrorContext(cmd.Context(),
 				"Config files directory already exists",
 				slog.String("path", constants.OutputPathGeneratedConfigsDirectory),
 			)

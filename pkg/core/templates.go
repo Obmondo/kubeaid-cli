@@ -152,9 +152,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.HetznerSpecificNonSecretTemplateNames...,
-		)
+		panic("unimplemented")
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames

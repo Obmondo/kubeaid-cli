@@ -5,7 +5,6 @@ import (
 	"embed"
 	"log/slog"
 	"os"
-	"path"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -16,6 +15,11 @@ import (
 var SampleConfigs embed.FS
 
 func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
+	// Create configs directory.
+	os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
+
+	// Based on the target cloud provider, determine templates to be used.
+	// We'll generate the sample general and secrets config from those templates.
 	var generalTemplateName,
 		secretsTemplateName string
 	switch cloudProvider {
@@ -39,6 +43,7 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 		panic("unreachable")
 	}
 
+	// Generate sample general config file.
 	{
 		sampleGeneralConfigContent := templates.ParseAndExecuteTemplate(ctx,
 			&SampleConfigs,
@@ -46,29 +51,25 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 			nil,
 		)
 
-		sampleGeneralConfigFilePath := path.Join(
-			constants.OutputPathGeneratedConfigsDirectory,
-			generalTemplateName,
-		)
-
-		sampleConfigFile, err := os.OpenFile(
-			sampleGeneralConfigFilePath,
+		sampleGeneralConfigFile, err := os.OpenFile(
+			constants.OutputPathGeneratedGeneralConfigFile,
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 			0644,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",
-			slog.String("path", sampleGeneralConfigFilePath),
+			slog.String("path", constants.OutputPathGeneratedGeneralConfigFile),
 		)
-		defer sampleConfigFile.Close()
+		defer sampleGeneralConfigFile.Close()
 
-		_, err = sampleConfigFile.Write(sampleGeneralConfigContent)
+		_, err = sampleGeneralConfigFile.Write(sampleGeneralConfigContent)
 		assert.AssertErrNil(ctx, err,
 			"Failed writing sample config to file",
-			slog.String("path", sampleGeneralConfigFilePath),
+			slog.String("path", constants.OutputPathGeneratedGeneralConfigFile),
 		)
 	}
 
+	// Generate sample secrets config file.
 	{
 		sampleSecretsConfigContent := templates.ParseAndExecuteTemplate(ctx,
 			&SampleConfigs,
@@ -76,26 +77,21 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 			nil,
 		)
 
-		sampleSecretsConfigFilePath := path.Join(
-			constants.OutputPathGeneratedConfigsDirectory,
-			secretsTemplateName,
-		)
-
-		sampleConfigFile, err := os.OpenFile(
-			sampleSecretsConfigFilePath,
+		sampleSecretsConfigFile, err := os.OpenFile(
+			constants.OutputPathGeneratedSecretsConfigFile,
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 			0644,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",
-			slog.String("path", sampleSecretsConfigFilePath),
+			slog.String("path", constants.OutputPathGeneratedSecretsConfigFile),
 		)
-		defer sampleConfigFile.Close()
+		defer sampleSecretsConfigFile.Close()
 
-		_, err = sampleConfigFile.Write(sampleSecretsConfigContent)
+		_, err = sampleSecretsConfigFile.Write(sampleSecretsConfigContent)
 		assert.AssertErrNil(ctx, err,
 			"Failed writing sample config to file",
-			slog.String("path", sampleSecretsConfigFilePath),
+			slog.String("path", constants.OutputPathGeneratedSecretsConfigFile),
 		)
 	}
 }

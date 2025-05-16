@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"reflect"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -20,7 +21,7 @@ func AssertErrNil(ctx context.Context, err error, customErrorMessage string, att
 }
 
 // Panics if the given value isn't nil.
-func AssertNil(ctx context.Context, value interface{}, errorMessage string, attributes ...any) {
+func AssertNil(ctx context.Context, value any, errorMessage string, attributes ...any) {
 	if value == nil {
 		return
 	}
@@ -30,8 +31,8 @@ func AssertNil(ctx context.Context, value interface{}, errorMessage string, attr
 }
 
 // Panics if the given value is nil.
-func AssertNotNil(ctx context.Context, value interface{}, errorMessage string, attributes ...any) {
-	if value != nil {
+func AssertNotNil(ctx context.Context, value any, errorMessage string, attributes ...any) {
+	if (value != nil) && !reflect.ValueOf(value).IsNil() {
 		return
 	}
 

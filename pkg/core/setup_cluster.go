@@ -107,7 +107,12 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			sealedSecretsKeysBackupBucketName,
 		)
 
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))
+		// The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
+		// Because of which, doing kubectl apply for the second time errors out, thus hindering the
+		// script's idempotency.
+		utils.ExecuteCommandOrDie(
+			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath),
+		)
 
 		slog.InfoContext(ctx,
 			"Restored Sealed Secrets controller private keys from a previous cluster",

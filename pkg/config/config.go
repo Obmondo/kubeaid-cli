@@ -159,6 +159,51 @@ type (
 	}
 )
 
+// Azure specific.
+type (
+	AzureConfig struct {
+		TenantID       string         `yaml:"tenantID"       validate:"required,notblank"`
+		SubscriptionID string         `yaml:"subscriptionID" validate:"required,notblank"`
+		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
+		Location       string         `yaml:"location"       validate:"required,notblank"`
+
+		StorageAccount string `yaml:"storageAccount" validate:"required,notblank"`
+
+		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
+
+		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
+
+		ImageID *string `yaml:"imageID"`
+
+		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
+		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
+	}
+
+	AADApplication struct {
+		Name               string `yaml:"name"               validate:"required,notblank"`
+		ObjectID           string `yaml:"objectID"           validate:"required,notblank"`
+		ServicePrincipalID string `yaml:"servicePrincipalID" validate:"required,notblank"`
+	}
+
+	WorkloadIdentity struct {
+		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"required,notblank"`
+	}
+
+	AzureControlPlane struct {
+		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
+		DiskSizeGB       uint32 `yaml:"diskSizeGB"       validate:"required,gt=100"`
+		VMSize           string `yaml:"vmSize"           validate:"required,notblank"`
+		Replicas         uint32 `yaml:"replicas"         validate:"required,gt=0"`
+	}
+
+	AzureNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+
+		VMSize     string `yaml:"vmSize"     validate:"required,notblank"`
+		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
+	}
+)
+
 // Hetzner specific.
 type (
 	HetznerConfig struct {
@@ -224,51 +269,6 @@ type (
 
 		// WWN (World Wide Name) is the unique identifier.
 		WWN []string `yaml:"wwn" validate:"required,notblank"`
-	}
-)
-
-// Azure specific.
-type (
-	AzureConfig struct {
-		TenantID       string         `yaml:"tenantID"       validate:"required,notblank"`
-		SubscriptionID string         `yaml:"subscriptionID" validate:"required,notblank"`
-		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
-		Location       string         `yaml:"location"       validate:"required,notblank"`
-
-		StorageAccount string `yaml:"storageAccount" validate:"required,notblank"`
-
-		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
-
-		SSHPublicKey string `yaml:"sshPublicKey" validate:"required,notblank"`
-
-		ImageID *string `yaml:"imageID"`
-
-		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
-	}
-
-	AADApplication struct {
-		Name               string `yaml:"name"               validate:"required,notblank"`
-		ObjectID           string `yaml:"objectID"           validate:"required,notblank"`
-		ServicePrincipalID string `yaml:"servicePrincipalID" validate:"required,notblank"`
-	}
-
-	WorkloadIdentity struct {
-		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"required,notblank"`
-	}
-
-	AzureControlPlane struct {
-		LoadBalancerType string `yaml:"loadBalancerType" validate:"required,notblank" default:"Public"`
-		DiskSizeGB       uint32 `yaml:"diskSizeGB"       validate:"required,gt=100"`
-		VMSize           string `yaml:"vmSize"           validate:"required,notblank"`
-		Replicas         uint32 `yaml:"replicas"         validate:"required,gt=0"`
-	}
-
-	AzureNodeGroup struct {
-		NodeGroup `yaml:",inline"`
-
-		VMSize     string `yaml:"vmSize"     validate:"required,notblank"`
-		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
 	}
 )
 

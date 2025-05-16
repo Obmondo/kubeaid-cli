@@ -18,18 +18,14 @@ import (
 
 func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlow bool) {
 	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-	case constants.CloudProviderAzure:
-		assert.AssertNotNil(ctx,
-			config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-			"disasterRecovery section in the config file, can't be empty",
-		)
-
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")
 
 	default:
-		panic("unreachable")
+		assert.AssertNotNil(ctx,
+			config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+			"disasterRecovery section in the config file, can't be empty",
+		)
 	}
 
 	/*
@@ -90,6 +86,8 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 		},
 		SkipClusterctlMove: false,
 	})
+
+	panic("checkpoint")
 
 	panic("unimplemented")
 
