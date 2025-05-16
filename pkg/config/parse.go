@@ -18,20 +18,24 @@ import (
 )
 
 var (
+	GeneralConfigFileContents []byte
+
 	ParsedGeneralConfig = &GeneralConfig{}
 	ParsedSecretsConfig = &SecretsConfig{}
 )
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
+	var err error
+
 	// Read contents of the general config file into ParsedGeneralConfig.
 	{
 		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
 
-		generalConfigFileContents, err := os.ReadFile(generalConfigFilePath)
+		GeneralConfigFileContents, err = os.ReadFile(generalConfigFilePath)
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
 
 		//nolint:musttag
-		err = yaml.Unmarshal([]byte(generalConfigFileContents), ParsedGeneralConfig)
+		err = yaml.Unmarshal([]byte(GeneralConfigFileContents), ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
 
 		// Set globals.CloudProviderName by detecting the underlying cloud-provider being used.

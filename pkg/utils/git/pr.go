@@ -40,6 +40,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 			Email: "info@obmondo.com",
 			When:  time.Now(),
 		},
+		AllowEmptyCommits: true,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating git commit")
 
@@ -48,11 +49,11 @@ func AddCommitAndPushChanges(ctx context.Context,
 
 	err = repo.Push(&goGit.PushOptions{
 		RemoteName: "origin",
+		Auth:       authMethod,
+		CABundle:   config.ParsedGeneralConfig.Git.CABundle,
 		RefSpecs: []gitConfig.RefSpec{
 			gitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
 		},
-		Auth:     authMethod,
-		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 

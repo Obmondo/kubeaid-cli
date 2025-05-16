@@ -49,28 +49,6 @@ aws:
   nodeGroups: {{ .AWSConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}
 
-{{- if .HetznerConfig }}
-provider:
-  hetzner: true
-
-hetzner:
-  {{- if .HetznerConfig.HCloud }}
-  hcloud:
-    sshKeyName: {{ .HetznerConfig.HCloud.SSHKeyName }}
-    enabled: {{ .HetznerConfig.HCloud.Enabled }}
-    controlPlane:
-      loadBalancer: {{ .HetznerConfig.HCloud.ControlPlane.LoadBalancer | toYaml | nindent 8 }}
-      regions: {{ .HetznerConfig.HCloud.ControlPlane.Regions | toYaml | nindent 8 }}
-      replicas: {{ .HetznerConfig.HCloud.ControlPlane.Replicas }}
-      machineType: {{ .HetznerConfig.HCloud.ControlPlane.MachineType }}
-    nodeGroups: {{ .HetznerConfig.HCloud.NodeGroups | toYaml | nindent 6 }}
-  {{- end }}
-
-  {{- if .HetznerConfig.HetznerBareMetal }}
-  robot: {{- toYaml .HetznerConfig.HetznerBareMetal | nindent 4 }}
-  {{- end }}
-{{- end }}
-
 {{- if .AzureConfig }}
 provider:
   azure: true
@@ -97,4 +75,12 @@ azure:
   controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 
   nodeGroups: {{ .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+{{- end }}
+
+{{- if .HetznerConfig }}
+provider:
+  hetzner: true
+
+hetzner:
+  providerType: {{ .HetznerConfig.ProviderType }}
 {{- end }}

@@ -96,33 +96,40 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		}
 	}
 
-	// Install Sealed Secrets.
-	kubernetes.InstallSealedSecrets(ctx)
-
-	// If we're recovering a cluster, then we need to restore the Sealed Secrets controller private
-	// keys from a previous cluster which got destroyed.
+	// If recovering a cluster, then restore the Sealed Secrets controller private keys.
 	if args.IsPartOfDisasterRecovery {
+		// Create the sealed-secrets namespace.
+		kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
+
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
 			sealedSecretsKeysBackupBucketName,
 		)
 
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", sealedSecretsKeysDirPath))
+		/*
+			Restore the Sealed Secrets controller private keys.
+
+			NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
+			       Because of which, doing kubectl apply for the second time errors out, thus hindering
+			       the script's idempotency.
+		*/
+		utils.ExecuteCommandOrDie(
+			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath),
+		)
 
 		slog.InfoContext(ctx,
-			"Restored Sealed Secrets controller private keys from a previous cluster",
+			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
 	}
 
-	// If not recovering a cluster,
-	// setup / update cluster directory in the user's KubeAid config repo.
-	if !args.IsPartOfDisasterRecovery {
-		SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
-			CreateDevEnvArgs: args.CreateDevEnvArgs,
-			GitAuthMethod:    args.GitAuthMethod,
-		})
-	}
+	// Install Sealed Secrets.
+	kubernetes.InstallSealedSecrets(ctx)
+
+	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+		CreateDevEnvArgs: args.CreateDevEnvArgs,
+		GitAuthMethod:    args.GitAuthMethod,
+	})
 
 	// Install and setup ArgoCD.
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)

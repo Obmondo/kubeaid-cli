@@ -213,13 +213,19 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 		slog.String("blob", args.BlobName),
 	})
 
-	isGzipped := false
 	filePath := filepath.Join(args.DownloadDir, args.BlobName)
+	isFileGzipped := false
 	//
 	// If it's a gzipped file.
-	if strings.HasSuffix(args.BlobName, constants.GzippedFilenameSuffix) {
-		isGzipped = true
+	if strings.HasSuffix(filePath, constants.GzippedFilenameSuffix) {
+		isFileGzipped = true
 		filePath, _ = strings.CutSuffix(filePath, constants.GzippedFilenameSuffix)
+	}
+	//
+	// Also, if the file name doesn't have any extension (for e.g., in case of files created by the
+	// Sealed Secrets Backuper CRON), we'll use the yaml file extension.
+	if len(filepath.Ext(filePath)) == 0 {
+		filePath += ".yaml"
 	}
 
 	// Create intermediate directories (if required).
@@ -240,7 +246,7 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 	blobContentReader := response.Body
 
 	// gzip decode blob content (if required).
-	if isGzipped {
+	if isFileGzipped {
 		gzipReader, err := gzip.NewReader(response.Body)
 		assert.AssertErrNil(ctx, err, "Failed creating a gZip reader")
 		defer gzipReader.Close()

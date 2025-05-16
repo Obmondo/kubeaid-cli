@@ -9,6 +9,7 @@ import (
 	"path"
 	"time"
 
+	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -96,6 +97,9 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	err = capaV1Beta2.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta1 scheme")
+
+	err = veleroV1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding Velero v1 scheme")
 
 	kubeClient, err := client.New(kubeconfig, client.Options{
 		Scheme: scheme,
@@ -212,10 +216,10 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.
 func GetKubernetesResource(
 	ctx context.Context,
-	kubeClient client.Client,
+	clusterClient client.Client,
 	resource client.Object,
 ) error {
-	return kubeClient.Get(ctx,
+	return clusterClient.Get(ctx,
 		types.NamespacedName{
 			Name:      resource.GetName(),
 			Namespace: resource.GetNamespace(),
@@ -328,4 +332,27 @@ func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient clie
 	// been executed.
 	_, err := GetClusterResource(ctx, provisionedClusterClient)
 	return err == nil
+}
+
+// Returns API endpoint of the main cluster, if provisioned.
+// Otherwise returns nil.
+func GetMainClusterEndpoint(ctx context.Context) *clusterAPIV1Beta1.APIEndpoint {
+	kubeConfigPaths := []string{
+		GetManagementClusterKubeconfigPath(ctx),
+		constants.OutputPathMainClusterKubeconfig,
+	}
+
+	for _, kubeConfigPath := range kubeConfigPaths {
+		clusterClient, err := CreateKubernetesClient(ctx, kubeConfigPath)
+		if err != nil {
+			continue
+		}
+
+		cluster, err := GetClusterResource(ctx, clusterClient)
+		if err == nil {
+			return &cluster.Spec.ControlPlaneEndpoint
+		}
+	}
+
+	return nil
 }

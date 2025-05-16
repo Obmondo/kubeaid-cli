@@ -65,6 +65,10 @@ delete-provisioned-cluster-aws-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/aws/
 
+.PHONY: sample-config-generate-azure-dev
+sample-config-generate-azure-dev:
+	@go run ./cmd/ config generate azure
+
 .PHONY: devenv-create-azure-dev
 devenv-create-azure-dev:
 	@go run ./cmd/ devenv create \
@@ -101,6 +105,10 @@ recover-cluster-azure-dev:
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-flow
 
+.PHONY: sample-config-generate-hetzner-dev
+sample-config-generate-hetzner-dev:
+	@go run ./cmd/ config generate hetzner
+
 .PHONY: bootstrap-cluster-hetzner-dev
 bootstrap-cluster-hetzner-dev:
 	@go run ./cmd/ cluster bootstrap \
@@ -112,6 +120,10 @@ bootstrap-cluster-hetzner-dev:
 delete-provisioned-cluster-hetzner-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/hcloud/
+
+.PHONY: sample-config-generate-local-dev
+sample-config-generate-local-dev:
+	@go run ./cmd/ config generate local
 
 .PHONY: bootstrap-cluster-local-dev
 bootstrap-cluster-local-dev:

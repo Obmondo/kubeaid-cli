@@ -13,23 +13,21 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlow bool) {
 	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-	case constants.CloudProviderAzure:
-		assert.AssertNotNil(ctx,
-			config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-			"disasterRecovery section in the config file, can't be empty",
-		)
-
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")
 
 	default:
-		panic("unreachable")
+		assert.AssertNotNil(ctx,
+			config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+			"disasterRecovery section in the config file, can't be empty",
+		)
 	}
 
 	/*
@@ -91,9 +89,14 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 		SkipClusterctlMove: false,
 	})
 
-	panic("unimplemented")
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
+		utils.GetEnv(constants.EnvNameKubeconfig),
+	)
+	assert.AssertErrNil(ctx, err, "Failed creating cluster client")
 
 	// Identify the latest Velero Backup.
+	latestVeleroBackup := kubernetes.GetLatestVeleroBackup(ctx, clusterClient)
 
 	// Restore the latest Velero Backup.
+	kubernetes.RestoreVeleroBackup(ctx, clusterClient, latestVeleroBackup)
 }

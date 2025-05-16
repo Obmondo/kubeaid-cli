@@ -14,4 +14,4 @@ metadata:
 
 data:
   {{ .CustomerGitServerHostname }}: |
-    {{ printf "%s" .GitConfig.CABundle }}
+{{ printf "%s" .GitConfig.CABundle | indent 4 }}

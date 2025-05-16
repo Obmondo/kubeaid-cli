@@ -72,29 +72,13 @@ func validateConfigs() {
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for _, nodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
-			// Validate auto-scaling options.
-			assert.Assert(ctx,
-				nodeGroup.MinSize <= nodeGroup.Maxsize,
-				"replica count should be <= its max-size",
-				slog.String("node-group", nodeGroup.Name),
-			)
-
-			// Validate labels and taints.
-			validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
+		for _, awsNodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
+			validateNodeGroup(ctx, &awsNodeGroup.NodeGroup)
 		}
 
 	case constants.CloudProviderAzure:
-		for _, nodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			// Validate auto-scaling options.
-			assert.Assert(ctx,
-				nodeGroup.MinSize <= nodeGroup.Maxsize,
-				"replica count should be <= its max-size",
-				slog.String("node-group", nodeGroup.Name),
-			)
-
-			// Validate labels and taints.
-			validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
+		for _, azureNodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
+			validateNodeGroup(ctx, &azureNodeGroup.NodeGroup)
 		}
 
 	case constants.CloudProviderHetzner:
@@ -106,6 +90,18 @@ func validateConfigs() {
 	default:
 		panic("unreachable")
 	}
+}
+
+func validateNodeGroup(ctx context.Context, nodeGroup *NodeGroup) {
+	// Validate auto-scaling options.
+	assert.Assert(ctx,
+		nodeGroup.MinSize <= nodeGroup.Maxsize,
+		"replica count should be <= its max-size",
+		slog.String("node-group", nodeGroup.Name),
+	)
+
+	// Validate labels and taints.
+	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
 // Checks whether the given string represents a valid  and supported Kubernetes version or not.

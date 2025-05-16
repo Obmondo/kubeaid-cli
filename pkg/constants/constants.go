@@ -64,9 +64,15 @@ const (
 var (
 	OutputDirectory = "./outputs"
 
-	OutputPathGeneratedConfigsDirectory = path.Join(OutputDirectory, "configs/")
-	FileNameGeneralConfig               = "general.yaml"
-	FileNameSecretsConfig               = "secrets.yaml"
+	OutputPathGeneratedConfigsDirectory  = path.Join(OutputDirectory, "configs/")
+	OutputPathGeneratedGeneralConfigFile = path.Join(
+		OutputPathGeneratedConfigsDirectory,
+		FileNameGeneralConfig,
+	)
+	OutputPathGeneratedSecretsConfigFile = path.Join(
+		OutputPathGeneratedConfigsDirectory,
+		FileNameSecretsConfig,
+	)
 
 	OutputPathLogFile = path.Join(OutputDirectory, ".log")
 
@@ -143,6 +149,9 @@ const (
 
 // Miscellaneous.
 const (
+	FileNameGeneralConfig = "general.yaml"
+	FileNameSecretsConfig = "secrets.yaml"
+
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	ClusterTypeManagement = "management"
@@ -151,5 +160,5 @@ const (
 	SSHPublicKeyPrefixOpenSSH = "ssh-rsa "
 	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
 
-	GzippedFilenameSuffix = ".tar.gz"
+	GzippedFilenameSuffix = ".gz"
 )

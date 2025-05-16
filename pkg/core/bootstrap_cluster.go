@@ -55,8 +55,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		globals.CloudProvider.SetupDisasterRecovery(ctx)
 	}
 
-	// Sync all ArgoCD Apps.
-	kubernetes.SyncAllArgoCDApps(ctx)
+	// Sync all ArgoCD Apps, if not recovering a cluster.
+	if !args.IsPartOfDisasterRecovery {
+		kubernetes.SyncAllArgoCDApps(ctx)
+	}
 
 	slog.InfoContext(ctx, "Cluster has been bootsrapped successfully 🎊")
 }

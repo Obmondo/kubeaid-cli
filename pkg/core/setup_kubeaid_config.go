@@ -75,15 +75,31 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 	clusterDir := utils.GetClusterDir()
 
-	// Create / update non Secret files.
-	createOrUpdateNonSecretFiles(ctx,
-		clusterDir,
-		args.SkipMonitoringSetup,
-		args.SkipKubePrometheusBuild,
-	)
+	if !args.IsPartOfDisasterRecovery {
+		// Create / update non Secret files.
+		createOrUpdateNonSecretFiles(ctx,
+			clusterDir,
+			args.SkipMonitoringSetup,
+			args.SkipKubePrometheusBuild,
+		)
 
-	// Create / update Secret files.
-	CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
+		// Create / update Secret files.
+		CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
+	} else {
+		// Otherwise, if the main cluster is running on some cloud provider,
+		// we just need to update the Kubernetes API server host and port in Cilium values file.
+		mainClusterEndpoint := kubernetes.GetMainClusterEndpoint(ctx)
+		if mainClusterEndpoint != nil {
+			ciliumValuesFilePath := path.Join(clusterDir, "argocd-apps/values-cilium.yaml")
+
+			utils.ExecuteCommandOrDie(fmt.Sprintf(
+				"yq -i -y '(.cilium.k8sServiceHost) = \"%s\" | (.cilium.k8sServicePort) = \"%d\"' %s",
+				mainClusterEndpoint.Host,
+				mainClusterEndpoint.Port,
+				ciliumValuesFilePath,
+			))
+		}
+	}
 
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
