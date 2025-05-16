@@ -29,6 +29,7 @@ require (
 	github.com/siderolabs/talos/pkg/machinery v1.10.1
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.6
+	github.com/vmware-tanzu/velero v1.16.0
 	golang.org/x/crypto v0.38.0
 	google.golang.org/grpc v1.72.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -243,7 +244,6 @@ require (
 	github.com/vmihailenco/go-tinylfu v0.2.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	github.com/vmware-tanzu/velero v1.16.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
@@ -306,7 +306,7 @@ replace (
 	// We need this, otherwise Github Actions CI run will fail with this error :
 	// https://github.com/Obmondo/kubeaid-bootstrap-script/actions/runs/14102269130/job/39500847660#step:6:5993.
 	// REFER : https://github.com/argoproj/argo-cd/issues/22007.
-	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.4.1
+	github.com/cyphar/filepath-securejoin => github.com/cyphar/filepath-securejoin v0.3.6
 
 	// When importing Argo CD packages, face "unknown revision v0.0.0" errors when downloading the
 	// dependencies.
