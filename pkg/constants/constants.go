@@ -39,11 +39,12 @@ const (
 	FlagNameAWSRegion          = "aws-region"
 	FlagNameAMIID              = "ami-id"
 
+	FlagNameAzureClientSecret = "azure-client-secret"
+	FlagNameImageID           = "image-id"
+
 	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
-
-	FlagNameAzureClientSecret = "azure-client-secret"
 )
 
 // Kube API server CLI flags.
@@ -114,7 +115,7 @@ const (
 
 // Azure
 const (
-	BlobContainerNameWorkloadIdentity = "workload-identity-oidc-provider"
+	BlobContainerNameOIDCProvider = "oidc-provider"
 
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"

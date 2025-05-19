@@ -36,7 +36,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 
 	case constants.CloudProviderAzure:
 		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
-		azureCloudProvider.SetupWorkloadIdentityProvider(ctx)
+		azureCloudProvider.CreateWorkloadIdentityInfrastructure(ctx)
 
 	case constants.CloudProviderHetzner:
 		break

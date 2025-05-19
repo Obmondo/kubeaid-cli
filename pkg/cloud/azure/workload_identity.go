@@ -37,8 +37,9 @@ type TemplateArgs struct {
 	BlobContainerName string
 }
 
-// Make sure you go through ./WorkloadIdentity.md first.
-func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
+// Creates required infrastructure in Azure, to have Workload Identity working.
+// NOTE : Make sure you go through ./WorkloadIdentity.md first.
+func (a *Azure) CreateWorkloadIdentityInfrastructure(ctx context.Context) {
 	slog.Info("Setting up Workload Identity provider....")
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
@@ -59,7 +60,7 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 	))
 
 	// Create the Service Account token issuer.
-	serviceAccountIssuerURL := a.createExternalOpenIDProvider(ctx)
+	serviceAccountIssuerURL := a.createOIDCProvider(ctx)
 
 	{
 		// Create a User Assigned Managed Identity, dedicated to ClusterAPI.
@@ -160,8 +161,8 @@ func (a *Azure) SetupWorkloadIdentityProvider(ctx context.Context) {
 	slog.InfoContext(ctx, "Finished setting up the Workload Identity Provider")
 }
 
-func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
-	slog.InfoContext(ctx, "Setting up external OpenID provider...")
+func (a *Azure) createOIDCProvider(ctx context.Context) string {
+	slog.InfoContext(ctx, "Setting up OIDC provider...")
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
@@ -229,7 +230,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		ResourceGroupName:    a.resourceGroupName,
 		StorageAccountName:   storageAccountName,
 		BlobContainersClient: a.storageClientFactory.NewBlobContainersClient(),
-		BlobContainerName:    constants.BlobContainerNameWorkloadIdentity,
+		BlobContainerName:    constants.BlobContainerNameOIDCProvider,
 	})
 
 	storageAccountURL := GetStorageAccountURL()
@@ -242,19 +243,19 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 	{
 		slog.InfoContext(ctx, "Generating and uploading openid-configuration.json")
 
-		// Generate the OpenID provider issuer discovery document.
-		// You can read more about OpenID provider issuer discovery document here :
+		// Generate the OIDC provider discovery document.
+		// You can read more about OIDC provider discovery document here :
 		// https://openid.net/specs/openid-connect-discovery-1_0.html.
 		openIDConfig := templateUtils.ParseAndExecuteTemplate(ctx,
 			&templates, constants.TemplateNameOpenIDConfig,
 			&TemplateArgs{
 				StorageAccountName: storageAccountName,
-				BlobContainerName:  constants.BlobContainerNameWorkloadIdentity,
+				BlobContainerName:  constants.BlobContainerNameOIDCProvider,
 			},
 		)
 
 		/*
-			Upload the OpenID provider issuer discovery document to the Azure Storage Container,
+			Upload the OIDC provider discovery document to the Azure Storage Container,
 			at path .well-known/openid-configuration.
 
 			NOTE : We need to retry, since this fails until around a minute has passed after the creation
@@ -262,7 +263,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		*/
 		err = utils.WithRetry(10*time.Second, 6, func() error {
 			_, err := blobClient.UploadBuffer(ctx,
-				constants.BlobContainerNameWorkloadIdentity,
+				constants.BlobContainerNameOIDCProvider,
 				constants.AzureBlobNameOpenIDConfiguration,
 				openIDConfig,
 				nil,
@@ -273,7 +274,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 			"Failed uploading openid-configuration.json to Azure Blob Container",
 		)
 
-		// Verify that the OpenID provider issuer discovery document is publicly accessible.
+		// Verify that the OIDC provider discovery document is publicly accessible.
 
 		openIDConfigURL, err := url.JoinPath(
 			serviceAccountIssuerURL,
@@ -309,7 +310,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 
 		// Upload the JWKS document.
 		_, err = blobClient.UploadBuffer(ctx,
-			constants.BlobContainerNameWorkloadIdentity,
+			constants.BlobContainerNameOIDCProvider,
 			constants.AzureBlobNameJWKSDocument,
 			jwksDocument,
 			nil,
@@ -337,7 +338,7 @@ func (a *Azure) createExternalOpenIDProvider(ctx context.Context) string {
 		)
 	}
 
-	slog.InfoContext(ctx, "Finished setting up external OpenID provider")
+	slog.InfoContext(ctx, "Finished setting up OIDC provider")
 
 	return serviceAccountIssuerURL
 }
