@@ -42,7 +42,8 @@ type TemplateValues struct {
 	UAMIClientIDVelero,
 	AzureStorageAccountAccessKey string
 
-	HetznerConfig *config.HetznerConfig
+	HetznerConfig      *config.HetznerConfig
+	HetznerCredentials *config.HetznerCredentials
 
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
@@ -61,9 +62,12 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		MonitoringConfig:          config.ParsedGeneralConfig.Monitoring,
 		CAPIClusterNamespace:      kubernetes.GetCapiClusterNamespace(),
 
-		AWSConfig:     config.ParsedGeneralConfig.Cloud.AWS,
-		AzureConfig:   config.ParsedGeneralConfig.Cloud.Azure,
-		HetznerConfig: config.ParsedGeneralConfig.Cloud.Hetzner,
+		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
+
+		AzureConfig: config.ParsedGeneralConfig.Cloud.Azure,
+
+		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
+		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,
 	}
 
 	// Set cloud provider specific values.
@@ -136,7 +140,9 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
-		panic("unimplemented")
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.HCloudSpecificNonSecretTemplateNames...,
+		)
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
@@ -179,7 +185,7 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.HetznerSpecificSecretTemplateNames...,
+			constants.HCloudSpecificSecretTemplateNames...,
 		)
 
 	case constants.CloudProviderLocal:

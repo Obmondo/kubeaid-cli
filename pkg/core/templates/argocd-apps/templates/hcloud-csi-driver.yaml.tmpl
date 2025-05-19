@@ -5,34 +5,23 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: capi-cluster
+  name: hcloud-csi-driver
   namespace: argocd
 spec:
   destination:
-    namespace: {{ .CAPIClusterNamespace }}
+    namespace: kube-system
     server: https://kubernetes.default.svc
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/capi-cluster
+      path: argocd-helm-charts/hcloud-csi-driver
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-capi-cluster.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-hcloud-csi-driver.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values
   project: kubeaid
   syncPolicy:
     syncOptions:
-      - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
-  ignoreDifferences:
-    - group: cluster.x-k8s.io
-      kind: MachineDeployment
-      jsonPointers:
-        - /spec/replicas
-    {{/* TODO : We don't want to add this when mode is set to "bare-metal". */}}
-    - group: infrastructure.cluster.x-k8s.io
-      kind: HetznerCluster
-      jsonPointers:
-        - /spec/controlPlaneEndpoint/host

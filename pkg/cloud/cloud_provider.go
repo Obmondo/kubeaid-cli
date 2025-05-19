@@ -23,5 +23,9 @@ type (
 	VMSpec struct {
 		CPU    uint32
 		Memory uint32 // (in MiB).
+
+		// Only used in case of HCloud, since the root volume size is fixed unlike in case of other
+		// hyper-scalars like AWS / Azure.
+		RootVolumeSize *uint32
 	}
 )

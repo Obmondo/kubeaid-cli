@@ -109,17 +109,28 @@ recover-cluster-azure-dev:
 sample-config-generate-hetzner-dev:
 	@go run ./cmd/ config generate hetzner
 
-.PHONY: bootstrap-cluster-hetzner-dev
-bootstrap-cluster-hetzner-dev:
-	@go run ./cmd/ cluster bootstrap \
+.PHONY: devenv-create-hetzner-hcloud-dev
+devenv-create-hetzner-hcloud-dev:
+	@go run ./cmd/ devenv create \
 		--debug \
-    --configs-directory ./outputs/configs/hcloud/ \
+    --configs-directory ./outputs/configs/hetzner/hcloud \
+    --skip-pr-flow \
+    --skip-monitoring-setup \
     --skip-kube-prometheus-build
 
-.PHONY: delete-provisioned-cluster-hetzner-dev
-delete-provisioned-cluster-hetzner-dev:
+.PHONY: bootstrap-cluster-hetzner-hcloud-dev
+bootstrap-cluster-hetzner-hcloud-dev:
+	@go run ./cmd/ cluster bootstrap \
+		--debug \
+    --configs-directory ./outputs/configs/hetzner/hcloud/ \
+    --skip-pr-flow \
+    --skip-monitoring-setup \
+    --skip-kube-prometheus-build
+
+.PHONY: delete-provisioned-cluster-hetzner-hcloud-dev
+delete-provisioned-cluster-hetzner-hcloud-dev:
 	@go run ./cmd/ cluster delete \
-    --configs-directory ./outputs/configs/hcloud/
+    --configs-directory ./outputs/configs/hetzner/hcloud/
 
 .PHONY: sample-config-generate-local-dev
 sample-config-generate-local-dev:

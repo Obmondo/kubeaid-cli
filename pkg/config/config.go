@@ -207,68 +207,41 @@ type (
 // Hetzner specific.
 type (
 	HetznerConfig struct {
-		HCloud           HCloud            `yaml:"hcloud" validate:"required"`
-		HetznerBareMetal *HetznerBareMetal `yaml:"robot"`
+		Mode string `yaml:"mode" default:"hcloud" validate:"required,notblank"`
+
+		Zone   string `yaml:"zone"   validate:"required,notblank"`
+		Region string `yaml:"region" validate:"required,notblank"`
+
+		HCloudSSHKeyPairName string `yaml:"hcloudSSHKeyPairName" validate:"required,notblank"`
+
+		NetworkEnabled bool   `yaml:"networkEnabled" default:"True"         validate:"required"`
+		ImageName      string `yaml:"imageName"      default:"ubuntu-24.04" validate:"required,notblank"`
+
+		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
+		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"   validate:"required"`
 	}
 
-	HCloud struct {
-		SSHKeyName   string             `yaml:"sshKeyName"   validate:"required,notblank"`
-		Enabled      bool               `yaml:"enabled"`
-		ControlPlane HCloudControlPlane `yaml:"controlPlane"`
-		NodeGroups   []HCloudNodeGroup  `yaml:"nodeGroups"`
+	HetznerControlPlane struct {
+		MachineType  string                         `yaml:"machineType"  validate:"required,notblank"`
+		Replicas     uint                           `yaml:"replicas"     validate:"required"`
+		Regions      []string                       `yaml:"regions"      validate:"required,gt=0"`
+		LoadBalancer HCloudControlPlaneLoadBalancer `yaml:"loadBalancer"`
 	}
 
-	HCloudControlPlane struct {
-		LoadBalancer HetznerControlPlaneLoadBalancer `yaml:"loadBalancer"`
-		Regions      []string                        `yaml:"regions"`
-		MachineType  string                          `yaml:"machineType"  validate:"required,notblank"`
-		Replicas     int                             `yaml:"replicas"     validate:"required"`
-	}
-
-	HetznerControlPlaneLoadBalancer struct {
+	HCloudControlPlaneLoadBalancer struct {
 		Enabled bool   `yaml:"enabled" validate:"required"`
 		Region  string `yaml:"region"  validate:"required,notblank"`
+	}
+
+	HetznerNodeGroups struct {
+		HCloud []HCloudNodeGroup `yaml:"hcloud"`
 	}
 
 	HCloudNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		FailureDomain string                  `yaml:"failureDomain" validate:"required,notblank"`
-		SSHKeys       []HCloudNodeGroupSSHKey `yaml:"sshKeys"       validate:"required"`
-	}
-
-	HCloudNodeGroupSSHKey struct {
-		Name string `yaml:"name" validate:"required,notblank"`
-	}
-
-	HetznerBareMetal struct {
-		Enabled         bool                         `yaml:"enabled"      validate:"required"`
-		RobotSSHKeyPair SSHKeyPairConfig             `yaml:"robotSSHKey"  validate:"required"`
-		ControlPlane    HetznerBareMetalControlPlane `yaml:"controlPlane"`
-		NodeGroups      []HetznerBareMetalNodeGroup  `yaml:"nodeGroups"`
-	}
-
-	HetznerBareMetalControlPlane struct {
-		Endpoint HetznerControlPlaneEndpoint `yaml:"endpoint" validate:"required,notblank"`
-		Nodes    []HetznerBareMetalNode      `yaml:"nodes"`
-	}
-
-	HetznerControlPlaneEndpoint struct {
-		Host string `yaml:"host" validate:"required,notblank"`
-		Port int    `yaml:"port"`
-	}
-
-	HetznerBareMetalNodeGroup struct {
-		NodeGroup `yaml:",inline"`
-
-		Nodes []HetznerBareMetalNode `yaml:"nodes" validate:"required"`
-	}
-
-	HetznerBareMetalNode struct {
-		Name string `yaml:"name" validate:"required,notblank"`
-
-		// WWN (World Wide Name) is the unique identifier.
-		WWN []string `yaml:"wwn" validate:"required,notblank"`
+		MachineType    string `yaml:"machineType" validate:"required,notblank"`
+		RootVolumeSize uint32 `                   validate:"required"`
 	}
 )
 

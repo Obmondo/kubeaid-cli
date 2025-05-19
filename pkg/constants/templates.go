@@ -119,27 +119,22 @@ var (
 
 // Hetzner specific template names.
 var (
-	HetznerBareMetalSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Robot Failover.
-		"argocd-apps/templates/hetzner-robot.yaml.tmpl",
-		"argocd-apps/values-hetzner-robot.yaml.tmpl",
-	}
-
 	HCloudSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Cloud Controller Manager.
+		// For HCloud Controller Manager.
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
+
+		// For HCloud CSI driver.
+		"argocd-apps/templates/hcloud-csi-driver.yaml.tmpl",
+		"argocd-apps/values-hcloud-csi-driver.yaml.tmpl",
 	}
 
-	HetznerSpecificSecretTemplateNames = []string{
-		// For Hetzner Cloud Controller Manager.
+	HCloudSpecificSecretTemplateNames = []string{
+		// For HCloud Controller Manager.
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
-
-		// For Hetzner Robot Failover.
-		"sealed-secrets/capi-cluster/hcloud-ssh-keypair.yaml.tmpl",
 	}
 )
 

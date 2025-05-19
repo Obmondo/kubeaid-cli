@@ -24,6 +24,7 @@ require (
 	github.com/go-playground/validator/v10 v10.26.0
 	github.com/go-sprout/sprout v1.0.0
 	github.com/google/uuid v1.6.0
+	github.com/hetznercloud/hcloud-go v1.59.2
 	github.com/k3d-io/k3d/v5 v5.8.3
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.1
