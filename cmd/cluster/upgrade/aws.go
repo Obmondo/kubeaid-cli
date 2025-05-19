@@ -11,13 +11,13 @@ import (
 var AWSCmd = &cobra.Command{
 	Use: "aws",
 
-	Short: "Trigger Kubernetes version upgrade of the provisioned AWS based cluster",
+	Short: "Trigger Kubernetes version upgrade for the provisioned AWS based cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.UpgradeCluster(cmd.Context(), skipPRFlow, core.UpgradeClusterArgs{
 			NewKubernetesVersion: kubernetesVersion,
 
-			CloudSpecificUpdates: aws.MachineTemplateUpdates{
+			CloudSpecificUpdates: aws.AWSMachineTemplateUpdates{
 				AMIID: newAMIID,
 			},
 		})

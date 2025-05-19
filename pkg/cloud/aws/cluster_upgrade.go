@@ -10,19 +10,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-type MachineTemplateUpdates struct {
+type AWSMachineTemplateUpdates struct {
 	AMIID string
 }
 
-func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, _updates any) {
-	updates, ok := _updates.(MachineTemplateUpdates)
+func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, updates any) {
+	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
-	// Get the AWSMachineTemplate resource referred by KubeadmControlPlane resource.
+	// Get the AWSMachineTemplate currently being referred by the KubeadmControlPlane.
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
@@ -47,11 +48,31 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 		"Deleted the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
 
-	// Recreate the AWSMachineTemplate.
-	awsMachineTemplate.Spec.Template.Spec.AMI = capaV1Beta2.AMIReference{
-		ID: &updates.AMIID,
-	}
+	// Recreate the updated AWSMachineTemplate.
+
+	awsMachineTemplate.Spec.Template.Spec.AMI.ID = &parsedUpdates.AMIID
 	awsMachineTemplate.ResourceVersion = ""
+
 	err = clusterClient.Create(ctx, awsMachineTemplate, &client.CreateOptions{})
 	assert.AssertErrNil(ctx, err, "Failed recreating the AWSMachineTemplate")
+}
+
+func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
+	capiClusterValuesFilePath string,
+	updates any,
+) {
+	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
+	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
+
+	// Update AMI ID for the Control Plane.
+	_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
+		"yq -i -y '(.aws.controlPlane.ami.id) = \"%s\"' %s",
+		parsedUpdates.AMIID, capiClusterValuesFilePath,
+	))
+
+	// Update AMI ID in each node-group definition.
+	_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
+		"yq -i -y '(.aws.nodeGroups[].ami.id) = \"%s\"' %s",
+		parsedUpdates.AMIID, capiClusterValuesFilePath,
+	))
 }

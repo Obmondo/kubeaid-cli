@@ -10,7 +10,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/msi/armmsi"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -84,19 +83,4 @@ func NewAzureCloudProvider() cloud.CloudProvider {
 		roleAssignmentsClient,
 		storageClientFactory,
 	}
-}
-
-func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
-	capiClusterValuesFilePath string,
-	_updates any,
-) {
-	panic("unimplemented")
-}
-
-func (a *Azure) UpdateMachineTemplate(
-	ctx context.Context,
-	clusterClient client.Client,
-	_updates any,
-) {
-	panic("unimplemented")
 }

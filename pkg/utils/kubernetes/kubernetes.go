@@ -21,6 +21,7 @@ import (
 	cloudProviderAPI "k8s.io/cloud-provider/api"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
+	capzV1Beta1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1" // KCP = Kubeadm Control plane Provider.
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -96,7 +97,10 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 	)
 
 	err = capaV1Beta2.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta1 scheme")
+	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta2 scheme")
+
+	err = capzV1Beta1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding CAPZ (ClusterAPI Provider Azure) v1beta1 scheme")
 
 	err = veleroV1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding Velero v1 scheme")

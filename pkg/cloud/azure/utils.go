@@ -42,7 +42,7 @@ func GetStorageAccountURL() string {
 	)
 }
 
-// Returns URL of the external OpenID provider being used for Workload Identity support.
+// Returns URL of the OIDC provider being used for Workload Identity support.
 func GetServiceAccountIssuerURL(ctx context.Context) string {
 	storageAccountURL := fmt.Sprintf(
 		"https://%s.blob.core.windows.net/",
@@ -51,7 +51,7 @@ func GetServiceAccountIssuerURL(ctx context.Context) string {
 
 	serviceAccountIssuerURL, err := url.JoinPath(
 		storageAccountURL,
-		constants.BlobContainerNameWorkloadIdentity,
+		constants.BlobContainerNameOIDCProvider,
 	)
 	assert.AssertErrNil(ctx, err, "Failed constructing ServiceAccount issuer URL")
 
