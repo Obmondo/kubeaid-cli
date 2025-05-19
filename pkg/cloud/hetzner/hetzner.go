@@ -5,17 +5,24 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/hetznercloud/hcloud-go/hcloud"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 )
 
-type Hetzner struct{}
-
-func NewHetznerCloudProvider() cloud.CloudProvider {
-	return &Hetzner{}
+type Hetzner struct {
+	hcloudClient *hcloud.Client
 }
 
-func (*Hetzner) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
-	panic("unimplemented")
+func NewHetznerCloudProvider() cloud.CloudProvider {
+	hcloudClient := hcloud.NewClient(
+		hcloud.WithToken(config.ParsedSecretsConfig.Hetzner.APIToken),
+	)
+
+	return &Hetzner{
+		hcloudClient,
+	}
 }
 
 func (*Hetzner) SetupDisasterRecovery(ctx context.Context) {

@@ -26,8 +26,6 @@ type (
 	}
 
 	HetznerCredentials struct {
-		HetznerAPIToken      string `yaml:"apiToken"      validate:"required,notblank"`
-		HetznerRobotUsername string `yaml:"robotUsername" validate:"required,notblank"`
-		HetznerRobotPassword string `yaml:"robotPassword" validate:"required,notblank"`
+		APIToken string `yaml:"apiToken" validate:"required,notblank"`
 	}
 )

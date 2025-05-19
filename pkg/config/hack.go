@@ -13,3 +13,6 @@ func NewAWSCloudProvider() cloud.CloudProvider
 
 //go:linkname NewAzureCloudProvider github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure.NewAzureCloudProvider
 func NewAzureCloudProvider() cloud.CloudProvider
+
+//go:linkname NewHetznerCloudProvider github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner.NewHetznerCloudProvider
+func NewHetznerCloudProvider() cloud.CloudProvider

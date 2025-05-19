@@ -21,11 +21,6 @@ func hydrateSSHKeyConfigs() {
 		)
 
 	case constants.CloudProviderHetzner:
-		// When using Hetzner Bare Metal.
-		if (ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal != nil) &&
-			ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.Enabled {
-			hydrateSSHKeyConfig(&ParsedGeneralConfig.Cloud.Hetzner.HetznerBareMetal.RobotSSHKeyPair)
-		}
 	}
 }
 

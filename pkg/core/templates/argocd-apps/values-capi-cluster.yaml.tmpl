@@ -82,5 +82,25 @@ provider:
   hetzner: true
 
 hetzner:
-  providerType: {{ .HetznerConfig.ProviderType }}
+  mode: {{ .HetznerConfig.Mode }}
+
+  zone: {{ .HetznerConfig.Zone }}
+  region: {{ .HetznerConfig.Region }}
+
+  hcloudSSHKeyPairName: {{ .HetznerConfig.HCloudSSHKeyPairName }}
+
+  network:
+    enabled: {{ .HetznerConfig.NetworkEnabled }}
+
+  imageName: {{ .HetznerConfig.ImageName }}
+
+  controlPlane:
+    machineType: {{ .HetznerConfig.ControlPlane.MachineType }}
+    replicas: {{ .HetznerConfig.ControlPlane.Replicas }}
+    regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
+    loadBalancer:
+      enabled: {{ .HetznerConfig.ControlPlane.LoadBalancer.Enabled }}
+      region: {{ .HetznerConfig.ControlPlane.LoadBalancer.Region }}
+
+  nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
 {{- end }}

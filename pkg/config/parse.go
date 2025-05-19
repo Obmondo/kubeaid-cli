@@ -11,7 +11,6 @@ import (
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -133,7 +132,7 @@ func setCloudProvider() {
 		globals.CloudProvider = NewAzureCloudProvider()
 
 	case constants.CloudProviderHetzner:
-		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
+		globals.CloudProvider = NewHetznerCloudProvider()
 	}
 }
 
@@ -180,14 +179,25 @@ func hydrateVMSpecs(ctx context.Context) {
 
 	case constants.CloudProviderAzure:
 		for i, nodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
+			vmSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
 
-			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].CPU = instanceSpecs.CPU
-			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].Memory = instanceSpecs.Memory
+			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].CPU = vmSpecs.CPU
+			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].Memory = vmSpecs.Memory
 		}
 
 	case constants.CloudProviderHetzner:
-		panic("unimplemented")
+		for i, nodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+			machineSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.MachineType)
+			assert.AssertNotNil(
+				ctx,
+				machineSpecs.RootVolumeSize,
+				"Implementation error : machine details returned by HetznerCloudProvider.GetVMSpecs() must include RootVolumeSize",
+			)
+
+			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].CPU = machineSpecs.CPU
+			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].Memory = machineSpecs.Memory
+			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
+		}
 
 	case constants.CloudProviderLocal:
 		return

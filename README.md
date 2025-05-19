@@ -114,7 +114,6 @@ make bootstrap-cluster-local-dev
 - [x] Support scale to / from zero for the node-groups.
   > Currently, I have added extra ClusterRole and ClusterRoleBinding in the KubeAid [cluster-autoscaler Helm chart](https://github.com/Obmondo/kubeaid/tree/master/argocd-helm-charts/cluster-autoscaler) to support this feature.
   > But I have also opened an issue in the kubernetes-sigs/autoscaler repository regarding this : [Allow adding extra rules to the Role / ClusterRole template of the Cluster AutoScaler Helm chart](https://github.com/kubernetes/autoscaler/issues/7680).
-- [ ] `recover cluster` command
 
 ## REFERENCES
 
@@ -165,3 +164,9 @@ make bootstrap-cluster-local-dev
 - [Uploading a SARIF file to GitHub](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
 
 - [What is CA bundle?](https://www.namecheap.com/support/knowledgebase/article.aspx/986/69/what-is-ca-bundle/)
+
+[What is RAID 0, 1, 5, & 10?](https://www.youtube.com/watch?v=U-OCdTeZLac)
+
+[What is RAID Parity?](https://www.youtube.com/watch?v=BjuBloMHhKk)
+
+[RAID 5 vs RAID 6](https://www.youtube.com/watch?v=UuUgfCvt9-Q)

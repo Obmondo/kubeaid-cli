@@ -144,7 +144,6 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"cert-manager",
 		"secrets",
 	}
-
 	for _, argoCDApp := range argocdAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
