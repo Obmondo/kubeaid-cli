@@ -37,14 +37,14 @@ func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArg
 	// Construct the Kubernetes (management / provisioned) cluster client.
 	var clusterClient client.Client
 	{
-		clusterClient = kubernetes.MustCreateKubernetesClient(ctx,
+		clusterClient = kubernetes.MustCreateClusterClient(ctx,
 			constants.OutputPathMainClusterKubeconfig,
 		)
 
 		// If `clusterctl move` wasn't executed, then we need to communicate with the management
 		// cluster instead.
 		if !kubernetes.IsClusterctlMoveExecuted(ctx, clusterClient) {
-			clusterClient = kubernetes.MustCreateKubernetesClient(ctx,
+			clusterClient = kubernetes.MustCreateClusterClient(ctx,
 				kubernetes.GetManagementClusterKubeconfigPath(ctx),
 			)
 		}

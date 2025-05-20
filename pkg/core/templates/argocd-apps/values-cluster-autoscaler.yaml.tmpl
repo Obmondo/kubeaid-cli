@@ -27,4 +27,6 @@ enableClusterAPIScaleFromZeroSupport:
   aws: true
   {{- else if .AzureConfig }}
   azure: true
+  {{- else if .HetznerConfig }}
+  hetzner: true
   {{- end }}

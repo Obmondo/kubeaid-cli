@@ -11,6 +11,7 @@ import (
 
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
+	batchV1 "k8s.io/api/batch/v1"
 	coreV1 "k8s.io/api/core/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,8 +58,7 @@ func amContainerized(ctx context.Context) bool {
 }
 
 // Creates a Kubernetes Go client using the Kubeconfig file present at the given path.
-// Panics on failure.
-func MustCreateKubernetesClient(ctx context.Context, kubeconfigPath string) client.Client {
+func MustCreateClusterClient(ctx context.Context, kubeconfigPath string) client.Client {
 	clusterClient, err := CreateKubernetesClient(ctx, kubeconfigPath)
 	assert.AssertErrNil(ctx, err,
 		"Failed constructing Kubernetes cluster client",
@@ -87,6 +87,9 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	err = appsV1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding Apps v1 scheme")
+
+	err = batchV1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding Batch v1 scheme")
 
 	err = clusterAPIV1Beta1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
@@ -218,8 +221,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.
-func GetKubernetesResource(
-	ctx context.Context,
+func GetKubernetesResource(ctx context.Context,
 	clusterClient client.Client,
 	resource client.Object,
 ) error {
@@ -359,4 +361,36 @@ func GetMainClusterEndpoint(ctx context.Context) *clusterAPIV1Beta1.APIEndpoint 
 	}
 
 	return nil
+}
+
+// Triggers the given CRONJob, by creating a Job from its Job template.
+func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClient client.Client) {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("cronjob", objectKey.Name),
+		slog.String("namespace", objectKey.Namespace),
+	})
+
+	// Get the CRONJob.
+	cronJob := batchV1.CronJob{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      objectKey.Name,
+			Namespace: objectKey.Namespace,
+		},
+	}
+	err := GetKubernetesResource(ctx, clusterClient, &cronJob)
+	assert.AssertErrNil(ctx, err, "Failed getting CRONJob")
+
+	// Create a Job using the CRONJob's Job template.
+	job := batchV1.Job{
+		ObjectMeta: metaV1.ObjectMeta{
+			GenerateName: objectKey.Name,
+			Namespace:    objectKey.Namespace,
+		},
+
+		Spec: cronJob.Spec.JobTemplate.Spec,
+	}
+	err = clusterClient.Create(ctx, &job, &client.CreateOptions{})
+	assert.AssertErrNil(ctx, err, "Failed creating Job", slog.String("job", job.Name))
+
+	slog.InfoContext(ctx, "Triggered CRONJob", slog.String("job", job.Name))
 }

@@ -43,18 +43,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", clusterType))
 
 	{
-		gitAuthMethod := args.GitAuthMethod
-		// If we're going to use the original KubeAid repo (https://github.com/Obmondo/KubeAid), then we
-		// don't need any Git authentication method
-		if config.ParsedGeneralConfig.Forks.KubeaidForkURL == constants.RepoURLObmondoKubeAid {
-			gitAuthMethod = nil
-		}
-
 		// Clone the KubeAid fork locally (if not already cloned).
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidForkURL,
 			utils.GetKubeAidDir(),
-			gitAuthMethod,
+			args.GitAuthMethod,
 		)
 
 		kubeaidVersion := config.ParsedGeneralConfig.Cluster.KubeaidVersion

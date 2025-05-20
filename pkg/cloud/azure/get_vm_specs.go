@@ -24,7 +24,7 @@ func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
 			if *vmSize.Name == vmType {
 				return &cloud.VMSpec{
 					CPU:    uint32(*vmSize.NumberOfCores),
-					Memory: uint32(*vmSize.MemoryInMB),
+					Memory: uint32(*vmSize.MemoryInMB) / 1024,
 				}
 			}
 		}

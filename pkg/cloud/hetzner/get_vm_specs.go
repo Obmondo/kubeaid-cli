@@ -16,7 +16,7 @@ func (h *Hetzner) GetVMSpecs(ctx context.Context, machineType string) *cloud.VMS
 
 	return &cloud.VMSpec{
 		CPU:            uint32(machineDetails.Cores),
-		Memory:         uint32(machineDetails.Memory * 1024),
+		Memory:         uint32(machineDetails.Memory),
 		RootVolumeSize: aws.Uint32(uint32(machineDetails.Disk)),
 	}
 }
