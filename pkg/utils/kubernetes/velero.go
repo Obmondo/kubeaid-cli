@@ -12,7 +12,29 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
+
+// Creates a Velero Backup with the given name.
+func CreateBackup(ctx context.Context, name string, clusterClient client.Client) {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("backup-name", name),
+	})
+
+	backup := veleroV1.Backup{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      name,
+			Namespace: constants.NamespaceVelero,
+		},
+
+		Spec: veleroV1.BackupSpec{},
+	}
+
+	err := clusterClient.Create(ctx, &backup, &client.CreateOptions{})
+	assert.AssertErrNil(ctx, err, "Failed creating Velero Backup")
+
+	slog.InfoContext(ctx, "Created Velero Backup")
+}
 
 // Identifies and returns the latest / most recent Velero Backup.
 func GetLatestVeleroBackup(ctx context.Context, clusterClient client.Client) *veleroV1.Backup {

@@ -28,6 +28,6 @@ func (a *AWS) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
 
 	return &cloud.VMSpec{
 		CPU:    uint32(*instanceDetails.VCpuInfo.DefaultVCpus),
-		Memory: uint32(*instanceDetails.MemoryInfo.SizeInMiB),
+		Memory: uint32(*instanceDetails.MemoryInfo.SizeInMiB) / 1024,
 	}
 }

@@ -15,17 +15,17 @@ type (
 	}
 
 	AWSCredentials struct {
-		AWSAccessKeyID     string `yaml:"accessKeyID"     validate:"required,notblank"`
-		AWSSecretAccessKey string `yaml:"secretAccessKey" validate:"required,notblank"`
+		AWSAccessKeyID     string `yaml:"accessKeyID"     validate:"notblank"`
+		AWSSecretAccessKey string `yaml:"secretAccessKey" validate:"notblank"`
 		AWSSessionToken    string `yaml:"sessionToken"`
 	}
 
 	AzureCredentials struct {
-		ClientID     string `yaml:"clientID"     validate:"required,notblank"`
-		ClientSecret string `yaml:"clientSecret" validate:"required,notblank"`
+		ClientID     string `yaml:"clientID"     validate:"notblank"`
+		ClientSecret string `yaml:"clientSecret" validate:"notblank"`
 	}
 
 	HetznerCredentials struct {
-		APIToken string `yaml:"apiToken" validate:"required,notblank"`
+		APIToken string `yaml:"apiToken" validate:"notblank"`
 	}
 )

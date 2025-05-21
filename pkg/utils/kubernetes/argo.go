@@ -200,7 +200,7 @@ func RecreateArgoCDApplicationClient(ctx context.Context, clusterClient client.C
 	// Construct the cluster client, if not provided.
 	if clusterClient == nil {
 		kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
-		clusterClient = MustCreateKubernetesClient(ctx, kubeconfigPath)
+		clusterClient = MustCreateClusterClient(ctx, kubeconfigPath)
 	}
 
 	// Port-forward ArgoCD and create ArgoCD client.

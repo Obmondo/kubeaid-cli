@@ -56,7 +56,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 		gitAuthMethod,
 	)
 
-	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		managementClusterKubeconfigPath,
 	)
 

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
@@ -99,4 +100,6 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 
 	// Restore the latest Velero Backup.
 	kubernetes.RestoreVeleroBackup(ctx, clusterClient, latestVeleroBackup)
+
+	slog.InfoContext(ctx, "Cluster recovered successfully 🎊")
 }

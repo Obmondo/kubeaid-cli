@@ -120,7 +120,7 @@ var (
 // Hetzner specific template names.
 var (
 	HCloudSpecificNonSecretTemplateNames = []string{
-		// For HCloud Controller Manager.
+		// For Hetzner Cloud Controller Manager.
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
@@ -130,7 +130,7 @@ var (
 	}
 
 	HCloudSpecificSecretTemplateNames = []string{
-		// For HCloud Controller Manager.
+		// For Hetzner Cloud Controller Manager.
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 
 		// For Cluster API.

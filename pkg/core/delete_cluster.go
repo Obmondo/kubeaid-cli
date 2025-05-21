@@ -28,7 +28,7 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	provisionedClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
@@ -69,7 +69,7 @@ func DeleteCluster(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed doing clusterctl move")
 	}
 
-	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		managementClusterKubeconfigPath,
 	)
 

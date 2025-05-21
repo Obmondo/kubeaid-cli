@@ -120,20 +120,28 @@ const (
 	AzureBlobNameOpenIDConfiguration = ".well-known/openid-configuration"
 	AzureBlobNameJWKSDocument        = "openid/v1/jwks"
 
+	// NOTE : You can view all the Azure built-in roles here :
+	//        https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
+
 	// Grants full access to manage all resources, but does not allow you to assign roles in Azure
 	// RBAC, manage assignments in Azure Blueprints, or share image galleries.
 	AzureRoleIDContributor = "b24988ac-6180-42a0-ab88-20f7382dd24c"
 	// Provides full access to Azure Storage blob containers and data, including assigning POSIX
 	// access control.
 	AzureRoleIDStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
-	// NOTE : You can view all the Azure built-in roles here :
-	//        https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles.
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
 
 	UAMIClusterAPI            = "cluster-api"
 	UAMIVelero                = "velero"
 	UAMISealedSecretsBackuper = "sealed-secrets-backuper"
+)
+
+// Hetzner
+const (
+	HetznerModeBareMetal = "bare-metal"
+	HetznerModeHCloud    = "hcloud"
+	HetznerModeHybrid    = "hybrid"
 )
 
 const (
@@ -148,11 +156,14 @@ const (
 	ServiceAccountSealedSecrets = "sealed-secrets"
 )
 
-// Miscellaneous.
+// File names
 const (
 	FileNameGeneralConfig = "general.yaml"
 	FileNameSecretsConfig = "secrets.yaml"
+)
 
+// Miscellaneous.
+const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	ClusterTypeManagement = "management"
@@ -162,4 +173,6 @@ const (
 	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
 
 	GzippedFilenameSuffix = ".gz"
+
+	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )

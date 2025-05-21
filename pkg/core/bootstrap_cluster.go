@@ -7,11 +7,13 @@ import (
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -28,49 +30,65 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create local dev environment.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
+	// If using a cloud provider, then provision and setup the main cluster in there.
+	// Your KUBECONIG environment variable also gets updated to the main cluster's kubeconfig path.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
 		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 			constants.OutputPathMainClusterKubeconfig,
 		)
-
 		isClusterctlMoveExecuted := (err == nil) &&
 			kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
 
-		// Provision and setup the main cluster.
 		provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
-			CreateDevEnvArgs:         args.CreateDevEnvArgs,
+			BootstrapClusterArgs:     &args,
 			GitAuthMethod:            gitAuthMethod,
 			IsClusterctlMoveExecuted: isClusterctlMoveExecuted,
 		})
-
-		if !args.SkipClusterctlMove && !isClusterctlMoveExecuted {
-			// Pivot ClusterAPI (the provisioned cluster will manage itself).
-			pivotCluster(ctx)
-		}
 	}
 
-	// If the disasterRecovery section is specified in the cloud-provider specific config, then
-	// setup Disaster Recovery.
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
+		utils.GetEnv(constants.EnvNameKubeconfig),
+	)
+	assert.AssertErrNil(ctx, err, "Failed creating cluster client")
+
+	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		globals.CloudProvider.SetupDisasterRecovery(ctx)
 	}
 
-	// Sync all ArgoCD Apps, if not recovering a cluster.
-	if !args.IsPartOfDisasterRecovery {
-		kubernetes.SyncAllArgoCDApps(ctx)
+	if args.IsPartOfDisasterRecovery {
+		return
+	}
+
+	// Sync all ArgoCD Apps.
+	kubernetes.SyncAllArgoCDApps(ctx)
+
+	// If we have setup Disaster Recovery.
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		// Create the first Velero backup.
+		kubernetes.CreateBackup(ctx, "init", clusterClient)
+
+		// Create first Sealed Secrets backup.
+		kubernetes.TriggerCRONJob(ctx,
+			types.NamespacedName{
+				Name:      constants.CRONJobNameBackupSealedSecrets,
+				Namespace: constants.NamespaceSealedSecrets,
+			},
+			clusterClient,
+		)
 	}
 
 	slog.InfoContext(ctx, "Cluster has been bootsrapped successfully 🎊")
 }
 
 type ProvisionAndSetupMainClusterArgs struct {
-	*CreateDevEnvArgs
+	*BootstrapClusterArgs
 	GitAuthMethod            transport.AuthMethod
 	IsClusterctlMoveExecuted bool
 }
 
 func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMainClusterArgs) {
-	managementClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		kubernetes.GetManagementClusterKubeconfigPath(ctx),
 	)
 
@@ -98,7 +116,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	// All Kubernetes operations from now on, will be done against the provisioned cluster.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
-	provisionedClusterClient := kubernetes.MustCreateKubernetesClient(ctx,
+	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
@@ -121,6 +139,11 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		ClusterClient:       provisionedClusterClient,
 		GitAuthMethod:       args.GitAuthMethod,
 	})
+
+	// Pivot ClusterAPI (the provisioned cluster will manage itself), if not disabled by the user.
+	if !args.SkipClusterctlMove && !args.IsClusterctlMoveExecuted {
+		pivotCluster(ctx)
+	}
 
 	// Sync the external-snapshotter ArgoCD App.
 	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
