@@ -9,12 +9,39 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
+// HetznerCmd represents the base command for Hetzner options
 var HetznerCmd = &cobra.Command{
-	Use: "hetzner",
+	Use:   "hetzner",
+	Short: "Generate a sample KubeAid Bootstrap Script config file for Hetzner",
+}
 
-	Short: "Generate a sample KubeAid Bootstrap Script config file, for deploying a Hetzner based cluster",
-
+// HetznerRobotCmd represents the baremetal-robot subcommand
+var HetznerRobotCmd = &cobra.Command{
+	Use:   "robot",
+	Short: "Generate a sample KubeAid Bootstrap Script config file for Hetzner bare metal robot",
 	Run: func(cmd *cobra.Command, args []string) {
-		config.GenerateSampleConfig(context.Background(), constants.CloudProviderHetzner)
+		config.GenerateSampleConfig(
+			context.Background(),
+			constants.CloudProviderHetzner,
+			constants.HetznerModeBareMetal,
+		)
 	},
+}
+
+// HetznerCloudCmd represents the hcloud subcommand
+var HetznerCloudCmd = &cobra.Command{
+	Use:   "cloud",
+	Short: "Generate a sample KubeAid Bootstrap Script config file for Hetzner Cloud",
+	Run: func(cmd *cobra.Command, args []string) {
+		config.GenerateSampleConfig(
+			context.Background(),
+			constants.CloudProviderHetzner,
+			constants.HetznerModeHCloud,
+		)
+	},
+}
+
+func init() {
+	HetznerCmd.AddCommand(HetznerRobotCmd)
+	HetznerCmd.AddCommand(HetznerCloudCmd)
 }

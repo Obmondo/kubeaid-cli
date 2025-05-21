@@ -149,6 +149,9 @@ var (
 	TemplateNameHetznerGeneralConfig = "files/templates/hetzner.general.config.yaml.tmpl"
 	TemplateNameHetznerSecretsConfig = "files/templates/hetzner.secrets.config.yaml.tmpl"
 
+	TemplateNameHCloudGeneralConfig = "files/templates/hcloud.general.config.yaml.tmpl"
+	TemplateNameHCloudSecretsConfig = "files/templates/hcloud.secrets.config.yaml.tmpl"
+
 	TemplateNameLocalGeneralConfig = "files/templates/local.general.config.yaml.tmpl"
 	TemplateNameLocalSecretsConfig = "files/templates/local.secrets.config.yaml.tmpl"
 )
