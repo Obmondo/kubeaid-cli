@@ -2,13 +2,16 @@ package git
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/url"
 
 	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
@@ -16,17 +19,23 @@ func GetDefaultBranchName(ctx context.Context,
 	authMethod transport.AuthMethod,
 	repo *goGit.Repository,
 ) string {
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
 	refs, err := remote.List(&goGit.ListOptions{
 		Auth:     authMethod,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
+		slog.InfoContext(ctx,
+			"Detected empty remote repository. Using 'main' as the default branch",
+		)
+		return constants.BranchDefault
+	}
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
 	for _, ref := range refs {
-		if ref.Name().String() == "HEAD" {
+		if ref.Name() == plumbing.HEAD {
 			target := ref.Target().String()
 
 			defaultBranchName := target[11:] // Remove "refs/heads/" prefix.

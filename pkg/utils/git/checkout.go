@@ -82,7 +82,7 @@ func CreateAndCheckoutToBranch(ctx context.Context,
 	slog.InfoContext(ctx, "Created and checked out to new branch")
 }
 
-// removes any unstaged changes in the current branch, by hard resetting to the latest commit in
+// Removes any unstaged changes in the current branch, by hard resetting to the latest commit in
 // that branch.
 // Otherwise, we'll get error when checking out to a new branch.
 func removeUnstagedChanges(ctx context.Context, repo *goGit.Repository, workTree *goGit.Worktree) {
