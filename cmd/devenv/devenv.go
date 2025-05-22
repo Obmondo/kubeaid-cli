@@ -16,7 +16,10 @@ var DevenvCmd = &cobra.Command{
 		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
 
 		// Initialize temp directory.
-		utils.InitTempDir()
+		utils.InitTempDir(cmd.Context())
+
+		// Ensure required runtime dependencies are installed.
+		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
 	},
 
 	RunE: func(cmd *cobra.Command, args []string) error {

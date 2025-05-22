@@ -2,7 +2,6 @@ package git
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/url"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
@@ -26,12 +24,6 @@ func GetDefaultBranchName(ctx context.Context,
 		Auth:     authMethod,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	})
-	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		slog.InfoContext(ctx,
-			"Detected empty remote repository. Using 'main' as the default branch",
-		)
-		return constants.BranchDefault
-	}
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
 	for _, ref := range refs {

@@ -19,20 +19,17 @@ import (
 // Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
 // Then sets the value of constants.TempDir as the temp dir path.
 // If the temp dir already exists, then that gets reused.
-func InitTempDir() {
+func InitTempDir(ctx context.Context) {
 	namePrefix := "kubeaid-bootstrap-script-"
 
 	// Check if a temp dir already exists for KubeAid Bootstrap Script.
 	// If yes, then reuse that.
 	filesAndFolders, err := os.ReadDir("/tmp")
-	if err != nil {
-		slog.Error("Failed listing files and folders in /tmp", slog.Any("error", err))
-		os.Exit(1)
-	}
+	assert.AssertErrNil(ctx, err, "Failed listing files and folders in /tmp")
 	for _, item := range filesAndFolders {
 		if item.IsDir() && strings.HasPrefix(item.Name(), namePrefix) {
 			path := "/tmp/" + item.Name()
-			slog.Info(
+			slog.InfoContext(ctx,
 				"Skipped creating temp dir, since it already exists",
 				slog.String("path", path),
 			)
@@ -48,12 +45,12 @@ func InitTempDir() {
 	dirName := fmt.Sprintf("%s%d", namePrefix, time.Now().Unix())
 
 	path, err := os.MkdirTemp("/tmp", dirName)
-	assert.AssertErrNil(context.Background(), err,
+	assert.AssertErrNil(ctx, err,
 		"Failed creating temp dir",
 		slog.String("path", path),
 	)
 
-	slog.Info("Created temp dir", slog.String("path", path))
+	slog.InfoContext(ctx, "Created temp dir", slog.String("path", path))
 
 	globals.TempDir = path
 }

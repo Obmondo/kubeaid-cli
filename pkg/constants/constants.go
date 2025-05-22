@@ -175,6 +175,4 @@ const (
 	GzippedFilenameSuffix = ".gz"
 
 	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
-
-	BranchDefault = "main"
 )

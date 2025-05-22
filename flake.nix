@@ -36,6 +36,7 @@
             # Required for building KubePrometheus.
             gojsontoyaml
             jsonnet
+            jsonnet-bundler
             jq
 
             yq

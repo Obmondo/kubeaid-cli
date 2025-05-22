@@ -10,7 +10,7 @@ import (
 	"time"
 
 	goGit "github.com/go-git/go-git/v5"
-	gitConfig "github.com/go-git/go-git/v5/config"
+	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -51,8 +51,8 @@ func AddCommitAndPushChanges(ctx context.Context,
 		RemoteName: "origin",
 		Auth:       authMethod,
 		CABundle:   config.ParsedGeneralConfig.Git.CABundle,
-		RefSpecs: []gitConfig.RefSpec{
-			gitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
+		RefSpecs: []goGitConfig.RefSpec{
+			goGitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
 		},
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
@@ -100,7 +100,7 @@ func WaitUntilPRMerged(ctx context.Context,
 
 		err := repo.Fetch(&goGit.FetchOptions{
 			Auth:     auth,
-			RefSpecs: []gitConfig.RefSpec{"refs/*:refs/*"},
+			RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
 			CABundle: config.ParsedGeneralConfig.Git.CABundle,
 		})
 		if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
