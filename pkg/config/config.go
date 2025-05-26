@@ -207,7 +207,7 @@ type (
 // Hetzner specific.
 type (
 	HetznerConfig struct {
-		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof='bare-metal hcloud hybrid'"`
+		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
 		Zone   string `yaml:"zone"   validate:"notblank"`
 		Region string `yaml:"region" validate:"notblank"`
