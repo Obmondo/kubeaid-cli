@@ -1,55 +1,31 @@
-# Setting up a KubeAid managed cluster on Hetzner
-
-## Hetzner installation requirement
-
-* Hcloud(./hetzner/hcloud.md)
-* Robot(./hetzner/robot.md)
-* Hybrid(./hetzner/hybrid.md)
+# Hetzner KubeAid managed cluster
 
 ## Installation
-
-### Method 1
 
 * Download the compose file
 ```sh
 wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
 ```
 
-* Add the cloud provider flavour
+* Add the cloud provider and flavour
 
 ```
 cat .env
-CLOUD_PROVIDER=local
+CLOUD_PROVIDER=hetzner
+FLAVOR=hcloud
 ```
 
-* Generate the config
+* Generate the config, which will be created under `./outputs/configs`
 
 ```sh
 docker compose run bootstrap-generate
 ```
 
-* Add the user and ssh key in the general.yaml
+## Choose your flavor
 
-```yaml
-# Any additional users you want to be setup for each Kubernetes node.
-# additionalUsers:
-#  - name: archi
-#    sshPublicKey: xxxxxxxxxx
-```
-
-* Add the git username and token in the secret.yaml
-
-```yaml
-git:
-  username: xxxxxxxxxx
-  password: xxxxxxxxxx
-```
-
-* Bootstrap the cluster
-
-```sh
-docker compose run bootstrap-cluster
-```
+* [Hcloud](./hetzner/hcloud.md)
+* [Robot](./hetzner/robot.md)
+* [Hybrid](./hetzner/hybrid.md)
 
 * Get your KUBECONFIG
 
@@ -59,7 +35,8 @@ export KUBECONFIG=./outputs/kubeconfigs/main.yaml
 ```
 
 ## Destroy
-When you want to destroy the cluster
+
+* When you want to destroy the cluster
 
 ```sh
 docker compose down

@@ -1,15 +1,37 @@
 ## Hetzner cloud
 
-- Login to Hetzner.
+## Generate token and ssh keys
+- Generate an [HCloud API token](https://docs.hetzner.com/cloud/api/getting-started/generating-api-token)
 
-- Click on the `grid icon` on the top right corner and select `Cloud`. This will take you to the HCloud console.
+- Generate an [SSH key pair](https://community.hetzner.com/tutorials/add-ssh-key-to-your-hetzner-cloud)
 
-- Click on the left menu bar, select `Projects` and create an `HCloud project`.
+- Generate the [GitHub token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token).
 
-- Generate an HCloud API token following [this](https://docs.hetzner.com/cloud/api/getting-started/generating-api-token).
+## Bootstrap the cluster
 
-- Generate an HCloud SSH KeyPair following [this]().
+* Add the user and ssh key in the general.yaml.
 
-- Generate an SSH KeyPair and add it in the `SSH keys` section of the `Security` tab by following [this](<https://docs.hetzner.com/cloud/servers/getting-started/connecting-to-the-server/#cli-warning>].
+```yaml
+# Any additional users you want to be setup for each Kubernetes node.
+additionalUsers:
+ - name: your-username
+   sshPublicKey: xxxxxxxxxx
+```
 
-- For GitHub PAT generation instructions, see [here](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token). This PAT token will be used as your password in secrets.yaml.
+* Add the git username and token in the secret.yaml
+
+```yaml
+git:
+  username: xxxxxxxxxx
+  password: xxxxxxxxxx
+```
+
+* Bootstrap the cluster
+
+```sh
+docker compose run bootstrap-cluster
+```
+
+## Reference
+
+https://syself.com/docs/caph/topics/managing-ssh-keys#in-hetzner-cloud
