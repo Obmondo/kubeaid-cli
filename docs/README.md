@@ -72,7 +72,7 @@ forkURLs:
 cluster:
   name: kubeaid-demo-local
   k8sVersion: v1.31.0
-  kubeaidVersion: 10.0.0 # update this accordingly
+  kubeaidVersion: 13.0.0 # update this accordingly
 
 cloud:
   local: {}

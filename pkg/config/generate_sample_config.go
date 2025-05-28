@@ -14,7 +14,7 @@ import (
 //go:embed files/templates/*
 var SampleConfigs embed.FS
 
-func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
+func GenerateSampleConfig(ctx context.Context, cloudProvider, flavor string) {
 	// Create configs directory.
 	os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
 
@@ -32,8 +32,18 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider string) {
 		secretsTemplateName = constants.TemplateNameAzureSecretsConfig
 
 	case constants.CloudProviderHetzner:
-		generalTemplateName = constants.TemplateNameHetznerGeneralConfig
-		secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
+		// Use hcloud template if mode is hcloud
+		if flavor == constants.HetznerModeHCloud {
+			generalTemplateName = constants.TemplateNameHCloudGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
+		} else if flavor == constants.HetznerModeBareMetal {
+			generalTemplateName = constants.TemplateNameHetznerGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
+		} else {
+			slog.WarnContext(ctx, "Invalid Hetzner mode provided, defaulting to bare-metal")
+			generalTemplateName = constants.TemplateNameHetznerGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
+		}
 
 	case constants.CloudProviderLocal:
 		generalTemplateName = constants.TemplateNameLocalGeneralConfig
