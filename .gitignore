@@ -6,3 +6,5 @@ vendor/
 outputs/
 
 temp/
+robot-ssh
+*.pub
