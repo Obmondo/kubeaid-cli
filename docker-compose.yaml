@@ -28,7 +28,7 @@ services:
       - -c
       - |
         mkdir -p /outputs
-        kubeaid-bootstrap-script cluster bootstrap --management-cluster-name ${CLUSTER_NAME} ${CLOUD_PROVIDER}
+        kubeaid-bootstrap-script cluster bootstrap --skip-pr-flow --management-cluster-name ${CLUSTER_NAME} ${CLOUD_PROVIDER}
     volumes:
       - ./outputs:/outputs
       - /var/run/docker.sock:/var/run/docker.sock
