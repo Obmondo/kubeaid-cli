@@ -1,0 +1,36 @@
+networks:
+  k3d:
+    name: k3d-kubeaid-bootstrap
+    external: false
+    driver: bridge
+
+services:
+  bootstrap-generate:
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.1
+    container_name: bootstrap-generate
+    restart: no
+    command:
+      - bash
+      - -c
+      - |
+        rm -fr outputs/configs
+        kubeaid-bootstrap-script config generate ${CLOUD_PROVIDER}
+    volumes:
+      - ./outputs:/outputs
+    networks:
+      - k3d
+
+  bootstrap-cluster:
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.1
+    restart: no
+    command:
+      - bash
+      - -c
+      - |
+        mkdir -p /outputs
+        kubeaid-bootstrap-script cluster bootstrap --management-cluster-name ${CLUSTER_NAME} ${CLOUD_PROVIDER}
+    volumes:
+      - ./outputs:/outputs
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - k3d

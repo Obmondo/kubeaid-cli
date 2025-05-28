@@ -59,9 +59,9 @@ cloud:
 
     hcloudSSHKeyPairName: kubeaid-demo
     networkEnabled: true
-    
+
     imageName: ubuntu-24.04
-    
+
     controlPlane:
       machineType: cax11
       replicas: 3
@@ -73,7 +73,7 @@ cloud:
       loadBalancer:
         enabled: true
         region: hel1
-    
+
     nodeGroups:
       hcloud:
         - name: worker
