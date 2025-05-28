@@ -64,6 +64,7 @@ cloud:
     
     controlPlane:
       machineType: cax11
+      replicas: 3
       rootVolumeSize: 20
       regions:
         - fsn1
@@ -76,12 +77,11 @@ cloud:
     nodeGroups:
       hcloud:
         - name: worker
-          nodeGroup:
-            machineType: cx22
-            rootVolumeSize: 20
-            minSize: 1
-            maxSize: 1
-            desiredSize: 1
+          machineType: cx22
+          rootVolumeSize: 20
+          minSize: 1
+          maxSize: 1
+          desiredSize: 1
           labels:
             node-role.kubernetes.io/bootstrapper: ""
             node.cluster.x-k8s.io/nodegroup: worker
