@@ -136,9 +136,10 @@ func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 
 	// If the request was unsuccessful, then the repo isn't public.
 	if response.StatusCode != http.StatusOK {
-		return false, nil
+		// If status is NOT 200 OK, it means it's likely private.
+		return true, nil
 	}
 
-	// Request was successful, which means the repo is public.
-	return true, nil
+	// Request was successful (status was 200 OK), which means the repo is public.
+	return false, nil
 }
