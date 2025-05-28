@@ -14,7 +14,7 @@ services:
       - -c
       - |
         rm -fr outputs/configs
-        kubeaid-bootstrap-script config generate ${CLOUD_PROVIDER}
+        kubeaid-bootstrap-script config generate ${CLOUD_PROVIDER} ${FLAVOR}
     volumes:
       - ./outputs:/outputs
     networks:
