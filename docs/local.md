@@ -1,46 +1,60 @@
-# Hetzner KubeAid managed cluster
+## Local KubeAid Cluster
 
-## Installation
+### Generate token and ssh keys
 
-* Download the compose file
-```sh
-wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
-```
+- Generate the [GitHub token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token).
 
-* Add the cloud provider and flavour
+### Setup
 
-```
-# cat .env
-CLOUD_PROVIDER=hetzner
-FLAVOR=hcloud
-CLUSTER_NAME=kubeaid-demo
-```
+1. **Download the compose file**:
+   - Get the compose file
+   ```bash
+   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
+   ```
 
-* Generate the config, which will be created under `./outputs/configs`
+2. **Configure Your Environment**:
+   - Setup the .env file
+   ```raw
+   # vim .env
+   CLOUD_PROVIDER=local
+   CLUSTER_NAME=kubeaid-demo
+   ```
 
-```sh
-docker compose run bootstrap-generate
-```
+3. **Generate the config**:
+   - Run the compose to generate the config, it will drop the file in **/outputs/config**
+   ```bash
+   docker compose run bootstrap-generate
+   ```
 
-## Choose your flavor
+4. **Fix the config based on your requirements**:
+   - kubeaid-config git repo in general.yaml
+   ```yaml
+   forkURLs:
+     kubeaidConfig: https://github.com/xxxxxxxx/kubeaid-config.git
+   ```
 
-* [Hcloud](./hetzner/hcloud.md)
-* [Robot](./hetzner/robot.md)
-* [Hybrid](./hetzner/hybrid.md)
+5. **Deploy the local Cluster**:
+   - Run the docker compose:
+   ```bash
+   docker compose run bootstrap-cluster
+   ```
 
-## Access your cluster
+6. **Access Your Cluster**:
+   - Once the setup is complete, you can access your Kubernetes cluster using `kubectl`:
+   ```bash
+   export KUBECONFIG=./outputs/kubeconfigs/main.yaml
+   kubectl get nodes
+   ```
 
-* Get your KUBECONFIG
+7. **Access Keycloak, ArgoCD, and Monitoring**:
+   - Follow the instructions in the [KubeAid](https://github.com/Obmondo/kubeaid) to access and configure Keycloak, ArgoCD, and Kube-Prometheus.
+   - Example: ArgoCD
+   ```bash
+   kubectl port-forward svc/argocd-server --namespace argo-cd 8080:443
+   ```
 
-```sh
-cat ./outputs/kubeconfigs/main.yaml
-export KUBECONFIG=./outputs/kubeconfigs/main.yaml
-```
-
-## Destroy
-
-* When you want to destroy the cluster
-
-```sh
-k3d cluster delete kubeaid-demo
-```
+8. **Destroy**
+   - When you are done playing
+   ```bash
+   k3d cluster delete kubeaid-demo
+   ```
