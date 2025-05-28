@@ -35,15 +35,16 @@ NOTE: You can also run the ./scripts/install-runtime-dependencies.sh
 ### Quick Setup
 
 1. **Download the compose file**:
+  - Get the compose file
   ```bash
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
 2. **Configure Your Environment**:
+  - Setup the .env file
   ```raw
   # cat .env
   CLOUD_PROVIDER=local
-  #FLAVOR=hcloud
   CLUSTER_NAME=kubeaid-demo
   ```
 
@@ -76,9 +77,16 @@ NOTE: You can also run the ./scripts/install-runtime-dependencies.sh
 ## Cloud Provider Support
 
 - **AWS**: Self-managed and EKS
+  - Documentation: [docs/aws.md](docs/aws.md)
+
 - **Azure**: AKS and self-managed
+  - Documentation: [docs/azure.md](docs/azure.md)
+
 - **Hetzner**: Cloud, Robot, and Hybrid
+  - Documentation: [docs/hetzner.md](docs/hetzner.md)
+
 - **Local**: Minikube or other local setups
+  - Documentation: [docs/local.md](docs/local.md)
 
 ## Contributing
 
