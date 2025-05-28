@@ -1,6 +1,6 @@
 ## Hetzner cloud
 
-## Generate token and ssh keys
+### Generate token and ssh keys
 - Generate an [HCloud API token](https://docs.hetzner.com/cloud/api/getting-started/generating-api-token)
 
 - Generate an [SSH key pair](https://community.hetzner.com/tutorials/add-ssh-key-to-your-hetzner-cloud)
