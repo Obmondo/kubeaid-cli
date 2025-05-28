@@ -7,30 +7,52 @@
 
 - Generate the [GitHub token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token).
 
-## Bootstrap the cluster
+### Setup
 
-* Add the user and ssh key in the general.yaml.
+1. **Configure Your Environment**:
+   - Setup the .env file
+   ```raw
+   # cat .env
+   CLOUD_PROVIDER=hetzner
+   FLAVOR=hcloud
+   CLUSTER_NAME=kubeaid-demo
+   ```
 
-```yaml
-# Any additional users you want to be setup for each Kubernetes node.
-additionalUsers:
- - name: your-username
-   sshPublicKey: xxxxxxxxxx
-```
+2. **Generate the config**:
+   - Run the compose to generate the config, it will drop the file in **/outputs/config**
+   ```bash
+   docker compose run bootstrap-generate
+   ```
 
-* Add the git username and token in the secret.yaml
+3. **Add the user and ssh key**:
+   - Edit general.yaml
+   ```yaml
+   # Any additional users you want to be setup for each Kubernetes node.
+   additionalUsers:
+    - name: your-username
+      sshPublicKey: xxxxxxxxxx
+   ```
 
-```yaml
-git:
-  username: xxxxxxxxxx
-  password: xxxxxxxxxx
-```
+4. **Add the git username and token**:
+   - Edit secret.yaml
+   ```yaml
+   git:
+     username: xxxxxxxxxx
+     password: xxxxxxxxxx
+   ```
 
-* Bootstrap the cluster
+5. **Bootstrap the cluster**:
+   - Setup the Hetzner cloud k8s cluster
+   ```sh
+   docker compose run bootstrap-cluster
+   ```
 
-```sh
-docker compose run bootstrap-cluster
-```
+6. **Access Your Cluster**:
+   - Once the setup is complete, you can access your Kubernetes cluster using `kubectl`:
+   ```bash
+   export KUBECONFIG=./outputs/kubeconfigs/main.yaml
+   kubectl get nodes
+   ```
 
 ## Reference
 
