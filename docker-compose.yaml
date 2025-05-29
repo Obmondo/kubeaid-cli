@@ -6,7 +6,7 @@ networks:
 
 services:
   bootstrap-generate:
-    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.1
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.2
     container_name: bootstrap-generate
     restart: no
     command:
@@ -21,7 +21,7 @@ services:
       - k3d
 
   bootstrap-cluster:
-    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.1
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.2
     restart: no
     command:
       - bash
