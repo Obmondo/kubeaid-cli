@@ -1,6 +1,6 @@
 networks:
   k3d:
-    name: k3d-${CLUSTER_NAME}
+    name: k3d-${CLUSTER_NAME:-kubeaid-demo}
     external: false
     driver: bridge
 
@@ -14,7 +14,7 @@ services:
       - -c
       - |
         rm -fr outputs/configs
-        kubeaid-bootstrap-script config generate ${CLOUD_PROVIDER} ${FLAVOR:-''}
+        kubeaid-bootstrap-script config generate ${CLOUD_PROVIDER:-local} ${FLAVOR:-''}
     volumes:
       - ./outputs:/outputs
     networks:
@@ -28,7 +28,7 @@ services:
       - -c
       - |
         mkdir -p /outputs
-        kubeaid-bootstrap-script cluster bootstrap --skip-pr-flow --management-cluster-name ${CLUSTER_NAME} ${CLOUD_PROVIDER}
+        kubeaid-bootstrap-script cluster bootstrap --skip-pr-flow --management-cluster-name ${CLUSTER_NAME:-kubeaid-demo} ${CLOUD_PROVIDER:-local}
     volumes:
       - ./outputs:/outputs
       - /var/run/docker.sock:/var/run/docker.sock
