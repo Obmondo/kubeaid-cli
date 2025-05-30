@@ -1,6 +1,6 @@
 networks:
   k3d:
-    name: k3d-kubeaid-bootstrap
+    name: k3d-${CLUSTER_NAME}
     external: false
     driver: bridge
 
