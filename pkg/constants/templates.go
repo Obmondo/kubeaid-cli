@@ -32,7 +32,7 @@ var (
 
 // Common template names (for clusters being provisioned in any of the supported cloud providers).
 var (
-	CommonCloudNonSecretTemplateNames = []string{
+	CommonCloudSpecificNonSecretTemplateNames = []string{
 		// For Cilium
 		"argocd-apps/templates/cilium.yaml.tmpl",
 		"argocd-apps/values-cilium.yaml.tmpl",
@@ -119,22 +119,35 @@ var (
 
 // Hetzner specific template names.
 var (
-	HCloudSpecificNonSecretTemplateNames = []string{
+	CommonHetznerSpecificNonSecretTemplateNames = []string{
 		// For Hetzner Cloud Controller Manager.
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
-
-		// For HCloud CSI driver.
-		"argocd-apps/templates/hcloud-csi-driver.yaml.tmpl",
-		"argocd-apps/values-hcloud-csi-driver.yaml.tmpl",
 	}
 
-	HCloudSpecificSecretTemplateNames = []string{
+	CommonHetznerSpecificSecretTemplateNames = []string{
 		// For Hetzner Cloud Controller Manager.
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
+	}
+
+	HCloudSpecificNonSecretTemplateNames = []string{
+		// For HCloud CSI driver.
+		"argocd-apps/templates/hcloud-csi-driver.yaml.tmpl",
+		"argocd-apps/values-hcloud-csi-driver.yaml.tmpl",
+	}
+
+	HetznerBareMetalSpecificNonSecretTemplateNames = []string{
+		// For Hetzner Robot.
+		"argocd-apps/templates/hetzner-robot.yaml.tmpl",
+		"argocd-apps/values-hetzner-robot.yaml.tmpl",
+	}
+
+	HetznerBareMetalSpecificSecretTemplateNames = []string{
+		// For Cluster API.
+		"sealed-secrets/capi-cluster/rescue-ssh-keypair.yaml.tmpl",
 	}
 )
 

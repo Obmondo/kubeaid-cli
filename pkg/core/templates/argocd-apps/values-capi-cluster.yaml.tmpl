@@ -95,12 +95,22 @@ hetzner:
   imageName: {{ .HetznerConfig.ImageName }}
 
   controlPlane:
-    machineType: {{ .HetznerConfig.ControlPlane.MachineType }}
-    replicas: {{ .HetznerConfig.ControlPlane.Replicas }}
-    regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
+    {{/* Handling control-plane in Hetzner bare-metal. */}}
+    {{- if eq .HetznerConfig.Mode "bare-metal" }}
+    bareMetalHosts: {{ .HetznerConfig.ControlPlane.BareMetal.BareMetalHosts | toIndentYAML 2 | nindent 6 }}
+    endpoint:
+      host: {{ .HetznerConfig.ControlPlane.BareMetal.FailoverIP }}
+
+    {{/* Handling control-plane in HCloud. */}}
+    {{- else }}
+    machineType: {{ .HetznerConfig.ControlPlane.HCloud.MachineType }}
+    replicas: {{ .HetznerConfig.ControlPlane.HCloud.Replicas }}
     loadBalancer:
-      enabled: {{ .HetznerConfig.ControlPlane.LoadBalancer.Enabled }}
-      region: {{ .HetznerConfig.ControlPlane.LoadBalancer.Region }}
+      enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}
+      region: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Region }}
+    {{- end }}
+
+    regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
   nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
 {{- end }}

@@ -25,6 +25,7 @@ func init() {
 	// Subcommands.
 	CreateCmd.AddCommand(AWSCmd)
 	CreateCmd.AddCommand(AzureCmd)
+	CreateCmd.AddCommand(HetznerCmd)
 
 	// Flags.
 

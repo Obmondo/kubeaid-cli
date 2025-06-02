@@ -87,14 +87,18 @@ type (
 	NodeGroup struct {
 		Name string `yaml:"name" validate:"notblank"`
 
+		Labels map[string]string `yaml:"labels" default:"[]"`
+		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
+	}
+
+	AutoScalableNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+
 		CPU    uint32 `validate:"required"`
 		Memory uint32 `validate:"required"`
 
 		MinSize uint `yaml:"minSize" validate:"required"`
 		Maxsize uint `yaml:"maxSize" validate:"required"`
-
-		Labels map[string]string `yaml:"labels" default:"[]"`
-		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
 	}
 
 	CloudConfig struct {
@@ -131,11 +135,11 @@ type (
 	AWSConfig struct {
 		Region string `yaml:"region" validate:"notblank"`
 
-		SSHKeyName     string          `yaml:"sshKeyName"     validate:"notblank"`
-		VPCID          *string         `yaml:"vpcID"`
-		BastionEnabled bool            `yaml:"bastionEnabled"                     default:"True"`
-		ControlPlane   AWSControlPlane `yaml:"controlPlane"   validate:"required"`
-		NodeGroups     []AWSNodeGroup  `yaml:"nodeGroups"     validate:"required"`
+		SSHKeyName     string                     `yaml:"sshKeyName"     validate:"notblank"`
+		VPCID          *string                    `yaml:"vpcID"`
+		BastionEnabled bool                       `yaml:"bastionEnabled"                     default:"True"`
+		ControlPlane   AWSControlPlane            `yaml:"controlPlane"   validate:"required"`
+		NodeGroups     []AWSAutoScalableNodeGroup `yaml:"nodeGroups"     validate:"required"`
 	}
 
 	AWSControlPlane struct {
@@ -145,8 +149,8 @@ type (
 		AMI                AMIConfig `yaml:"ami"                                          validate:"required"`
 	}
 
-	AWSNodeGroup struct {
-		NodeGroup `yaml:",inline"`
+	AWSAutoScalableNodeGroup struct {
+		AutoScalableNodeGroup `yaml:",inline"`
 
 		AMI            AMIConfig `yaml:"ami"            validate:"required"`
 		InstanceType   string    `yaml:"instanceType"   validate:"notblank"`
@@ -175,8 +179,8 @@ type (
 
 		ImageID *string `yaml:"imageID"`
 
-		ControlPlane AzureControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups   []AzureNodeGroup  `yaml:"nodeGroups"   validate:"required,gt=0"`
+		ControlPlane AzureControlPlane            `yaml:"controlPlane" validate:"required"`
+		NodeGroups   []AzureAutoScalableNodeGroup `yaml:"nodeGroups"   validate:"required,gt=0"`
 	}
 
 	AADApplication struct {
@@ -196,8 +200,8 @@ type (
 		Replicas         uint32 `yaml:"replicas"         validate:"required,gt=0"`
 	}
 
-	AzureNodeGroup struct {
-		NodeGroup `yaml:",inline"`
+	AzureAutoScalableNodeGroup struct {
+		AutoScalableNodeGroup `yaml:",inline"`
 
 		VMSize     string `yaml:"vmSize"     validate:"notblank"`
 		DiskSizeGB uint32 `yaml:"diskSizeGB" validate:"required"`
@@ -214,6 +218,8 @@ type (
 
 		HCloudSSHKeyPairName string `yaml:"hcloudSSHKeyPairName" validate:"notblank"`
 
+		RescueHCloudSSHKeyPair *RescueHCloudSSHKeyPair `yaml:"rescueHCloudSSHKeyPair"`
+
 		NetworkEnabled bool   `yaml:"networkEnabled" default:"True"         validate:"required"`
 		ImageName      string `yaml:"imageName"      default:"ubuntu-24.04" validate:"notblank"`
 
@@ -221,11 +227,27 @@ type (
 		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"   validate:"required"`
 	}
 
+	RescueHCloudSSHKeyPair struct {
+		Name             string `yaml:"name"    validate:"notblank"`
+		SSHKeyPairConfig `       yaml:",inline"`
+	}
+
 	HetznerControlPlane struct {
+		HCloud    *HCloudControlPlane           `yaml:"hcloud"`
+		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal"`
+
+		Regions []string `yaml:"regions" validate:"required,gt=0"`
+	}
+
+	HCloudControlPlane struct {
 		MachineType  string                         `yaml:"machineType"  validate:"notblank"`
-		Replicas     uint                           `yaml:"replicas"     validate:"required"`
-		Regions      []string                       `yaml:"regions"      validate:"required,gt=0"`
-		LoadBalancer HCloudControlPlaneLoadBalancer `yaml:"loadBalancer"`
+		Replicas     uint                           `yaml:"replicas"     validate:"notblank"`
+		LoadBalancer HCloudControlPlaneLoadBalancer `yaml:"loadBalancer" validate:"required"`
+	}
+
+	HetznerBareMetalControlPlane struct {
+		BareMetalHosts []HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
+		FailoverIP     string                 `yaml:"failoverIP" default:""`
 	}
 
 	HCloudControlPlaneLoadBalancer struct {
@@ -234,14 +256,26 @@ type (
 	}
 
 	HetznerNodeGroups struct {
-		HCloud []HCloudNodeGroup `yaml:"hcloud"`
+		HCloud    []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
+		BareMetal []HetznerBareMetalNodeGroup   `yaml:"bareMetal"`
 	}
 
-	HCloudNodeGroup struct {
-		NodeGroup `yaml:",inline"`
+	HCloudAutoScalableNodeGroup struct {
+		AutoScalableNodeGroup `yaml:",inline"`
 
 		MachineType    string `yaml:"machineType" validate:"notblank"`
 		RootVolumeSize uint32 `                   validate:"required"`
+	}
+
+	HetznerBareMetalNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+
+		BareMetalHosts []HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
+	}
+
+	HetznerBareMetalHost struct {
+		ServerID string   `yaml:"serverID" validate:"notblank"`
+		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
 	}
 )
 

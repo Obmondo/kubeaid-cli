@@ -42,16 +42,24 @@ func validateConfigs() {
 	// Validate that cloud provider credentials have been provided.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		assert.Assert(ctx, (ParsedSecretsConfig.AWS != nil), "AWS credentials not provided")
+		assert.AssertNotNil(ctx, ParsedSecretsConfig.AWS, "AWS credentials not provided")
 
 	case constants.CloudProviderAzure:
-		assert.Assert(ctx, (ParsedSecretsConfig.Azure != nil), "Azure credentials not provided")
+		assert.AssertNotNil(ctx, ParsedSecretsConfig.Azure, "Azure credentials not provided")
 
 	case constants.CloudProviderHetzner:
-		assert.Assert(ctx,
-			(ParsedSecretsConfig.Hetzner != nil),
-			"Hetzner credentials not provided",
-		)
+		assert.AssertNotNil(ctx, ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
+
+		mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
+
+		// Hetzner Robot username and password must be provided, when using Hetzner bare-metal.
+		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+			assert.AssertNotNil(
+				ctx,
+				ParsedSecretsConfig.Hetzner.Robot,
+				"HCloud robot user and password not provided",
+			)
+		}
 	}
 
 	// Validate K8s version.
@@ -72,17 +80,56 @@ func validateConfigs() {
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for _, awsNodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
-			validateNodeGroup(ctx, &awsNodeGroup.NodeGroup)
+		// Validate auto-scalable node-groups.
+		for _, awsAutoScalableNodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
+			validateAutoScalableNodeGroup(ctx, &awsAutoScalableNodeGroup.AutoScalableNodeGroup)
 		}
 
 	case constants.CloudProviderAzure:
-		for _, azureNodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			validateNodeGroup(ctx, &azureNodeGroup.NodeGroup)
+		// Validate auto-scalable node-groups.
+		for _, azureAutoScalableNodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
+			validateAutoScalableNodeGroup(ctx, &azureAutoScalableNodeGroup.AutoScalableNodeGroup)
 		}
 
 	case constants.CloudProviderHetzner:
-		break
+		mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
+
+		if mode == constants.HetznerModeBareMetal {
+			assert.AssertNotNil(ctx,
+				ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal,
+				"Hetzner bare metal specific details not provided for control-plane",
+			)
+		} else {
+			assert.AssertNotNil(ctx,
+				ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
+				"HCloud specific details not provided for control-plane",
+			)
+		}
+
+		// When using HCloud.
+		if (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid) {
+			// Validate auto-scalable node-groups.
+			for _, hetznerBaremetalNodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+				validateAutoScalableNodeGroup(ctx, &hetznerBaremetalNodeGroup.AutoScalableNodeGroup)
+			}
+		}
+
+		// When using Hetzner bare-metal.
+		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+			// The rescue HCloud SSH key-pair details must be provided.
+			// ClusterAPI Provider Hetzner (CAPH) will create an HCloud SSH key-pair with the given name.
+			// So, the user also must ensure that an HCloud SSH key-pair with that name doesn't already
+			// exist.
+			assert.AssertNotNil(ctx,
+				ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair,
+				"Rescue HCloud SSH key-pair must be provided when using Hetzner Bare Metal",
+			)
+
+			// Validate node-groups.
+			for _, hetznerBaremetalNodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
+				validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
+			}
+		}
 
 	case constants.CloudProviderLocal:
 		break
@@ -92,14 +139,21 @@ func validateConfigs() {
 	}
 }
 
-func validateNodeGroup(ctx context.Context, nodeGroup *NodeGroup) {
+func validateAutoScalableNodeGroup(
+	ctx context.Context,
+	autoScalableNodeGroup *AutoScalableNodeGroup,
+) {
 	// Validate auto-scaling options.
 	assert.Assert(ctx,
-		nodeGroup.MinSize <= nodeGroup.Maxsize,
+		autoScalableNodeGroup.MinSize <= autoScalableNodeGroup.Maxsize,
 		"replica count should be <= its max-size",
-		slog.String("node-group", nodeGroup.Name),
+		slog.String("node-group", autoScalableNodeGroup.Name),
 	)
 
+	validateNodeGroup(ctx, &autoScalableNodeGroup.NodeGroup)
+}
+
+func validateNodeGroup(ctx context.Context, nodeGroup *NodeGroup) {
 	// Validate labels and taints.
 	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }

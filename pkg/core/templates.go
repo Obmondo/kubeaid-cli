@@ -103,7 +103,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 func getEmbeddedNonSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames,
-		constants.CommonCloudNonSecretTemplateNames...,
+		constants.CommonCloudSpecificNonSecretTemplateNames...,
 	)
 
 	// If the user has provided a CA bundle for accessing his / her Git repository,
@@ -141,8 +141,22 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.HCloudSpecificNonSecretTemplateNames...,
+			constants.CommonHetznerSpecificNonSecretTemplateNames...,
 		)
+
+		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+
+		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
+			)
+		}
+
+		if (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid) {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.HCloudSpecificNonSecretTemplateNames...,
+			)
+		}
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
@@ -185,8 +199,16 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	case constants.CloudProviderHetzner:
 		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.HCloudSpecificSecretTemplateNames...,
+			constants.CommonHetznerSpecificSecretTemplateNames...,
 		)
+
+		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+
+		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.HetznerBareMetalSpecificSecretTemplateNames...,
+			)
+		}
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonSecretTemplateNames
