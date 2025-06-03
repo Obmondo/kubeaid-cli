@@ -101,6 +101,16 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		// Wait for the main cluster to be provisioned.
 		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
 
+		// If there are no node-groups provided, then we need to remove taints from the control-plane
+		// nodes.
+		if kubernetes.IsNodeGroupCountZero(ctx) {
+			utils.ExecuteCommandOrDie(`
+        kubectl taint nodes \
+          -l node-role.kubernetes.io/control-plane \
+          node-role.kubernetes.io/control-plane:NoSchedule-
+      `)
+		}
+
 		// Save kubeconfig locally.
 		kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
 
@@ -120,9 +130,12 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
-	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
-	// workloads.
-	kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+	if !kubernetes.IsNodeGroupCountZero(ctx) {
+		// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
+		// workloads.
+		// If the user is using only control-plane nodes and 0 node-groups, then we don't need to wait.
+		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+	}
 
 	/*
 		Setup the provisioned cluster.

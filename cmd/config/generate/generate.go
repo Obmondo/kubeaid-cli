@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config/generate/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
@@ -31,6 +32,6 @@ var GenerateCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	GenerateCmd.AddCommand(AWSCmd)
-	GenerateCmd.AddCommand(HetznerCmd)
+	GenerateCmd.AddCommand(hetzner.HetznerCmd)
 	GenerateCmd.AddCommand(LocalCmd)
 }

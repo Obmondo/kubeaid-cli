@@ -153,23 +153,26 @@ var (
 
 // Config template names.
 var (
-	TemplateNameAWSGeneralConfig = "files/templates/aws.general.config.yaml.tmpl"
-	TemplateNameAWSSecretsConfig = "files/templates/aws.secrets.config.yaml.tmpl"
+	TemplateNameAWSGeneralConfig = "files/templates/aws/general.config.yaml.tmpl"
+	TemplateNameAWSSecretsConfig = "files/templates/aws/secrets.config.yaml.tmpl"
 
-	TemplateNameAzureGeneralConfig = "files/templates/azure.general.config.yaml.tmpl"
-	TemplateNameAzureSecretsConfig = "files/templates/azure.secrets.config.yaml.tmpl"
+	TemplateNameAzureGeneralConfig = "files/templates/azure/general.config.yaml.tmpl"
+	TemplateNameAzureSecretsConfig = "files/templates/azure/secrets.config.yaml.tmpl"
 
-	TemplateNameHetznerGeneralConfig = "files/templates/hetzner.general.config.yaml.tmpl"
-	TemplateNameHetznerSecretsConfig = "files/templates/hetzner.secrets.config.yaml.tmpl"
+	TemplateNameHetznerHCloudGeneralConfig = "files/templates/hetzner/hcloud/general.config.yaml.tmpl"
+	TemplateNameHetznerHCloudSecretsConfig = "files/templates/hetzner/hcloud/secrets.config.yaml.tmpl"
 
-	TemplateNameHCloudGeneralConfig = "files/templates/hcloud.general.config.yaml.tmpl"
-	TemplateNameHCloudSecretsConfig = "files/templates/hcloud.secrets.config.yaml.tmpl"
+	TemplateNameHetznerBareMetalGeneralConfig = "files/templates/hetzner/bare-metal/general.config.yaml.tmpl"
+	TemplateNameHetznerBareMetalSecretsConfig = "files/templates/hetzner/bare-metal/secrets.config.yaml.tmpl"
 
-	TemplateNameLocalGeneralConfig = "files/templates/local.general.config.yaml.tmpl"
-	TemplateNameLocalSecretsConfig = "files/templates/local.secrets.config.yaml.tmpl"
+	TemplateNameHetznerHybridGeneralConfig = "files/templates/hetzner/hybrid/general.config.yaml.tmpl"
+	TemplateNameHetznerHybridSecretsConfig = "files/templates/hetzner/hybrid/secrets.config.yaml.tmpl"
+
+	TemplateNameLocalGeneralConfig = "files/templates/local/general.config.yaml.tmpl"
+	TemplateNameLocalSecretsConfig = "files/templates/local/secrets.config.yaml.tmpl"
 )
 
-// Miscallaneous.
+// Miscellaneous.
 const (
 	TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
 

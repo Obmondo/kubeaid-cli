@@ -9,7 +9,7 @@ forkURLs:
 # Kubernetes cluster and control-plane specific configurations.
 cluster:
   # Kubernetes cluster name.
-  name: kubeaid-demo-hetzner
+  name: kubeaid-demo-hetzner-hcloud
 
   # Kubernetes version to use.
   k8sVersion: v1.31.0
@@ -51,30 +51,63 @@ cluster:
   #    sshPublicKey: xxxxxxxxxx
 
 cloud:
-  # Hetzner specific configurations.
   hetzner:
-    robot: true
-    robotSSHKey:
-      publicKeyFilePath: ./outputs/.ssh/default.pub
-      privateKeyFilePath: ./outputs/.ssh/default
+    mode: hcloud
 
-    controlPlaneEndpoint: xxx.xxx.xxx.xxx
-    bareMetalNodes:
-      1234567:
-        name: xxxxxxxx.example.org
-        maintenanceMode: false
-        wwn:
-          - xxxxxxxxxxxxxxxxxx
-          - xxxxxxxxxxxxxxxxxx
-      1234567:
-        name: xxxxxxxx.example.org
-        maintenanceMode: false
-        wwn:
-          - xxxxxxxxxxxxxxxxxx
-          - xxxxxxxxxxxxxxxxxx
-      1234567:
-        name: xxxxxxxx.example.org
-        maintenanceMode: false
-        wwn:
-          - xxxxxxxxxxxxxxxxxx
-          - xxxxxxxxxxxxxxxxxx
+    # You can view all valid Hetzner zones and regions here :
+    # https://docs.hetzner.com/cloud/general/locations/.
+    zone: eu-central
+
+    hcloudSSHKeyPairName: cluster
+
+    rescueHCloudSSHKeyPair:
+      name: cluster
+      publicKeyFilePath: ./outputs/ssh/rsa/openssh/.pub
+      privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
+
+    # If true, creates a Hetzner private network and spins up the HCloud servers there.
+    # The servers can then communicate to each other directly, using private IPs.
+    networkEnabled: true
+
+    imageName: ubuntu-24.04
+
+    controlPlane:
+      # HCloud machine type to be used for control-plane nodes.
+      machineType: cax11
+
+      # Number of control-plane nodes you want.
+      replicas: 3
+
+      # Servers will be spread across these HCloud regions.
+      regions:
+        - fsn1
+        - nbg1
+        - hel1
+
+      loadBalancer:
+        # Whether you want a loadbalancer which loadbalances traffic across the control-plane
+        # node(s).
+        # If you want a single control-plane node, you can disable this.
+        enabled: true
+
+        # HCloud region where the loadbalancer will be created.
+        region: hel1
+
+    nodeGroups:
+      hcloud:
+        - name: bootstrapper
+          machineType: cax11
+          minSize: 1
+          maxSize: 3
+
+          # A label should meet one of the following criterias to propagate to each of the nodes :
+          #
+          # (1) Has node-role.kubernetes.io as prefix.
+          # (2) Belongs to node-restriction.kubernetes.io domain.
+          # (3) Belongs to node.cluster.x-k8s.io domain.
+          #
+          # REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine
+          labels:
+            node-role.kubernetes.io/bootstrapper: ""
+            node.cluster.x-k8s.io/nodegroup: bootstrapper
+          taints: []

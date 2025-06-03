@@ -139,7 +139,7 @@ type (
 		VPCID          *string                    `yaml:"vpcID"`
 		BastionEnabled bool                       `yaml:"bastionEnabled"                     default:"True"`
 		ControlPlane   AWSControlPlane            `yaml:"controlPlane"   validate:"required"`
-		NodeGroups     []AWSAutoScalableNodeGroup `yaml:"nodeGroups"     validate:"required"`
+		NodeGroups     []AWSAutoScalableNodeGroup `yaml:"nodeGroups"`
 	}
 
 	AWSControlPlane struct {
@@ -180,7 +180,7 @@ type (
 		ImageID *string `yaml:"imageID"`
 
 		ControlPlane AzureControlPlane            `yaml:"controlPlane" validate:"required"`
-		NodeGroups   []AzureAutoScalableNodeGroup `yaml:"nodeGroups"   validate:"required,gt=0"`
+		NodeGroups   []AzureAutoScalableNodeGroup `yaml:"nodeGroups"`
 	}
 
 	AADApplication struct {
@@ -224,7 +224,7 @@ type (
 		ImageName      string `yaml:"imageName"      default:"ubuntu-24.04" validate:"notblank"`
 
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"   validate:"required"`
+		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"`
 	}
 
 	RescueHCloudSSHKeyPair struct {
@@ -236,7 +236,7 @@ type (
 		HCloud    *HCloudControlPlane           `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal"`
 
-		Regions []string `yaml:"regions" validate:"required,gt=0"`
+		Regions []string `yaml:"regions" validate:"required"`
 	}
 
 	HCloudControlPlane struct {

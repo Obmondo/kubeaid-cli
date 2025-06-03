@@ -29,6 +29,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -393,4 +394,23 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 	assert.AssertErrNil(ctx, err, "Failed creating Job", slog.String("job", job.Name))
 
 	slog.InfoContext(ctx, "Triggered CRONJob", slog.String("job", job.Name))
+}
+
+// Returns whether there are zero node-groups or not.
+// If yes, then we need to remove taints from the control-plane nodes right after the main cluster
+// is provisioned.
+func IsNodeGroupCountZero(ctx context.Context) bool {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		return len(config.ParsedGeneralConfig.Cloud.AWS.NodeGroups) == 0
+
+	case constants.CloudProviderAzure:
+		return len(config.ParsedGeneralConfig.Cloud.Azure.NodeGroups) == 0
+
+	case constants.CloudProviderHetzner:
+		nodeGroups := config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups
+		return (len(nodeGroups.HCloud) + len(nodeGroups.BareMetal)) == 0
+	}
+
+	return false
 }
