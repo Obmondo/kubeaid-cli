@@ -291,7 +291,7 @@ type (
 
 	HetznerBareMetalHost struct {
 		ServerID string   `yaml:"serverID" validate:"notblank"`
-		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
+		WWN      []string `yaml:"wwn"     validate:"required,gt=0"`
 	}
 )
 
