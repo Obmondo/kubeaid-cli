@@ -29,8 +29,8 @@ var HetznerRobotCmd = &cobra.Command{
 }
 
 // HetznerCloudCmd represents the hcloud subcommand
-var HetznerCloudCmd = &cobra.Command{
-	Use:   "cloud",
+var HetznerHCloudCmd = &cobra.Command{
+	Use:   "hcloud",
 	Short: "Generate a sample KubeAid Bootstrap Script config file for Hetzner Cloud",
 	Run: func(cmd *cobra.Command, args []string) {
 		config.GenerateSampleConfig(
@@ -43,5 +43,5 @@ var HetznerCloudCmd = &cobra.Command{
 
 func init() {
 	HetznerCmd.AddCommand(HetznerRobotCmd)
-	HetznerCmd.AddCommand(HetznerCloudCmd)
+	HetznerCmd.AddCommand(HetznerHCloudCmd)
 }
