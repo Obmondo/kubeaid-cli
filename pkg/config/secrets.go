@@ -26,7 +26,7 @@ type (
 	}
 
 	HetznerCredentials struct {
-		APIToken string                   `yaml:"apiToken"`
+		APIToken string                   `yaml:"apiToken" validate:"notblank"`
 		Robot    *HetznerRobotCredentials `yaml:"robot"`
 	}
 

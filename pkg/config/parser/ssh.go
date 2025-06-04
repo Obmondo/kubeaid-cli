@@ -1,4 +1,4 @@
-package config
+package parser
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -17,16 +18,16 @@ func hydrateSSHKeyConfigs() {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
 		hydrateSSHKeyConfig(
-			&ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
+			&config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
 		)
 
 	case constants.CloudProviderHetzner:
-		mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
+		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
 
 		// When using Hetzner bare-metal.
 		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
 			hydrateSSHKeyConfig(
-				&ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair.SSHKeyPairConfig,
+				&config.ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair.SSHKeyPairConfig,
 			)
 		}
 	}
@@ -34,7 +35,7 @@ func hydrateSSHKeyConfigs() {
 
 // Reads and validates an SSH key-pair from the provided file paths.
 // The key-pair is then stored in the SSH key config struct itself.
-func hydrateSSHKeyConfig(sshKeyConfig *SSHKeyPairConfig) {
+func hydrateSSHKeyConfig(sshKeyConfig *config.SSHKeyPairConfig) {
 	ctx := context.Background()
 
 	// Read the SSH key-pair.

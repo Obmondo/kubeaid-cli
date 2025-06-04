@@ -1,10 +1,11 @@
 package hetzner
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 var BareMetalCmd = &cobra.Command{

@@ -4,6 +4,13 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 )
 
+var (
+	GeneralConfigFileContents []byte
+
+	ParsedGeneralConfig = &GeneralConfig{}
+	ParsedSecretsConfig = &SecretsConfig{}
+)
+
 type (
 	GeneralConfig struct {
 		CustomerID string           `yaml:"customerID"`
@@ -247,7 +254,7 @@ type (
 
 	HetznerBareMetalControlPlane struct {
 		BareMetalHosts []HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
-		FailoverIP     string                 `yaml:"failoverIP" default:""`
+		FailoverIP     string                 `yaml:"failoverIP"                              default:""`
 	}
 
 	HCloudControlPlaneLoadBalancer struct {

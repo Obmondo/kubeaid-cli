@@ -3,7 +3,6 @@ package create
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 )
@@ -22,9 +21,4 @@ var AWSCmd = &cobra.Command{
 			IsPartOfDisasterRecovery: false,
 		})
 	},
-}
-
-func init() {
-	// Flags.
-	config.RegisterAWSCredentialsFlags(AWSCmd)
 }

@@ -153,23 +153,23 @@ var (
 
 // Config template names.
 var (
-	TemplateNameAWSGeneralConfig = "files/templates/aws/general.config.yaml.tmpl"
-	TemplateNameAWSSecretsConfig = "files/templates/aws/secrets.config.yaml.tmpl"
+	TemplateNameAWSGeneralConfig = "templates/aws/general.config.yaml.tmpl"
+	TemplateNameAWSSecretsConfig = "templates/aws/secrets.config.yaml.tmpl"
 
-	TemplateNameAzureGeneralConfig = "files/templates/azure/general.config.yaml.tmpl"
-	TemplateNameAzureSecretsConfig = "files/templates/azure/secrets.config.yaml.tmpl"
+	TemplateNameAzureGeneralConfig = "templates/azure/general.config.yaml.tmpl"
+	TemplateNameAzureSecretsConfig = "templates/azure/secrets.config.yaml.tmpl"
 
-	TemplateNameHetznerHCloudGeneralConfig = "files/templates/hetzner/hcloud/general.config.yaml.tmpl"
-	TemplateNameHetznerHCloudSecretsConfig = "files/templates/hetzner/hcloud/secrets.config.yaml.tmpl"
+	TemplateNameHetznerHCloudGeneralConfig = "templates/hetzner/hcloud/general.config.yaml.tmpl"
+	TemplateNameHetznerHCloudSecretsConfig = "templates/hetzner/hcloud/secrets.config.yaml.tmpl"
 
-	TemplateNameHetznerBareMetalGeneralConfig = "files/templates/hetzner/bare-metal/general.config.yaml.tmpl"
-	TemplateNameHetznerBareMetalSecretsConfig = "files/templates/hetzner/bare-metal/secrets.config.yaml.tmpl"
+	TemplateNameHetznerBareMetalGeneralConfig = "templates/hetzner/bare-metal/general.config.yaml.tmpl"
+	TemplateNameHetznerBareMetalSecretsConfig = "templates/hetzner/bare-metal/secrets.config.yaml.tmpl"
 
-	TemplateNameHetznerHybridGeneralConfig = "files/templates/hetzner/hybrid/general.config.yaml.tmpl"
-	TemplateNameHetznerHybridSecretsConfig = "files/templates/hetzner/hybrid/secrets.config.yaml.tmpl"
+	TemplateNameHetznerHybridGeneralConfig = "templates/hetzner/hybrid/general.config.yaml.tmpl"
+	TemplateNameHetznerHybridSecretsConfig = "templates/hetzner/hybrid/secrets.config.yaml.tmpl"
 
-	TemplateNameLocalGeneralConfig = "files/templates/local/general.config.yaml.tmpl"
-	TemplateNameLocalSecretsConfig = "files/templates/local/secrets.config.yaml.tmpl"
+	TemplateNameLocalGeneralConfig = "templates/local/general.config.yaml.tmpl"
+	TemplateNameLocalSecretsConfig = "templates/local/secrets.config.yaml.tmpl"
 )
 
 // Miscellaneous.

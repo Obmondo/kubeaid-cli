@@ -1,4 +1,4 @@
-package config
+package parser
 
 import (
 	"context"
@@ -16,6 +16,7 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -32,41 +33,45 @@ func validateConfigs() {
 
 	// Validate based on struct tags.
 	{
-		err = validator.Struct(ParsedGeneralConfig)
+		err = validator.Struct(config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
 
-		err = validator.Struct(ParsedSecretsConfig)
+		err = validator.Struct(config.ParsedSecretsConfig)
 		assert.AssertErrNil(ctx, err, "Struct validation failed for secrets config")
 	}
 
 	// Validate that cloud provider credentials have been provided.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		assert.AssertNotNil(ctx, ParsedSecretsConfig.AWS, "AWS credentials not provided")
+		assert.AssertNotNil(ctx, config.ParsedSecretsConfig.AWS, "AWS credentials not provided")
 
 	case constants.CloudProviderAzure:
-		assert.AssertNotNil(ctx, ParsedSecretsConfig.Azure, "Azure credentials not provided")
+		assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Azure, "Azure credentials not provided")
 
 	case constants.CloudProviderHetzner:
-		assert.AssertNotNil(ctx, ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
+		assert.AssertNotNil(
+			ctx,
+			config.ParsedSecretsConfig.Hetzner,
+			"Hetzner credentials not provided",
+		)
 
-		mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
+		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
 
 		// Hetzner Robot username and password must be provided, when using Hetzner bare-metal.
 		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
 			assert.AssertNotNil(
 				ctx,
-				ParsedSecretsConfig.Hetzner.Robot,
+				config.ParsedSecretsConfig.Hetzner.Robot,
 				"HCloud robot user and password not provided",
 			)
 		}
 	}
 
 	// Validate K8s version.
-	ValidateK8sVersion(ctx, ParsedGeneralConfig.Cluster.K8sVersion)
+	ValidateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
 
 	// Validate additional users.
-	for _, additionalUser := range ParsedGeneralConfig.Cluster.AdditionalUsers {
+	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
 		// Additional user name cannot be ubuntu.
 		assert.Assert(ctx, additionalUser.Name != "ubuntu", "additional user name cannot be ubuntu")
 
@@ -81,27 +86,27 @@ func validateConfigs() {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		// Validate auto-scalable node-groups.
-		for _, awsAutoScalableNodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
+		for _, awsAutoScalableNodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
 			validateAutoScalableNodeGroup(ctx, &awsAutoScalableNodeGroup.AutoScalableNodeGroup)
 		}
 
 	case constants.CloudProviderAzure:
 		// Validate auto-scalable node-groups.
-		for _, azureAutoScalableNodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
+		for _, azureAutoScalableNodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
 			validateAutoScalableNodeGroup(ctx, &azureAutoScalableNodeGroup.AutoScalableNodeGroup)
 		}
 
 	case constants.CloudProviderHetzner:
-		mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
+		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
 
 		if mode == constants.HetznerModeBareMetal {
 			assert.AssertNotNil(ctx,
-				ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal,
+				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal,
 				"Hetzner bare metal specific details not provided for control-plane",
 			)
 		} else {
 			assert.AssertNotNil(ctx,
-				ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
+				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
 				"HCloud specific details not provided for control-plane",
 			)
 		}
@@ -109,7 +114,7 @@ func validateConfigs() {
 		// When using HCloud.
 		if (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid) {
 			// Validate auto-scalable node-groups.
-			for _, hetznerBaremetalNodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
 				validateAutoScalableNodeGroup(ctx, &hetznerBaremetalNodeGroup.AutoScalableNodeGroup)
 			}
 		}
@@ -121,12 +126,12 @@ func validateConfigs() {
 			// So, the user also must ensure that an HCloud SSH key-pair with that name doesn't already
 			// exist.
 			assert.AssertNotNil(ctx,
-				ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair,
+				config.ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair,
 				"Rescue HCloud SSH key-pair must be provided when using Hetzner Bare Metal",
 			)
 
 			// Validate node-groups.
-			for _, hetznerBaremetalNodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
+			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
 				validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
 			}
 		}
@@ -141,7 +146,7 @@ func validateConfigs() {
 
 func validateAutoScalableNodeGroup(
 	ctx context.Context,
-	autoScalableNodeGroup *AutoScalableNodeGroup,
+	autoScalableNodeGroup *config.AutoScalableNodeGroup,
 ) {
 	// Validate auto-scaling options.
 	assert.Assert(ctx,
@@ -153,7 +158,7 @@ func validateAutoScalableNodeGroup(
 	validateNodeGroup(ctx, &autoScalableNodeGroup.NodeGroup)
 }
 
-func validateNodeGroup(ctx context.Context, nodeGroup *NodeGroup) {
+func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 	// Validate labels and taints.
 	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }

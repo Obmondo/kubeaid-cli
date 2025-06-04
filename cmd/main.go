@@ -11,11 +11,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-
-	// These packages must be compiled, for the go:linkname directive to work in pkg/config/hack.go.
-	_ "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	_ "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
-	_ "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 )
 
 var rootCmd = &cobra.Command{

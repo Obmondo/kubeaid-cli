@@ -5,6 +5,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/upgrade"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
@@ -14,7 +15,7 @@ var ClusterCmd = &cobra.Command{
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Initialize config.
-		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
+		parser.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
 
 		// Initialize temp directory.
 		utils.InitTempDir(cmd.Context())

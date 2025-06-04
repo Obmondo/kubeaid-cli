@@ -11,7 +11,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
-//go:embed files/templates/*
+//go:embed templates/*
 var SampleConfigs embed.FS
 
 type GenerateSampleConfigArgs struct {
