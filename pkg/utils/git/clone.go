@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	goGit "github.com/go-git/go-git/v5"
@@ -53,7 +54,6 @@ func CloneRepo(ctx context.Context,
 	}
 
 	// Clone the repo.
-
 	slog.InfoContext(ctx, "Cloning repo")
 
 	opts := &goGit.CloneOptions{
@@ -62,7 +62,6 @@ func CloneRepo(ctx context.Context,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	// Use authentication method, if the repo visibility is private.
 	isPrivate, err := isRepoPrivate(ctx, url)
 	assert.AssertErrNil(ctx, err, "Failed to determine repo visibility")
 	if isPrivate {
@@ -139,6 +138,13 @@ func initRepo(ctx context.Context,
 
 // IsRepoPrivate checks if the repository is private using the appropriate API
 func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
+	urlType := determineURLType(repoURL)
+
+	// SSH git repo are private
+	if (len(config.ParsedSecretsConfig.Git.SSHPrivateKey) > 0) && (urlType == "SSH") {
+		return true, nil
+	}
+
 	// Create a new HTTP client
 	client := &http.Client{}
 
@@ -179,4 +185,17 @@ func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 
 	// Request was successful (status was 200 OK), which means the repo is public.
 	return false, nil
+}
+
+func determineURLType(repoURL string) string {
+	// Check the URL scheme
+	if strings.HasPrefix(repoURL, "ssh://") {
+		return "SSH"
+	} else if strings.HasPrefix(repoURL, "https://") {
+		return "HTTPS"
+	} else if strings.Contains(repoURL, "@") && strings.Contains(repoURL, ":") {
+		return "SSH"
+	}
+
+	return "Unknown"
 }
