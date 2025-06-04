@@ -34,3 +34,16 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - k3d
+
+  bootstrap-cleanup:
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.2
+    restart: no
+    command:
+      - bash
+      - -c
+      - |
+        k3d cluster delete ${CLUSTER_NAME:-kubeaid-demo}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - k3d
