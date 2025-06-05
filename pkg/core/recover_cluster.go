@@ -89,10 +89,12 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 		SkipClusterctlMove: false,
 	})
 
-	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
-		utils.GetEnv(constants.EnvNameKubeconfig),
+	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
+	assert.AssertErrNil(ctx, err,
+		"Failed creating cluster client",
+		slog.String("kubeconfig", kubeconfig),
 	)
-	assert.AssertErrNil(ctx, err, "Failed creating cluster client")
 
 	// Identify the latest Velero Backup.
 	latestVeleroBackup := kubernetes.GetLatestVeleroBackup(ctx, clusterClient)

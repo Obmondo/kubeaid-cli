@@ -112,12 +112,15 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	)
 
 	if !args.SkipPRWorkflow {
-		// The user now needs to go ahead and create a PR from the new to the default branch. Then he
-		// needs to merge that branch.
-		// NOTE : We can't create the PR for the user, since PRs are not part of the core git lib.
-		//        They are specific to the git platform the user is on.
+		/*
+			The user now needs to go ahead and create a PR from the new to the default branch. Then he
+			needs to merge that branch.
 
-		// Wait until the PR gets merged.
+			NOTE : We can't create the PR for the user, since PRs are not part of the core git lib.
+						They are specific to the git platform the user is on.
+		*/
+
+		// Wait until the user creates a PR and merges it to the default branch.
 		git.WaitUntilPRMerged(ctx,
 			repo,
 			defaultBranchName,
@@ -142,8 +145,7 @@ func createOrUpdateNonSecretFiles(
 	// Add KubePrometheus specific templates.
 	// Then execute the Obmondo's KubePrometheus build script.
 	if !skipMonitoringSetup {
-		embeddedTemplateNames = append(
-			embeddedTemplateNames,
+		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TemplateNameKubePrometheusArgoCDApp,
 		)
 
@@ -218,8 +220,7 @@ func createFileFromTemplate(ctx context.Context,
 // Then executes KubeAid's kube-prometheus build script.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
-	jsonnetVarsFilePath := fmt.Sprintf(
-		"%s/%s-vars.jsonnet",
+	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet",
 		clusterDir,
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
@@ -239,8 +240,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 
 	// Run the KubePrometheus build script.
 	slog.Info("Running KubePrometheus build script...")
-	kubePrometheusBuildScriptPath := fmt.Sprintf(
-		"%s/build/kube-prometheus/build.sh",
+	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh",
 		utils.GetKubeAidDir(),
 	)
 	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))

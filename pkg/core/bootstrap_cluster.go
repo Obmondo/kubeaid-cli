@@ -27,10 +27,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Create local dev environment.
+	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	// If using a cloud provider, then provision and setup the main cluster in there.
+	// If using a cloud provider, then provision and setup the main cluster.
 	// Your KUBECONIG environment variable also gets updated to the main cluster's kubeconfig path.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
 		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
@@ -46,10 +46,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		})
 	}
 
-	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
-		utils.GetEnv(constants.EnvNameKubeconfig),
+	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
+	assert.AssertErrNil(ctx, err,
+		"Failed creating cluster client",
+		slog.String("kubeconfig", kubeconfig),
 	)
-	assert.AssertErrNil(ctx, err, "Failed creating cluster client")
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
@@ -63,7 +65,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
-	// If we have setup Disaster Recovery.
+	// If we have setup Disaster Recovery,
+	// then trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		// Create the first Velero backup.
 		kubernetes.CreateBackup(ctx, "init", clusterClient)
