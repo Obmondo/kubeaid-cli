@@ -15,5 +15,14 @@ stringData:
   name: {{ $name }}
   url: {{ .KubeaidConfigForkURL }}
   type: git
+  {{- if .GitCredentials.SSHPrivateKey }}
+  sshPrivateKey: |
+    {{- $sshKey := .GitCredentials.SSHPrivateKey }}
+    {{- $lines := split $sshKey "\n" }}
+    {{- range $index, $line := $lines }}
+        {{ $line }}
+    {{- end }}
+  {{- else }}
   username: {{ .GitCredentials.Username }}
   password: {{ .GitCredentials.Password }}
+  {{- end }}
