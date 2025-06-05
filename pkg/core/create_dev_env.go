@@ -18,8 +18,7 @@ type CreateDevEnvArgs struct {
 	ManagementClusterName string
 
 	SkipMonitoringSetup,
-	SkipKubePrometheusBuild,
-	SkipPRFlow,
+	SkipPRWorkflow,
 
 	IsPartOfDisasterRecovery bool
 }

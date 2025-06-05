@@ -10,10 +10,11 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-var rootCmd = &cobra.Command{
+var RootCmd = &cobra.Command{
 	Use: "kubeaid-bootstrap-script",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -33,13 +34,21 @@ var isDebugModeEnabled bool
 
 func init() {
 	// Subcommands.
-	rootCmd.AddCommand(config.ConfigCmd)
-	rootCmd.AddCommand(devenv.DevenvCmd)
-	rootCmd.AddCommand(cluster.ClusterCmd)
+	RootCmd.AddCommand(config.ConfigCmd)
+	RootCmd.AddCommand(devenv.DevenvCmd)
+	RootCmd.AddCommand(cluster.ClusterCmd)
 
 	// Flags.
-	rootCmd.PersistentFlags().
+
+	RootCmd.PersistentFlags().
 		BoolVar(&isDebugModeEnabled, constants.FlagNameDebug, false, "Generate debug logs")
+
+	RootCmd.PersistentFlags().
+		StringVar(&globals.ConfigsDirectory,
+			constants.FlagNameConfigsDirectoy,
+			constants.OutputPathGeneratedConfigsDirectory,
+			"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
+		)
 }
 
 func main() {
@@ -48,7 +57,7 @@ func main() {
 	// REFERENCE : https://github.com/spf13/cobra/pull/2044.
 	cobra.EnableTraverseRunHooks = true
 
-	err := rootCmd.Execute()
+	err := RootCmd.Execute()
 	if err != nil {
 		slog.Error(err.Error())
 		os.Exit(1)

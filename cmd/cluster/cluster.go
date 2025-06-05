@@ -38,10 +38,8 @@ func init() {
 
 	// Flags.
 
-	config.RegisterConfigsDirectoryFlag(ClusterCmd)
-
 	ClusterCmd.PersistentFlags().
-		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 }

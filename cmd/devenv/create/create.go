@@ -4,29 +4,31 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 )
 
 var CreateCmd = &cobra.Command{
 	Use: "create",
 
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return cmd.Help()
+	Short: "Create and setup the local K3D management cluster, for deploying a KubeAid managed cluster",
+
+	Run: func(cmd *cobra.Command, args []string) {
+		core.CreateDevEnv(cmd.Context(), &core.CreateDevEnvArgs{
+			ManagementClusterName:    constants.FlagNameManagementClusterNameDefaultValue,
+			SkipMonitoringSetup:      skipMonitoringSetup,
+			SkipPRWorkflow:           skipPRWorkflow,
+			IsPartOfDisasterRecovery: false,
+		})
 	},
 }
 
 var (
 	managementClusterName string
 	skipMonitoringSetup,
-	skipKubePrometheusBuild,
-	skipPRFlow bool
+	skipPRWorkflow bool
 )
 
 func init() {
-	// Subcommands.
-	CreateCmd.AddCommand(AWSCmd)
-	CreateCmd.AddCommand(AzureCmd)
-	CreateCmd.AddCommand(HetznerCmd)
-
 	// Flags.
 
 	CreateCmd.PersistentFlags().
@@ -40,12 +42,7 @@ func init() {
 		)
 
 	CreateCmd.PersistentFlags().
-		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
-			"Skip the Kube Prometheus build step while setting up KubeAid Config",
-		)
-
-	CreateCmd.PersistentFlags().
-		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 }

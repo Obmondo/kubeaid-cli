@@ -17,8 +17,7 @@ var BootstrapCmd = &cobra.Command{
 			CreateDevEnvArgs: &core.CreateDevEnvArgs{
 				ManagementClusterName:    managementClusterName,
 				SkipMonitoringSetup:      skipMonitoringSetup,
-				SkipKubePrometheusBuild:  skipKubePrometheusBuild,
-				SkipPRFlow:               skipPRFlow,
+				SkipPRWorkflow:           skipPRWorkflow,
 				IsPartOfDisasterRecovery: false,
 			},
 			SkipClusterctlMove: skipClusterctlMove,
@@ -45,11 +44,6 @@ func init() {
 	BootstrapCmd.PersistentFlags().
 		BoolVar(&skipMonitoringSetup, constants.FlagNameSkipMonitoringSetup, false,
 			"Skip KubePrometheus installation",
-		)
-
-	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipKubePrometheusBuild, constants.FlagNameSkipKubePrometheusBuild, false,
-			"Skip the Kube Prometheus build step while setting up KubeAid Config",
 		)
 
 	BootstrapCmd.PersistentFlags().

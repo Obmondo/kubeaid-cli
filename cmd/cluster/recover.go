@@ -16,18 +16,18 @@ var RecoverCmd = &cobra.Command{
 		core.RecoverCluster(
 			cmd.Context(),
 			constants.FlagNameManagementClusterNameDefaultValue,
-			skipPRFlow,
+			skipPRWorkflow,
 		)
 	},
 }
 
-var skipPRFlow bool
+var skipPRWorkflow bool
 
 func init() {
 	// Flags
 
 	RecoverCmd.PersistentFlags().
-		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 }

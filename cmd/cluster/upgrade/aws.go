@@ -14,7 +14,7 @@ var AWSCmd = &cobra.Command{
 	Short: "Trigger Kubernetes version upgrade for the provisioned AWS based cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		core.UpgradeCluster(cmd.Context(), skipPRFlow, core.UpgradeClusterArgs{
+		core.UpgradeCluster(cmd.Context(), skipPRWorkflow, core.UpgradeClusterArgs{
 			NewKubernetesVersion: kubernetesVersion,
 
 			CloudSpecificUpdates: aws.AWSMachineTemplateUpdates{

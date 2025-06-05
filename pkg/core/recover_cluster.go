@@ -19,7 +19,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlow bool) {
+func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWorkflow bool) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderHetzner:
 		panic("unimplemented")
@@ -83,8 +83,7 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRFlo
 		CreateDevEnvArgs: &CreateDevEnvArgs{
 			ManagementClusterName:    managementClusterName,
 			SkipMonitoringSetup:      false,
-			SkipKubePrometheusBuild:  false,
-			SkipPRFlow:               skipPRFlow,
+			SkipPRWorkflow:           skipPRWorkflow,
 			IsPartOfDisasterRecovery: true,
 		},
 		SkipClusterctlMove: false,

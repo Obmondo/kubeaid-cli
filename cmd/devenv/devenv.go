@@ -31,7 +31,4 @@ var DevenvCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	DevenvCmd.AddCommand(create.CreateCmd)
-
-	// Flags.
-	config.RegisterConfigsDirectoryFlag(DevenvCmd)
 }

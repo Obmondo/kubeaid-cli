@@ -9,10 +9,12 @@ import (
 )
 
 var (
-	TempDir string
+	ConfigsDirectory,
+
+	TempDir,
 
 	CloudProviderName string
-	CloudProvider     cloud.CloudProvider
+	CloudProvider cloud.CloudProvider
 
 	ArgoCDApplicationClientCloser io.Closer
 	ArgoCDApplicationClient       application.ApplicationServiceClient
