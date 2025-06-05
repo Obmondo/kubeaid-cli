@@ -9,6 +9,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -100,6 +101,18 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+
+		panic("checkpoint")
+
+		// If provisioning cluster in Hetzner bare-metal,
+		// then we need to make the failover IP point to the 'init master node'.
+		// 'init master node' is the first master node, where 'kubeadm init' is executed.
+		if globals.CloudProviderName == constants.CloudProviderHetzner {
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+
+			hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+		}
 
 		// Wait for the main cluster to be provisioned.
 		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)

@@ -106,20 +106,20 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 	err = veleroV1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding Velero v1 scheme")
 
-	kubeClient, err := client.New(kubeconfig, client.Options{
+	clusterClient, err := client.New(kubeconfig, client.Options{
 		Scheme: scheme,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating kube client from kubeconfig")
 
-	err = pingKubernetesCluster(ctx, kubeClient)
-	return kubeClient, err
+	err = pingKubernetesCluster(ctx, clusterClient)
+	return clusterClient, err
 }
 
 // Checks whether the Kubernetes cluster is reachable or not, by trying to list the Deployments in
 // the default namespace.
-func pingKubernetesCluster(ctx context.Context, kubeClient client.Client) error {
+func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) error {
 	deployments := &appsV1.DeploymentList{}
-	err := kubeClient.List(ctx, deployments, &client.ListOptions{
+	err := clusterClient.List(ctx, deployments, &client.ListOptions{
 		Namespace: "default",
 	})
 	if err != nil {
@@ -143,14 +143,14 @@ func GetCapiClusterNamespace() string {
 }
 
 // Creates the given namespace (if it doesn't already exist).
-func CreateNamespace(ctx context.Context, namespaceName string, kubeClient client.Client) {
+func CreateNamespace(ctx context.Context, namespaceName string, clusterClient client.Client) {
 	namespace := &coreV1.Namespace{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name: namespaceName,
 		},
 	}
 
-	err := kubeClient.Create(ctx, namespace)
+	err := clusterClient.Create(ctx, namespace)
 	if k8sAPIErrors.IsAlreadyExists(err) {
 		return
 	}

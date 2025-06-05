@@ -141,6 +141,8 @@ const (
 	HetznerModeBareMetal = "bare-metal"
 	HetznerModeHCloud    = "hcloud"
 	HetznerModeHybrid    = "hybrid"
+
+	HetznerRobotWebServiceAPI = "https://robot-ws.your-server.de"
 )
 
 const (

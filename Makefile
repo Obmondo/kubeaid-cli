@@ -43,7 +43,7 @@ sample-config-generate-aws-dev:
 
 .PHONY: devenv-create-aws-dev
 devenv-create-aws-dev:
-	@go run ./cmd/ devenv create aws \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/aws/
 
@@ -71,20 +71,18 @@ sample-config-generate-azure-dev:
 
 .PHONY: devenv-create-azure-dev
 devenv-create-azure-dev:
-	@go run ./cmd/ devenv create azure \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
-    --skip-pr-flow \
-    --skip-kube-prometheus-build
-
+    --skip-pr-workflow \
+    
 .PHONY: bootstrap-cluster-azure-dev
 bootstrap-cluster-azure-dev:
 	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-monitoring-setup \
-    --skip-pr-flow \
-    --skip-kube-prometheus-build
+    --skip-pr-workflow \
 
 .PHONY: upgrade-cluster-azure-dev
 upgrade-cluster-azure-dev:
@@ -103,7 +101,7 @@ recover-cluster-azure-dev:
 	@go run ./cmd/ cluster recover azure \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
-    --skip-pr-flow
+    --skip-pr-workflow
 
 .PHONY: sample-config-generate-hetzner-dev
 sample-config-generate-hetzner-dev:
@@ -111,21 +109,19 @@ sample-config-generate-hetzner-dev:
 
 .PHONY: devenv-create-hetzner-hcloud-dev
 devenv-create-hetzner-hcloud-dev:
-	@go run ./cmd/ devenv create hetzner \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud \
-    --skip-pr-flow \
+    --skip-pr-workflow \
     --skip-monitoring-setup \
-    --skip-kube-prometheus-build
 
 .PHONY: bootstrap-cluster-hetzner-hcloud-dev
 bootstrap-cluster-hetzner-hcloud-dev:
 	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud/ \
-    --skip-pr-flow \
+    --skip-pr-workflow \
     --skip-monitoring-setup \
-    --skip-kube-prometheus-build
 
 .PHONY: delete-provisioned-cluster-hetzner-hcloud-dev
 delete-provisioned-cluster-hetzner-hcloud-dev:
@@ -134,21 +130,21 @@ delete-provisioned-cluster-hetzner-hcloud-dev:
 
 .PHONY: devenv-create-hetzner-bare-metal-dev
 devenv-create-hetzner-bare-metal-dev:
-	@go run ./cmd/ devenv create hetzner \
+	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal \
-    --skip-pr-flow \
+    --skip-pr-workflow \
     --skip-monitoring-setup \
-    --skip-kube-prometheus-build
+    
 
 .PHONY: bootstrap-cluster-hetzner-bare-metal-dev
 bootstrap-cluster-hetzner-bare-metal-dev:
 	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal \
-    --skip-pr-flow \
+    --skip-pr-workflow \
     --skip-monitoring-setup \
-    --skip-kube-prometheus-build
+    
 
 .PHONY: delete-provisioned-cluster-hetzner-bare-metal-dev
 delete-provisioned-cluster-hetzner-bare-metal-dev:
@@ -165,8 +161,7 @@ bootstrap-cluster-local-dev:
 		--debug \
     --configs-directory ./outputs/configs/local/ \
     --skip-monitoring-setup \
-    --skip-kube-prometheus-build \
-    --skip-pr-flow
+    --skip-pr-workflow
 
 .PHONY: management-cluster-delete
 management-cluster-delete:
