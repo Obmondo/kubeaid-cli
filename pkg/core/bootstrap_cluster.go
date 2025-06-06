@@ -102,12 +102,13 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 
-		panic("checkpoint")
+		// If provisioning cluster in Hetzner bare-metal, and using a Failover IP,
+		// then we need to make the Failover IP point to the 'init master node'.
+		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
+		if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
+			config.IsControlPlaneInHetznerBareMetal() &&
+			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
-		// If provisioning cluster in Hetzner bare-metal,
-		// then we need to make the failover IP point to the 'init master node'.
-		// 'init master node' is the first master node, where 'kubeadm init' is executed.
-		if globals.CloudProviderName == constants.CloudProviderHetzner {
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
 
@@ -116,16 +117,6 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 		// Wait for the main cluster to be provisioned.
 		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
-
-		// If there are no node-groups provided, then we need to remove taints from the control-plane
-		// nodes.
-		if kubernetes.IsNodeGroupCountZero(ctx) {
-			utils.ExecuteCommandOrDie(`
-        kubectl taint nodes \
-          -l node-role.kubernetes.io/control-plane \
-          node-role.kubernetes.io/control-plane:NoSchedule-
-      `)
-		}
 
 		// Save kubeconfig locally.
 		kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
@@ -146,10 +137,17 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
-	if !kubernetes.IsNodeGroupCountZero(ctx) {
-		// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
-		// workloads.
-		// If the user is using only control-plane nodes and 0 node-groups, then we don't need to wait.
+	// We need to ensure that application workloads can be scheduled.
+	if kubernetes.IsNodeGroupCountZero(ctx) {
+		// If there are 0 node-groups, then we need to remove taints from the control-plane nodes.
+		slog.InfoContext(ctx, "Removing taints from control-plane nodes")
+		utils.ExecuteCommandOrDie(`
+        kubectl taint nodes \
+          -l node-role.kubernetes.io/control-plane \
+          node-role.kubernetes.io/control-plane:NoSchedule-
+      `)
+	} else {
+		// Otherwise, wait for atleast 1 worker node to be initialized.
 		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
 	}
 
@@ -174,10 +172,23 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		pivotCluster(ctx)
 	}
 
-	// Sync the external-snapshotter ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
+	// Sync cluster-autoscaler ArgoCD App,
+	// if not using Hetzner in bare-metal mode.
+	if !((globals.CloudProviderName == constants.CloudProviderHetzner) &&
+		(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeBareMetal)) {
+
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+	}
+
+	// Sync the external-snapshotter ArgoCD App,
+	// if not using Hetzner.
+	if globals.CloudProviderName != constants.CloudProviderHetzner {
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+	}
 }
 
 func pivotCluster(ctx context.Context) {
@@ -204,9 +215,4 @@ func pivotCluster(ctx context.Context) {
 		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
 		constants.OutputPathMainClusterKubeconfig,
 	))
-
-	// Sync cluster-autoscaler ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
 }

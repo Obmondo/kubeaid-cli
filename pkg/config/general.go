@@ -220,21 +220,25 @@ type (
 	HetznerConfig struct {
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
-		Zone   string `yaml:"zone"   validate:"notblank"`
-		Region string `yaml:"region" validate:"notblank"`
-
-		HCloudSSHKeyPairName string `yaml:"hcloudSSHKeyPairName" validate:"notblank"`
-
-		RescueHCloudSSHKeyPair *RescueHCloudSSHKeyPair `yaml:"rescueHCloudSSHKeyPair"`
-
-		NetworkEnabled bool   `yaml:"networkEnabled" default:"True"         validate:"required"`
-		ImageName      string `yaml:"imageName"      default:"ubuntu-24.04" validate:"notblank"`
+		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
+		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"`
 	}
 
-	RescueHCloudSSHKeyPair struct {
+	HetznerHCloudConfig struct {
+		Zone           string `yaml:"zone"           validate:"notblank"`
+		ImageName      string `yaml:"imageName"      validate:"notblank" default:"ubuntu-24.04"`
+		SSHKeyPairName string `yaml:"sshKeyPairName" validate:"notblank"`
+	}
+
+	HetznerBareMetalConfig struct {
+		ImagePath  string                     `yaml:"imagePath"  validate:"notblank" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz"`
+		SSHKeyPair HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair" validate:"required"`
+	}
+
+	HetznerBareMetalSSHKeyPair struct {
 		Name             string `yaml:"name"    validate:"notblank"`
 		SSHKeyPairConfig `       yaml:",inline"`
 	}
@@ -253,8 +257,13 @@ type (
 	}
 
 	HetznerBareMetalControlPlane struct {
-		BareMetalHosts []HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
-		FailoverIP     string                 `yaml:"failoverIP"                              default:""`
+		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
+		BareMetalHosts []HetznerBareMetalHost               `yaml:"bareMetalHosts" validate:"required,gt=0"`
+	}
+
+	HetznerBareMetalControlPlaneEndpoint struct {
+		IsFailoverIP bool   `yaml:"isFailoverIP" validate:"required"`
+		Host         string `yaml:"host"         validate:"ip"`
 	}
 
 	HCloudControlPlaneLoadBalancer struct {

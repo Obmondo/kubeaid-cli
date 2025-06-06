@@ -22,6 +22,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.0
 	github.com/go-logr/logr v1.4.2
 	github.com/go-playground/validator/v10 v10.26.0
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/go-sprout/sprout v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/hetznercloud/hcloud-go v1.59.2
@@ -29,6 +30,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.1
 	github.com/spf13/cobra v1.9.1
+	github.com/syself/cluster-api-provider-hetzner v1.0.3
 	github.com/vmware-tanzu/velero v1.16.0
 	golang.org/x/crypto v0.38.0
 	google.golang.org/grpc v1.72.1
@@ -138,7 +140,6 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-redis/cache/v9 v9.0.0 // indirect
-	github.com/go-resty/resty/v2 v2.16.5 // indirect
 	github.com/go-test/deep v1.1.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
@@ -247,7 +248,6 @@ require (
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/syself/cluster-api-provider-hetzner v1.0.3 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
 	github.com/vmihailenco/go-tinylfu v0.2.2 // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect

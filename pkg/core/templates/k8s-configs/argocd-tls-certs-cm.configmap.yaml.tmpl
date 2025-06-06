@@ -12,6 +12,6 @@ metadata:
     app.kubernetes.io/name: argocd-cm
     app.kubernetes.io/part-of: argocd
 
-data:
+stringData:
   {{ .CustomerGitServerHostname }}: |
 {{ printf "%s" .GitConfig.CABundle | indent 4 }}

@@ -120,7 +120,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			constants.AWSSpecificNonSecretTemplateNames...,
 		)
 
-		// Add Disaster Recovery related templates, if the user wants disaster recover.
+		// Add Disaster Recovery related templates, if the user wants disaster recovery.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
@@ -132,7 +132,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			constants.AzureSpecificNonSecretTemplateNames...,
 		)
 
-		// Add Disaster Recovery related templates, if the user wants disaster recover.
+		// Add Disaster Recovery related templates, if the user wants disaster recovery.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
@@ -140,21 +140,25 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.CommonHetznerSpecificNonSecretTemplateNames...,
-		)
-
-		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
-
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+		if config.IsUsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
 		}
 
-		if (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid) {
+		if config.IsUsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudSpecificNonSecretTemplateNames...,
+			)
+		}
+
+		// If using a Failover IP, then we need the hetzner-robot ArgoCD App.
+		// It'll be responsible for switching the Failover IP to a healthy master node, in a
+		// failover scenario.
+		if config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				"argocd-apps/templates/hetzner-robot.yaml.tmpl",
+				"argocd-apps/values-hetzner-robot.yaml.tmpl",
 			)
 		}
 
@@ -202,9 +206,7 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.CommonHetznerSpecificSecretTemplateNames...,
 		)
 
-		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
-
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
+		if config.IsUsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificSecretTemplateNames...,
 			)

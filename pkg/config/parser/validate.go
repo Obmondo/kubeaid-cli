@@ -97,42 +97,51 @@ func validateConfigs() {
 		}
 
 	case constants.CloudProviderHetzner:
-		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+		hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-		if mode == constants.HetznerModeBareMetal {
+		// If we're using Hetzner bare-metal.
+		if config.IsUsingHetznerBareMetal() {
+			// Then Hetzner bare-metal specific options must be provided.
 			assert.AssertNotNil(ctx,
-				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal,
-				"Hetzner bare metal specific details not provided for control-plane",
+				hetznerConfig.BareMetal,
+				"Hetzner bare metal specific details not provided",
 			)
-		} else {
-			assert.AssertNotNil(ctx,
-				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
-				"HCloud specific details not provided for control-plane",
-			)
-		}
 
-		// When using HCloud.
-		if (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid) {
-			// Validate auto-scalable node-groups.
-			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
-				validateAutoScalableNodeGroup(ctx, &hetznerBaremetalNodeGroup.AutoScalableNodeGroup)
+			// If the control-plane is in Hetzner bare-metal.
+			if config.IsControlPlaneInHetznerBareMetal() {
+				// Then Hetzner bare-metal specific control-plane options must be provided.
+				assert.AssertNotNil(ctx,
+					hetznerConfig.ControlPlane.BareMetal,
+					"Hetzner bare metal specific control-plane details not provided",
+				)
+			}
+
+			// Validate node-groups in Hetzner bare-metal.
+			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
+				validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
 			}
 		}
 
-		// When using Hetzner bare-metal.
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
-			// The rescue HCloud SSH key-pair details must be provided.
-			// ClusterAPI Provider Hetzner (CAPH) will create an HCloud SSH key-pair with the given name.
-			// So, the user also must ensure that an HCloud SSH key-pair with that name doesn't already
-			// exist.
+		// If we're using HCloud.
+		if config.IsUsingHCloud() {
+			// Then HCloud specific options must be provided.
 			assert.AssertNotNil(ctx,
-				config.ParsedGeneralConfig.Cloud.Hetzner.RescueHCloudSSHKeyPair,
-				"Rescue HCloud SSH key-pair must be provided when using Hetzner Bare Metal",
+				config.ParsedGeneralConfig.Cloud.Hetzner.HCloud,
+				"HCloud specific details not provided",
 			)
 
-			// Validate node-groups.
-			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
-				validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
+			// If the control-plane is in HCloud,
+			// then HCloud specific control-plane options must be provided.
+			if config.IsControlPlaneInHCloud() {
+				assert.AssertNotNil(ctx,
+					config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
+					"HCloud specific control-plane details not provided",
+				)
+			}
+
+			// Validate auto-scalable node-groups in HCloud.
+			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+				validateAutoScalableNodeGroup(ctx, &hetznerBaremetalNodeGroup.AutoScalableNodeGroup)
 			}
 		}
 

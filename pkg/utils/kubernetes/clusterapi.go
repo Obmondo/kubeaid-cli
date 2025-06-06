@@ -7,7 +7,6 @@ import (
 	"os"
 	"time"
 
-	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -171,17 +170,4 @@ func GetMainClusterEndpoint(ctx context.Context) *clusterAPIV1Beta1.APIEndpoint 
 	}
 
 	return nil
-}
-
-// Returns the public IP of the 'init master node'.
-// The first master node where 'kubeadm init' is done, is called the 'init master node'.
-func GetInitMasterNodeIP(ctx context.Context, clusterClient client.Client) string {
-	// Get all the HetznerBareMetalHosts.
-	hetznerBareMetalHosts := &caphV1Beta1.HetznerBareMetalHostList{}
-	err := clusterClient.List(ctx, hetznerBareMetalHosts, &client.ListOptions{
-		Namespace: GetCapiClusterNamespace(),
-	})
-	assert.AssertErrNil(ctx, err, "Failed listing HetznerBareMetalHosts")
-
-	return ""
 }

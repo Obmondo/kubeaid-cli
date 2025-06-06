@@ -38,19 +38,10 @@ var (
 		"argocd-apps/values-cilium.yaml.tmpl",
 
 		// For Cluster API.
-		"argocd-apps/templates/cluster-api.yaml.tmpl",
-		"argocd-apps/values-cluster-api.yaml.tmpl",
-
-		// For CAPI Cluster.
+		"argocd-apps/templates/cluster-api-operator.yaml.tmpl",
+		"argocd-apps/values-cluster-api-operator.yaml.tmpl",
 		"argocd-apps/templates/capi-cluster.yaml.tmpl",
 		"argocd-apps/values-capi-cluster.yaml.tmpl",
-
-		// For Cluster Autoscaler.
-		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
-		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
-
-		// For External Snapshotter.
-		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 )
 
@@ -60,6 +51,13 @@ var (
 		// For AWS Cloud Controller Manager.
 		"argocd-apps/templates/ccm-aws.yaml.tmpl",
 		"argocd-apps/values-ccm-aws.yaml.tmpl",
+
+		// For Cluster Autoscaler.
+		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
+		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
+
+		// For External Snapshotter.
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	AWSSpecificSecretTemplateNames = []string{
@@ -99,6 +97,13 @@ var (
 		// For Azure Workload Identity System Webhook.
 		"argocd-apps/templates/azure-workload-identity-webhook.yaml.tmpl",
 		"argocd-apps/values-azure-workload-identity-webhook.yaml.tmpl",
+
+		// For Cluster Autoscaler.
+		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
+		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
+
+		// For External Snapshotter.
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	AzureSpecificSecretTemplateNames = []string{
@@ -119,14 +124,8 @@ var (
 
 // Hetzner specific template names.
 var (
-	CommonHetznerSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Cloud Controller Manager.
-		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
-		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
-	}
-
 	CommonHetznerSpecificSecretTemplateNames = []string{
-		// For Hetzner Cloud Controller Manager.
+		// For HCloud Cloud Controller Manager.
 		"sealed-secrets/kube-system/cloud-credentials.yaml.tmpl",
 
 		// For Cluster API.
@@ -134,20 +133,28 @@ var (
 	}
 
 	HCloudSpecificNonSecretTemplateNames = []string{
+		// For HCloud Cloud Controller Manager.
+		"argocd-apps/templates/ccm-hcloud.yaml.tmpl",
+		"argocd-apps/values-ccm-hcloud.yaml.tmpl",
+
 		// For HCloud CSI driver.
 		"argocd-apps/templates/hcloud-csi-driver.yaml.tmpl",
 		"argocd-apps/values-hcloud-csi-driver.yaml.tmpl",
+
+		// For Cluster Autoscaler.
+		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
+		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Robot.
-		"argocd-apps/templates/hetzner-robot.yaml.tmpl",
-		"argocd-apps/values-hetzner-robot.yaml.tmpl",
+		// For Hetzner Bare Metal (Syself's) Cloud Controller Manager.
+		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
+		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificSecretTemplateNames = []string{
 		// For Cluster API.
-		"sealed-secrets/capi-cluster/rescue-ssh-keypair.yaml.tmpl",
+		"sealed-secrets/capi-cluster/hetzner-ssh-keypair.yaml.tmpl",
 	}
 )
 

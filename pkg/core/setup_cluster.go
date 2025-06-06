@@ -109,8 +109,12 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
-		// Sync ClusterAPI ArgoCD App.
-		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
+		// Sync ClusterAPI Operator ArgoCD App.
+		kubernetes.SyncArgoCDApp(
+			ctx,
+			"cluster-api-operator",
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
 
 		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 
+	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
 	batchV1 "k8s.io/api/batch/v1"
@@ -102,6 +103,9 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	err = capzV1Beta1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding CAPZ (ClusterAPI Provider Azure) v1beta1 scheme")
+
+	err = caphV1Beta1.AddToScheme(scheme)
+	assert.AssertErrNil(ctx, err, "Failed adding CAPH (ClusterAPI Provider Hetzner) v1beta1 scheme")
 
 	err = veleroV1.AddToScheme(scheme)
 	assert.AssertErrNil(ctx, err, "Failed adding Velero v1 scheme")
