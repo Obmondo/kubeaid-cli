@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hetzner-ssh-keypair
+  namespace: {{ .CAPIClusterNamespace }}
+stringData:
+  sshkey-name: {{ .HetznerConfig.BareMetal.SSHKeyPair.Name }}
+  ssh-privatekey: |
+{{- .HetznerConfig.BareMetal.SSHKeyPair.PrivateKey | nindent 4 }}
+  ssh-publickey: {{ .HetznerConfig.BareMetal.SSHKeyPair.PublicKey }}

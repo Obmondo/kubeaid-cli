@@ -61,7 +61,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		      merge it to the default branch.
 	*/
 	targetBranchName := defaultBranchName
-	if !args.SkipPRFlow {
+	if !args.SkipPRWorkflow {
 		// Create and checkout to a new branch.
 		newBranchName := fmt.Sprintf(
 			"kubeaid-%s-%d",
@@ -77,11 +77,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 	if !args.IsPartOfDisasterRecovery {
 		// Create / update non Secret files.
-		createOrUpdateNonSecretFiles(ctx,
-			clusterDir,
-			args.SkipMonitoringSetup,
-			args.SkipKubePrometheusBuild,
-		)
+		createOrUpdateNonSecretFiles(ctx, clusterDir, args.SkipMonitoringSetup)
 
 		// Create / update Secret files.
 		CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
@@ -115,13 +111,16 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		commitMessage,
 	)
 
-	if !args.SkipPRFlow {
-		// The user now needs to go ahead and create a PR from the new to the default branch. Then he
-		// needs to merge that branch.
-		// NOTE : We can't create the PR for the user, since PRs are not part of the core git lib.
-		//        They are specific to the git platform the user is on.
+	if !args.SkipPRWorkflow {
+		/*
+			The user now needs to go ahead and create a PR from the new to the default branch. Then he
+			needs to merge that branch.
 
-		// Wait until the PR gets merged.
+			NOTE : We can't create the PR for the user, since PRs are not part of the core git lib.
+						They are specific to the git platform the user is on.
+		*/
+
+		// Wait until the user creates a PR and merges it to the default branch.
 		git.WaitUntilPRMerged(ctx,
 			repo,
 			defaultBranchName,
@@ -134,10 +133,10 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 // Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
 // repository.
-func createOrUpdateNonSecretFiles(ctx context.Context,
+func createOrUpdateNonSecretFiles(
+	ctx context.Context,
 	clusterDir string,
-	skipMonitoringSetup,
-	skipKubePrometheusBuild bool,
+	skipMonitoringSetup bool,
 ) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
@@ -146,14 +145,11 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	// Add KubePrometheus specific templates.
 	// Then execute the Obmondo's KubePrometheus build script.
 	if !skipMonitoringSetup {
-		embeddedTemplateNames = append(
-			embeddedTemplateNames,
+		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TemplateNameKubePrometheusArgoCDApp,
 		)
 
-		if !skipKubePrometheusBuild {
-			buildKubePrometheus(ctx, clusterDir, templateValues)
-		}
+		buildKubePrometheus(ctx, clusterDir, templateValues)
 	}
 
 	// Create a file from each template.
@@ -224,8 +220,7 @@ func createFileFromTemplate(ctx context.Context,
 // Then executes KubeAid's kube-prometheus build script.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
-	jsonnetVarsFilePath := fmt.Sprintf(
-		"%s/%s-vars.jsonnet",
+	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet",
 		clusterDir,
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
@@ -245,8 +240,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 
 	// Run the KubePrometheus build script.
 	slog.Info("Running KubePrometheus build script...")
-	kubePrometheusBuildScriptPath := fmt.Sprintf(
-		"%s/build/kube-prometheus/build.sh",
+	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh",
 		utils.GetKubeAidDir(),
 	)
 	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))

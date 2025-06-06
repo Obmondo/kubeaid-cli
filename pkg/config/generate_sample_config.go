@@ -11,10 +11,16 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
-//go:embed files/templates/*
+//go:embed templates/*
 var SampleConfigs embed.FS
 
-func GenerateSampleConfig(ctx context.Context, cloudProvider, flavor string) {
+type GenerateSampleConfigArgs struct {
+	CloudProvider string
+
+	HetznerMode *string
+}
+
+func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs) {
 	// Create configs directory.
 	os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
 
@@ -22,7 +28,7 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider, flavor string) {
 	// We'll generate the sample general and secrets config from those templates.
 	var generalTemplateName,
 		secretsTemplateName string
-	switch cloudProvider {
+	switch args.CloudProvider {
 	case constants.CloudProviderAWS:
 		generalTemplateName = constants.TemplateNameAWSGeneralConfig
 		secretsTemplateName = constants.TemplateNameAWSSecretsConfig
@@ -32,17 +38,18 @@ func GenerateSampleConfig(ctx context.Context, cloudProvider, flavor string) {
 		secretsTemplateName = constants.TemplateNameAzureSecretsConfig
 
 	case constants.CloudProviderHetzner:
-		// Use hcloud template if mode is hcloud
-		if flavor == constants.HetznerModeHCloud {
-			generalTemplateName = constants.TemplateNameHCloudGeneralConfig
-			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
-		} else if flavor == constants.HetznerModeBareMetal {
-			generalTemplateName = constants.TemplateNameHetznerGeneralConfig
-			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
-		} else {
-			slog.WarnContext(ctx, "Invalid Hetzner mode provided, defaulting to bare-metal")
-			generalTemplateName = constants.TemplateNameHetznerGeneralConfig
-			secretsTemplateName = constants.TemplateNameHetznerSecretsConfig
+		switch *args.HetznerMode {
+		case constants.HetznerModeHCloud:
+			generalTemplateName = constants.TemplateNameHetznerHCloudGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerHCloudSecretsConfig
+
+		case constants.HetznerModeBareMetal:
+			generalTemplateName = constants.TemplateNameHetznerBareMetalGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerBareMetalSecretsConfig
+
+		case constants.HetznerModeHybrid:
+			generalTemplateName = constants.TemplateNameHetznerHybridGeneralConfig
+			secretsTemplateName = constants.TemplateNameHetznerHybridSecretsConfig
 		}
 
 	case constants.CloudProviderLocal:

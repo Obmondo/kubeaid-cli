@@ -9,6 +9,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -27,10 +28,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Create local dev environment.
+	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	// If using a cloud provider, then provision and setup the main cluster in there.
+	// If using a cloud provider, then provision and setup the main cluster.
 	// Your KUBECONIG environment variable also gets updated to the main cluster's kubeconfig path.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
 		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
@@ -46,10 +47,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		})
 	}
 
-	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
-		utils.GetEnv(constants.EnvNameKubeconfig),
+	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
+	assert.AssertErrNil(ctx, err,
+		"Failed creating cluster client",
+		slog.String("kubeconfig", kubeconfig),
 	)
-	assert.AssertErrNil(ctx, err, "Failed creating cluster client")
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
@@ -63,7 +66,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
-	// If we have setup Disaster Recovery.
+	// If we have setup Disaster Recovery,
+	// then trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		// Create the first Velero backup.
 		kubernetes.CreateBackup(ctx, "init", clusterClient)
@@ -98,6 +102,19 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 
+		// If provisioning cluster in Hetzner bare-metal, and using a Failover IP,
+		// then we need to make the Failover IP point to the 'init master node'.
+		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
+		if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
+			config.IsControlPlaneInHetznerBareMetal() &&
+			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+
+			hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+		}
+
 		// Wait for the main cluster to be provisioned.
 		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
 
@@ -120,9 +137,19 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
-	// Wait for atleast 1 worker node to be initialized, so that we can deploy our application
-	// workloads.
-	kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+	// We need to ensure that application workloads can be scheduled.
+	if kubernetes.IsNodeGroupCountZero(ctx) {
+		// If there are 0 node-groups, then we need to remove taints from the control-plane nodes.
+		slog.InfoContext(ctx, "Removing taints from control-plane nodes")
+		utils.ExecuteCommandOrDie(`
+        kubectl taint nodes \
+          -l node-role.kubernetes.io/control-plane \
+          node-role.kubernetes.io/control-plane:NoSchedule-
+      `)
+	} else {
+		// Otherwise, wait for atleast 1 worker node to be initialized.
+		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+	}
 
 	/*
 		Setup the provisioned cluster.
@@ -145,10 +172,23 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		pivotCluster(ctx)
 	}
 
-	// Sync the external-snapshotter ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
+	// Sync cluster-autoscaler ArgoCD App,
+	// if not using Hetzner in bare-metal mode.
+	if !((globals.CloudProviderName == constants.CloudProviderHetzner) &&
+		(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeBareMetal)) {
+
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+	}
+
+	// Sync the external-snapshotter ArgoCD App,
+	// if not using Hetzner.
+	if globals.CloudProviderName != constants.CloudProviderHetzner {
+		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+	}
 }
 
 func pivotCluster(ctx context.Context) {
@@ -175,9 +215,4 @@ func pivotCluster(ctx context.Context) {
 		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
 		constants.OutputPathMainClusterKubeconfig,
 	))
-
-	// Sync cluster-autoscaler ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
 }

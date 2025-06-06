@@ -4,8 +4,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/upgrade"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
 
@@ -13,11 +14,14 @@ var ClusterCmd = &cobra.Command{
 	Use: "cluster",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Initialize config.
-		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
+		// Parse config files.
+		parser.ParseConfigFiles(cmd.Context(), globals.ConfigsDirectory)
 
 		// Initialize temp directory.
-		utils.InitTempDir()
+		utils.InitTempDir(cmd.Context())
+
+		// Ensure required runtime dependencies are installed.
+		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
 	},
 
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -34,10 +38,8 @@ func init() {
 
 	// Flags.
 
-	config.RegisterConfigsDirectoryFlag(ClusterCmd)
-
 	ClusterCmd.PersistentFlags().
-		BoolVar(&skipPRFlow, constants.FlagNameSkipPRFlow, false,
+		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)
 }

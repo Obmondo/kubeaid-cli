@@ -5,19 +5,19 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidVersion }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: cluster-api
+  name: cluster-api-operator
   namespace: argocd
 spec:
   destination:
-    namespace: cluster-api
+    namespace: cluster-api-operator
     server: https://kubernetes.default.svc
   sources:
     - repoURL: {{ .KubeaidForkURL }}
-      path: argocd-helm-charts/cluster-api
+      path: argocd-helm-charts/cluster-api-operator
       targetRevision: {{ .KubeaidVersion }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cluster-api.yaml
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cluster-api-operator.yaml
     - repoURL: {{ .KubeaidConfigForkURL }}
       targetRevision: HEAD
       ref: values

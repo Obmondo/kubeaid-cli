@@ -28,10 +28,9 @@ const (
 
 	FlagNameConfigsDirectoy = "configs-directory"
 
-	FlagNameSkipMonitoringSetup     = "skip-monitoring-setup"
-	FlagNameSkipKubePrometheusBuild = "skip-kube-prometheus-build"
-	FlagNameSkipPRFlow              = "skip-pr-flow"
-	FlagNameSkipClusterctlMove      = "skip-clusterctl-move"
+	FlagNameSkipMonitoringSetup = "skip-monitoring-setup"
+	FlagNameSkipPRWorkflow      = "skip-pr-workflow"
+	FlagNameSkipClusterctlMove  = "skip-clusterctl-move"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
@@ -142,6 +141,8 @@ const (
 	HetznerModeBareMetal = "bare-metal"
 	HetznerModeHCloud    = "hcloud"
 	HetznerModeHybrid    = "hybrid"
+
+	HetznerRobotWebServiceAPI = "https://robot-ws.your-server.de"
 )
 
 const (
@@ -175,6 +176,4 @@ const (
 	GzippedFilenameSuffix = ".gz"
 
 	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
-
-	BranchDefault = "main"
 )

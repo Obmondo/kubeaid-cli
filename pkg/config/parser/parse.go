@@ -1,4 +1,4 @@
-package config
+package parser
 
 import (
 	"context"
@@ -7,20 +7,17 @@ import (
 	"path"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
+	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
 
+	awsCloudProvider "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-)
-
-var (
-	GeneralConfigFileContents []byte
-
-	ParsedGeneralConfig = &GeneralConfig{}
-	ParsedSecretsConfig = &SecretsConfig{}
 )
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
@@ -30,18 +27,18 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	{
 		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
 
-		GeneralConfigFileContents, err = os.ReadFile(generalConfigFilePath)
+		config.GeneralConfigFileContents, err = os.ReadFile(generalConfigFilePath)
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
 
 		//nolint:musttag
-		err = yaml.Unmarshal([]byte(GeneralConfigFileContents), ParsedGeneralConfig)
+		err = yaml.Unmarshal([]byte(config.GeneralConfigFileContents), config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
 
 		// Set globals.CloudProviderName by detecting the underlying cloud-provider being used.
 		detectCloudProviderName()
 
 		// Set defaults.
-		err = defaults.Set(ParsedGeneralConfig)
+		err = defaults.Set(config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
 
 		// If the user has provided a custom CA certificate path,
@@ -63,7 +60,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		secretsConfigFileContents, err := os.ReadFile(secretsConfigFilePath)
 		assert.AssertErrNil(ctx, err, "Failed reading secrets config file")
 
-		err = yaml.Unmarshal([]byte(secretsConfigFileContents), ParsedSecretsConfig)
+		err = yaml.Unmarshal([]byte(secretsConfigFileContents), config.ParsedSecretsConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling secrets config")
 
 		// The AWS credentials and region were not provided via the config file.
@@ -71,10 +68,10 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// And we panic on failure.
 
 		if (globals.CloudProviderName == constants.CloudProviderAWS) &&
-			(ParsedSecretsConfig.AWS == nil) {
+			(config.ParsedSecretsConfig.AWS == nil) {
 			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
 
-			ParsedSecretsConfig.AWS = &AWSCredentials{
+			config.ParsedSecretsConfig.AWS = &config.AWSCredentials{
 				AWSAccessKeyID:     awsCredentials.AccessKeyID,
 				AWSSecretAccessKey: awsCredentials.SecretAccessKey,
 				AWSSessionToken:    awsCredentials.SessionToken,
@@ -104,16 +101,16 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 // And sets the value of globals.CloudProviderName.
 func detectCloudProviderName() {
 	switch {
-	case ParsedGeneralConfig.Cloud.AWS != nil:
+	case config.ParsedGeneralConfig.Cloud.AWS != nil:
 		globals.CloudProviderName = constants.CloudProviderAWS
 
-	case ParsedGeneralConfig.Cloud.Azure != nil:
+	case config.ParsedGeneralConfig.Cloud.Azure != nil:
 		globals.CloudProviderName = constants.CloudProviderAzure
 
-	case ParsedGeneralConfig.Cloud.Hetzner != nil:
+	case config.ParsedGeneralConfig.Cloud.Hetzner != nil:
 		globals.CloudProviderName = constants.CloudProviderHetzner
 
-	case ParsedGeneralConfig.Cloud.Local != nil:
+	case config.ParsedGeneralConfig.Cloud.Local != nil:
 		globals.CloudProviderName = constants.CloudProviderLocal
 
 	default:
@@ -126,13 +123,13 @@ func detectCloudProviderName() {
 func setCloudProvider() {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		globals.CloudProvider = NewAWSCloudProvider()
+		globals.CloudProvider = awsCloudProvider.NewAWSCloudProvider()
 
 	case constants.CloudProviderAzure:
-		globals.CloudProvider = NewAzureCloudProvider()
+		globals.CloudProvider = azure.NewAzureCloudProvider()
 
 	case constants.CloudProviderHetzner:
-		globals.CloudProvider = NewHetznerCloudProvider()
+		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
 	}
 }
 
@@ -141,7 +138,7 @@ func setCloudProvider() {
 func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
 	slog.InfoContext(ctx, "Trying to pickup AWS credentials from ~/.aws/config")
 
-	awsConfig, err := config.LoadDefaultConfig(ctx)
+	awsConfig, err := awsConfig.LoadDefaultConfig(ctx)
 	assert.AssertErrNil(ctx, err, "Failed constructing AWS config using files in ~/.aws")
 
 	awsCredentials, err := awsConfig.Credentials.Retrieve(ctx)
@@ -153,7 +150,7 @@ func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
 // If the user has provided a custom CA certificate path,
 // then reads and stores the custom CA certificate in general config.
 func hydrateCABundle(ctx context.Context) {
-	caBundlePath := ParsedGeneralConfig.Git.CABundlePath
+	caBundlePath := config.ParsedGeneralConfig.Git.CABundlePath
 
 	if len(caBundlePath) == 0 {
 		return
@@ -162,7 +159,7 @@ func hydrateCABundle(ctx context.Context) {
 	caBundle, err := os.ReadFile(caBundlePath)
 	assert.AssertErrNil(ctx, err, "Failed reading file", slog.String("path", caBundlePath))
 
-	ParsedGeneralConfig.Git.CABundle = caBundle
+	config.ParsedGeneralConfig.Git.CABundle = caBundle
 }
 
 // For each node-group, fills up the cpu and memory (fetched using the corresponding cloud SDK) of
@@ -170,23 +167,23 @@ func hydrateCABundle(ctx context.Context) {
 func hydrateVMSpecs(ctx context.Context) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for i, nodeGroup := range ParsedGeneralConfig.Cloud.AWS.NodeGroups {
+		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
 			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.InstanceType)
 
-			ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].CPU = instanceSpecs.CPU
-			ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].Memory = instanceSpecs.Memory
+			config.ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].CPU = instanceSpecs.CPU
+			config.ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].Memory = instanceSpecs.Memory
 		}
 
 	case constants.CloudProviderAzure:
-		for i, nodeGroup := range ParsedGeneralConfig.Cloud.Azure.NodeGroups {
+		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
 			vmSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
 
-			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].CPU = vmSpecs.CPU
-			ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].Memory = vmSpecs.Memory
+			config.ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].CPU = vmSpecs.CPU
+			config.ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].Memory = vmSpecs.Memory
 		}
 
 	case constants.CloudProviderHetzner:
-		for i, nodeGroup := range ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
 			machineSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.MachineType)
 			assert.AssertNotNil(
 				ctx,
@@ -194,9 +191,9 @@ func hydrateVMSpecs(ctx context.Context) {
 				"Implementation error : machine details returned by HetznerCloudProvider.GetVMSpecs() must include RootVolumeSize",
 			)
 
-			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].CPU = machineSpecs.CPU
-			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].Memory = machineSpecs.Memory
-			ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
+			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].CPU = machineSpecs.CPU
+			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].Memory = machineSpecs.Memory
+			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
 		}
 
 	case constants.CloudProviderLocal:

@@ -15,6 +15,8 @@ var AWSCmd = &cobra.Command{
 	Short: "Generate a sample KubeAid Bootstrap Script config file, for deploying an AWS based cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		config.GenerateSampleConfig(context.Background(), constants.CloudProviderAWS, "")
+		config.GenerateSampleConfig(context.Background(), &config.GenerateSampleConfigArgs{
+			CloudProvider: constants.CloudProviderAWS,
+		})
 	},
 }

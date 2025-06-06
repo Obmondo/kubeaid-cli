@@ -8,10 +8,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	goGit "github.com/go-git/go-git/v5"
 	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -60,19 +62,25 @@ func CloneRepo(ctx context.Context,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	// Use some authentication method, if the repository visibility is private.
-	isPrivate, err := IsRepoPrivate(ctx, url)
+	// Use authentication method, if the repo visibility is private.
+	isPrivate, err := isRepoPrivate(ctx, url)
 	assert.AssertErrNil(ctx, err, "Failed to determine repo visibility")
 	if isPrivate {
 		opts.Auth = authMethod
 	}
 
 	repo, err := goGit.PlainClone(dirPath, false, opts)
-	if errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		// Remote repository is empty,
-		// which means we need to initialize a local repository and add the remote repository as
-		// 'origin'.
-		repo = initRepo(ctx, dirPath, config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&
+		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL) {
+		// Remote KubeAid Config repository is empty.
+		// So, we need to initialize the repository locally,
+		// add the remote repository as 'origin',
+		// and create and push an empty commit.
+		repo = initRepo(ctx,
+			dirPath,
+			config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
+			authMethod,
+		)
 	} else {
 		assert.AssertErrNil(ctx, err, "Failed cloning repo")
 	}
@@ -80,10 +88,16 @@ func CloneRepo(ctx context.Context,
 }
 
 // Initializes a repository locally, at the given path.
-// Then adds the given remote repository as 'origin'.
-func initRepo(ctx context.Context, dirPath, originURL string) *goGit.Repository {
+// Adds the given remote repository as 'origin'.
+// Then creates and pushes an empty commit.
+func initRepo(ctx context.Context,
+	dirPath,
+	originURL string,
+	authMethod transport.AuthMethod,
+) *goGit.Repository {
 	slog.InfoContext(ctx, "Detected remote repository is empty! Initializing repo locally")
 
+	// Initialize repository locally.
 	repo, err := goGit.PlainInitWithOptions(dirPath, &goGit.PlainInitOptions{
 		InitOptions: goGit.InitOptions{
 			DefaultBranch: plumbing.Main,
@@ -91,17 +105,40 @@ func initRepo(ctx context.Context, dirPath, originURL string) *goGit.Repository 
 	})
 	assert.AssertErrNil(ctx, err, "Failed to initialize repo locally")
 
+	// Add remote repository as 'origin'.
 	_, err = repo.CreateRemote(&goGitConfig.RemoteConfig{
 		Name: goGit.DefaultRemoteName,
 		URLs: []string{originURL},
 	})
 	assert.AssertErrNil(ctx, err, "Failed adding 'origin' remote to the initilized local repo")
 
+	// Create and push an empty commit.
+
+	workTree, err := repo.Worktree()
+	assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
+
+	_, err = workTree.Commit("chore : init", &goGit.CommitOptions{
+		Author: &object.Signature{
+			Name:  "KubeAid Bootstrap Script",
+			Email: "info@obmondo.com",
+			When:  time.Now(),
+		},
+		AllowEmptyCommits: true,
+	})
+	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
+
+	err = repo.Push(&goGit.PushOptions{
+		RemoteName: goGit.DefaultRemoteName,
+		Auth:       authMethod,
+		CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+	})
+	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
+
 	return repo
 }
 
 // IsRepoPrivate checks if the repository is private using the appropriate API
-func IsRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
+func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	// Create a new HTTP client
 	client := &http.Client{}
 

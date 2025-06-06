@@ -4,7 +4,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv/create"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
 
@@ -12,11 +13,14 @@ var DevenvCmd = &cobra.Command{
 	Use: "devenv",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Initialize config.
-		config.ParseConfigFiles(cmd.Context(), config.ConfigsDirectory)
+		// Parse config files.
+		parser.ParseConfigFiles(cmd.Context(), globals.ConfigsDirectory)
 
 		// Initialize temp directory.
-		utils.InitTempDir()
+		utils.InitTempDir(cmd.Context())
+
+		// Ensure required runtime dependencies are installed.
+		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
 	},
 
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -27,7 +31,4 @@ var DevenvCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	DevenvCmd.AddCommand(create.CreateCmd)
-
-	// Flags.
-	config.RegisterConfigsDirectoryFlag(DevenvCmd)
 }

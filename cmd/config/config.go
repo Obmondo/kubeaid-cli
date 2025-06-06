@@ -4,7 +4,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config/generate"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 var ConfigCmd = &cobra.Command{
@@ -20,13 +19,4 @@ var ConfigFilesDirectory string
 func init() {
 	// Subcommands.
 	ConfigCmd.AddCommand(generate.GenerateCmd)
-
-	// Flags
-	ConfigCmd.PersistentFlags().
-		StringVar(
-			&ConfigFilesDirectory,
-			constants.FlagNameConfigsDirectoy,
-			constants.OutputPathGeneratedConfigsDirectory,
-			"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
-		)
 }

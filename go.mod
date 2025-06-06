@@ -22,6 +22,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.0
 	github.com/go-logr/logr v1.4.2
 	github.com/go-playground/validator/v10 v10.26.0
+	github.com/go-resty/resty/v2 v2.16.5
 	github.com/go-sprout/sprout v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/hetznercloud/hcloud-go v1.59.2
@@ -29,7 +30,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.1
 	github.com/spf13/cobra v1.9.1
-	github.com/spf13/pflag v1.0.6
+	github.com/syself/cluster-api-provider-hetzner v1.0.3
 	github.com/vmware-tanzu/velero v1.16.0
 	golang.org/x/crypto v0.38.0
 	google.golang.org/grpc v1.72.1
@@ -132,6 +133,7 @@ require (
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/go-logr/zapr v1.3.0 // indirect
 	github.com/go-openapi/jsonpointer v0.21.1 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
@@ -166,6 +168,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
+	github.com/hetznercloud/hcloud-go/v2 v2.19.1 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/imdario/mergo v0.3.16 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -242,6 +245,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.14.0 // indirect
 	github.com/spf13/cast v1.8.0 // indirect
+	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
@@ -267,6 +271,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/exp v0.0.0-20250506013437-ce4c2cf36ca6 // indirect
 	golang.org/x/mod v0.24.0 // indirect

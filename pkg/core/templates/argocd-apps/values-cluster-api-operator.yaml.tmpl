@@ -1,4 +1,6 @@
 ---
+{{/* We're using Workload Identity in case of Azure.
+     And will soon use IRSA for AWS. */}}
 {{- if not .AzureConfig }}
 cluster-api-operator:
   configSecret:

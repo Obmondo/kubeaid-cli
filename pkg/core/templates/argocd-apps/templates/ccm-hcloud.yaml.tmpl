@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/priority: "default"
+  name: ccm-hcloud
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidForkURL }}
+      path: argocd-helm-charts/ccm-hcloud
+      targetRevision: {{ .KubeaidVersion }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-ccm-hcloud.yaml
+    - repoURL: {{ .KubeaidConfigForkURL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true

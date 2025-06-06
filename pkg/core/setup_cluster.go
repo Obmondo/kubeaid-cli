@@ -7,8 +7,6 @@ import (
 	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -50,43 +48,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			args.GitAuthMethod,
 		)
 
-		kubeaidVersion := config.ParsedGeneralConfig.Cluster.KubeaidVersion
-
-		if kubeaidVersion != "HEAD" {
-			//nolint:godox
-			// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
-			// TODO : Move this to gitUtils.CloneRepo( )?
-
-			slog.InfoContext(ctx,
-				"Hard resetting the KubeAid repo to tag",
-				slog.String("tag", kubeaidVersion),
-			)
-
-			kubeAidRepoWorktree, err := kubeAidRepo.Worktree()
-			assert.AssertErrNil(ctx, err, "Failed getting KubeAid repo worktree")
-
-			tagReference, err := kubeAidRepo.Reference(
-				plumbing.NewTagReferenceName(kubeaidVersion),
-				true,
-			)
-			assert.AssertErrNil(ctx, err,
-				"Failed resolving reference for provided tag in KubeAid repo",
-			)
-
-			targetCommitHash := tagReference.Hash()
-
-			tagObject, err := kubeAidRepo.TagObject(tagReference.Hash())
-			if err == nil {
-				// Resolve the tag reference hash to the tag object / corresponding commit hash.
-				targetCommitHash = tagObject.Target
-			}
-
-			err = kubeAidRepoWorktree.Reset(&git.ResetOptions{
-				Commit: targetCommitHash,
-				Mode:   git.HardReset,
-			})
-			assert.AssertErrNil(ctx, err, "Failed hard resetting KubeAid repo to provided tag")
-		}
+		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
+		gitUtils.HardResetRepoToTag(ctx,
+			kubeAidRepo,
+			config.ParsedGeneralConfig.Cluster.KubeaidVersion,
+		)
 	}
 
 	// If recovering a cluster, then restore the Sealed Secrets controller private keys.
@@ -143,8 +109,12 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
-		// Sync ClusterAPI ArgoCD App.
-		kubernetes.SyncArgoCDApp(ctx, "cluster-api", []*argoCDV1Alpha1.SyncOperationResource{})
+		// Sync ClusterAPI Operator ArgoCD App.
+		kubernetes.SyncArgoCDApp(
+			ctx,
+			"cluster-api-operator",
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
 
 		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
