@@ -9,9 +9,12 @@ type (
 	}
 
 	GitCredentials struct {
-		Username      string `yaml:"username"`
-		Password      string `yaml:"password"`
-		SSHPrivateKey string `yaml:"sshPrivateKey"`
+		*GitUsernameAndPassword `yaml:",inline"`
+	}
+
+	GitUsernameAndPassword struct {
+		Username string `yaml:"username" validate:"notblank"`
+		Password string `yaml:"password" validate:"notblank"`
 	}
 
 	AWSCredentials struct {

@@ -19,16 +19,16 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 
 	switch {
 	// SSH private key and password.
-	case len(config.ParsedSecretsConfig.Git.SSHPrivateKey) > 0:
+	case len(config.ParsedGeneralConfig.Git.PrivateKey) > 0:
 		authMethod, err = ssh.NewPublicKeysFromFile(
 			"git",
-			config.ParsedSecretsConfig.Git.SSHPrivateKey,
+			config.ParsedGeneralConfig.Git.PrivateKey,
 			config.ParsedSecretsConfig.Git.Password,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed generating SSH public key from SSH private key and password for git",
 		)
-		slog.Info("Using SSH private key and password")
+		slog.InfoContext(ctx, "Using SSH private key and password")
 
 	// Username and password.
 	case len(config.ParsedSecretsConfig.Git.Password) > 0:
@@ -36,13 +36,13 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 			Username: config.ParsedSecretsConfig.Git.Username,
 			Password: config.ParsedSecretsConfig.Git.Password,
 		}
-		slog.Info("Using username and password")
+		slog.InfoContext(ctx, "Using username and password")
 
 	// SSH agent.
 	default:
 		authMethod, err = ssh.NewSSHAgentAuth("git")
 		assert.AssertErrNil(ctx, err, "SSH agent failed")
-		slog.Info("Using SSH agent")
+		slog.InfoContext(ctx, "Using SSH agent")
 	}
 	return
 }

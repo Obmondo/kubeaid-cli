@@ -39,8 +39,12 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	err = repo.Fetch(&goGit.FetchOptions{
 		Auth:     authMethod,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
+
+		// The '+' tells Git to update the reference even if it isn’t a fast-forward,
+		// like history rewrites.
 		RefSpecs: []gitConfig.RefSpec{"+refs/*:refs/*"},
-		Tags:     goGit.AllTags,
+
+		Tags: goGit.AllTags,
 	})
 	if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")

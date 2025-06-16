@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
-	"strings"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -50,42 +49,4 @@ func GetCustomerGitServerHostName(ctx context.Context) string {
 	assert.AssertErrNil(ctx, err, "Failed parsing KubeAid config URL")
 
 	return kubeaidConfigURL.Hostname()
-}
-
-// Return host and port of a git url
-func parseGitURL(ctx context.Context, gitURL string) (string, string) {
-	var parsedURL *url.URL
-	var err error
-
-	// Convert SSH URL to a format that can be parsed
-	if strings.HasPrefix(gitURL, "git@") {
-		// Convert to HTTPS format for parsing
-		parts := strings.Split(gitURL, ":")
-		if len(parts) == 2 {
-			gitURL = "https://" + parts[0][4:] + "/" + parts[1]
-		}
-	}
-
-	// Parse the URL
-	parsedURL, err = url.Parse(gitURL)
-	if err != nil {
-		assert.AssertErrNil(ctx, err, "Error parsing Git URL")
-		return "", ""
-	}
-
-	domain := parsedURL.Hostname()
-	port := parsedURL.Port()
-
-	if port == "" {
-		// Set default port based on the scheme
-		if parsedURL.Scheme == "https" {
-			port = "443"
-		} else if parsedURL.Scheme == "http" {
-			port = "80"
-		} else {
-			port = "22"
-		}
-	}
-
-	return domain, port
 }

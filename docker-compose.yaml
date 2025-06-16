@@ -1,6 +1,6 @@
 networks:
   k3d:
-    name: k3d-${CLUSTER_NAME:-kubeaid-mgmt}
+    name: k3d-${CLUSTER_NAME:-kubeaid-management}
     external: false
     driver: bridge
 
@@ -29,9 +29,14 @@ services:
       - |
         mkdir -p /outputs
         if ${SKIP_PR:-false}; then
-          kubeaid-bootstrap-script cluster bootstrap --skip-pr-flow --management-cluster-name ${MGMT_CLUSTER_NAME:-kubeaid-mgmt} ${CLOUD_PROVIDER:-local}
+          kubeaid-bootstrap-script cluster bootstrap \
+            --skip-pr-flow \
+            --management-cluster-name ${MANAGEMENT_CLUSTER_NAME:-kubeaid-management} \
+            ${CLOUD_PROVIDER:-local}
         else
-          kubeaid-bootstrap-script cluster bootstrap --management-cluster-name ${MGMT_CLUSTER_NAME:-kubeaid-mgmt} ${CLOUD_PROVIDER:-local}
+          kubeaid-bootstrap-script cluster bootstrap \
+            --management-cluster-name ${MANAGEMENT_CLUSTER_NAME:-kubeaid-management} \
+            ${CLOUD_PROVIDER:-local}
         fi
     volumes:
       - ./outputs:/outputs
@@ -46,7 +51,7 @@ services:
       - bash
       - -c
       - |
-        k3d cluster delete ${CLUSTER_NAME:-kubeaid-mgmt}
+        k3d cluster delete ${CLUSTER_NAME:-kubeaid-management}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

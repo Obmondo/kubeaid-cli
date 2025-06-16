@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"embed"
-	"log/slog"
 	"os"
 
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -13,7 +12,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -51,29 +49,18 @@ type TemplateValues struct {
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
-
-	privateKey, err := os.ReadFile(config.ParsedSecretsConfig.Git.SSHPrivateKey)
-	assert.AssertErrNil(ctx, err,
-		"Failed reading file",
-		slog.String("path", config.ParsedSecretsConfig.Git.SSHPrivateKey),
-	)
-
 	templateValues := &TemplateValues{
 		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
 
 		CustomerID:                config.ParsedGeneralConfig.CustomerID,
 		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
 		GitConfig:                 config.ParsedGeneralConfig.Git,
-		GitCredentials: config.GitCredentials{
-			SSHPrivateKey: string(privateKey),
-			Username:      config.ParsedSecretsConfig.Git.Username,
-			Password:      config.ParsedSecretsConfig.Git.Password,
-		},
-		ForksConfig:            config.ParsedGeneralConfig.Forks,
-		ClusterConfig:          config.ParsedGeneralConfig.Cluster,
-		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-		MonitoringConfig:       config.ParsedGeneralConfig.Monitoring,
-		CAPIClusterNamespace:   kubernetes.GetCapiClusterNamespace(),
+		GitCredentials:            config.ParsedSecretsConfig.Git,
+		ForksConfig:               config.ParsedGeneralConfig.Forks,
+		ClusterConfig:             config.ParsedGeneralConfig.Cluster,
+		DisasterRecoveryConfig:    config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+		MonitoringConfig:          config.ParsedGeneralConfig.Monitoring,
+		CAPIClusterNamespace:      kubernetes.GetCapiClusterNamespace(),
 
 		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
 

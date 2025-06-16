@@ -165,8 +165,10 @@ make bootstrap-cluster-local-dev
 
 - [What is CA bundle?](https://www.namecheap.com/support/knowledgebase/article.aspx/986/69/what-is-ca-bundle/)
 
-[What is RAID 0, 1, 5, & 10?](https://www.youtube.com/watch?v=U-OCdTeZLac)
+- [What is RAID 0, 1, 5, & 10?](https://www.youtube.com/watch?v=U-OCdTeZLac)
 
-[What is RAID Parity?](https://www.youtube.com/watch?v=BjuBloMHhKk)
+- [What is RAID Parity?](https://www.youtube.com/watch?v=BjuBloMHhKk)
 
-[RAID 5 vs RAID 6](https://www.youtube.com/watch?v=UuUgfCvt9-Q)
+- [RAID 5 vs RAID 6](https://www.youtube.com/watch?v=UuUgfCvt9-Q)
+
+- [10.5 Git Internals - The Refspec](https://git-scm.com/book/en/v2/Git-Internals-The-Refspec?utm_source=chatgpt.com)

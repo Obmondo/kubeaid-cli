@@ -45,7 +45,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// then read and store the custom CA certificate in config.
 		hydrateCABundle(ctx)
 
-		// Read SSH key-pairs from provided file paths and store them in config.
+		// Read SSH keys from provided file paths, validate them and store them in config.
 		hydrateSSHKeyConfigs()
 
 		// Hydrate with Audit Logging options (if required).
