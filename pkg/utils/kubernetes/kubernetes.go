@@ -264,3 +264,29 @@ func IsNodeGroupCountZero(ctx context.Context) bool {
 
 	return false
 }
+
+// Removes the 'node-role.kubernetes.io/control-plane:NoSchedule' taint from master nodes.
+func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client) {
+	slog.InfoContext(ctx, "Removing no-schedule taints from master nodes")
+
+	// List the master nodes.
+	var masterNodeList coreV1.NodeList
+	err := clusterClient.List(ctx, &masterNodeList, client.MatchingLabels{
+		kubeadmConstants.LabelNodeRoleControlPlane: "",
+	})
+	assert.AssertErrNil(ctx, err, "Failed listing master nodes")
+
+	// For each master node.
+	for _, masterNode := range masterNodeList.Items {
+		for _, taint := range masterNode.Spec.Taints {
+			// If the taint exists, then remove it.
+			// NOTE : We're assuming that the taint effect is 'NoSchedule'.
+			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
+				utils.ExecuteCommandOrDie(fmt.Sprintf(`
+          kubectl taint node %s \
+            node-role.kubernetes.io/control-plane:NoSchedule-
+        `, masterNode.Name))
+			}
+		}
+	}
+}

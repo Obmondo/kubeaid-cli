@@ -59,6 +59,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		globals.CloudProvider.SetupDisasterRecovery(ctx)
 	}
 
+	// When this is part of a disaster recovery, we don't want to progress any further here,
+	// but instead, restore the latest backup.
 	if args.IsPartOfDisasterRecovery {
 		return
 	}
@@ -66,8 +68,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
-	// If we have setup Disaster Recovery,
-	// then trigger the first Velero and SealedSecret backups.
+	// When we have setup Disaster Recovery,
+	// trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		// Create the first Velero backup.
 		kubernetes.CreateBackup(ctx, "init", clusterClient)
@@ -137,15 +139,11 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		constants.OutputPathMainClusterKubeconfig,
 	)
 
-	// We need to ensure that application workloads can be scheduled.
+	// Ensure that application workloads can be scheduled.
 	if kubernetes.IsNodeGroupCountZero(ctx) {
-		// If there are 0 node-groups, then we need to remove taints from the control-plane nodes.
-		slog.InfoContext(ctx, "Removing taints from control-plane nodes")
-		utils.ExecuteCommandOrDie(`
-        kubectl taint nodes \
-          -l node-role.kubernetes.io/control-plane \
-          node-role.kubernetes.io/control-plane:NoSchedule-
-      `)
+		// If there are 0 node-groups, then we need to remove the NoSchedule taint from the master
+		// nodes.
+		kubernetes.RemoveNoScheduleTaintsFromMasterNodes(ctx, provisionedClusterClient)
 	} else {
 		// Otherwise, wait for atleast 1 worker node to be initialized.
 		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
