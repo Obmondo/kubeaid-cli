@@ -10,7 +10,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN go build -o kubeaid-bootstrap-script ./cmd
+RUN go build -v -o kubeaid-bootstrap-script ./cmd
 
 #--- Packager stage ---
 

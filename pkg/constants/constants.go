@@ -24,7 +24,7 @@ const (
 	FlagNameK8sVersion = "k8s-version"
 
 	FlagNameManagementClusterName             = "management-cluster-name"
-	FlagNameManagementClusterNameDefaultValue = "management-cluster"
+	FlagNameManagementClusterNameDefaultValue = "kubeaid-bootstrapper"
 
 	FlagNameConfigsDirectoy = "configs-directory"
 
@@ -163,15 +163,24 @@ const (
 	FileNameSecretsConfig = "secrets.yaml"
 )
 
+// SSH keys.
+const (
+	SSHPrivateKeyPrefixOpenSSH = "-----BEGIN OPENSSH PRIVATE KEY-----"
+	SSHPublicKeyPrefixOpenSSH  = "ssh-rsa "
+
+	SSHPrivateKeyPrefixPEM = "-----BEGIN PRIVATE KEY-----"
+	SSHPublicKeyPrefixPEM  = "-----BEGIN PUBLIC KEY-----"
+)
+
+// Cluster types.
+const (
+	ClusterTypeManagement = "management"
+	ClusterTypeMain       = "main"
+)
+
 // Miscellaneous.
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
-
-	ClusterTypeManagement = "management"
-	ClusterTypeMain       = "main"
-
-	SSHPublicKeyPrefixOpenSSH = "ssh-rsa "
-	SSHPublicKeyPrefixPEM     = "-----BEGIN PUBLIC KEY-----"
 
 	GzippedFilenameSuffix = ".gz"
 

@@ -1,9 +1,14 @@
 # Needed for shell expansion
 SHELL = /bin/bash
 CURRENT_DIR := $(CURDIR)
-CONTAINER_NAME=kubeaid-bootstrap-script-dev
-NETWORK_NAME=k3d-management-cluster
 IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
+CONTAINER_NAME=kubeaid-bootstrap-script-dev
+MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
+NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
+
+.PHONY: lint
+lint:
+	@golangci-lint run ./...
 
 .PHONY: build-image-dev
 build-image-dev:
@@ -135,7 +140,6 @@ devenv-create-hetzner-bare-metal-dev:
     --configs-directory ./outputs/configs/hetzner/bare-metal \
     --skip-pr-workflow \
     --skip-monitoring-setup \
-    
 
 .PHONY: bootstrap-cluster-hetzner-bare-metal-dev
 bootstrap-cluster-hetzner-bare-metal-dev:
@@ -144,7 +148,6 @@ bootstrap-cluster-hetzner-bare-metal-dev:
     --configs-directory ./outputs/configs/hetzner/bare-metal \
     --skip-pr-workflow \
     --skip-monitoring-setup \
-    
 
 .PHONY: delete-provisioned-cluster-hetzner-bare-metal-dev
 delete-provisioned-cluster-hetzner-bare-metal-dev:
@@ -166,4 +169,4 @@ bootstrap-cluster-local-dev:
 .PHONY: management-cluster-delete
 management-cluster-delete:
 	KUBECONFIG=./outputs/kubeconfigs/clusters/management/container.yaml \
-		k3d cluster delete management-cluster
+		k3d cluster delete $(MANAGEMENT_CLUSTER_NAME)

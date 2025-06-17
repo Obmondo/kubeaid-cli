@@ -91,8 +91,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		The control-plane endpoint will be used to create the Cilium ArgoCD App.
 
 		NOTE : Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
-		       the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
-		       provisioned, we bring it in the GitOPs cycle.
+		the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
+		provisioned, we bring it in the GitOPs cycle.
 	*/
 	templateValues.ProvisionedClusterEndpoint = kubernetes.GetMainClusterEndpoint(ctx)
 

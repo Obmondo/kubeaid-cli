@@ -1,19 +1,32 @@
-{{- $name := "kubeaid-config" }}
+{{- $kubeaidConfigRepositoryName := "kubeaid-config" }}
 {{- if .CustomerID }}
-{{- $name = printf "kubeaid-config-%s" .CustomerID }}
+{{- $kubeaidConfigRepositoryName = printf "kubeaid-config-%s" .CustomerID }}
 {{- end }}
 
 apiVersion: v1
 kind: Secret
 metadata:
-  name: {{ $name }}
+  name: {{ $kubeaidConfigRepositoryName }}
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: repository
 
 stringData:
-  name: {{ $name }}
+  name: {{ $kubeaidConfigRepositoryName }}
   url: {{ .KubeaidConfigForkURL }}
   type: git
+
+  {{/* When git authentication method is 'using SSH private key'. */}}
+  {{- if .GitCredentials.SSHPrivateKey }}
+  sshPrivateKey: |
+    {{- $sshKey := .GitCredentials.SSHPrivateKey }}
+    {{- $lines := split $sshKey "\n" }}
+    {{- range $index, $line := $lines }}
+        {{ $line }}
+    {{- end }}
+
+  {{/* When git authentication method is 'username + password'. */}}
+  {{- else }}
   username: {{ .GitCredentials.Username }}
   password: {{ .GitCredentials.Password }}
+  {{- end }}

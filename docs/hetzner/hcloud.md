@@ -15,7 +15,6 @@
    # cat .env
    CLOUD_PROVIDER=hetzner
    FLAVOR=hcloud
-   CLUSTER_NAME=kubeaid-demo
    ```
 
 2. **Generate the config**:

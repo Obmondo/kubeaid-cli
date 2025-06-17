@@ -53,7 +53,6 @@ func CloneRepo(ctx context.Context,
 	}
 
 	// Clone the repo.
-
 	slog.InfoContext(ctx, "Cloning repo")
 
 	opts := &goGit.CloneOptions{
@@ -62,7 +61,6 @@ func CloneRepo(ctx context.Context,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	// Use authentication method, if the repo visibility is private.
 	isPrivate, err := isRepoPrivate(ctx, url)
 	assert.AssertErrNil(ctx, err, "Failed to determine repo visibility")
 	if isPrivate {
@@ -137,21 +135,27 @@ func initRepo(ctx context.Context,
 	return repo
 }
 
-// IsRepoPrivate checks if the repository is private using the appropriate API
+// Returns whether the given git repository is private or not.
 func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
-	// Create a new HTTP client
+	// User is using SSH private key to authenticate against the git server.
+	// The repository is then definitely private.
+	if len(config.ParsedGeneralConfig.Git.PrivateKey) > 0 {
+		return true, nil
+	}
+
+	// We'll send an HTTP GET request to the repository URL.
+	// If the request succeeds with a statuscode of 200, that means the repository is public.
+	// Otherwise, it's private.
+
 	client := &http.Client{}
 
-	// Use CA bundle, provided by the user, when dealing with user's git server.
+	// Use CA bundle, provided by the user, when dealing with his / her git server.
 	caBundle := config.ParsedGeneralConfig.Git.CABundle
 	if (repoURL != constants.RepoURLObmondoKubeAid) && (len(caBundle) > 0) {
 		certPool := x509.NewCertPool()
 
 		ok := certPool.AppendCertsFromPEM(caBundle)
-		if !ok {
-			slog.ErrorContext(ctx, "Failed to add custom CA bundle to cert pool")
-			os.Exit(1)
-		}
+		assert.Assert(ctx, ok, "Failed to add custom CA bundle to cert pool")
 
 		client.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{
@@ -160,23 +164,15 @@ func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 		}
 	}
 
-	// Construct a new request.
 	request, err := http.NewRequest(http.MethodGet, repoURL, nil)
 	assert.AssertErrNil(ctx, err, "Failed constructing HTTP request")
 
-	// Make the request
 	response, err := client.Do(request)
 	if err != nil {
 		return false, err
 	}
 	defer response.Body.Close()
 
-	// If the request was unsuccessful, then the repo isn't public.
-	if response.StatusCode != http.StatusOK {
-		// If status is NOT 200 OK, it means it's likely private.
-		return true, nil
-	}
-
-	// Request was successful (status was 200 OK), which means the repo is public.
-	return false, nil
+	isRepoPrivate := (response.StatusCode != http.StatusOK)
+	return isRepoPrivate, nil
 }

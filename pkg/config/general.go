@@ -25,6 +25,8 @@ type (
 		CABundlePath string `yaml:"caBundlePath"`
 		CABundle     []byte `yaml:"caBundle"`
 
+		*SSHPrivateKeyConfig `yaml:",inline"`
+
 		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
 	}
 
@@ -123,9 +125,13 @@ type (
 	}
 
 	SSHKeyPairConfig struct {
+		SSHPrivateKeyConfig `yaml:",inline"`
+
 		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"notblank"`
 		PublicKey         string `                         validate:"notblank"`
+	}
 
+	SSHPrivateKeyConfig struct {
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
 		PrivateKey         string `                          validate:"notblank"`
 	}
@@ -291,7 +297,7 @@ type (
 
 	HetznerBareMetalHost struct {
 		ServerID string   `yaml:"serverID" validate:"notblank"`
-		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
+		WWN      []string `yaml:"wwn"      validate:"required,gt=0"`
 	}
 )
 
