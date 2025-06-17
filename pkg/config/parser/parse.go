@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
@@ -33,6 +34,12 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		//nolint:musttag
 		err = yaml.Unmarshal([]byte(config.GeneralConfigFileContents), config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling general config")
+
+		// Cluster name can't contain any dots.
+		clusterNameContainsDots := strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".")
+		assert.Assert(ctx, !clusterNameContainsDots,
+			"Cluster name connot contain dots. Maybe use hyphens instead",
+		)
 
 		// Set globals.CloudProviderName by detecting the underlying cloud-provider being used.
 		detectCloudProviderName()

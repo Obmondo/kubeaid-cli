@@ -6,6 +6,10 @@ CONTAINER_NAME=kubeaid-bootstrap-script-dev
 MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
 NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 
+.PHONY: lint
+lint:
+	@golangci-lint run ./...
+
 .PHONY: build-image-dev
 build-image-dev:
 	@docker build -f ./build/docker/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
