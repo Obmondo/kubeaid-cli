@@ -17,9 +17,9 @@ stringData:
   type: git
 
   {{/* When git authentication method is 'using SSH private key'. */}}
-  {{- if .GitCredentials.SSHPrivateKey }}
+  {{- if .GitConfig.SSHPrivateKeyConfig }}
   sshPrivateKey: |
-    {{- $sshKey := .GitCredentials.SSHPrivateKey }}
+    {{- $sshKey := .GitConfig.PrivateKey }}
     {{- $lines := split $sshKey "\n" }}
     {{- range $index, $line := $lines }}
         {{ $line }}

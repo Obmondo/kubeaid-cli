@@ -93,6 +93,7 @@ hetzner:
 
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
   bareMetal:
+    wipeDisks: {{ .HetznerConfig.BareMetal.WipeDisks }}
     sshKeyPair:
       name: {{ .HetznerConfig.BareMetal.SSHKeyPair.Name }}
     installImage:
@@ -104,18 +105,11 @@ hetzner:
 
     {{/* Handling control-plane in Hetzner bare-metal. */}}
     {{- if eq .HetznerConfig.Mode "bare-metal" }}
-    endpoint: {{ .HetznerConfig.ControlPlane.BareMetal.Endpoint | toIndentYAML 2 | nindent 6 }}
-    bareMetal:
-      bareMetalHosts: {{ .HetznerConfig.ControlPlane.BareMetal.BareMetalHosts | toIndentYAML 2 | nindent 6 }}
+    bareMetal: {{ .HetznerConfig.ControlPlane.BareMetal | toIndentYAML 2 | nindent 6 }}
 
     {{/* Handling control-plane in HCloud. */}}
     {{- else }}
-    hcloud:
-      machineType: {{ .HetznerConfig.ControlPlane.HCloud.MachineType }}
-      replicas: {{ .HetznerConfig.ControlPlane.HCloud.Replicas }}
-      loadBalancer:
-        enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}
-        region: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Region }}
+    hcloud: {{ .HetznerConfig.ControlPlane.HCloud | toIndentYAML 2 | nindent 6 }}
     {{- end }}
 
   nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}

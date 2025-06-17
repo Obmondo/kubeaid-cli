@@ -240,8 +240,9 @@ type (
 	}
 
 	HetznerBareMetalConfig struct {
-		ImagePath  string                     `yaml:"imagePath"  validate:"notblank" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz"`
-		SSHKeyPair HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair" validate:"required"`
+		WipeDisks  bool                       `yaml:"wipeDisks"  default:"false"`
+		ImagePath  string                     `yaml:"imagePath"  default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
+		SSHKeyPair HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                         validate:"required"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
@@ -297,7 +298,7 @@ type (
 
 	HetznerBareMetalHost struct {
 		ServerID string   `yaml:"serverID" validate:"notblank"`
-		WWN      []string `yaml:"wwn"      validate:"required,gt=0"`
+		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
 	}
 )
 

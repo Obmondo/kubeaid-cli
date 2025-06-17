@@ -31,8 +31,21 @@ spec:
       kind: MachineDeployment
       jsonPointers:
         - /spec/replicas
-    {{/* TODO : We don't want to add this when mode is set to "bare-metal". */}}
+    {{- if .HetznerConfig}}
+
+    {{- if eq .HetznerConfig.Mode "bare-metal" }}
     - group: infrastructure.cluster.x-k8s.io
       kind: HetznerCluster
       jsonPointers:
         - /spec/controlPlaneEndpoint/host
+    {{- end }}
+
+    {{- if or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid") }}
+    {{/* After the disks are wiped, CAPH removes the annotation. */}}
+    - group: infrastructure.cluster.x-k8s.io
+      kind: HetznerBareMetalHost
+      jsonPointers:
+        - /metadata/annotations/capi.syself.com~1wipe-disk
+    {{- end }}
+
+    {{- end }}

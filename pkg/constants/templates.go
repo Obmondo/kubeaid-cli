@@ -150,6 +150,9 @@ var (
 		// For Hetzner Bare Metal (Syself's) Cloud Controller Manager.
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
+
+		"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
+		"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificSecretTemplateNames = []string{

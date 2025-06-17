@@ -139,7 +139,7 @@ func initRepo(ctx context.Context,
 func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
 	// User is using SSH private key to authenticate against the git server.
 	// The repository is then definitely private.
-	if len(config.ParsedGeneralConfig.Git.PrivateKey) > 0 {
+	if config.ParsedGeneralConfig.Git.SSHPrivateKeyConfig != nil {
 		return true, nil
 	}
 

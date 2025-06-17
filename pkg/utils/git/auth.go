@@ -19,7 +19,7 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 
 	switch {
 	// SSH private key and password.
-	case len(config.ParsedGeneralConfig.Git.PrivateKey) > 0:
+	case config.ParsedGeneralConfig.Git.SSHPrivateKeyConfig != nil:
 		authMethod, err = ssh.NewPublicKeysFromFile(
 			"git",
 			config.ParsedGeneralConfig.Git.PrivateKey,

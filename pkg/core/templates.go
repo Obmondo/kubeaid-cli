@@ -108,10 +108,12 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	// If the user has provided a CA bundle for accessing his / her Git repository,
 	// then we need to provide that CA bundle to ArgoCD via a ConfigMap.
-	embeddedTemplateNames = append(embeddedTemplateNames,
-		"argocd-apps/templates/k8s-configs.yaml.tmpl",
-		"k8s-configs/argocd-tls-certs-cm.configmap.yaml.tmpl",
-	)
+	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			"argocd-apps/templates/k8s-configs.yaml.tmpl",
+			"k8s-configs/argocd-tls-certs-cm.configmap.yaml.tmpl",
+		)
+	}
 
 	// Add cloud provider specific templates.
 	switch globals.CloudProviderName {
