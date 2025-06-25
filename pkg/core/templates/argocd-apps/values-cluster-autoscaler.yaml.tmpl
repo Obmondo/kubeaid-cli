@@ -27,6 +27,6 @@ enableClusterAPIScaleFromZeroSupport:
   aws: true
   {{- else if .AzureConfig }}
   azure: true
-  {{- else if .HetznerConfig }}
-  hetzner: true
+  {{- else if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
+  hcloud: true
   {{- end }}
