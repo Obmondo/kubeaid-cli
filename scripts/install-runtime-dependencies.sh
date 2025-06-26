@@ -26,7 +26,7 @@ mv ./gojsontoyaml /usr/local/bin
 JB_VERSION="v0.6.0"
 wget https://github.com/jsonnet-bundler/jsonnet-bundler/releases/download/${JB_VERSION}/jb-linux-${CPU_ARCHITECTURE}
 chmod +x jb-linux-${CPU_ARCHITECTURE}
-mv jb-linux-${CPU_ARCHITECTURE} /usr/local/bin
+mv jb-linux-${CPU_ARCHITECTURE} /usr/local/bin/jb
 
 # ------------------------------ Required by KubeAid Bootstrap Script -----------------------------
 
