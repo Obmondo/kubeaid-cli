@@ -6,12 +6,14 @@ import (
 	"log/slog"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-resty/resty/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -97,36 +99,71 @@ func getInitMasterNodeIP(ctx context.Context) string {
 	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
 	clusterClient := kubernetes.MustCreateClusterClient(ctx, kubeconfig)
 
-	// Get all the HetznerBareMetalHosts.
-	// We need to wait until atleast 1 HetznerBareMetalHost exists.
-	hetznerBareMetalHosts := &caphV1Beta1.HetznerBareMetalHostList{}
-	for {
-		err := clusterClient.List(ctx, hetznerBareMetalHosts, &client.ListOptions{
-			Namespace: kubernetes.GetCapiClusterNamespace(),
-		})
-		assert.AssertErrNil(ctx, err, "Failed listing HetznerBareMetalHosts")
+	var initMasterNodeIP string
 
-		if len(hetznerBareMetalHosts.Items) > 0 {
-			break
-		}
+	_ = wait.PollUntilContextCancel(ctx,
+		5*time.Second,
+		false,
+		func(ctx context.Context) (bool, error) {
+			// Get the HetznerBareMetalMachines.
+			hetznerBareMetalMachines := &caphV1Beta1.HetznerBareMetalMachineList{}
+			err := clusterClient.List(ctx, hetznerBareMetalMachines, &client.ListOptions{
+				Namespace: kubernetes.GetCapiClusterNamespace(),
+			})
+			assert.AssertErrNil(ctx, err, "Failed listing HetznerBareMetalMachines")
 
-		time.Sleep(time.Minute)
-	}
+			// Any HetznerBareMetalMachine has still not been created.
+			// Wait for sometime and check again.
+			if len(hetznerBareMetalMachines.Items) == 0 {
+				return false, nil
+			}
 
-	// Sort the HetznerBareMetalHosts in ascending order, by the time of creation.
-	// The oldest HetznerBareMetalHost corresponds to the 'init master node'.
-	sort.Slice(hetznerBareMetalHosts.Items, func(i, j int) bool {
-		a := hetznerBareMetalHosts.Items[i]
-		b := hetznerBareMetalHosts.Items[j]
+			// Sort the HetznerBareMetalMachines in ascending order, by the time of creation.
+			// The oldest HetznerBareMetalMachine corresponds to the 'init master node'.
+			sort.Slice(hetznerBareMetalMachines.Items, func(i, j int) bool {
+				a := hetznerBareMetalMachines.Items[i]
+				b := hetznerBareMetalMachines.Items[j]
 
-		return a.CreationTimestamp.Before(&b.CreationTimestamp)
-	})
+				return a.CreationTimestamp.Before(&b.CreationTimestamp)
+			})
 
-	// Get the 'init master node's IP.
+			initMasterNodeHetznerBareMetalMachine := hetznerBareMetalMachines.Items[0]
 
-	initMasterNodeHetznerBareMetalHost := hetznerBareMetalHosts.Items[0]
+			// Now, that we have detected the HetznerBareMetalMachine that corresponds to the 'init master node',
+			// let's get the corresponding HetznerBareMetalHost.
 
-	return initMasterNodeHetznerBareMetalHost.Spec.Status.IPv4
+			hostAnnotation, ok := initMasterNodeHetznerBareMetalMachine.Annotations[caphV1Beta1.HostAnnotation]
+			if !ok {
+				return false, nil
+			}
+
+			hostAnnotationParts := strings.Split(hostAnnotation, "/")
+
+			initMasterNodeHetznerBareMetalHost := &caphV1Beta1.HetznerBareMetalHost{
+				ObjectMeta: metaV1.ObjectMeta{
+					Namespace: hostAnnotationParts[0],
+					Name:      hostAnnotationParts[1],
+				},
+			}
+			err = kubernetes.GetKubernetesResource(
+				ctx,
+				clusterClient,
+				initMasterNodeHetznerBareMetalHost,
+			)
+			assert.AssertErrNil(ctx, err,
+				"Failed getting HetznerBareMetalHost corresponding to the 'init master node'",
+			)
+
+			initMasterNodeIP = initMasterNodeHetznerBareMetalHost.Spec.Status.IPv4
+			if len(initMasterNodeIP) == 0 {
+				return false, nil
+			}
+
+			return true, nil
+		},
+	)
+
+	return initMasterNodeIP
 }
 
 // Makes the Failover IP point to the given server.

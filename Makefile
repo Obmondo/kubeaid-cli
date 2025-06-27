@@ -112,24 +112,24 @@ recover-cluster-azure-dev:
 sample-config-generate-hetzner-dev:
 	@go run ./cmd/ config generate hetzner
 
-.PHONY: devenv-create-hetzner-hcloud-dev
-devenv-create-hetzner-hcloud-dev:
+.PHONY: devenv-create-hcloud-dev
+devenv-create-hcloud-dev:
 	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud \
     --skip-pr-workflow \
     --skip-monitoring-setup \
 
-.PHONY: bootstrap-cluster-hetzner-hcloud-dev
-bootstrap-cluster-hetzner-hcloud-dev:
+.PHONY: bootstrap-cluster-hcloud-dev
+bootstrap-cluster-hcloud-dev:
 	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud/ \
     --skip-pr-workflow \
     --skip-monitoring-setup \
 
-.PHONY: delete-provisioned-cluster-hetzner-hcloud-dev
-delete-provisioned-cluster-hetzner-hcloud-dev:
+.PHONY: delete-provisioned-cluster-hcloud-dev
+delete-provisioned-cluster-hcloud-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/hetzner/hcloud/
 
@@ -152,6 +152,7 @@ bootstrap-cluster-hetzner-bare-metal-dev:
 .PHONY: delete-provisioned-cluster-hetzner-bare-metal-dev
 delete-provisioned-cluster-hetzner-bare-metal-dev:
 	@go run ./cmd/ cluster delete \
+    --debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal/
 
 .PHONY: sample-config-generate-local-dev

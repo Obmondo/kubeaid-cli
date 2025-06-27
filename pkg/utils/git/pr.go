@@ -61,7 +61,16 @@ func AddCommitAndPushChanges(ctx context.Context,
 		"Added, committed and pushed changes",
 		slog.String("commit-hash", commitObject.Hash.String()),
 	)
-	slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", getCreatePRURL(branch)))
+
+	// If we didn't push the changes to the default branch, and rather to a feature branch,
+	// then prompt the user to create a PR against and merge those changes into the default branch.
+	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
+	if branch != defaultBranchName {
+		slog.InfoContext(ctx,
+			"Create and merge PR please",
+			slog.String("URL", getCreatePRURL(branch)),
+		)
+	}
 
 	return commitObject.Hash
 }
