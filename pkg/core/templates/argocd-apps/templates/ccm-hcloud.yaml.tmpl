@@ -2,8 +2,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: "{{ .KubeaidVersion }}"
-    kubeaid.io/managed-by: "kubeaid"
+    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "10"
   name: ccm-hcloud
   namespace: argocd
