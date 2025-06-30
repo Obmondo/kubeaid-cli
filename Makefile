@@ -155,6 +155,28 @@ delete-provisioned-cluster-hetzner-bare-metal-dev:
     --debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal/
 
+.PHONY: devenv-create-hetzner-hybrid-dev
+devenv-create-hetzner-hybrid-dev:
+	@go run ./cmd/ devenv create \
+		--debug \
+    --configs-directory ./outputs/configs/hetzner/hybrid \
+    --skip-pr-workflow \
+    --skip-monitoring-setup \
+
+.PHONY: bootstrap-cluster-hetzner-hybrid-dev
+bootstrap-cluster-hetzner-hybrid-dev:
+	@go run ./cmd/ cluster bootstrap \
+		--debug \
+    --configs-directory ./outputs/configs/hetzner/hybrid/ \
+    --skip-pr-workflow \
+    --skip-monitoring-setup \
+
+.PHONY: delete-provisioned-cluster-hetzner-hybrid-dev
+delete-provisioned-cluster-hetzner-hybrid-dev:
+	@go run ./cmd/ cluster delete \
+    --debug \
+    --configs-directory ./outputs/configs/hetzner/hybrid/
+
 .PHONY: sample-config-generate-local-dev
 sample-config-generate-local-dev:
 	@go run ./cmd/ config generate local
