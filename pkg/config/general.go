@@ -140,7 +140,6 @@ type (
 	MonitoringConfig struct {
 		KubePrometheusVersion string `yaml:"kubePrometheusVersion" default:"v0.14.0"`
 		GrafanaURL            string `yaml:"grafanaURL"`
-		ConnectObmondo        bool   `yaml:"connectObmondo"        default:"False"`
 	}
 )
 

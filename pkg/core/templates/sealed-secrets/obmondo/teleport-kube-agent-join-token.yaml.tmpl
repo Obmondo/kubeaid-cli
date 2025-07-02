@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: teleport-kube-agent-join-token
+  namespace: obmondo
+type: Opaque
+
+stringData:
+  auth-token: {{ .CustomerCredentials.TeleportAuthToken }}

@@ -169,6 +169,25 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 }
 
+// Obmondo customer specific template names.
+var (
+	CustomerSpecificNonSecretTemplateNames = []string{
+		// For Teleport Kube Agent component.
+		// NOTE : When we'll have support for provisioning gateway cluster running Netbird,
+		//        Teleport will be removed.
+		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
+		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
+
+		// For KubeAid Agent.
+		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
+		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
+	}
+
+	CustomerSpecificSecretTemplateNames = []string{
+		"sealed-secrets/obmondo/teleport-kube-agent-join-token.yaml.tmpl",
+	}
+)
+
 // Config template names.
 var (
 	TemplateNameAWSGeneralConfig = "templates/aws/general.config.yaml.tmpl"
