@@ -47,6 +47,7 @@
             (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
             azure-cli
             kubeone
+            cilium-cli
 
             yq
           ];

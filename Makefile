@@ -197,6 +197,12 @@ bootstrap-cluster-bare-metal-dev:
     --skip-pr-workflow \
     --skip-monitoring-setup
 
+.PHONY: test-cluster-bare-metal-dev
+test-cluster-bare-metal-dev:
+	@go run ./cmd/ cluster test \
+		--debug \
+    --configs-directory ./outputs/configs/bare-metal/
+
 .PHONY: delete-provisioned-cluster-bare-metal-dev
 delete-provisioned-cluster-bare-metal-dev:
 	@go run ./cmd/ cluster delete \

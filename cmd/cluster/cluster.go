@@ -32,6 +32,7 @@ var ClusterCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	ClusterCmd.AddCommand(BootstrapCmd)
+	ClusterCmd.AddCommand(TestCmd)
 	ClusterCmd.AddCommand(upgrade.UpgradeCmd)
 	ClusterCmd.AddCommand(DeleteCmd)
 	ClusterCmd.AddCommand(RecoverCmd)

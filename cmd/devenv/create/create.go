@@ -10,7 +10,7 @@ import (
 var CreateCmd = &cobra.Command{
 	Use: "create",
 
-	Short: "Create and setup the local K3D management cluster, for deploying a KubeAid managed cluster",
+	Short: "Create and setup the local K3D management cluster, for deploying the KubeAid managed main cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.CreateDevEnv(cmd.Context(), &core.CreateDevEnvArgs{

@@ -150,6 +150,7 @@ const (
 	// Namespaces.
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
+	NamespaceCiliumTest    = "cilium-test"
 
 	// Service Accounts.
 	ServiceAccountCAPZ          = "capz-manager"
