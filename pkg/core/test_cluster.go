@@ -4,10 +4,11 @@ import (
 	"context"
 	"log/slog"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestCluster(ctx context.Context) {
