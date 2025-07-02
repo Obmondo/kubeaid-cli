@@ -232,7 +232,7 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 	assert.AssertErrNil(ctx, err, "Failed getting CRONJob")
 
 	// Create a Job using the CRONJob's Job template.
-	job := batchV1.Job{
+	job := &batchV1.Job{
 		ObjectMeta: metaV1.ObjectMeta{
 			GenerateName: objectKey.Name,
 			Namespace:    objectKey.Namespace,
@@ -240,7 +240,7 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 
 		Spec: cronJob.Spec.JobTemplate.Spec,
 	}
-	err = clusterClient.Create(ctx, &job, &client.CreateOptions{})
+	err = clusterClient.Create(ctx, job, &client.CreateOptions{})
 	assert.AssertErrNil(ctx, err, "Failed creating Job", slog.String("job", job.Name))
 
 	slog.InfoContext(ctx, "Triggered CRONJob", slog.String("job", job.Name))

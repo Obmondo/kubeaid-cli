@@ -45,6 +45,8 @@ type TemplateValues struct {
 	HetznerConfig      *config.HetznerConfig
 	HetznerCredentials *config.HetznerCredentials
 
+	BareMetalConfig *config.BareMetalConfig
+
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
 
@@ -68,6 +70,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
 		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,
+
+		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
 	}
 
 	// Set cloud provider specific values.
@@ -166,16 +170,17 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			)
 		}
 
+	case constants.CloudProviderBareMetal:
+		embeddedTemplateNames = append(constants.CommonNonSecretTemplateNames,
+			"kubeone/kubeone-cluster.yaml.tmpl",
+		)
+
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
-	// Add Obmondo K8s Agent related templates, if 'monitoring.connectObmondo' is set to true.
-	if config.ParsedGeneralConfig.Monitoring.ConnectObmondo {
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			"argocd-apps/templates/obmondo-k8s-agent.yaml.tmpl",
-			"argocd-apps/values-obmondo-k8s-agent.yaml.tmpl",
-		)
+	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		// TODO : Add customer specific templates.
 	}
 
 	return embeddedTemplateNames
@@ -218,6 +223,10 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonSecretTemplateNames
+	}
+
+	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		// TODO : Add customer specific templates.
 	}
 
 	return embeddedTemplateNames

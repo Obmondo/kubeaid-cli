@@ -111,10 +111,11 @@ type (
 	}
 
 	CloudConfig struct {
-		AWS     *AWSConfig     `yaml:"aws"`
-		Hetzner *HetznerConfig `yaml:"hetzner"`
-		Azure   *AzureConfig   `yaml:"azure"`
-		Local   *LocalConfig   `yaml:"local"`
+		AWS       *AWSConfig       `yaml:"aws"`
+		Azure     *AzureConfig     `yaml:"azure"`
+		Hetzner   *HetznerConfig   `yaml:"hetzner"`
+		BareMetal *BareMetalConfig `yaml:"bare-metal"`
+		Local     *LocalConfig     `yaml:"local"`
 
 		DisasterRecovery *DisasterRecoveryConfig `yaml:"disasterRecovery"`
 	}
@@ -139,7 +140,6 @@ type (
 	MonitoringConfig struct {
 		KubePrometheusVersion string `yaml:"kubePrometheusVersion" default:"v0.14.0"`
 		GrafanaURL            string `yaml:"grafanaURL"`
-		ConnectObmondo        bool   `yaml:"connectObmondo"        default:"False"`
 	}
 )
 
@@ -299,6 +299,42 @@ type (
 	HetznerBareMetalHost struct {
 		ServerID string   `yaml:"serverID" validate:"notblank"`
 		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
+	}
+)
+
+type (
+	BareMetalConfig struct {
+		SSH BareMetalSSHConfig `yaml:"ssh" validate:"required"`
+
+		ControlPlane BareMetalControlPlane `yaml:"controlPlane" validate:"required"`
+		NodeGroups   []BareMetalNodeGroup  `yaml:"nodeGroups"`
+	}
+
+	BareMetalSSHConfig struct {
+		SSHPrivateKeyConfig `yaml:",inline"`
+
+		Port     uint   `yaml:"port"     validate:"required" default:"22"`
+		Username string `yaml:"username" validate:"notblank" default:"root"`
+	}
+
+	BareMetalControlPlane struct {
+		Endpoint BareMetalControlPlaneEndpoint `yaml:"endpoint" validate:"required"`
+		Hosts    []BareMetalHost               `yaml:"hosts"    validate:"required"`
+	}
+
+	BareMetalControlPlaneEndpoint struct {
+		Host string `yaml:"host" validate:"notblank"`
+		Port uint   `yaml:"port" validate:"required" default:"6443"`
+	}
+
+	BareMetalNodeGroup struct {
+		NodeGroup `yaml:",inline"`
+
+		Hosts []BareMetalHost `yaml:"hosts" validate:"required"`
+	}
+
+	BareMetalHost struct {
+		PublicAddress string `yaml:"publicAddress" validate:"notblank"`
 	}
 )
 

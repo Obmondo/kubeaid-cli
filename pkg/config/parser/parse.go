@@ -117,6 +117,9 @@ func detectCloudProviderName() {
 	case config.ParsedGeneralConfig.Cloud.Hetzner != nil:
 		globals.CloudProviderName = constants.CloudProviderHetzner
 
+	case config.ParsedGeneralConfig.Cloud.BareMetal != nil:
+		globals.CloudProviderName = constants.CloudProviderBareMetal
+
 	case config.ParsedGeneralConfig.Cloud.Local != nil:
 		globals.CloudProviderName = constants.CloudProviderLocal
 
@@ -203,6 +206,7 @@ func hydrateVMSpecs(ctx context.Context) {
 			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
 		}
 
+	case constants.CloudProviderBareMetal:
 	case constants.CloudProviderLocal:
 		return
 

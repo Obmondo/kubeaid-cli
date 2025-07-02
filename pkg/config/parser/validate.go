@@ -145,6 +145,7 @@ func validateConfigs() {
 			}
 		}
 
+	case constants.CloudProviderBareMetal:
 	case constants.CloudProviderLocal:
 		break
 

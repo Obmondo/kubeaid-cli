@@ -6,10 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
+	"github.com/argoproj/argo-cd/v2/pkg/apiclient/account"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/certificate"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
@@ -19,7 +21,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	coreV1 "k8s.io/api/core/v1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -35,7 +38,9 @@ import (
 
 // Installs the ArgoCD Helm chart and creates the root ArgoCD App.
 // Then creates and returns an ArgoCD Application client.
-func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient client.Client) {
+func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient client.Client) {
+	slog.InfoContext(ctx, "Installing and setting up ArgoCD")
+
 	// Install the ArgoCD AppProject CRD.
 	// Otherwise, we'll get error while installing the ArgoCD Helm chart, since it tries to create
 	// the kubeaid ArgoCD App Project during installation.
@@ -52,18 +57,33 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 	))
 
 	// Install the ArgoCD Helm chart.
-	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
-		Namespace:   constants.NamespaceArgoCD,
-		ReleaseName: constants.ReleaseNameArgoCD,
-		Values:      map[string]any{},
-	})
+	{
+		argoCDHelmValues := map[string]any{}
+
+		// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
+		// We need to create an ArgoCD account for KubeAid Agent.
+		argoCDHelmValues["argo-cd"] = map[string]any{
+			"configs": map[string]any{
+				"cm": map[string]any{
+					"accounts.kubeaid-agent": "apiKey",
+				},
+			},
+		}
+
+		HelmInstall(ctx, &HelmInstallArgs{
+			ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
+			Namespace:   constants.NamespaceArgoCD,
+			ReleaseName: constants.ReleaseNameArgoCD,
+			Values:      argoCDHelmValues,
+		})
+	}
 
 	// Port-forward ArgoCD and create ArgoCD client.
-	argoCDClient := NewArgoCDClient(ctx, kubeClient)
+	argoCDClient := NewArgoCDClient(ctx, clusterClient)
 
-	// Create ArgoCD Application client.
-	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
+	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
+	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
 	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
@@ -87,22 +107,27 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, kubeClient cl
 		slog.InfoContext(ctx, "Added CA bundle (for accessing customer's git server) to ArgoCD")
 	}
 
-	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
-	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
+	// Create ArgoCD Application client.
+	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
 
 	// Create the root ArgoCD App.
-	{
-		rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
-		utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	slog.InfoContext(ctx, "Created root ArgoCD app")
 
-		slog.Info("Created root ArgoCD app")
+	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
+	// We need to setup the ArgoCD account created for KubeAid Agent.
+	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		argoCDAccountClientCloser, argoCDAccountClient := argoCDClient.NewAccountClientOrDie()
+		defer argoCDAccountClientCloser.Close()
+
+		setupKubeAgentArgoCDAccount(ctx, argoCDAccountClient, clusterClient)
 	}
 }
 
 // Port-forwards the ArgoCD server and creates an ArgoCD client.
 // Returns the ArgoCD client.
-func NewArgoCDClient(ctx context.Context, kubeClient client.Client) apiclient.Client {
+func NewArgoCDClient(ctx context.Context, clusterClient client.Client) apiclient.Client {
 	slog.InfoContext(ctx, "Creating ArgoCD client")
 
 	// Create ArgoCD client (without auth token).
@@ -128,16 +153,7 @@ func NewArgoCDClient(ctx context.Context, kubeClient client.Client) apiclient.Cl
 	defer argoCDClientSessionCloser.Close()
 
 	// Retrieve ArgoCD admin password.
-	argoCDInitialAdminSecret := &coreV1.Secret{}
-	err = kubeClient.Get(ctx,
-		types.NamespacedName{
-			Namespace: constants.NamespaceArgoCD,
-			Name:      "argocd-initial-admin-secret",
-		},
-		argoCDInitialAdminSecret,
-	)
-	assert.AssertErrNil(ctx, err, "Failed getting argocd-initial-admin-secret Secret")
-	argoCDAdminPassword := string(argoCDInitialAdminSecret.Data["password"])
+	argoCDAdminPassword := getArgoCDAdminPassword(ctx, clusterClient)
 
 	// Retrieve ArgoCD auth token.
 	response, err := argoCDClientSession.Create(context.Background(), &session.SessionCreateRequest{
@@ -162,7 +178,7 @@ func CreateArgoCDProject(ctx context.Context,
 ) {
 	_, err := argoCDProjectClient.Create(ctx, &project.ProjectCreateRequest{
 		Project: &argoCDV1Aplha1.AppProject{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: metaV1.ObjectMeta{
 				Name: constants.ArgoCDProjectKubeAid,
 			},
 			Spec: argoCDV1Aplha1.AppProjectSpec{
@@ -173,8 +189,8 @@ func CreateArgoCDProject(ctx context.Context,
 					Namespace: "*",
 					Name:      "*",
 				}},
-				ClusterResourceWhitelist:   []v1.GroupKind{{Group: "*", Kind: "*"}},
-				NamespaceResourceWhitelist: []v1.GroupKind{{Group: "*", Kind: "*"}},
+				ClusterResourceWhitelist:   []metaV1.GroupKind{{Group: "*", Kind: "*"}},
+				NamespaceResourceWhitelist: []metaV1.GroupKind{{Group: "*", Kind: "*"}},
 			},
 		},
 	})
@@ -190,7 +206,7 @@ func CreateArgoCDProject(ctx context.Context,
 		assert.AssertErrNil(ctx, err, "Failed creating kubeaid ArgoCD Project")
 	}
 
-	slog.InfoContext(ctx, "Created kubeaid ArgoCD project")
+	slog.InfoContext(ctx, "Created KubeAid ArgoCD project")
 }
 
 // Recreates the ArgoCD Application client by port-forwarding the ArgoCD server.
@@ -387,4 +403,69 @@ func isArgoCDAppSynced(
 	default:
 		return argoCDApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced
 	}
+}
+
+func setupKubeAgentArgoCDAccount(ctx context.Context,
+	argoCDAccountServiceClient account.AccountServiceClient,
+	clusterClient client.Client,
+) {
+	// During Helm installation, an ArgoCD account for KubeAid Agent got created.
+	// Unfortunately, ArgoCD will not auto-generate an initial password for that account.
+	// So, we need to do it ourselves. And save it in the 'argocd-initial-kubeaid-agent-secret'
+	// Kubernetes Secret, from where KubeAid Agent can pick it up.
+
+	slog.InfoContext(ctx, "Setting up KubeAid Agent ArgoCD account")
+
+	// Generate a random password.
+	password := strconv.Itoa(int(time.Now().Unix()))
+
+	// Use it for the KubeAid Agent user.
+	_, err := argoCDAccountServiceClient.UpdatePassword(ctx, &account.UpdatePasswordRequest{
+		Name:            "kubeaid-agent",
+		CurrentPassword: getArgoCDAdminPassword(ctx, clusterClient),
+		NewPassword:     password,
+	})
+	assert.AssertErrNil(ctx, err,
+		"Failed generating initial password for KubeAid Agent ArgoCD account",
+	)
+
+	// Store it in the 'argocd-initial-kubeaid-agent-secret' Kubernetes Secret.
+
+	secretName := "argocd-initial-kubeaid-agent-secret"
+
+	argoCDInitialKubeAidAgentSecret := &coreV1.Secret{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      secretName,
+			Namespace: constants.NamespaceArgoCD,
+		},
+
+		StringData: map[string]string{
+			"password": password,
+		},
+	}
+	err = clusterClient.Create(ctx, argoCDInitialKubeAidAgentSecret, &client.CreateOptions{})
+	if k8sAPIErrors.IsAlreadyExists(err) {
+		return
+	}
+	assert.AssertErrNil(ctx, err,
+		"Failed creating Kubernetes Secret",
+		slog.String("secret", secretName),
+		slog.String("namespace", constants.NamespaceArgoCD),
+	)
+}
+
+// Returns the initial ArgoCD admin password.
+func getArgoCDAdminPassword(ctx context.Context, clusterClient client.Client) string {
+	argoCDInitialAdminSecret := &coreV1.Secret{}
+	err := clusterClient.Get(ctx,
+		types.NamespacedName{
+			Namespace: constants.NamespaceArgoCD,
+			Name:      "argocd-initial-admin-secret",
+		},
+		argoCDInitialAdminSecret,
+	)
+	assert.AssertErrNil(ctx, err, "Failed getting argocd-initial-admin-secret Secret")
+
+	argoCDAdminPassword := string(argoCDInitialAdminSecret.Data["password"])
+	return argoCDAdminPassword
 }

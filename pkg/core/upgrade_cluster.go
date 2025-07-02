@@ -41,9 +41,9 @@ func UpgradeCluster(ctx context.Context, skipPRFlow bool, args UpgradeClusterArg
 			constants.OutputPathMainClusterKubeconfig,
 		)
 
-		// If `clusterctl move` wasn't executed, then we need to communicate with the management
+		// If 'clusterctl move' wasn't executed, then we need to communicate with the management
 		// cluster instead.
-		if !kubernetes.IsClusterctlMoveExecuted(ctx, clusterClient) {
+		if !kubernetes.IsClusterctlMoveExecuted(ctx) {
 			clusterClient = kubernetes.MustCreateClusterClient(ctx,
 				kubernetes.GetManagementClusterKubeconfigPath(ctx),
 			)

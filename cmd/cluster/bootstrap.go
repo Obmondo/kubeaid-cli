@@ -10,7 +10,7 @@ import (
 var BootstrapCmd = &cobra.Command{
 	Use: "bootstrap",
 
-	Short: "Bootstrap a Kubernetes cluster and setup KubeAid",
+	Short: "Bootstrap a KubeAid managed cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.BootstrapCluster(cmd.Context(), core.BootstrapClusterArgs{

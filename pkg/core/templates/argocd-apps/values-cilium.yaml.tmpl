@@ -8,6 +8,6 @@ cilium:
   {{/* I don't know why, when using HCloud, Cilium is not able to auto-detect the routing device. */}}
   {{- if .HetznerConfig }}
   extraArgs:
-    - "--devices=eth+,enp+"
+    - "--devices=eth0,enp9s0"
   {{- end }}
 {{- end }}

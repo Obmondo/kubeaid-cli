@@ -54,10 +54,11 @@ const (
 
 // Cloud providers.
 const (
-	CloudProviderAWS     = "aws"
-	CloudProviderHetzner = "hetzner"
-	CloudProviderAzure   = "azure"
-	CloudProviderLocal   = "local"
+	CloudProviderAWS       = "aws"
+	CloudProviderHetzner   = "hetzner"
+	CloudProviderAzure     = "azure"
+	CloudProviderBareMetal = "bare-metal"
+	CloudProviderLocal     = "local"
 )
 
 // Output paths.
@@ -149,6 +150,7 @@ const (
 	// Namespaces.
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
+	NamespaceCiliumTest    = "cilium-test"
 
 	// Service Accounts.
 	ServiceAccountCAPZ          = "capz-manager"

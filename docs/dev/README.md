@@ -172,3 +172,5 @@ make bootstrap-cluster-local-dev
 - [RAID 5 vs RAID 6](https://www.youtube.com/watch?v=UuUgfCvt9-Q)
 
 - [10.5 Git Internals - The Refspec](https://git-scm.com/book/en/v2/Git-Internals-The-Refspec?utm_source=chatgpt.com)
+
+- [Creating a Kubernetes Cluster on Bare-metal](https://docs.kubermatic.com/kubeone/v1.10/tutorials/creating-clusters-baremetal/)

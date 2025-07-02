@@ -151,6 +151,7 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
+		// For LocalPV provisioner.
 		"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
 		"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 	}
@@ -158,6 +159,32 @@ var (
 	HetznerBareMetalSpecificSecretTemplateNames = []string{
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/hetzner-ssh-keypair.yaml.tmpl",
+	}
+)
+
+// Bare metal specific template names.
+var BareMetalSpecificNonSecretTemplateNames = []string{
+	// For LocalPV provisioner.
+	"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
+	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
+}
+
+// Obmondo customer specific template names.
+var (
+	CustomerSpecificNonSecretTemplateNames = []string{
+		// For Teleport Kube Agent component.
+		// NOTE : When we'll have support for provisioning gateway cluster running Netbird,
+		//        Teleport will be removed.
+		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
+		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
+
+		// For KubeAid Agent.
+		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
+		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
+	}
+
+	CustomerSpecificSecretTemplateNames = []string{
+		"sealed-secrets/obmondo/teleport-kube-agent-join-token.yaml.tmpl",
 	}
 )
 
