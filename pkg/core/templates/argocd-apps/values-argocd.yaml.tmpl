@@ -1,1 +1,16 @@
 ---
+{{- if gt (len .CustomerID) 0 }}
+argo-cd:
+  configs:
+    cm:
+      accounts.kubeaid-agent: apiKey
+
+    rbac:
+      policy.csv: |
+        p, role:kubeaid-agent, applications, get, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, sync, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, health, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, status, kubeaid/*, allow
+
+        g, kubeaid-agent, role:kubeaid-agent
+{{- end }}
