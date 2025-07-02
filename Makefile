@@ -79,7 +79,7 @@ devenv-create-azure-dev:
 	@go run ./cmd/ devenv create \
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
-    --skip-pr-workflow \
+    --skip-pr-workflow
     
 .PHONY: bootstrap-cluster-azure-dev
 bootstrap-cluster-azure-dev:
@@ -87,7 +87,7 @@ bootstrap-cluster-azure-dev:
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-monitoring-setup \
-    --skip-pr-workflow \
+    --skip-pr-workflow
 
 .PHONY: upgrade-cluster-azure-dev
 upgrade-cluster-azure-dev:
@@ -118,7 +118,7 @@ devenv-create-hcloud-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: bootstrap-cluster-hcloud-dev
 bootstrap-cluster-hcloud-dev:
@@ -126,7 +126,7 @@ bootstrap-cluster-hcloud-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hcloud/ \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: delete-provisioned-cluster-hcloud-dev
 delete-provisioned-cluster-hcloud-dev:
@@ -139,7 +139,7 @@ devenv-create-hetzner-bare-metal-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: bootstrap-cluster-hetzner-bare-metal-dev
 bootstrap-cluster-hetzner-bare-metal-dev:
@@ -147,7 +147,7 @@ bootstrap-cluster-hetzner-bare-metal-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: delete-provisioned-cluster-hetzner-bare-metal-dev
 delete-provisioned-cluster-hetzner-bare-metal-dev:
@@ -161,7 +161,7 @@ devenv-create-hetzner-hybrid-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hybrid \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: bootstrap-cluster-hetzner-hybrid-dev
 bootstrap-cluster-hetzner-hybrid-dev:
@@ -169,13 +169,39 @@ bootstrap-cluster-hetzner-hybrid-dev:
 		--debug \
     --configs-directory ./outputs/configs/hetzner/hybrid/ \
     --skip-pr-workflow \
-    --skip-monitoring-setup \
+    --skip-monitoring-setup
 
 .PHONY: delete-provisioned-cluster-hetzner-hybrid-dev
 delete-provisioned-cluster-hetzner-hybrid-dev:
 	@go run ./cmd/ cluster delete \
     --debug \
     --configs-directory ./outputs/configs/hetzner/hybrid/
+
+.PHONY: sample-config-generate-bare-metal-dev
+sample-config-generate-bare-metal-dev:
+	@go run ./cmd/ config generate bare-metal
+
+.PHONY: devenv-create-bare-metal-dev
+devenv-create-bare-metal-dev:
+	@go run ./cmd/ devenv create \
+		--debug \
+    --configs-directory ./outputs/configs/bare-metal/ \
+    --skip-pr-workflow \
+    --skip-monitoring-setup
+
+.PHONY: bootstrap-cluster-bare-metal-dev
+bootstrap-cluster-bare-metal-dev:
+	@go run ./cmd/ cluster bootstrap \
+		--debug \
+    --configs-directory ./outputs/configs/bare-metal/ \
+    --skip-pr-workflow \
+    --skip-monitoring-setup
+
+.PHONY: delete-provisioned-cluster-bare-metal-dev
+delete-provisioned-cluster-bare-metal-dev:
+	@go run ./cmd/ cluster delete \
+    --debug \
+    --configs-directory ./outputs/configs/bare-metal/
 
 .PHONY: sample-config-generate-local-dev
 sample-config-generate-local-dev:

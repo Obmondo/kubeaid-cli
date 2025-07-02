@@ -35,6 +35,11 @@ func hydrateSSHKeyConfigs() {
 				&config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.SSHKeyPair.SSHKeyPairConfig,
 			)
 		}
+
+	case constants.CloudProviderBareMetal:
+		hydrateSSHPrivateKeyConfig(
+			&config.ParsedGeneralConfig.Cloud.BareMetal.SSH.SSHPrivateKeyConfig,
+		)
 	}
 }
 

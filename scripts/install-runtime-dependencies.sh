@@ -82,3 +82,6 @@ Signed-by: /etc/apt/keyrings/microsoft.gpg" | tee /etc/apt/sources.list.d/azure-
 
 apt-get -y update
 apt-get install -y azure-cli
+
+# KubeOne
+curl -sfL get.kubeone.io | sh

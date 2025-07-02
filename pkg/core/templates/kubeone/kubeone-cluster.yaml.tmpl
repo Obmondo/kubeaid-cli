@@ -1,0 +1,65 @@
+apiVersion: kubeone.k8c.io/v1beta2
+kind: KubeOneCluster
+
+name: {{ .ClusterConfig.Name }}
+
+cloudProvider:
+  none: {}
+
+versions:
+  kubernetes: {{ .K8sVersion }}
+
+apiEndpoint: {{ .BareMetalConfig.ControlPlane.Endpoint | toIndentYAML 2 | nindent 2 }}
+
+controlPlane:
+  hosts:
+  {{- range $hostIndex, $host := .BareMetalConfig.ControlPlane.Hosts }}
+    - publicAddress: {{ $host.PublicAddress }}
+      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+      sshUsername: {{ $.BareMetalConfig.SSH.Username }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+  {{- end }}
+
+clusterNetwork:
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"
+  cni:
+    external: {}
+  kubeProxy:
+    skipInstallation: true
+
+machineController:
+  deploy: false
+
+operatingSystemManager:
+  deploy: false
+
+staticWorkers:
+  hosts:
+  {{- range $nodeGroupIndex, $nodeGroup := .BareMetalConfig.NodeGroups }}
+  {{- range $hostIndex, $host := $nodeGroup.Hosts }}
+    - publicAddress: {{ $host.PublicAddress }}
+      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+      sshUsername: {{ $.BareMetalConfig.SSH.Username }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+      labels: {{ $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
+      taints: {{ $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
+  {{- end }}
+  {{- end }}
+
+dynamicWorkers: []
+
+helmReleases:
+  - repoURL: https://helm.cilium.io/
+    chart: cilium
+    version: 1.17.5
+    releaseName: cilium
+    namespace: cilium
+    wait: true
+    values:
+      - inline:
+          operator:
+            replicas: 1
+          kubeProxyReplacement: "true"
+          k8sServiceHost: {{ .BareMetalConfig.ControlPlane.Endpoint.Host }}
+          k8sServicePort: {{ .BareMetalConfig.ControlPlane.Endpoint.Port }}

@@ -28,10 +28,6 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
-		constants.OutputPathMainClusterKubeconfig,
-	)
-
 	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 
 	//nolint:godox
@@ -50,8 +46,8 @@ func DeleteCluster(ctx context.Context) {
 	        sync the whole capi-cluster ArgoCD App? I need to test this.
 	*/
 
-	// Detect whether the `clusterctl move` command has already been executed or not.
-	if kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient) {
+	// Detect whether the 'clusterctl move' command has already been executed or not.
+	if kubernetes.IsClusterctlMoveExecuted(ctx) {
 		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
 		// Move back the ClusterAPI manifests back from the provisioned cluster to the management

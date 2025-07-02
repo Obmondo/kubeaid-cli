@@ -39,8 +39,6 @@
             jsonnet-bundler
             jq
 
-            yq
-
             k3d
             kubectl
             kubeseal
@@ -48,6 +46,9 @@
             (import ./build/nix/pkgs/clusterawsadm.nix { inherit pkgs; })
             (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
             azure-cli
+            kubeone
+
+            yq
           ];
 
           # Hitting this issue : https://github.com/Azure/azure-cli/issues/31419.

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"path"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -31,27 +33,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	// If using a cloud provider, then provision and setup the main cluster.
-	// Your KUBECONIG environment variable also gets updated to the main cluster's kubeconfig path.
-	if globals.CloudProviderName != constants.CloudProviderLocal {
-		provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-		isClusterctlMoveExecuted := (err == nil) &&
-			kubernetes.IsClusterctlMoveExecuted(ctx, provisionedClusterClient)
+	// Provision and setup the main cluster.
+	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
+	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
+		BootstrapClusterArgs: &args,
+		GitAuthMethod:        gitAuthMethod,
+	})
 
-		provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
-			BootstrapClusterArgs:     &args,
-			GitAuthMethod:            gitAuthMethod,
-			IsClusterctlMoveExecuted: isClusterctlMoveExecuted,
-		})
-	}
-
-	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
-	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating cluster client",
-		slog.String("kubeconfig", kubeconfig),
+	// Construct main cluster client.
+	mainClusterClient := kubernetes.MustCreateClusterClient(ctx,
+		utils.MustGetEnv(constants.EnvNameKubeconfig),
 	)
 
 	// Setup Disaster Recovery, if the user wants.
@@ -72,7 +63,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		// Create the first Velero backup.
-		kubernetes.CreateBackup(ctx, "init", clusterClient)
+		kubernetes.CreateBackup(ctx, "init", mainClusterClient)
 
 		// Create first Sealed Secrets backup.
 		kubernetes.TriggerCRONJob(ctx,
@@ -80,53 +71,36 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 				Name:      constants.CRONJobNameBackupSealedSecrets,
 				Namespace: constants.NamespaceSealedSecrets,
 			},
-			clusterClient,
+			mainClusterClient,
 		)
 	}
 
-	slog.InfoContext(ctx, "Cluster has been bootsrapped successfully 🎊")
+	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 }
 
 type ProvisionAndSetupMainClusterArgs struct {
 	*BootstrapClusterArgs
-	GitAuthMethod            transport.AuthMethod
-	IsClusterctlMoveExecuted bool
+	GitAuthMethod transport.AuthMethod
 }
 
 func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMainClusterArgs) {
-	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
-		kubernetes.GetManagementClusterKubeconfigPath(ctx),
-	)
+	switch globals.CloudProviderName {
+	case constants.CloudProviderLocal:
+		// When 'cloud provider = local', the K3d management cluster is the main cluster.
+		// So, we don't need to do anything.
+		return
 
-	if !args.IsClusterctlMoveExecuted {
-		// Sync the complete capi-cluster ArgoCD App.
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
-			[]*argoCDV1Alpha1.SyncOperationResource{},
-		)
+	case constants.CloudProviderBareMetal:
+		// When 'cloud provider = bare-metal', we're given a set of Linux servers whose lifecycle won't
+		// be managed by us.
+		// Since Machine lifecycle management is one of the core elements of the concept behind
+		// ClusterAPI, ClusterAPI doesn't serve well in this case.
+		// We'll be using Kubermatic KubeOne, to initialize the main cluster out of those Linux servers.
+		provisionMainClusterUsingKubeOne(ctx)
 
-		// If provisioning cluster in Hetzner bare-metal, and using a Failover IP,
-		// then we need to make the Failover IP point to the 'init master node'.
-		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
-		if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
-			config.IsControlPlaneInHetznerBareMetal() &&
-			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
-
-			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
-
-			hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
-		}
-
-		// Wait for the main cluster to be provisioned.
-		kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
-
-		// Save kubeconfig locally.
-		kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
-
-		slog.InfoContext(ctx,
-			"Cluster has been provisioned successfully 🎉🎉 !",
-			slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
-		)
+	default:
+		// Use ClusterAPI to provision the main cluster in the cloud.
+		provisionMainClusterUsingClusterAPI(ctx)
 	}
 
 	// Close ArgoCD application client (to the management cluster).
@@ -150,7 +124,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	}
 
 	/*
-		Setup the provisioned cluster.
+		Setup the main cluster.
 
 		NOTE : We need to update the Sealed Secrets in the kubeaid-config fork.
 		       Currently, they represent Kubernetes Secrets encrypted using the private key of the
@@ -165,8 +139,16 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		GitAuthMethod:       args.GitAuthMethod,
 	})
 
-	// Pivot ClusterAPI (the provisioned cluster will manage itself), if not disabled by the user.
-	if !args.SkipClusterctlMove && !args.IsClusterctlMoveExecuted {
+	if !kubernetes.UsingClusterAPI() {
+		return
+	}
+
+	// Hold on!
+	// When using ClusterAPI, we need to do a bit more for the main cluster setup.
+
+	// Pivot ClusterAPI (the provisioned cluster will manage itself),
+	// if enabled by the user and not alredy done.
+	if !args.SkipClusterctlMove && !kubernetes.IsClusterctlMoveExecuted(ctx) {
 		pivotCluster(ctx)
 	}
 
@@ -181,12 +163,55 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	}
 
 	// Sync the external-snapshotter ArgoCD App,
-	// if not using Hetzner.
+	// if not using Hetzner (since currently we don't support setting up disaster recovery for
+	// Hetzner 🥴).
 	if globals.CloudProviderName != constants.CloudProviderHetzner {
 		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 	}
+}
+
+func provisionMainClusterUsingClusterAPI(ctx context.Context) {
+	// Determine whether 'clusterctl move' has been executed or not.
+	// If yes, then we don't need to do anything.
+	isClusterctlMoveExecuted := kubernetes.IsClusterctlMoveExecuted(ctx)
+	if isClusterctlMoveExecuted {
+		return
+	}
+
+	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
+		kubernetes.GetManagementClusterKubeconfigPath(ctx),
+	)
+
+	// Sync the complete capi-cluster ArgoCD App.
+	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		[]*argoCDV1Alpha1.SyncOperationResource{},
+	)
+
+	// If provisioning cluster in Hetzner bare-metal, and using a Failover IP,
+	// then we need to make the Failover IP point to the 'init master node'.
+	// 'init master node' is the very first master node, where 'kubeadm init' is executed.
+	if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
+		config.IsControlPlaneInHetznerBareMetal() &&
+		config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+
+		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+		assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+
+		hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+	}
+
+	// Wait for the main cluster to be provisioned.
+	kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
+
+	// Save kubeconfig locally.
+	kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
+
+	slog.InfoContext(ctx,
+		"Main cluster has been provisioned successfully 🎉🎉 !",
+		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
+	)
 }
 
 func pivotCluster(ctx context.Context) {
@@ -213,4 +238,39 @@ func pivotCluster(ctx context.Context) {
 		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
 		constants.OutputPathMainClusterKubeconfig,
 	))
+}
+
+func provisionMainClusterUsingKubeOne(ctx context.Context) {
+	mainClusterName := config.ParsedGeneralConfig.Cluster.Name
+
+	kubeoneDir := path.Join(utils.GetClusterDir(), "kubeone")
+
+	slog.InfoContext(ctx, "Provisioning main cluster using Kubermatic KubeOne")
+
+	utils.ExecuteCommandOrDie(fmt.Sprintf(
+		"kubeone apply --manifest %s/kubeone-cluster.yaml --auto-approve",
+		kubeoneDir,
+	))
+
+	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.
+	// We don't need it.
+	err := os.Remove(fmt.Sprintf("%s/%s.tar.gz", kubeoneDir, mainClusterName))
+	assert.AssertErrNil(ctx, err,
+		"Failed deleting main cluster's PKI infrastructure backup",
+	)
+
+	// KubeOne also saves the main cluster's kubeconfig locally.
+	// Let's move that kubeconfig file to our specified location.
+	err = os.Rename(
+		fmt.Sprintf("%s-kubeconfig", mainClusterName),
+		constants.OutputPathMainClusterKubeconfig,
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed moving main cluster's kubeconfig to our specified location",
+	)
+
+	slog.InfoContext(ctx,
+		"Main cluster has been provisioned successfully 🎉🎉 !",
+		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
+	)
 }

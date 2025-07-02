@@ -45,6 +45,8 @@ type TemplateValues struct {
 	HetznerConfig      *config.HetznerConfig
 	HetznerCredentials *config.HetznerCredentials
 
+	BareMetalConfig *config.BareMetalConfig
+
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
 }
 
@@ -68,6 +70,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
 		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,
+
+		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
 	}
 
 	// Set cloud provider specific values.
@@ -165,6 +169,11 @@ func getEmbeddedNonSecretTemplateNames() []string {
 				constants.HCloudSpecificNonSecretTemplateNames...,
 			)
 		}
+
+	case constants.CloudProviderBareMetal:
+		embeddedTemplateNames = append(constants.CommonNonSecretTemplateNames,
+			"kubeone/kubeone-cluster.yaml.tmpl",
+		)
 
 	case constants.CloudProviderLocal:
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames

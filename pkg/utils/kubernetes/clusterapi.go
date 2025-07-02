@@ -17,9 +17,23 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
+
+// Returns whether we're using Clusterapi or not.
+func UsingClusterAPI() (usingClusterAPI bool) {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderBareMetal:
+	case constants.CloudProviderLocal:
+		usingClusterAPI = false
+
+	default:
+		usingClusterAPI = true
+	}
+	return
+}
 
 // Waits for the main cluster to be provisioned.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) {
@@ -141,11 +155,20 @@ func GetClusterResource(ctx context.Context,
 	return cluster, nil
 }
 
-// Returns whether the `clusterctl move` command has already been executed or not.
-func IsClusterctlMoveExecuted(ctx context.Context, provisionedClusterClient client.Client) bool {
-	// If the Cluster resource is found in the provisioned cluster, that means `clusterctl move` has
-	// been executed.
-	_, err := GetClusterResource(ctx, provisionedClusterClient)
+// Returns whether the 'clusterctl move' command has already been executed or not.
+func IsClusterctlMoveExecuted(ctx context.Context) bool {
+	mainClusterClient, err := CreateKubernetesClient(ctx,
+		constants.OutputPathMainClusterKubeconfig,
+	)
+	// Main cluster isn't reachable,
+	// which means 'clusterctl move' hasn't been executed.
+	if err != nil {
+		return false
+	}
+
+	// If the Cluster resource is found in the main cluster,
+	// that means 'clusterctl move' has been executed.
+	_, err = GetClusterResource(ctx, mainClusterClient)
 	return err == nil
 }
 

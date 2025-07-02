@@ -151,6 +151,7 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
+		// For LocalPV provisioner.
 		"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
 		"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 	}
@@ -160,6 +161,13 @@ var (
 		"sealed-secrets/capi-cluster/hetzner-ssh-keypair.yaml.tmpl",
 	}
 )
+
+// Bare metal specific template names.
+var BareMetalSpecificNonSecretTemplateNames = []string{
+	// For LocalPV provisioner.
+	"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
+	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
+}
 
 // Config template names.
 var (
