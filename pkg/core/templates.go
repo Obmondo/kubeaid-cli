@@ -179,7 +179,9 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
+	// nolint: revive
 	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		// nolint: godox
 		// TODO : Add customer specific templates.
 	}
 
@@ -225,7 +227,9 @@ func getEmbeddedSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonSecretTemplateNames
 	}
 
+	// nolint: revive
 	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+		// nolint: godox
 		// TODO : Add customer specific templates.
 	}
 

@@ -84,4 +84,9 @@ apt-get -y update
 apt-get install -y azure-cli
 
 # KubeOne
-curl -sfL get.kubeone.io | sh
+KUBEONE_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/kubermatic/kubeone/releases/latest -o /dev/null | sed -e 's|.*/v||')
+
+apt-get install -y unzip
+curl -LO "https://github.com/kubermatic/kubeone/releases/download/v${KUBEONE_VERSION}/kubeone_${KUBEONE_VERSION}_linux_amd64.zip"
+unzip kubeone_${KUBEONE_VERSION}_linux_amd64.zip -d kubeone_${KUBEONE_VERSION}_linux_amd64
+mv kubeone_${KUBEONE_VERSION}_linux_amd64/kubeone /usr/local/bin

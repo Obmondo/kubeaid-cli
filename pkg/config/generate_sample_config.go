@@ -22,7 +22,13 @@ type GenerateSampleConfigArgs struct {
 
 func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs) {
 	// Create configs directory.
-	os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
+	err := os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
+	assert.AssertErrNil(
+		ctx,
+		err,
+		"Failed creating directory",
+		slog.String("path", constants.OutputPathGeneratedConfigsDirectory),
+	)
 
 	// Based on the target cloud provider, determine templates to be used.
 	// We'll generate the sample general and secrets config from those templates.

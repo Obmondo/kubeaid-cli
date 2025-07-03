@@ -220,5 +220,5 @@ To access the ArgoCD admin dashboard :
 		clusterType,
 		clusterKubeconfigPath,
 	)
-	fmt.Println(helpText) //nolint:forbidigo
+	fmt.Println(helpText) //nolint: forbidigo, revive
 }
