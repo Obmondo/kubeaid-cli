@@ -14,7 +14,7 @@ var CreateCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.CreateDevEnv(cmd.Context(), &core.CreateDevEnvArgs{
-			ManagementClusterName:    constants.FlagNameManagementClusterNameDefaultValue,
+			ManagementClusterName:    managementClusterName,
 			SkipMonitoringSetup:      skipMonitoringSetup,
 			SkipPRWorkflow:           skipPRWorkflow,
 			IsPartOfDisasterRecovery: false,
@@ -32,7 +32,7 @@ func init() {
 	// Flags.
 
 	CreateCmd.PersistentFlags().
-		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, "test-cluster",
+		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, constants.FlagNameManagementClusterNameDefaultValue,
 			"Name of the local K3D management cluster",
 		)
 
