@@ -13,12 +13,12 @@ var (
 
 type (
 	GeneralConfig struct {
-		CustomerID string           `yaml:"customerID"`
-		Git        GitConfig        `yaml:"git"`
-		Cluster    ClusterConfig    `yaml:"cluster"    validate:"required"`
-		Forks      ForksConfig      `yaml:"forkURLs"   validate:"required"`
-		Cloud      CloudConfig      `yaml:"cloud"      validate:"required"`
-		Monitoring MonitoringConfig `yaml:"monitoring"`
+		Git            GitConfig            `yaml:"git"`
+		Cluster        ClusterConfig        `yaml:"cluster"        validate:"required"`
+		Forks          ForksConfig          `yaml:"forkURLs"       validate:"required"`
+		Cloud          CloudConfig          `yaml:"cloud"          validate:"required"`
+		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
+		Obmondo        ObmondoConfig        `yaml:"obmondo"`
 	}
 
 	GitConfig struct {
@@ -137,9 +137,16 @@ type (
 		PrivateKey         string `                          validate:"notblank"`
 	}
 
-	MonitoringConfig struct {
-		KubePrometheusVersion string `yaml:"kubePrometheusVersion" default:"v0.14.0"`
-		GrafanaURL            string `yaml:"grafanaURL"`
+	KubePrometheusConfig struct {
+		Version    string `yaml:"version"              default:"v0.15.0"`
+		GrafanaURL string `yaml:"grafanaURL,omitempty"`
+	}
+
+	ObmondoConfig struct {
+		// nolint: godox
+		// TODO: regex validation
+		CustomerID string `yaml:"customerID" validate:"notblank"`
+		Monitoring bool   `yaml:"monitoring"`
 	}
 )
 

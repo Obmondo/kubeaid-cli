@@ -180,8 +180,8 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 func getInfrastructureProviderName() string {
 	infrastructureProviderName := globals.CloudProviderName
 
-	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
-		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedGeneralConfig.CustomerID
+	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
+		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedGeneralConfig.Obmondo.CustomerID
 	}
 
 	return infrastructureProviderName

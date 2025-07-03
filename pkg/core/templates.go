@@ -22,14 +22,14 @@ var KubeaidConfigFileTemplates embed.FS
 type TemplateValues struct {
 	GeneralConfigFileContents string
 
-	CustomerID,
 	CustomerGitServerHostname string
 	config.GitConfig
 	config.GitCredentials
 	config.ForksConfig
 	config.ClusterConfig
 	*config.DisasterRecoveryConfig
-	config.MonitoringConfig
+	config.KubePrometheusConfig
+	config.ObmondoConfig
 	CAPIClusterNamespace string
 
 	AWSConfig *config.AWSConfig
@@ -54,14 +54,14 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
 		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
 
-		CustomerID:                config.ParsedGeneralConfig.CustomerID,
 		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
 		GitConfig:                 config.ParsedGeneralConfig.Git,
 		GitCredentials:            config.ParsedSecretsConfig.Git,
 		ForksConfig:               config.ParsedGeneralConfig.Forks,
 		ClusterConfig:             config.ParsedGeneralConfig.Cluster,
 		DisasterRecoveryConfig:    config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-		MonitoringConfig:          config.ParsedGeneralConfig.Monitoring,
+		KubePrometheusConfig:      config.ParsedGeneralConfig.KubePrometheus,
+		ObmondoConfig:             config.ParsedGeneralConfig.Obmondo,
 		CAPIClusterNamespace:      kubernetes.GetCapiClusterNamespace(),
 
 		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
@@ -180,9 +180,15 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	// nolint: revive
-	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
 		// nolint: godox
-		// TODO : Add customer specific templates.
+		// TODO : Some regex validation, and add customer specific templates
+	}
+
+	// nolint: revive
+	if config.ParsedGeneralConfig.Obmondo.Monitoring {
+		// nolint: godox
+		// TODO : Enable monitoring for the customer and setup kubeaid-agent
 	}
 
 	return embeddedTemplateNames
@@ -228,9 +234,15 @@ func getEmbeddedSecretTemplateNames() []string {
 	}
 
 	// nolint: revive
-	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
 		// nolint: godox
-		// TODO : Add customer specific templates.
+		// TODO : Some regex validation, and add customer specific templates
+	}
+
+	// nolint: revive
+	if config.ParsedGeneralConfig.Obmondo.Monitoring {
+		// nolint: godox
+		// TODO : Enable monitoring for the customer and setup kubeaid-agent
 	}
 
 	return embeddedTemplateNames
