@@ -1,7 +1,7 @@
 global:
   clusterName: {{ .ClusterConfig.Name }}
-  {{- if .CustomerID }}
-  customerid: {{ .CustomerID }}
+  {{- if .ObmondoConfig.CustomerID }}
+  customerid: {{ .ObmondoConfig.CustomerID }}
   {{- end }}
   kubernetes:
     version: {{ .K8sVersion }}

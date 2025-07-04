@@ -1,6 +1,6 @@
 {{- $kubeaidConfigRepositoryName := "kubeaid-config" }}
-{{- if .CustomerID }}
-{{- $kubeaidConfigRepositoryName = printf "kubeaid-config-%s" .CustomerID }}
+{{- if .ObmondoConfig.CustomerID }}
+{{- $kubeaidConfigRepositoryName = printf "kubeaid-config-%s" .ObmondoConfig.CustomerID }}
 {{- end }}
 
 apiVersion: v1

@@ -7,7 +7,7 @@ FROM golang:1.24.3 AS builder
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download -x
 
 COPY . .
 RUN go build -v -o kubeaid-bootstrap-script ./cmd

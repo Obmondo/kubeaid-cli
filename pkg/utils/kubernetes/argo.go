@@ -117,7 +117,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
 	// We need to setup the ArgoCD account created for KubeAid Agent.
-	if len(config.ParsedGeneralConfig.CustomerID) > 0 {
+	if config.ParsedGeneralConfig.Obmondo.Monitoring {
 		argoCDAccountClientCloser, argoCDAccountClient := argoCDClient.NewAccountClientOrDie()
 		defer argoCDAccountClientCloser.Close()
 

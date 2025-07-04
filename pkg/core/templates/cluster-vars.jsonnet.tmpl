@@ -2,11 +2,11 @@
   platform: "kubeadm",
   extra_configs: true,
   "blackbox-exporter": false,
-  connect_obmondo: {{ .ConnectObmondo }},
+  connect_obmondo: {{ .ObmondoConfig.Monitoring }},
   connect_keda: false,
   grafana_keycloak_enable: false,
   grafana_root_url: "{{ .GrafanaURL }}",
-  kube_prometheus_version: "{{ .KubePrometheusVersion }}",
+  kube_prometheus_version: "{{ .KubePrometheusConfig.Version }}",
   enable_custom_metrics_apiservice: true,
   prometheus_operator_resources+: {
     limits: { memory: "80Mi" },
