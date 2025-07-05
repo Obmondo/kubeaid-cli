@@ -48,10 +48,22 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			args.GitAuthMethod,
 		)
 
+		var tag string
+		// if no KubeaidVersion is given, get the latest tag
+		if config.ParsedGeneralConfig.Cluster.KubeaidVersion == "" {
+			tag = gitUtils.GetLatestTag(
+				ctx,
+				kubeAidRepo,
+				config.ParsedGeneralConfig.Forks.KubeaidForkURL,
+			)
+		} else {
+			tag = config.ParsedGeneralConfig.Cluster.KubeaidVersion
+		}
+
 		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
 		gitUtils.HardResetRepoToTag(ctx,
 			kubeAidRepo,
-			config.ParsedGeneralConfig.Cluster.KubeaidVersion,
+			tag,
 		)
 	}
 
