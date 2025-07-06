@@ -17,7 +17,9 @@ controlPlane:
     - publicAddress: {{ $host.PublicAddress }}
       sshPort: {{ $.BareMetalConfig.SSH.Port }}
       sshUsername: {{ $.BareMetalConfig.SSH.Username }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+      {{- if $.BareMetalConfig.SSH.PrivateKey }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- end }}
   {{- end }}
 
 clusterNetwork:
@@ -41,7 +43,9 @@ staticWorkers:
     - publicAddress: {{ $host.PublicAddress }}
       sshPort: {{ $.BareMetalConfig.SSH.Port }}
       sshUsername: {{ $.BareMetalConfig.SSH.Username }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+      {{- if $.BareMetalConfig.SSH.PrivateKey }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- end }}
       labels: {{ $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
       taints: {{ $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
   {{- end }}

@@ -146,8 +146,7 @@ bootstrap-cluster-hetzner-bare-metal-dev:
 	@go run ./cmd/ cluster bootstrap \
 		--debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
+    --skip-pr-workflow
 
 .PHONY: delete-provisioned-cluster-hetzner-bare-metal-dev
 delete-provisioned-cluster-hetzner-bare-metal-dev:

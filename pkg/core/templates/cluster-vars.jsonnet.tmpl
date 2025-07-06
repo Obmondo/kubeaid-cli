@@ -2,7 +2,11 @@
   platform: "kubeadm",
   extra_configs: true,
   "blackbox-exporter": false,
+  {{- if .ObmondoConfig }}
   connect_obmondo: {{ .ObmondoConfig.Monitoring }},
+  {{- else }}
+  connect_obmondo: false,
+  {{- end }}
   connect_keda: false,
   grafana_keycloak_enable: false,
   grafana_root_url: "{{ .GrafanaURL }}",

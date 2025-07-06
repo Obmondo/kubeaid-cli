@@ -3,44 +3,51 @@ package utils
 import (
 	"context"
 	"log/slog"
-	"os/exec"
 	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/go-cmd/cmd"
 )
 
-func executeCommand(command string, panicOnExecutionFailure bool) (string, error) {
+// Executes the given command.
+// The command output is streamed to the standard output.
+func ExecuteCommand(command string) (output string, err error) {
 	slog.Info("Executing command", slog.String("command", sensorCredentials(command)))
 
-	output, err := exec.Command("bash", "-c", command).CombinedOutput()
-	sensoredOutput := sensorCredentials(string(output))
+	commandExecutionOptions := cmd.Options{
+		CombinedOutput: true,
+		Streaming:      true,
+	}
+	commandExecutor := cmd.NewCmdOptions(commandExecutionOptions,
+		"bash", "-c", command,
+	)
 
-	if panicOnExecutionFailure {
-		assert.AssertErrNil(context.Background(), err,
-			"Command execution failed",
-			slog.String("output", sensoredOutput),
-		)
+	// Stream the command execution output to the standard output.
+	for !commandExecutor.Status().Complete {
+		select {
+		case outputLine := <-commandExecutor.Stdout:
+			println(outputLine)
+
+		case outputLine := <-commandExecutor.Stderr:
+			println(outputLine)
+
+		case <-commandExecutor.Start():
+		}
 	}
 
-	// Print out command execution output (if any).
-	if len(output) > 0 {
-		slog.Debug("Command executed", slog.String("output", sensoredOutput))
-	}
-
-	return string(output), err
-}
-
-// Executes the given command. Doesn't panic and returns error (if occurred).
-func ExecuteCommand(command string) (string, error) {
-	return executeCommand(command, false)
+	output = strings.Join(commandExecutor.Status().Stdout, "")
+	err = commandExecutor.Status().Error
+	return
 }
 
 // Executes the given command. Panics if the command execution fails.
 func ExecuteCommandOrDie(command string) string {
-	output, _ := executeCommand(command, true)
+	output, err := ExecuteCommand(command)
+	assert.AssertErrNil(context.Background(), err, "Command execution failed")
+
 	return output
 }
 

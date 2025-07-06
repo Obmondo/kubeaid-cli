@@ -26,7 +26,6 @@
           nativeBuildInputs = [
             go
             golangci-lint
-            golines
 
             nixfmt-rfc-style
             direnv

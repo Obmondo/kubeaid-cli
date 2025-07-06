@@ -18,7 +18,7 @@ type (
 		Forks          ForksConfig          `yaml:"forkURLs"       validate:"required"`
 		Cloud          CloudConfig          `yaml:"cloud"          validate:"required"`
 		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
-		Obmondo        ObmondoConfig        `yaml:"obmondo"`
+		Obmondo        *ObmondoConfig       `yaml:"obmondo"`
 	}
 
 	GitConfig struct {
@@ -318,7 +318,7 @@ type (
 	}
 
 	BareMetalSSHConfig struct {
-		SSHPrivateKeyConfig `yaml:",inline"`
+		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
 
 		Port     uint   `yaml:"port"     validate:"required" default:"22"`
 		Username string `yaml:"username" validate:"notblank" default:"root"`

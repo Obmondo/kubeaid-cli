@@ -140,7 +140,7 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 // with the underlying cloud provider.
 func GetCapiClusterNamespace() string {
 	capiClusterNamespace := "capi-cluster"
-	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
+	if config.ParsedGeneralConfig.Obmondo != nil {
 		capiClusterNamespace = fmt.Sprintf(
 			"capi-cluster-%s",
 			config.ParsedGeneralConfig.Obmondo.CustomerID,

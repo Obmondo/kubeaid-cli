@@ -29,7 +29,7 @@ type TemplateValues struct {
 	config.ClusterConfig
 	*config.DisasterRecoveryConfig
 	config.KubePrometheusConfig
-	config.ObmondoConfig
+	*config.ObmondoConfig
 	CAPIClusterNamespace string
 
 	AWSConfig *config.AWSConfig
@@ -180,15 +180,15 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	// nolint: revive
-	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
+	if config.ParsedGeneralConfig.Obmondo != nil {
 		// nolint: godox
 		// TODO : Some regex validation, and add customer specific templates
-	}
 
-	// nolint: revive
-	if config.ParsedGeneralConfig.Obmondo.Monitoring {
-		// nolint: godox
-		// TODO : Enable monitoring for the customer and setup kubeaid-agent
+		// nolint: revive
+		if config.ParsedGeneralConfig.Obmondo.Monitoring {
+			// nolint: godox
+			// TODO : Enable monitoring for the customer and setup kubeaid-agent
+		}
 	}
 
 	return embeddedTemplateNames
@@ -234,15 +234,15 @@ func getEmbeddedSecretTemplateNames() []string {
 	}
 
 	// nolint: revive
-	if len(config.ParsedGeneralConfig.Obmondo.CustomerID) > 0 {
+	if config.ParsedGeneralConfig.Obmondo != nil {
 		// nolint: godox
 		// TODO : Some regex validation, and add customer specific templates
-	}
 
-	// nolint: revive
-	if config.ParsedGeneralConfig.Obmondo.Monitoring {
-		// nolint: godox
-		// TODO : Enable monitoring for the customer and setup kubeaid-agent
+		// nolint: revive
+		if config.ParsedGeneralConfig.Obmondo.Monitoring {
+			// nolint: godox
+			// TODO : Enable monitoring for the customer and setup kubeaid-agent
+		}
 	}
 
 	return embeddedTemplateNames

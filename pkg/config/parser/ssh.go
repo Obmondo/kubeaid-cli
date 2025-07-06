@@ -36,10 +36,10 @@ func hydrateSSHKeyConfigs() {
 			)
 		}
 
-	case constants.CloudProviderBareMetal:
-		hydrateSSHPrivateKeyConfig(
-			&config.ParsedGeneralConfig.Cloud.BareMetal.SSH.SSHPrivateKeyConfig,
-		)
+		// case constants.CloudProviderBareMetal:
+		// 	hydrateSSHPrivateKeyConfig(
+		// 		&config.ParsedGeneralConfig.Cloud.BareMetal.SSH.SSHPrivateKeyConfig,
+		// 	)
 	}
 }
 
