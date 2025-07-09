@@ -51,5 +51,5 @@ Go ahead and explore it by accessing the [ArgoCD]() and [Grafana]() dashboards.
 
 You can delete the cluster, by running :
 ```shell script
-k3d cluster delete kubeaid-bootstrapper
+docker compose run cleanup
 ```
