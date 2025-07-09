@@ -205,6 +205,9 @@ var (
 	TemplateNameHetznerHybridGeneralConfig = "templates/hetzner/hybrid/general.config.yaml.tmpl"
 	TemplateNameHetznerHybridSecretsConfig = "templates/hetzner/hybrid/secrets.config.yaml.tmpl"
 
+	TemplateNameBareMetalGeneralConfig = "templates/bare-metal/general.config.yaml.tmpl"
+	TemplateNameBareMetalSecretsConfig = "templates/bare-metal/secrets.config.yaml.tmpl"
+
 	TemplateNameLocalGeneralConfig = "templates/local/general.config.yaml.tmpl"
 	TemplateNameLocalSecretsConfig = "templates/local/secrets.config.yaml.tmpl"
 )

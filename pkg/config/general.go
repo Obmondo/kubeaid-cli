@@ -311,7 +311,7 @@ type (
 
 type (
 	BareMetalConfig struct {
-		SSH BareMetalSSHConfig `yaml:"ssh" validate:"required"`
+		SSH BareMetalSSHConfig `yaml:"ssh"`
 
 		ControlPlane BareMetalControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []BareMetalNodeGroup  `yaml:"nodeGroups"`
@@ -341,7 +341,8 @@ type (
 	}
 
 	BareMetalHost struct {
-		PublicAddress string `yaml:"publicAddress" validate:"notblank"`
+		PublicAddress  string `yaml:"publicAddress" validate:"notblank"`
+		PrivateAddress string `yaml:"privateAddress" validate:"notblank"`
 	}
 )
 

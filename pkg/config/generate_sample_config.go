@@ -58,6 +58,10 @@ func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs) {
 			secretsTemplateName = constants.TemplateNameHetznerHybridSecretsConfig
 		}
 
+	case constants.CloudProviderBareMetal:
+		generalTemplateName = constants.TemplateNameBareMetalGeneralConfig
+		secretsTemplateName = constants.TemplateNameBareMetalSecretsConfig
+
 	case constants.CloudProviderLocal:
 		generalTemplateName = constants.TemplateNameLocalGeneralConfig
 		secretsTemplateName = constants.TemplateNameLocalSecretsConfig

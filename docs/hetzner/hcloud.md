@@ -49,7 +49,7 @@
 6. **Access Your Cluster**:
    - Once the setup is complete, you can access your Kubernetes cluster using `kubectl`:
    ```bash
-   export KUBECONFIG=./outputs/kubeconfigs/main.yaml
+   export KUBECONFIG=./outputs/kubeconfigs/clusters/main.yaml
    kubectl get nodes
    ```
 

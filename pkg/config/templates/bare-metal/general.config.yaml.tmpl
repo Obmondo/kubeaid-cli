@@ -1,0 +1,53 @@
+forkURLs:
+  # KubeAid repository URL (in HTTPs syntax).
+  # Defaults to Obmondo's KubeAid repository.
+  kubeaid: https://github.com/Obmondo/KubeAid
+
+  # Your KubeAid config repository URL (in HTTPs syntax).
+  kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
+
+# Kubernetes cluster and control-plane specific configurations.
+cluster:
+
+  # Kubernetes cluster name.
+  name: kubeaid-demo-local
+
+  # Kubernetes version to use.
+  # NOTE : Make sure that the AMI you're using, is targetted towards this Kubernetes version.
+  k8sVersion: v1.31.0
+
+  # Kubeaid version to use.
+  kubeaidVersion: 13.0.0
+
+cloud:
+  bare-metal:
+    # ssh:
+    #   privateKey:
+    #     privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
+
+    controlPlane:
+      endpoint:
+        host: "188.245.118.15"
+        port: 6443
+      hosts:
+        - publicAddress: "188.245.118.15"
+          #
+          # Or you can specify a private IP address.
+          # privateAddress: ""
+
+          sshPort: 22
+          sshUsername: root
+
+    nodeGroups:
+      - name: bootstrapper
+        hosts:
+          - publicAddress: "157.180.41.173"
+            #
+            # Or you can specify a private IP address.
+            # privateAddress: ""
+            sshPort: 22
+            sshUsername: root
+        labels:
+          node-role.kubernetes.io/bootstrapper: ""
+          node.cluster.x-k8s.io/nodegroup: bootstrapper
+        taints: []
