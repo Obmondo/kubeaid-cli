@@ -6,9 +6,9 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
 
 - [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/).
 
-- Autoscalable node-groups, with scale to / from 0 support, using [Cluster AutoScalar](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler).
+- Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support, using ClusterAPI - [Cluster AutoScalar](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) integration.
 
-- GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), [ClusterAPI](https://cluster-api.sigs.k8s.io) and [CrossPlane](https://www.crossplane.io).
+- GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) and [ClusterAPI](https://cluster-api.sigs.k8s.io).
 
 - Monitoring, using [KubePrometheus](https://prometheus-operator.dev).
 

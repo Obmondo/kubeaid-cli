@@ -1,6 +1,16 @@
 # Bare Metal Provider
 
-The `bare-metal` provider is used to provision a KubeAid managed Kubernetes cluster across a given set of bare metal Linux machines.
+The `bare-metal` provider is used to provision a KubeAid managed Kubernetes cluster across a given set of bare metal Linux machines, which has the following setup :
+
+- [Cilium](https://cilium.io) CNI, running in [kube-proxyless mode](https://cilium.io/use-cases/kube-proxy/).
+
+- [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/).
+
+- Node-groups, with **labels and taints propagation** support.
+
+- GitOps, using [ArgoCD](https://argoproj.github.io/cd/) and [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets).
+
+- Monitoring, using [KubePrometheus](https://prometheus-operator.dev).
 
 > Since the lifecycle of those Linux machines need not to be managed, we use [Kubermatic KubeOne](https://github.com/kubermatic/kubeone) under the hood to initialize the Kubernetes cluster.
 
