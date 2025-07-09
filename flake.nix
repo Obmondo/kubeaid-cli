@@ -42,8 +42,8 @@
             kubectl
             kubeseal
             clusterctl
-            (import ./build/nix/pkgs/clusterawsadm.nix { inherit pkgs; })
-            (import ./build/nix/pkgs/azwi.nix { inherit pkgs; })
+            (import ./nix/pkgs/clusterawsadm.nix { inherit pkgs; })
+            (import ./nix/pkgs/azwi.nix { inherit pkgs; })
             azure-cli
             kubeone
             cilium-cli
