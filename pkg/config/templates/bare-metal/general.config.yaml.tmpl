@@ -3,25 +3,35 @@ forkURLs:
   # Defaults to Obmondo's KubeAid repository.
   kubeaid: https://github.com/Obmondo/KubeAid
 
-  # Your KubeAid config repository URL (in HTTPs syntax).
+  # Your KubeAid config fork URL (in HTTPs syntax).
   kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
 
 # Kubernetes cluster and control-plane specific configurations.
 cluster:
 
   # Kubernetes cluster name.
-  name: kubeaid-demo-local
+  name: kubeaid-demo
 
   # Kubernetes version to use.
-  # NOTE : Make sure that the AMI you're using, is targetted towards this Kubernetes version.
+  #
+  # We're using Kubermatic KubeOne v1.10 under the hood, to initialize the Kubernete cluster.
+  # And the supported Kubernetes versions are specified here :
+  # https://docs.kubermatic.com/kubeone/v1.10/architecture/compatibility/supported-versions/.
   k8sVersion: v1.31.0
 
   # Kubeaid version to use.
+  #
+  # By default, the latest KubeAid version is used.
+  # You an view all the KubeAid versions here : https://github.com/Obmondo/kubeaid/releases.
   kubeaidVersion: 13.0.0
 
 cloud:
   bare-metal:
-    # ssh:
+    # If you don't provide details about an SSH private key, then the SSH auth socket will be used
+    # to authenticate to your Linux based bare-metal servers.
+    # So, whenever Kubermatic KubeOne tries to authenticate to your bare-metal Linux servers,
+    # KubeAid Bootstrap Script will prompt you to touch the YubiKey.
+    ssh: {}
     #   privateKey:
     #     privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
 
@@ -45,8 +55,11 @@ cloud:
             #
             # Or you can specify a private IP address.
             # privateAddress: ""
+
             sshPort: 22
             sshUsername: root
+
+        # These labels and taints will be propagated to each node managed by this node-group.
         labels:
           node-role.kubernetes.io/bootstrapper: ""
           node.cluster.x-k8s.io/nodegroup: bootstrapper
