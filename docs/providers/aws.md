@@ -6,7 +6,7 @@ The `aws` provider is used to provision a KubeAid managed Kubernetes cluster in 
 
 - [Kube2IAM](https://github.com/jtblin/kube2iam), to dynamically provide IAM credentials to pods.
 
-- Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support, using ClusterAPI - [Cluster AutoScalar](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) integration.
+- Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support.
 
 - GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) and [ClusterAPI](https://cluster-api.sigs.k8s.io).
 

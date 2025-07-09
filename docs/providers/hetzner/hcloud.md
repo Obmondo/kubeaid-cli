@@ -1,58 +1,75 @@
-## Hetzner cloud
+# Hetzner Provider : HCloud mode
 
-### Generate token and ssh keys
-- Generate an [HCloud API token](https://docs.hetzner.com/cloud/api/getting-started/generating-api-token)
+The `hetzner` provider, in `hcloud` mode, is used to provision a KubeAid managed Kubernetes cluster in HCloud, which has the following setup :
 
-- Generate an [SSH key pair](https://community.hetzner.com/tutorials/add-ssh-key-to-your-hetzner-cloud)
+- [Cilium](https://cilium.io) CNI, running in [kube-proxyless mode](https://cilium.io/use-cases/kube-proxy/).
 
-- Generate the [GitHub token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token).
+- Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support.
 
-### Setup
+- GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) and [ClusterAPI](https://cluster-api.sigs.k8s.io).
 
-1. **Configure Your Environment**:
-   - Setup the .env file
-   ```raw
-   # cat .env
-   CLOUD_PROVIDER=hetzner
-   FLAVOR=hcloud
-   ```
+- Monitoring, using [KubePrometheus](https://prometheus-operator.dev).
 
-2. **Generate the config**:
-   - Run the compose to generate the config, it will drop the file in **/outputs/config**
-   ```bash
-   docker compose run bootstrap-generate
-   ```
+## Prerequisites
 
-3. **Add the user and ssh key**:
-   - Edit general.yaml
-   ```yaml
-   # Any additional users you want to be setup for each Kubernetes node.
-   additionalUsers:
-    - name: your-username
-      sshPublicKey: xxxxxxxxxx
-   ```
+- Fork the [KubeAid Config](https://github.com/Obmondo/kubeaid-config) repository.
 
-4. **Add the git username and token**:
-   - Edit secret.yaml
-   ```yaml
-   git:
-     username: xxxxxxxxxx
-     password: xxxxxxxxxx
-   ```
+- Keep your Git provider credentials ready.
+  > For GitHub, you can create a [Personal Access Token (PAT)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token), which has the permission to write to your KubeAid Config fork.
+  > That PAT will be used as the password.
 
-5. **Bootstrap the cluster**:
-   - Setup the Hetzner cloud k8s cluster
-   ```sh
-   docker compose run bootstrap-cluster
-   ```
+- Have [Docker](https://www.docker.com/products/docker-desktop/) running locally.
 
-6. **Access Your Cluster**:
-   - Once the setup is complete, you can access your Kubernetes cluster using `kubectl`:
-   ```bash
-   export KUBECONFIG=./outputs/kubeconfigs/clusters/main.yaml
-   kubectl get nodes
-   ```
+- Get the utility [docker-compose](https://github.com/Obmondo/kubeaid-bootstrap-script/blob/main/docker-compose.yaml) file, by running :
+  ```shell script
+  wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
+  ```
 
-## Reference
+- [Create an HCloud SSH KeyPair](https://www.youtube.com/watch?v=mxN6fyMuQRI).
 
-https://syself.com/docs/caph/topics/managing-ssh-keys#in-hetzner-cloud
+## Preparing the Configuration Files
+
+You need to have 2 configuration files : `general.yaml` and `secrets.yaml` containing required credentials.
+
+Run :
+```shell script
+docker compose run config-generate
+```
+and a sample of those 2 configuration files will be generated in `outputs/configs`.
+
+Edit those 2 configuration files, based on your requirements.
+
+## Bootstrapping the Cluster
+
+Run the following command, to bootstrap the cluster :
+```shell script
+docker compose run bootstrap-cluster
+```
+
+Aside from the logs getting streamed to your standard output, they'll be saved in `outputs/.log`.
+
+Once the cluster gets bootstrapped, its kubeconfig gets saved in `outputs/kubeconfigs/clusters/main.yaml`.
+
+You can access the cluster, by running :
+```shell script
+export KUBECONFIG=./outputs/kubeconfigs/main.yaml
+kubectl cluster-info
+```
+Go ahead and explore it by accessing the [ArgoCD]() and [Grafana]() dashboards.
+
+## Upgrading the Cluster
+
+In `outputs/configs/general.yaml`, change the `cluster.k8sVersion` to the Kubernetes version you want to upgrade to.
+
+Then re-run :
+```shell script
+docker compose run bootstrap-cluster
+```
+
+## Deleting the Cluster
+
+You can delete the cluster, by running :
+```shell script
+docker compose run delete-cluster
+docker compose run cleanup
+```

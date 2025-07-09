@@ -1,18 +1,14 @@
-# Azure Provider
+# Hetzner Provider : Bare Metal mode
 
-The `azure` provider is used to provision a KubeAid managed Kubernetes cluster in Azure, which has the following setup :
+The `hetzner` provider, in `bare-metal` mode, is used to provision a KubeAid managed Kubernetes cluster in Hetzner Bare-Metal, which has the following setup :
 
 - [Cilium](https://cilium.io) CNI, running in [kube-proxyless mode](https://cilium.io/use-cases/kube-proxy/).
 
-- [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/).
-
-- Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support.
+- Node-groups, with **labels and taints propagation** support.
 
 - GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) and [ClusterAPI](https://cluster-api.sigs.k8s.io).
 
 - Monitoring, using [KubePrometheus](https://prometheus-operator.dev).
-
-- Disaster Recovery, using [Velero](https://velero.io).
 
 ## Prerequisites
 
@@ -29,7 +25,15 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
-- [Register an application in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
+- Create a Hetzner Bare Metal SSH KeyPair, by visiting <https://robot.hetzner.com/key/index>.
+
+- If you're going to use RAID, then remove any pre-existing RAID setup from the Hetzner Bare Metal servers.
+
+  You can do so, by executing the following in each Hetzner Bare Metal server :
+  ```shell script
+  wipefs -fa /dev/sda
+  wipefs -fa /dev/sdb
+  ```
 
 ## Preparing the Configuration Files
 
