@@ -29,6 +29,11 @@ The `aws` provider is used to provision a KubeAid managed Kubernetes cluster in 
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
+- Create a `.env` file, in your working directory, with the following content :
+  ```env
+  CLOUD_PROVIDER=aws
+  ```
+
 - [Create an AWS SSH KeyPair](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/create-key-pairs.html), in the region where you'll be bootstrapping the cluster.
 
   You can use the following command, to do so :

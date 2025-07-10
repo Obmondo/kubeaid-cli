@@ -29,6 +29,11 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
+- Create a `.env` file, in your working directory, with the following content :
+  ```env
+  CLOUD_PROVIDER=azure
+  ```
+
 - [Register an application in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
 
 ## Preparing the Configuration Files

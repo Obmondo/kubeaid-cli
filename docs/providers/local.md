@@ -17,6 +17,11 @@ The `local` provider is used to provision a KubeAid managed `K3D` cluster in you
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
+- Create a `.env` file, in your working directory, with the following content :
+  ```env
+  CLOUD_PROVIDER=local
+  ```
+
 ## Preparing the Configuration Files
 
 You need to have 2 configuration files : `general.yaml` and `secrets.yaml` containing required credentials.

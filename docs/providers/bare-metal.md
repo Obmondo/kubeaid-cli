@@ -29,6 +29,11 @@ The `bare-metal` provider is used to provision a KubeAid managed Kubernetes clus
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
+- Create a `.env` file, in your working directory, with the following content :
+  ```env
+  CLOUD_PROVIDER=bare-metal
+  ```
+
 ## Preparing the Configuration Files
 
 You need to have 2 configuration files : `general.yaml` and `secrets.yaml` containing required credentials.

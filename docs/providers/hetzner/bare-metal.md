@@ -25,6 +25,12 @@ The `hetzner` provider, in `bare-metal` mode, is used to provision a KubeAid man
   wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
   ```
 
+- Create a `.env` file, in your working directory, with the following content :
+  ```env
+  CLOUD_PROVIDER=hetzner
+  FLAVOR=bare-metal
+  ```
+
 - Create a Hetzner Bare Metal SSH KeyPair, by visiting <https://robot.hetzner.com/key/index>.
 
 - If you're going to use RAID, then remove any pre-existing RAID setup from the Hetzner Bare Metal servers.
