@@ -5,11 +5,12 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/go-cmd/cmd"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/go-cmd/cmd"
 )
 
 // Executes the given command.

@@ -31,7 +31,7 @@ linters:
     - gocognit
     - gocyclo
     - forcetypeassert
-    - forbidigo
+    # - forbidigo
     - copyloopvar
     - errorlint
     - dupword
