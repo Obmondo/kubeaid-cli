@@ -5,7 +5,7 @@ networks:
     driver: bridge
 
 services:
-  bootstrap-generate:
+  config-generate:
     image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.2
     container_name: bootstrap-generate
     restart: no
@@ -47,7 +47,7 @@ services:
     networks:
       - k3d
 
-  bootstrap-cleanup:
+  cleanup:
     image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.11.2
     restart: no
     command:
@@ -59,4 +59,3 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - k3d
-
