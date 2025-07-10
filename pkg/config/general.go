@@ -18,7 +18,7 @@ type (
 		Forks          ForksConfig          `yaml:"forkURLs"       validate:"required"`
 		Cloud          CloudConfig          `yaml:"cloud"          validate:"required"`
 		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
-		Obmondo        ObmondoConfig        `yaml:"obmondo"`
+		Obmondo        *ObmondoConfig       `yaml:"obmondo"`
 	}
 
 	GitConfig struct {
@@ -311,14 +311,14 @@ type (
 
 type (
 	BareMetalConfig struct {
-		SSH BareMetalSSHConfig `yaml:"ssh" validate:"required"`
+		SSH BareMetalSSHConfig `yaml:"ssh"`
 
 		ControlPlane BareMetalControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []BareMetalNodeGroup  `yaml:"nodeGroups"`
 	}
 
 	BareMetalSSHConfig struct {
-		SSHPrivateKeyConfig `yaml:",inline"`
+		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
 
 		Port     uint   `yaml:"port"     validate:"required" default:"22"`
 		Username string `yaml:"username" validate:"notblank" default:"root"`
@@ -341,7 +341,8 @@ type (
 	}
 
 	BareMetalHost struct {
-		PublicAddress string `yaml:"publicAddress" validate:"notblank"`
+		PublicAddress  string `yaml:"publicAddress"  validate:"notblank"`
+		PrivateAddress string `yaml:"privateAddress" validate:"notblank"`
 	}
 )
 

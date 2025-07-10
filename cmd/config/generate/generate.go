@@ -34,4 +34,5 @@ func init() {
 	GenerateCmd.AddCommand(AWSCmd)
 	GenerateCmd.AddCommand(hetzner.HetznerCmd)
 	GenerateCmd.AddCommand(LocalCmd)
+	GenerateCmd.AddCommand(BareMetalCmd)
 }

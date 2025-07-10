@@ -60,8 +60,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Otherwise, some syncing of ArgoCD Apps might fail.
 	// For e.g. : syncing of the kube-prometheus ArgoCD App fails if the obmondo namespace doesn't
 	// exist.
-	namespacesToCreate := []string{"obmondo"}
-	for _, namespace := range namespacesToCreate {
+	namespaces := []string{"obmondo"}
+	for _, namespace := range namespaces {
 		kubernetes.CreateNamespace(ctx, namespace, mainClusterClient)
 	}
 

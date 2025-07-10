@@ -41,20 +41,29 @@ import (
 func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient client.Client) {
 	slog.InfoContext(ctx, "Installing and setting up ArgoCD")
 
-	// Install the ArgoCD AppProject CRD.
-	// Otherwise, we'll get error while installing the ArgoCD Helm chart, since it tries to create
-	// the kubeaid ArgoCD App Project during installation.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		`
+	/*
+	   Install the ArgoCD AppProject CRD.
+	   Otherwise, we'll get error while installing the ArgoCD Helm chart, since it tries to create
+	   the kubeaid ArgoCD App Project during installation.
+
+	   NOTE : We need to retry, since raw.githubusercontent.com doesn't respond sometimes.
+	*/
+	for {
+		_, err := utils.ExecuteCommand(fmt.Sprintf(
+			`
       kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
 
       kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
       kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
       kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
     `,
-		constants.ReleaseNameArgoCD,
-		constants.NamespaceArgoCD,
-	))
+			constants.ReleaseNameArgoCD,
+			constants.NamespaceArgoCD,
+		))
+		if err == nil {
+			break
+		}
+	}
 
 	// Install the ArgoCD Helm chart.
 	{
@@ -117,7 +126,9 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
 	// We need to setup the ArgoCD account created for KubeAid Agent.
-	if config.ParsedGeneralConfig.Obmondo.Monitoring {
+	if (config.ParsedGeneralConfig.Obmondo != nil) &&
+		(config.ParsedGeneralConfig.Obmondo.Monitoring) {
+
 		argoCDAccountClientCloser, argoCDAccountClient := argoCDClient.NewAccountClientOrDie()
 		defer argoCDAccountClientCloser.Close()
 

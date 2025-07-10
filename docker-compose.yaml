@@ -38,9 +38,12 @@ services:
             --management-cluster-name ${MANAGEMENT_CLUSTER_NAME:-kubeaid-bootstrapper} \
             ${CLOUD_PROVIDER:-local}
         fi
+    environment:
+      - SSH_AUTH_SOCK=${SSH_AUTH_SOCK}
     volumes:
       - ./outputs:/outputs
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}
     networks:
       - k3d
 
@@ -56,3 +59,4 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - k3d
+

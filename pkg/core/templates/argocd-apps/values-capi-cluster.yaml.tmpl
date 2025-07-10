@@ -1,6 +1,6 @@
 global:
   clusterName: {{ .ClusterConfig.Name }}
-  {{- if .ObmondoConfig.CustomerID }}
+  {{- if .ObmondoConfig }}
   customerid: {{ .ObmondoConfig.CustomerID }}
   {{- end }}
   kubernetes:

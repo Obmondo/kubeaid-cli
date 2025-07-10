@@ -37,9 +37,9 @@ func hydrateSSHKeyConfigs() {
 		}
 
 	case constants.CloudProviderBareMetal:
-		hydrateSSHPrivateKeyConfig(
-			&config.ParsedGeneralConfig.Cloud.BareMetal.SSH.SSHPrivateKeyConfig,
-		)
+		if config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey != nil {
+			hydrateSSHPrivateKeyConfig(config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey)
+		}
 	}
 }
 

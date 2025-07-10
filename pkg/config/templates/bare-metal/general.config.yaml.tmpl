@@ -1,0 +1,66 @@
+forkURLs:
+  # KubeAid repository URL (in HTTPs syntax).
+  # Defaults to Obmondo's KubeAid repository.
+  kubeaid: https://github.com/Obmondo/KubeAid
+
+  # Your KubeAid config fork URL (in HTTPs syntax).
+  kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
+
+# Kubernetes cluster and control-plane specific configurations.
+cluster:
+
+  # Kubernetes cluster name.
+  name: kubeaid-demo
+
+  # Kubernetes version to use.
+  #
+  # We're using Kubermatic KubeOne v1.10 under the hood, to initialize the Kubernete cluster.
+  # And the supported Kubernetes versions are specified here :
+  # https://docs.kubermatic.com/kubeone/v1.10/architecture/compatibility/supported-versions/.
+  k8sVersion: v1.31.0
+
+  # Kubeaid version to use.
+  #
+  # By default, the latest KubeAid version is used.
+  # You an view all the KubeAid versions here : https://github.com/Obmondo/kubeaid/releases.
+  kubeaidVersion: 13.0.0
+
+cloud:
+  bare-metal:
+    # If you don't provide details about an SSH private key, then the SSH auth socket will be used
+    # to authenticate to your Linux based bare-metal servers.
+    # So, whenever Kubermatic KubeOne tries to authenticate to your bare-metal Linux servers,
+    # KubeAid Bootstrap Script will prompt you to touch the YubiKey.
+    ssh: {}
+    #   privateKey:
+    #     privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
+
+    controlPlane:
+      endpoint:
+        host: "188.245.118.15"
+        port: 6443
+      hosts:
+        - publicAddress: "188.245.118.15"
+          #
+          # Or you can specify a private IP address.
+          # privateAddress: ""
+
+          sshPort: 22
+          sshUsername: root
+
+    nodeGroups:
+      - name: bootstrapper
+        hosts:
+          - publicAddress: "157.180.41.173"
+            #
+            # Or you can specify a private IP address.
+            # privateAddress: ""
+
+            sshPort: 22
+            sshUsername: root
+
+        # These labels and taints will be propagated to each node managed by this node-group.
+        labels:
+          node-role.kubernetes.io/bootstrapper: ""
+          node.cluster.x-k8s.io/nodegroup: bootstrapper
+        taints: []

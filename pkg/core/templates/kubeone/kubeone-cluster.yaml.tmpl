@@ -14,10 +14,17 @@ apiEndpoint: {{ .BareMetalConfig.ControlPlane.Endpoint | toIndentYAML 2 | ninden
 controlPlane:
   hosts:
   {{- range $hostIndex, $host := .BareMetalConfig.ControlPlane.Hosts }}
-    - publicAddress: {{ $host.PublicAddress }}
-      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+    - sshPort: {{ $.BareMetalConfig.SSH.Port }}
       sshUsername: {{ $.BareMetalConfig.SSH.Username }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+      {{- if ($.BareMetalConfig.SSH).PrivateKey }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- end }}
+
+      {{- if $host.PublicAddress }}
+      publicAddress: {{ $host.PublicAddress }}
+      {{- else }}
+      privateAddress: {{ $host.PrivateAddress }}
+      {{- end }}
   {{- end }}
 
 clusterNetwork:
@@ -38,10 +45,18 @@ staticWorkers:
   hosts:
   {{- range $nodeGroupIndex, $nodeGroup := .BareMetalConfig.NodeGroups }}
   {{- range $hostIndex, $host := $nodeGroup.Hosts }}
-    - publicAddress: {{ $host.PublicAddress }}
-      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+    - sshPort: {{ $.BareMetalConfig.SSH.Port }}
       sshUsername: {{ $.BareMetalConfig.SSH.Username }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
+      {{- if ($.BareMetalConfig.SSH).PrivateKey }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- end }}
+
+      {{- if $host.PublicAddress }}
+      publicAddress: {{ $host.PublicAddress }}
+      {{- else }}
+      privateAddress: {{ $host.PrivateAddress }}
+      {{- end }}
+
       labels: {{ $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
       taints: {{ $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
   {{- end }}

@@ -1,5 +1,5 @@
 ---
-{{- if .ObmondoConfig.Monitoring }}
+{{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
 argo-cd:
   configs:
     cm:
