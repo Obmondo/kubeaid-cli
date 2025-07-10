@@ -16,7 +16,7 @@ var BareMetalCmd = &cobra.Command{
 
 	Run: func(cmd *cobra.Command, args []string) {
 		config.GenerateSampleConfig(context.Background(), &config.GenerateSampleConfigArgs{
-			CloudProvider: constants.CloudProviderLocal,
+			CloudProvider: constants.CloudProviderBareMetal,
 		})
 	},
 }
