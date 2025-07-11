@@ -10,6 +10,7 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -241,12 +242,25 @@ func pivotCluster(ctx context.Context) {
 		)
 	}
 
-	// Move ClusterAPI manifests to the provisioned cluster.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
-		constants.OutputPathMainClusterKubeconfig,
-	))
+	// Pause the ClusterAPI Infrastructure Provider in the management cluster,
+	// and move the ClusterAPI manifests to the main cluster. They will be processed by the main
+	// cluster's Infrastructure Provider.
+
+	clusterctlClient, err := client.New(ctx, "")
+	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
+	err = clusterctlClient.Move(ctx, client.MoveOptions{
+		FromKubeconfig: client.Kubeconfig{
+			Path: kubernetes.GetManagementClusterKubeconfigPath(ctx),
+		},
+
+		ToKubeconfig: client.Kubeconfig{
+			Path: constants.OutputPathMainClusterKubeconfig,
+		},
+
+		Namespace: kubernetes.GetCapiClusterNamespace(),
+	})
+	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {
