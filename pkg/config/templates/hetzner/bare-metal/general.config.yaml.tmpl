@@ -6,15 +6,22 @@ forkURLs:
   # Your KubeAid config repository URL (in HTTPs syntax).
   kubeaidConfig: https://github.com/xxxxxxxxxx/kubeaid-config
 
-# Kubernetes cluster and control-plane specific configurations.
 cluster:
+
   # Kubernetes cluster name.
-  name: kubeaid-demo-hetzner-bare-metal
+  name: kubeaid-demo
 
   # Kubernetes version to use.
+  #
+  # We're using Kubermatic KubeOne v1.10 under the hood, to initialize the Kubernete cluster.
+  # And the supported Kubernetes versions are specified here :
+  # https://docs.kubermatic.com/kubeone/v1.10/architecture/compatibility/supported-versions/.
   k8sVersion: v1.31.0
 
   # Kubeaid version to use.
+  #
+  # By default, the latest KubeAid version is used.
+  # You an view all the KubeAid versions here : https://github.com/Obmondo/kubeaid/releases.
   kubeaidVersion: 13.0.0
 
   # Kubernetes API server specific configurations.
@@ -54,35 +61,53 @@ cloud:
   hetzner:
     mode: bare-metal
 
-    zone: eu-central
+    bareMetal:
+      # If true, then before provisioning each machine, ClusterAPI Provider Hetzner (CAPH) will
+      # wipe the disks.
+      wipeDisks: False
 
-    hcloudSSHKeyPairName: cluster
-
-    rescueHCloudSSHKeyPair:
-      name: cluster
-      publicKeyFilePath: ./outputs/ssh/rsa/openssh/.pub
-      privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
-
-    networkEnabled: true
-
-    imageName: ubuntu-24.04
+      # Details about the Hetzner Bare Metal SSH KeyPair, that you created to meet the
+      # prerequisites.
+      # This SSH key-pair will be used to SSH into the Hetzner Bare Metal servers (in both normal
+      # or rescue mode).
+      sshKeyPair:
+        name: cluster
+        publicKeyFilePath: ./outputs/ssh/rsa/openssh/.pub
+        privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
 
     controlPlane:
-      bareMetal:
-        bareMetalHosts:
-          - serverID: xxxxxxxxxx
-            wwn:
-              - "xxxxxxxxxx"
-              - "xxxxxxxxxx"
-        failoverIP: "xxxxxxxxxx"
+      # Regions you're using in the eu-central Hetzner network zone.
+      #
+      # NOTE : We only support the eu-central Hetzner network zone for now.
       regions:
         - fsn1
         - nbg1
         - hel1
 
+      bareMetal:
+        # Kubernetes API server endpoint.
+        endpoint:
+          # Endpoint host.
+          #
+          # If you have only 1 contol-plane node, this can be the IP of that control-plane node.
+          #
+          # Otherwise, to have multiple control-plane nodes, you need to use a Hetzner Bare Metal
+          # Failover IP.
+          host: xxxxxxxxxx
+
+          # Whether you're using a Hetzner Bare-Metal Failover IP or not.
+          isFailoverIP: true
+
+        bareMetalHosts:
+          - serverID: xxxxxxxxxx
+            wwn:
+              - "xxxxxxxxxx"
+              - "xxxxxxxxxx"
+
     nodeGroups:
       bareMetal:
         - name: bootstrapper
+
           bareMetalHosts:
             - serverID: xxxxxxxxxx
               wwn:
@@ -92,8 +117,17 @@ cloud:
               wwn:
                 - "xxxxxxxxxx"
                 - "xxxxxxxxxx"
+
+          # A label should meet one of the following criterias to propagate to each of the nodes :
+          #
+          # (1) Has node-role.kubernetes.io as prefix.
+          # (2) Belongs to node-restriction.kubernetes.io domain.
+          # (3) Belongs to node.cluster.x-k8s.io domain.
+          #
+          # REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine
           labels:
             node-role.kubernetes.io/bootstrapper: ""
             node.cluster.x-k8s.io/nodegroup: bootstrapper
-          taints: []
+
+          # taints: []
 

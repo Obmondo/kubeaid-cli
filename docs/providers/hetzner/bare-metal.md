@@ -32,6 +32,9 @@ The `hetzner` provider, in `bare-metal` mode, is used to provision a KubeAid man
   ```
 
 - Create a Hetzner Bare Metal SSH KeyPair, by visiting <https://robot.hetzner.com/key/index>.
+  > Ensure that you don't already have a Hetzner Bare Metal SSH KeyPair with the SSH key-pair
+  > you'll be using.
+  > Otherwise, ClusterAPI Provider Hetzner (CAPH) will error out.
 
 - If you're going to use RAID, then remove any pre-existing RAID setup from the Hetzner Bare Metal servers.
 

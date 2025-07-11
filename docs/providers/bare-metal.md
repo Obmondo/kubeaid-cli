@@ -4,8 +4,6 @@ The `bare-metal` provider is used to provision a KubeAid managed Kubernetes clus
 
 - [Cilium](https://cilium.io) CNI, running in [kube-proxyless mode](https://cilium.io/use-cases/kube-proxy/).
 
-- [Azure Workload Identity](https://azure.github.io/azure-workload-identity/docs/).
-
 - Node-groups, with **labels and taints propagation** support.
 
 - GitOps, using [ArgoCD](https://argoproj.github.io/cd/) and [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets).

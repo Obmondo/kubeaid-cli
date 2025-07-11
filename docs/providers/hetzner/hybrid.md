@@ -33,8 +33,13 @@ The `hetzner` provider, in `hybrid` mode, is used to provision a KubeAid managed
   ```
 
 - [Create an HCloud SSH KeyPair](https://www.youtube.com/watch?v=mxN6fyMuQRI).
+  > Ensure that you don't already have an HCloud SSH KeyPair with the SSH key-pair you'll be using.
+  > Otherwise, ClusterAPI Provider Hetzner (CAPH) will error out.
 
 - Create a Hetzner Bare Metal SSH KeyPair, by visiting <https://robot.hetzner.com/key/index>.
+  > Ensure that you don't already have a Hetzner Bare Metal SSH KeyPair with the SSH key-pair
+  > you'll be using.
+  > Otherwise, ClusterAPI Provider Hetzner (CAPH) will error out.
 
 - If you're going to use RAID for your Hetzner Bare Metal servers, then remove any pre-existing RAID setup from them.
 

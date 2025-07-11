@@ -32,6 +32,8 @@ The `hetzner` provider, in `hcloud` mode, is used to provision a KubeAid managed
   ```
 
 - [Create an HCloud SSH KeyPair](https://www.youtube.com/watch?v=mxN6fyMuQRI).
+  > Ensure that you don't already have an HCloud SSH KeyPair with the SSH key-pair you'll be using.
+  > Otherwise, ClusterAPI Provider Hetzner (CAPH) will error out.
 
 ## Preparing the Configuration Files
 
