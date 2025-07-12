@@ -2,10 +2,10 @@ package constants
 
 var (
 	CommonRuntimeDependencies = []string{
-		"k3d",
 		"kubeseal",
 		"kubectl",
 
+		// Required to build KubePrometheus.
 		"jsonnet",
 		"jb",
 		"jq",

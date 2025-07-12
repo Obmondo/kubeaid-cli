@@ -36,10 +36,6 @@ curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KU
 tar -xvzf kubeseal-${KUBESEAL_VERSION:?}-linux-"${CPU_ARCHITECTURE}".tar.gz kubeseal
 install -m 755 kubeseal /usr/local/bin/kubeseal
 
-# K3d
-apt install -y curl
-curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
 chmod +x ./kubectl

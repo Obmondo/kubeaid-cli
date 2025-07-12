@@ -167,15 +167,15 @@ func CreateNamespace(ctx context.Context, namespaceName string, clusterClient cl
 	)
 }
 
-// Installs Sealed Secrets in the underlying Kubernetes cluster.
+// Performs a minimal installation of Sealed Secrets in the underlying Kubernetes cluster.
 func InstallSealedSecrets(ctx context.Context) {
 	HelmInstall(ctx, &HelmInstallArgs{
 		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
-		Namespace:   "sealed-secrets",
+		Namespace:   constants.NamespaceSealedSecrets,
 		ReleaseName: "sealed-secrets",
 		Values: map[string]any{
 			"sealed-secrets": map[string]any{
-				"namespace":        "sealed-secrets",
+				"namespace":        constants.NamespaceSealedSecrets,
 				"fullnameOverride": "sealed-secrets-controller",
 			},
 			"backup": map[string]any{},
