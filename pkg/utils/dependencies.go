@@ -18,13 +18,13 @@ func EnsureRuntimeDependenciesInstalled(ctx context.Context) {
 	dependencies := constants.CommonRuntimeDependencies
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		dependencies = append(dependencies, constants.AWSSpecificRuntimeDependencies...)
+		break
 
 	case constants.CloudProviderAzure:
 		dependencies = append(dependencies, constants.AzureSpecificRuntimeDependencies...)
 
 	case constants.CloudProviderHetzner:
-		dependencies = append(dependencies, constants.HetznerSpecificRuntimeDependencies...)
+		break
 	}
 
 	// Ensure that each of those runtime dependencies are installed.

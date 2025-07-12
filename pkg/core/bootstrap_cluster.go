@@ -10,6 +10,8 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/cluster-api-provider-aws/cmd/clusterawsadm/controller/credentials"
+	"sigs.k8s.io/cluster-api-provider-aws/cmd/clusterawsadm/controller/rollout"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
@@ -117,7 +119,6 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	_ = globals.ArgoCDApplicationClientCloser.Close()
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-	// All Kubernetes operations from now on, will be done against the provisioned cluster.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
@@ -225,6 +226,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 }
 
 func pivotCluster(ctx context.Context) {
+	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
+
 	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 	//
 	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
@@ -232,14 +235,16 @@ func pivotCluster(ctx context.Context) {
 	if globals.CloudProviderName == constants.CloudProviderAWS {
 		// Zero the credentials CAPA controller started with.
 		// This will force the CAPA controller to fall back to use the attached instance profiles.
-		utils.ExecuteCommandOrDie(
-			"clusterawsadm controller zero-credentials --namespace capi-cluster",
-		)
+		err := credentials.ZeroCredentials(credentials.ZeroCredentialsInput{
+			Namespace: capiClusterNamespace,
+		})
+		assert.AssertErrNil(ctx, err, "Failed zeroing the credentials CAPA controller started with")
 
-		// Rollout and restart on capa-controller-manager deployment.
-		utils.ExecuteCommandOrDie(
-			"clusterawsadm controller rollout-controller --namespace capi-cluster",
-		)
+		// Rollout CAPA controller.
+		err = rollout.RolloutControllers(rollout.RolloutControllersInput{
+			Namespace: capiClusterNamespace,
+		})
+		assert.AssertErrNil(ctx, err, "Failed rolling out CAPA controller")
 	}
 
 	// Pause the ClusterAPI Infrastructure Provider in the management cluster,
@@ -258,7 +263,7 @@ func pivotCluster(ctx context.Context) {
 			Path: constants.OutputPathMainClusterKubeconfig,
 		},
 
-		Namespace: kubernetes.GetCapiClusterNamespace(),
+		Namespace: capiClusterNamespace,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 }

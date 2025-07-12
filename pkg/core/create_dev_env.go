@@ -30,8 +30,8 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		aws.SetAWSSpecificEnvs()
-		aws.CreateIAMCloudFormationStack()
+		aws.SetAWSSpecificEnvs(ctx)
+		aws.CreateIAMCloudFormationStack(ctx)
 
 	case constants.CloudProviderAzure:
 		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)

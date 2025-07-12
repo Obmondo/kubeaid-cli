@@ -14,18 +14,7 @@ var (
 		"yq",
 	}
 
-	AWSSpecificRuntimeDependencies = []string{
-		"clusterctl",
-		"clusterawsadm",
-	}
-
 	AzureSpecificRuntimeDependencies = []string{
-		"clusterctl",
 		"az",
-		"azwi",
-	}
-
-	HetznerSpecificRuntimeDependencies = []string{
-		"clusterctl",
 	}
 )

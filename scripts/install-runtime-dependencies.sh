@@ -40,11 +40,6 @@ install -m 755 kubeseal /usr/local/bin/kubeseal
 apt install -y curl
 curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
 
-# Clusterawsadm
-wget https://github.com/kubernetes-sigs/cluster-api-provider-aws/releases/download/v2.7.1/clusterawsadm-linux-"${CPU_ARCHITECTURE}"
-mv clusterawsadm-linux-"${CPU_ARCHITECTURE}" /usr/local/bin/clusterawsadm
-chmod +x /usr/local/bin/clusterawsadm
-
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
 chmod +x ./kubectl
