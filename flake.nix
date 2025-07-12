@@ -40,7 +40,6 @@
             clusterctl
             azure-cli
             kubeone
-            cilium-cli
 
             yq
           ];

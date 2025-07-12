@@ -4,10 +4,12 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/cilium/cilium/cilium-cli/cli"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -28,7 +30,7 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	slog.InfoContext(ctx, "🧪 Running minimal Cilium network connectivity tests")
 
 	// Create the cilium-test namespace.
-	kubernetes.CreateNamespace(ctx, "cilium-test", clusterClient)
+	kubernetes.CreateNamespace(ctx, constants.NamespaceCiliumTest, clusterClient)
 	//
 	// Pods spun up during the network connectivity tests, need to do DNS lookups and tcpdumps.
 	// So they need to run in privileged mode.
@@ -39,18 +41,22 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	)
 
 	// Run minimal Cilium network connectivity tests.
-	_, err := utils.ExecuteCommand(`
-    cilium connectivity test \
-      --namespace cilium \
-      --test-namespace cilium-test \
-      --test "!" \
-      --timeout 5m
-  `)
-	if err != nil {
-		slog.ErrorContext(ctx, "🚨 Cilium network connectivity tests failed")
-	} else {
-		slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
-	}
+
+	ciliumCmd := cli.NewDefaultCiliumCommand()
+	ciliumCmd.SetArgs([]string{
+		"connectivity", "test",
+
+		"--namespace", constants.NamespaceCilium,
+		"--test-namespace", constants.NamespaceCiliumTest,
+
+		"--test", "!",
+		"--timeout", "5m",
+	})
+
+	err := ciliumCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err, "🚨 Cilium network connectivity tests failed")
+
+	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
 	utils.ExecuteCommandOrDie("kubectl delete namespace cilium-test cilium-test-1")

@@ -156,6 +156,7 @@ const (
 	NamespaceArgoCD        = "argocd"
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
+	NamespaceCilium        = "cilium"
 	NamespaceCiliumTest    = "cilium-test"
 
 	// Service Accounts.
