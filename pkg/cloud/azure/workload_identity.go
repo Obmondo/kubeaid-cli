@@ -17,6 +17,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization/v2"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
+	"github.com/Azure/azure-workload-identity/pkg/cmd/jwks"
 	"github.com/google/uuid"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
@@ -299,11 +300,17 @@ func (a *Azure) createOIDCProvider(ctx context.Context) string {
 		slog.InfoContext(ctx, "Generating and uploading JWKS document")
 
 		// Generate the JWKS document.
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"azwi jwks --public-keys %s --output-file %s",
+
+		jwksCmd := jwks.NewJWKSCmd()
+		jwksCmd.SetArgs([]string{
+			"--public-keys",
 			azureConfig.WorkloadIdentity.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
+
+			"--output-file",
 			constants.OutputPathJWKSDocument,
-		))
+		})
+		err := jwksCmd.ExecuteContext(ctx)
+		assert.AssertErrNil(ctx, err, "Failed generating JWKS document")
 
 		jwksDocument, err := os.ReadFile(constants.OutputPathJWKSDocument)
 		assert.AssertErrNil(ctx, err, "Failed reading the generated JWKS document")

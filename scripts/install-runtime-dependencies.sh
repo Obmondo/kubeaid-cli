@@ -53,12 +53,6 @@ mv ./kubectl /usr/local/bin
 # yq
 apt install -y yq
 
-# azwi
-AZWI_VERSION="1.5.0"
-curl -OL "https://github.com/Azure/azure-workload-identity/releases/download/v${AZWI_VERSION:?}/azwi-v${AZWI_VERSION:?}-linux-${CPU_ARCHITECTURE}.tar.gz"
-tar -xvzf azwi-v${AZWI_VERSION:?}-linux-"${CPU_ARCHITECTURE}".tar.gz azwi
-install -m 755 azwi /usr/local/bin/azwi
-
 # Azure CLI
 apt-get -y update
 apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
