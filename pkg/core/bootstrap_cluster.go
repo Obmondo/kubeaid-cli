@@ -10,8 +10,8 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/cluster-api-provider-aws/cmd/clusterawsadm/controller/credentials"
-	"sigs.k8s.io/cluster-api-provider-aws/cmd/clusterawsadm/controller/rollout"
+	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
+	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"

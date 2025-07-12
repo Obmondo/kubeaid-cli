@@ -25,6 +25,9 @@ func EnsureRuntimeDependenciesInstalled(ctx context.Context) {
 
 	case constants.CloudProviderHetzner:
 		break
+
+	case constants.CloudProviderBareMetal:
+		dependencies = append(dependencies, constants.BareMetalSpecificRuntimeDependencies...)
 	}
 
 	// Ensure that each of those runtime dependencies are installed.

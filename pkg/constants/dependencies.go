@@ -2,19 +2,20 @@ package constants
 
 var (
 	CommonRuntimeDependencies = []string{
-		"kubeseal",
-		"kubectl",
-
 		// Required to build KubePrometheus.
 		"jsonnet",
 		"jb",
 		"jq",
 		"gojsontoyaml",
 
-		"yq",
+		"kubectl",
 	}
 
 	AzureSpecificRuntimeDependencies = []string{
 		"az",
+	}
+
+	BareMetalSpecificRuntimeDependencies = []string{
+		"kubeone",
 	}
 )

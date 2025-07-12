@@ -26,9 +26,6 @@
           nativeBuildInputs = [
             go
             golangci-lint
-
-            nixfmt-rfc-style
-            direnv
           ];
 
           buildInputs = [
@@ -40,7 +37,6 @@
 
             k3d
             kubectl
-            kubeseal
             clusterctl
             azure-cli
             kubeone
