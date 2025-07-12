@@ -8,6 +8,8 @@ import (
 	"os"
 	"path"
 
+	sealedSecretsV1Aplha1 "github.com/bitnami-labs/sealed-secrets/pkg/apis/sealedsecrets/v1alpha1"
+	"github.com/bitnami-labs/sealed-secrets/pkg/kubeseal"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
@@ -17,6 +19,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
@@ -186,11 +189,48 @@ func InstallSealedSecrets(ctx context.Context) {
 // Takes the path to a Kubernetes Secret file. It replaces the contents of that file by generating
 // the corresponding Sealed Secret.
 func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
-	utils.ExecuteCommandOrDie(fmt.Sprintf(`
-		kubeseal \
-			--controller-name sealed-secrets-controller --controller-namespace sealed-secrets \
-			--secret-file %s --sealed-secret-file %s
-	`, secretFilePath, secretFilePath))
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("path", secretFilePath),
+	})
+
+	// Create Sealed Secrets controller client configuration.
+	kubesealClientConfig := clientcmd.NewInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(), nil, os.Stdout,
+	)
+
+	// Load the Sealed Secrets controller's public key.
+
+	certReader, err := kubeseal.OpenCert(ctx, kubesealClientConfig,
+		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, "",
+	)
+	assert.AssertErrNil(ctx, err, "Failed reading Sealed Secrets controller's certificate")
+	defer certReader.Close()
+
+	publicKey, err := kubeseal.ParseKey(certReader)
+	assert.AssertErrNil(ctx, err, "Failed retrieving the Sealed Secrets controller's public key")
+
+	// Open the secret file, from where KubeSeal will read the secret.
+	// The encrypted secret will be written back to this file itself.
+	secretFile, err := os.Open(secretFilePath)
+	assert.AssertErrNil(ctx, err, "Failed opening secret file")
+	defer secretFile.Close()
+
+	// Encrypt the secret file.
+	err = kubeseal.Seal(kubesealClientConfig,
+
+		"yaml",
+		secretFile,
+		secretFile,
+
+		scheme.Codecs,
+		publicKey,
+		sealedSecretsV1Aplha1.DefaultScope,
+		false,
+
+		constants.SealedSecretsControllerName,
+		constants.NamespaceSealedSecrets,
+	)
+	assert.AssertErrNil(ctx, err, "Failed encrypting secret file")
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.

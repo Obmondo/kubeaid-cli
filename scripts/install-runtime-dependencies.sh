@@ -30,12 +30,6 @@ mv jb-linux-${CPU_ARCHITECTURE} /usr/local/bin/jb
 
 # ------------------------------ Required by KubeAid Bootstrap Script -----------------------------
 
-# Kubeseal
-KUBESEAL_VERSION="0.23.0"
-curl -OL "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION:?}/kubeseal-${KUBESEAL_VERSION:?}-linux-${CPU_ARCHITECTURE}.tar.gz"
-tar -xvzf kubeseal-${KUBESEAL_VERSION:?}-linux-"${CPU_ARCHITECTURE}".tar.gz kubeseal
-install -m 755 kubeseal /usr/local/bin/kubeseal
-
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
 chmod +x ./kubectl

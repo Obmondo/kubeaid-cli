@@ -98,7 +98,6 @@ var (
 
 // ArgoCD.
 const (
-	NamespaceArgoCD   = "argocd"
 	ReleaseNameArgoCD = "argocd"
 
 	ArgoCDProjectKubeAid = "kubeaid"
@@ -111,6 +110,12 @@ const (
 	ArgoCDAppVelero            = "velero"
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 	ArgoCDExternalSnapshotter  = "external-snapshotter"
+)
+
+// Sealed Secrets.
+const (
+	SealedSecretsControllerName    = "sealed-secrets-controller"
+	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )
 
 // Azure
@@ -148,6 +153,7 @@ const (
 
 const (
 	// Namespaces.
+	NamespaceArgoCD        = "argocd"
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
 	NamespaceCiliumTest    = "cilium-test"
@@ -185,6 +191,4 @@ const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	GzippedFilenameSuffix = ".gz"
-
-	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )

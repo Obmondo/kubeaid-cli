@@ -18,6 +18,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/iam v1.43.0
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.83.0
 	github.com/aws/aws-sdk-go-v2/service/sts v1.34.0
+	github.com/bitnami-labs/sealed-secrets v0.30.0
 	github.com/creasty/defaults v1.8.0
 	github.com/fatih/color v1.18.0
 	github.com/go-cmd/cmd v1.4.3
@@ -211,6 +212,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/mkmik/multierror v0.4.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
 	github.com/moby/patternmatcher v0.5.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
