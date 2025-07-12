@@ -40,13 +40,13 @@ require (
 	k8s.io/api v0.33.2
 	k8s.io/apimachinery v0.33.2
 	k8s.io/client-go v0.33.2
-	k8s.io/cloud-provider v0.33.2
+	k8s.io/cloud-provider v0.32.2
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.33.2
 	sigs.k8s.io/cluster-api v1.10.3
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.8.4
 	sigs.k8s.io/cluster-api-provider-azure v1.20.1
-	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/controller-runtime v0.20.4
 )
 
 require (
@@ -99,7 +99,7 @@ require (
 	github.com/chai2010/gettext-go v1.0.2 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/containerd/containerd v1.7.27 // indirect
-	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/errdefs v0.3.0 // indirect
 	github.com/containerd/go-cni v1.1.12 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
@@ -303,8 +303,7 @@ require (
 	k8s.io/cli-runtime v0.33.2 // indirect
 	k8s.io/cluster-bootstrap v0.32.3 // indirect
 	k8s.io/component-base v0.33.2 // indirect
-	k8s.io/component-helpers v0.33.2 // indirect
-	k8s.io/controller-manager v0.33.2 // indirect
+	k8s.io/component-helpers v0.32.3 // indirect
 	k8s.io/kube-aggregator v0.31.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kubectl v0.33.2 // indirect
@@ -320,11 +319,26 @@ require (
 )
 
 replace (
-	// module k8s.io/apiserver@latest (v0.33.2), does not contain package
-	// k8s.io/apiserver/pkg/util/version.
+	k8s.io/api => k8s.io/api v0.31.0
+	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.31.0
+	k8s.io/apimachinery => k8s.io/apimachinery v0.31.0
 	k8s.io/apiserver => k8s.io/apiserver v0.31.0
+	k8s.io/cli-runtime => k8s.io/cli-runtime v0.31.0
+	k8s.io/client-go => k8s.io/client-go v0.31.0
+	k8s.io/cloud-provider => k8s.io/cloud-provider v0.31.0
+	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.31.0
+	k8s.io/component-base => k8s.io/component-base v0.31.0
+	k8s.io/component-helpers => k8s.io/component-helpers v0.31.0
+	k8s.io/controller-manager => k8s.io/controller-manager v0.31.0
+	k8s.io/kubectl => k8s.io/kubectl v0.31.0
+	k8s.io/kubernetes => k8s.io/kubernetes v1.31.0
 
+	// Pin ClusterAPI version.
+	// Otherwise, we get this error :
 	// module sigs.k8s.io/cluster-api@latest (v1.10.3), does not contain package
 	// sigs.k8s.io/cluster-api/util/defaulting.
 	sigs.k8s.io/cluster-api => sigs.k8s.io/cluster-api v1.9.7
+
+	// 'go build' fails, when we use controller-runtime v0.20.4.
+	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.6
 )
