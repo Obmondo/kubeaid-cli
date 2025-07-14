@@ -204,9 +204,7 @@ type (
 	}
 
 	AADApplication struct {
-		Name               string `yaml:"name"               validate:"notblank"`
-		ObjectID           string `yaml:"objectID"           validate:"notblank"`
-		ServicePrincipalID string `yaml:"servicePrincipalID" validate:"notblank"`
+		PrincipalID string `yaml:"principalID" validate:"notblank"`
 	}
 
 	WorkloadIdentity struct {

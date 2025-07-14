@@ -13,6 +13,7 @@ import (
 	clusterctlV1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -26,19 +27,14 @@ import (
 type SetupClusterArgs struct {
 	*CreateDevEnvArgs
 
-	IsManagementCluster bool
-	ClusterClient       client.Client
+	ClusterType   string
+	ClusterClient client.Client
 
 	GitAuthMethod transport.AuthMethod
 }
 
 func SetupCluster(ctx context.Context, args SetupClusterArgs) {
-	clusterType := constants.ClusterTypeManagement
-	if !args.IsManagementCluster {
-		clusterType = constants.ClusterTypeMain
-	}
-
-	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", clusterType))
+	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", args.ClusterType))
 
 	{
 		// Clone the KubeAid fork locally (if not already cloned).
@@ -65,6 +61,18 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			kubeAidRepo,
 			tag,
 		)
+	}
+
+	// Create required namespaces before syncing all the ArgoCD Apps.
+	// Otherwise, some syncing of ArgoCD Apps might fail.
+	// For e.g. : syncing of the kube-prometheus ArgoCD App fails if the obmondo namespace doesn't
+	// exist.
+	namespacesToBeCreated := []string{
+		"crossplane",
+		"obmondo",
+	}
+	for _, namespace := range namespacesToBeCreated {
+		kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
 	}
 
 	// If recovering a cluster, then restore the Sealed Secrets controller private keys.
@@ -110,23 +118,35 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
 
 	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
-	argocdAppsToBeSynced := []string{
+	argoCDAppsToBeSynced := []string{
 		constants.ArgoCDAppRoot,
 		"cert-manager",
 		"secrets",
 	}
-	for _, argoCDApp := range argocdAppsToBeSynced {
+	for _, argoCDApp := range argoCDAppsToBeSynced {
 		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 	}
 
-	// If trying to provision a main cluster in some cloud provider like AWS / Azure / Hetzner.
-	if (globals.CloudProviderName != constants.CloudProviderLocal) &&
-		(globals.CloudProviderName != constants.CloudProviderBareMetal) {
+	// Any cloud provider specific tasks.
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAzure:
+		cloudProviderAzure := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
 
+		// Install CrossPlane.
+		// And create required infrastructure for Azure Workload Identity and Disaster Recovery,
+		// using CrossPlane.
+		cloudProviderAzure.ProvisionInfrastructure(ctx)
+
+		// Create the OIDC provider.
+		cloudProviderAzure.CreateOIDCProvider(ctx)
+
+		panic("checkpoint")
+	}
+
+	// When using ClusterAPI to provision the main cluster.
+	if kubernetes.UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
-		kubernetes.SyncArgoCDApp(
-			ctx,
-			"cluster-api-operator",
+		kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 
@@ -137,7 +157,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		syncInfrastructureProvider(ctx, args.ClusterClient)
 	}
 
-	printHelpTextForArgoCDDashboardAccess(clusterType)
+	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the

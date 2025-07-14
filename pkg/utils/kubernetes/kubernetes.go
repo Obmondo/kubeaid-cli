@@ -10,6 +10,7 @@ import (
 
 	sealedSecretsV1Aplha1 "github.com/bitnami-labs/sealed-secrets/pkg/apis/sealedsecrets/v1alpha1"
 	"github.com/bitnami-labs/sealed-secrets/pkg/kubeseal"
+	"github.com/google/renameio"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
@@ -209,26 +210,30 @@ func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
 	publicKey, err := kubeseal.ParseKey(certReader)
 	assert.AssertErrNil(ctx, err, "Failed retrieving the Sealed Secrets controller's public key")
 
-	// Open the secret file, from where KubeSeal will read the secret.
-	// The encrypted secret will be written back to this file itself.
+	// Open the file, from where KubeSeal will read the secret.
 	secretFile, err := os.Open(secretFilePath)
 	assert.AssertErrNil(ctx, err, "Failed opening secret file")
 	defer secretFile.Close()
+
+	// Open the file, from where KubeSeal will write the sealed-secret.
+	// Notice, that it's the same file 👀.
+	sealedSecretFile, err := renameio.TempFile("", secretFilePath)
+	assert.AssertErrNil(ctx, err, "Failed creating temporary sealed-secret file")
+	defer sealedSecretFile.CloseAtomicallyReplace()
 
 	// Encrypt the secret file.
 	err = kubeseal.Seal(kubesealClientConfig,
 
 		"yaml",
 		secretFile,
-		secretFile,
+		sealedSecretFile,
 
 		scheme.Codecs,
 		publicKey,
 		sealedSecretsV1Aplha1.DefaultScope,
 		false,
 
-		constants.SealedSecretsControllerName,
-		constants.NamespaceSealedSecrets,
+		"", "",
 	)
 	assert.AssertErrNil(ctx, err, "Failed encrypting secret file")
 }

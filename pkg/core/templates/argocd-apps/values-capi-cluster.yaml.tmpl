@@ -63,7 +63,7 @@ azure:
 
   userAssignedIdentity:
     name: cluster-api
-    clientID: {{ .UAMIClientIDClusterAPI }}
+    clientID: {{ (.WorkloadIdentityInfrastructureStatus).CAPIUAMIPrincipalID }}
 
   serviceAccountIssuer:
     url: {{ .ServiceAccountIssuerURL }}

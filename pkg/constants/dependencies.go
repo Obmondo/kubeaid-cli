@@ -11,10 +11,6 @@ var (
 		"kubectl",
 	}
 
-	AzureSpecificRuntimeDependencies = []string{
-		"az",
-	}
-
 	BareMetalSpecificRuntimeDependencies = []string{
 		"kubeone",
 	}

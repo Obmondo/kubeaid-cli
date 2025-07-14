@@ -20,7 +20,7 @@ var RootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// nolint: revive
 		// Create outputs directory.
-		os.MkdirAll(constants.OutputDirectory, os.ModePerm)
+		os.MkdirAll(constants.OutputsDirectory, os.ModePerm)
 
 		// Initialize logger.
 		logger.InitLogger(isDebugModeEnabled)

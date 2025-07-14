@@ -59,15 +59,6 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		return
 	}
 
-	// Create required namespaces before syncing all the ArgoCD Apps.
-	// Otherwise, some syncing of ArgoCD Apps might fail.
-	// For e.g. : syncing of the kube-prometheus ArgoCD App fails if the obmondo namespace doesn't
-	// exist.
-	namespaces := []string{"obmondo"}
-	for _, namespace := range namespaces {
-		kubernetes.CreateNamespace(ctx, namespace, mainClusterClient)
-	}
-
 	// Sync all ArgoCD Apps.
 	kubernetes.SyncAllArgoCDApps(ctx)
 
@@ -144,10 +135,10 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		       Sealed Secrets controller installed in the provisioned main cluster.
 	*/
 	SetupCluster(ctx, SetupClusterArgs{
-		CreateDevEnvArgs:    args.CreateDevEnvArgs,
-		IsManagementCluster: false,
-		ClusterClient:       provisionedClusterClient,
-		GitAuthMethod:       args.GitAuthMethod,
+		CreateDevEnvArgs: args.CreateDevEnvArgs,
+		ClusterType:      constants.ClusterTypeMain,
+		ClusterClient:    provisionedClusterClient,
+		GitAuthMethod:    args.GitAuthMethod,
 	})
 
 	if !kubernetes.UsingClusterAPI() {

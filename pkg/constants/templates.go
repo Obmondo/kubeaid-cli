@@ -86,6 +86,16 @@ var (
 	TemplateNameOpenIDConfig = "templates/openid-configuration.json.tmpl"
 
 	AzureSpecificNonSecretTemplateNames = []string{
+		// For CrossPlane.
+		"argocd-apps/templates/crossplane.yaml.tmpl",
+		"argocd-apps/values-crossplane.yaml.tmpl",
+		"argocd-apps/templates/crossplane-providers-and-functions.yaml.tmpl",
+		"argocd-apps/values-crossplane-providers-and-functions.yaml.tmpl",
+		"argocd-apps/templates/crossplane-compositions.yaml.tmpl",
+		"argocd-apps/values-crossplane-compositions.yaml.tmpl",
+		"argocd-apps/templates/infrastructure.yaml.tmpl",
+		"infrastructure/azure/workload-identity-infrastructure.yaml.tmpl",
+
 		// For Azure Cloud Controller Manager.
 		"argocd-apps/templates/ccm-azure.yaml.tmpl",
 		"argocd-apps/values-ccm-azure.yaml.tmpl",
@@ -107,10 +117,17 @@ var (
 	}
 
 	AzureSpecificSecretTemplateNames = []string{
+		// For CrossPlane.
+		"sealed-secrets/crossplane/azure-credentials.yaml.tmpl",
+
+		// For ClusterAPI.
 		"sealed-secrets/capi-cluster/service-account-issuer-keys.yaml.tmpl",
 	}
 
 	AzureDisasterRecoverySpecificNonSecretTemplateNames = []string{
+		// For CrossPlane.
+		"infrastructure/azure/disaster-recovery-infrastructure.yaml.tmpl",
+
 		// For Velero.
 		"argocd-apps/templates/velero.yaml.tmpl",
 		"argocd-apps/values-velero.yaml.tmpl",

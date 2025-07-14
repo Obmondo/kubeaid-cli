@@ -6,6 +6,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	azureTypes "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/types"
 )
 
 var (
@@ -21,8 +22,6 @@ var (
 
 	// Azure specific.
 
-	UAMIClientIDClusterAPI,
-	UAMIClientIDVelero,
-
-	AzureStorageAccountAccessKey string
+	WorkloadIdentityInfrastructureStatus *azureTypes.WorkloadIdentityInfrastructureStatus
+	DisasterRecoveryInfrastructureStatus *azureTypes.DisasterRecoveryInfrastructureStatus
 )

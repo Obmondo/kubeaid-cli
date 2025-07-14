@@ -49,7 +49,7 @@ velero:
       create: true
       name: velero
       annotations:
-        azure.workload.identity/client-id: {{ .UAMIClientIDVelero }}
+        azure.workload.identity/client-id: {{ (.DisasterRecoveryInfrastructureStatus).VeleroUAMIPrincipalID }}
   rbac:
     create: true
     clusterAdministrator: true

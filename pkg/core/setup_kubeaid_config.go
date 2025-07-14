@@ -106,6 +106,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		}
 	}
 
+	panic("checkpoint")
+
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
 		"(cluster/%s) : created / updated KubeAid config files",
@@ -248,7 +250,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	)
 
 	// Run the KubePrometheus build script.
-	slog.Info("Running KubePrometheus build script...")
+	slog.InfoContext(ctx, "Running KubePrometheus build script...")
 	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh",
 		utils.GetKubeAidDir(),
 	)

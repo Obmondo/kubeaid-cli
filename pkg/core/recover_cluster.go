@@ -10,7 +10,6 @@ import (
 
 	awsServices "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
-	azureServices "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -65,8 +64,7 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 		blobClient, err := azblob.NewClient(azure.GetStorageAccountURL(), credentials, nil)
 		assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
 
-		azureServices.DownloadBlobContainerContents(
-			ctx,
+		azure.DownloadBlobContainerContents(ctx,
 			blobClient,
 			sealedSecretsKeysBackupsBucketName,
 		)

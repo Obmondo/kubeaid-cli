@@ -17,27 +17,18 @@ func EnsureRuntimeDependenciesInstalled(ctx context.Context) {
 	// Determine required runtime dependencies, based on the cloud-provider being used.
 	dependencies := constants.CommonRuntimeDependencies
 	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-		break
-
-	case constants.CloudProviderAzure:
-		dependencies = append(dependencies, constants.AzureSpecificRuntimeDependencies...)
-
-	case constants.CloudProviderHetzner:
-		break
-
 	case constants.CloudProviderBareMetal:
 		dependencies = append(dependencies, constants.BareMetalSpecificRuntimeDependencies...)
 	}
 
 	// Ensure that each of those runtime dependencies are installed.
 	for _, dependency := range dependencies {
-		ensureRuntimeDependencyInstalled(ctx, dependency)
+		EnsureRuntimeDependencyInstalled(ctx, dependency)
 	}
 }
 
 // Panics if the given runtime dependency / executable isn't found in PATH.
-func ensureRuntimeDependencyInstalled(ctx context.Context, name string) {
+func EnsureRuntimeDependencyInstalled(ctx context.Context, name string) {
 	_, err := exec.LookPath(name)
 	assert.AssertErrNil(ctx, err,
 		"Runtime dependency unavailable",

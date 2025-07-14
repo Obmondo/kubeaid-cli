@@ -4,16 +4,17 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/cilium/cilium/cilium-cli/cli"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
 func TestCluster(ctx context.Context) {
+	// Ensure that required runtime dependencies are installed.
+	utils.EnsureRuntimeDependencyInstalled(ctx, "cilium-cli")
+
 	// Set the KUBECONFIG environment variable to the main cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 
@@ -41,21 +42,13 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	)
 
 	// Run minimal Cilium network connectivity tests.
-
-	ciliumCmd := cli.NewDefaultCiliumCommand()
-	ciliumCmd.SetArgs([]string{
-		"connectivity", "test",
-
-		"--namespace", constants.NamespaceCilium,
-		"--test-namespace", constants.NamespaceCiliumTest,
-
-		"--test", "!",
-		"--timeout", "5m",
-	})
-
-	err := ciliumCmd.ExecuteContext(ctx)
-	assert.AssertErrNil(ctx, err, "🚨 Cilium network connectivity tests failed")
-
+	utils.ExecuteCommandOrDie(`
+    cilium-cli connectivity test \
+      --namespace cilium \
+      --test-namespace cilium-test \
+      --test ! \
+      --timeout 5m
+  `)
 	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
