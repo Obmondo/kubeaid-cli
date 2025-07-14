@@ -172,7 +172,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	case constants.CloudProviderBareMetal:
 		embeddedTemplateNames = append(constants.CommonNonSecretTemplateNames,
-			"kubeone/kubeone-cluster.yaml.tmpl",
+			constants.BareMetalSpecificNonSecretTemplateNames...,
 		)
 
 	case constants.CloudProviderLocal:

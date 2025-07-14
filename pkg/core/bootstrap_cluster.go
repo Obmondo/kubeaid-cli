@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -268,15 +269,44 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		"Failed deleting main cluster's PKI infrastructure backup",
 	)
 
-	// KubeOne also saves the main cluster's kubeconfig locally.
-	// Let's move that kubeconfig file to our specified location.
-	err = os.Rename(
-		fmt.Sprintf("%s-kubeconfig", mainClusterName),
-		constants.OutputPathMainClusterKubeconfig,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed moving main cluster's kubeconfig to our specified location",
-	)
+	/*
+		KubeOne also saves the main cluster's kubeconfig locally.
+		Let's move that kubeconfig file to our standardized location for the main cluster's kubeconfig
+		file.
+
+		NOTE : When KubeAid Bootstrap Script runs inside a container, with the outputs folder mounted
+		       from the host, using os.Rename( ) to do the move operation fails with error :
+
+		         rename kubeaid-demo-bare-metal-kubeconfig outputs/kubeconfigs/clusters/main.yaml: invalid cross-device link
+
+		       since those files exist on separate drives.
+	*/
+	{
+		kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
+		kubeoneGeneratedKubeconfigFile, err := os.Open(kubeoneGeneratedKubeconfigFilePath)
+		assert.AssertErrNil(ctx, err, "Failed opening KubeOne generated kubeconfig file")
+		defer kubeoneGeneratedKubeconfigFile.Close()
+
+		mainClusterKubeconfigFile, err := os.OpenFile(
+			constants.OutputPathMainClusterKubeconfig, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+		)
+		assert.AssertErrNil(ctx, err,
+			"Failed opening file",
+			slog.String("path", constants.OutputPathMainClusterKubeconfig),
+		)
+		defer mainClusterKubeconfigFile.Close()
+
+		// Copy KubeOne generated kubeconfig file content to our standardized location for the main
+		// cluster's kubeconfig file.
+		_, err = io.Copy(mainClusterKubeconfigFile, kubeoneGeneratedKubeconfigFile)
+		assert.AssertErrNil(ctx, err,
+			"Failed copying KubeOne generated kubeconfig file content to our standardized location for the main cluster's kubeconfig file",
+		)
+
+		// Delete the KubeOne generated kubeconfig file.
+		err = os.Remove(kubeoneGeneratedKubeconfigFilePath)
+		assert.AssertErrNil(ctx, err, "Failed deleting KubeOne generated kubeconfig file")
+	}
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",

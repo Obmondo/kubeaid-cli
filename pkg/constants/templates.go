@@ -164,6 +164,13 @@ var (
 
 // Bare metal specific template names.
 var BareMetalSpecificNonSecretTemplateNames = []string{
+	// For KubeOne.
+	"kubeone/kubeone-cluster.yaml.tmpl",
+
+	// For Cilium
+	"argocd-apps/templates/cilium.yaml.tmpl",
+	"argocd-apps/values-cilium.yaml.tmpl",
+
 	// For LocalPV provisioner.
 	"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
