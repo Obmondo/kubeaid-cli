@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -281,32 +280,10 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 
 		       since those files exist on separate drives.
 	*/
-	{
-		kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
-		kubeoneGeneratedKubeconfigFile, err := os.Open(kubeoneGeneratedKubeconfigFilePath)
-		assert.AssertErrNil(ctx, err, "Failed opening KubeOne generated kubeconfig file")
-		defer kubeoneGeneratedKubeconfigFile.Close()
-
-		mainClusterKubeconfigFile, err := os.OpenFile(
-			constants.OutputPathMainClusterKubeconfig, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
-		)
-		assert.AssertErrNil(ctx, err,
-			"Failed opening file",
-			slog.String("path", constants.OutputPathMainClusterKubeconfig),
-		)
-		defer mainClusterKubeconfigFile.Close()
-
-		// Copy KubeOne generated kubeconfig file content to our standardized location for the main
-		// cluster's kubeconfig file.
-		_, err = io.Copy(mainClusterKubeconfigFile, kubeoneGeneratedKubeconfigFile)
-		assert.AssertErrNil(ctx, err,
-			"Failed copying KubeOne generated kubeconfig file content to our standardized location for the main cluster's kubeconfig file",
-		)
-
-		// Delete the KubeOne generated kubeconfig file.
-		err = os.Remove(kubeoneGeneratedKubeconfigFilePath)
-		assert.AssertErrNil(ctx, err, "Failed deleting KubeOne generated kubeconfig file")
-	}
+	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
+	utils.MustMoveFile(ctx,
+		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
+	)
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",

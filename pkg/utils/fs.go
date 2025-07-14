@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/url"
 	"os"
@@ -110,4 +111,41 @@ func ToAbsolutePath(ctx context.Context, relativePath string) string {
 	)
 
 	return absolutePath
+}
+
+// Moves the source file to the destination file.
+//
+// But unlike os.Rename( ), it doesn't error out when the source and destination files are present
+// on different drives.
+func MustMoveFile(ctx context.Context, sourceFilePath, destinationFilePath string) {
+	sourceFile, err := os.Open(sourceFilePath)
+	assert.AssertErrNil(ctx, err,
+		"Failed opening source file",
+		slog.String("path", sourceFilePath),
+	)
+	defer sourceFile.Close()
+
+	destinationFile, err := os.OpenFile(
+		destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed opening destination file",
+		slog.String("path", destinationFilePath),
+	)
+	defer destinationFile.Close()
+
+	// Copy contents of the source file to the destination file.
+	_, err = io.Copy(sourceFile, destinationFile)
+	assert.AssertErrNil(ctx, err,
+		"Failed copying contents of source file to destination file",
+		slog.String("source", sourceFilePath),
+		slog.String("destination", destinationFilePath),
+	)
+
+	// Delete the source file.
+	err = os.Remove(sourceFilePath)
+	assert.AssertErrNil(ctx, err,
+		"Failed removing source file",
+		slog.String("path", sourceFilePath),
+	)
 }
