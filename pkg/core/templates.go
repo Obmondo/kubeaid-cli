@@ -7,8 +7,6 @@ import (
 
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
-	azureTypes "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure/types"
-
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -40,8 +38,9 @@ type TemplateValues struct {
 
 	AzureConfig      *config.AzureConfig
 	AzureCredentials *config.AzureCredentials
-	*azureTypes.WorkloadIdentityInfrastructureStatus
-	*azureTypes.DisasterRecoveryInfrastructureStatus
+	CAPIUAMIClientID,
+	VeleroUAMIClientID,
+	AzureStorageAccountAccessKey,
 	ServiceAccountIssuerURL string
 
 	HetznerConfig      *config.HetznerConfig
@@ -72,10 +71,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		AWSConfig:      config.ParsedGeneralConfig.Cloud.AWS,
 		AWSCredentials: config.ParsedSecretsConfig.AWS,
 
-		AzureConfig:                          config.ParsedGeneralConfig.Cloud.Azure,
-		AzureCredentials:                     config.ParsedSecretsConfig.Azure,
-		WorkloadIdentityInfrastructureStatus: globals.WorkloadIdentityInfrastructureStatus,
-		DisasterRecoveryInfrastructureStatus: globals.DisasterRecoveryInfrastructureStatus,
+		AzureConfig:                  config.ParsedGeneralConfig.Cloud.Azure,
+		AzureCredentials:             config.ParsedSecretsConfig.Azure,
+		CAPIUAMIClientID:             globals.CAPIUAMIClientID,
+		VeleroUAMIClientID:           globals.VeleroUAMIClientID,
+		AzureStorageAccountAccessKey: globals.AzureStorageAccountAccessKey,
 
 		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
 		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,

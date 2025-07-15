@@ -118,12 +118,6 @@ const (
 	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )
 
-// CrossPlane.
-const (
-	WorkloadIdentityInfrastructureResourceReference = "workloadidentityinfrastructure/default"
-	DisasterRecoveryInfrastructureResourceReference = "disasterrecoveryinfrastructure/default"
-)
-
 // Azure
 const (
 	BlobContainerNameOIDCProvider = "oidc-provider"
@@ -158,6 +152,7 @@ const (
 	NamespaceArgoCD        = "argocd"
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
+	NamespaceCrossPlane    = "crossplane"
 	NamespaceCilium        = "cilium"
 	NamespaceCiliumTest    = "cilium-test"
 

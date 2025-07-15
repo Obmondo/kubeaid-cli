@@ -106,8 +106,6 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		}
 	}
 
-	panic("checkpoint")
-
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
 		"(cluster/%s) : created / updated KubeAid config files",

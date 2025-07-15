@@ -6,11 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path"
 
-	sealedSecretsV1Aplha1 "github.com/bitnami-labs/sealed-secrets/pkg/apis/sealedsecrets/v1alpha1"
-	"github.com/bitnami-labs/sealed-secrets/pkg/kubeseal"
-	"github.com/google/renameio"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
 	appsV1 "k8s.io/api/apps/v1"
@@ -20,7 +16,6 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
@@ -139,20 +134,6 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 	return nil
 }
 
-// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
-// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
-// with the underlying cloud provider.
-func GetCapiClusterNamespace() string {
-	capiClusterNamespace := "capi-cluster"
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		capiClusterNamespace = fmt.Sprintf(
-			"capi-cluster-%s",
-			config.ParsedGeneralConfig.Obmondo.CustomerID,
-		)
-	}
-	return capiClusterNamespace
-}
-
 // Creates the given namespace (if it doesn't already exist).
 func CreateNamespace(ctx context.Context, namespaceName string, clusterClient client.Client) {
 	namespace := &coreV1.Namespace{
@@ -169,73 +150,6 @@ func CreateNamespace(ctx context.Context, namespaceName string, clusterClient cl
 		"Failed creating namespace",
 		slog.String("namespace", namespaceName),
 	)
-}
-
-// Performs a minimal installation of Sealed Secrets in the underlying Kubernetes cluster.
-func InstallSealedSecrets(ctx context.Context) {
-	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
-		Namespace:   constants.NamespaceSealedSecrets,
-		ReleaseName: "sealed-secrets",
-		Values: map[string]any{
-			"sealed-secrets": map[string]any{
-				"namespace":        constants.NamespaceSealedSecrets,
-				"fullnameOverride": "sealed-secrets-controller",
-			},
-			"backup": map[string]any{},
-		},
-	})
-}
-
-// Takes the path to a Kubernetes Secret file. It replaces the contents of that file by generating
-// the corresponding Sealed Secret.
-func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("path", secretFilePath),
-	})
-
-	// Create Sealed Secrets controller client configuration.
-	kubesealClientConfig := clientcmd.NewInteractiveDeferredLoadingClientConfig(
-		clientcmd.NewDefaultClientConfigLoadingRules(), nil, os.Stdout,
-	)
-
-	// Load the Sealed Secrets controller's public key.
-
-	certReader, err := kubeseal.OpenCert(ctx, kubesealClientConfig,
-		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, "",
-	)
-	assert.AssertErrNil(ctx, err, "Failed reading Sealed Secrets controller's certificate")
-	defer certReader.Close()
-
-	publicKey, err := kubeseal.ParseKey(certReader)
-	assert.AssertErrNil(ctx, err, "Failed retrieving the Sealed Secrets controller's public key")
-
-	// Open the file, from where KubeSeal will read the secret.
-	secretFile, err := os.Open(secretFilePath)
-	assert.AssertErrNil(ctx, err, "Failed opening secret file")
-	defer secretFile.Close()
-
-	// Open the file, from where KubeSeal will write the sealed-secret.
-	// Notice, that it's the same file 👀.
-	sealedSecretFile, err := renameio.TempFile("", secretFilePath)
-	assert.AssertErrNil(ctx, err, "Failed creating temporary sealed-secret file")
-	defer sealedSecretFile.CloseAtomicallyReplace()
-
-	// Encrypt the secret file.
-	err = kubeseal.Seal(kubesealClientConfig,
-
-		"yaml",
-		secretFile,
-		sealedSecretFile,
-
-		scheme.Codecs,
-		publicKey,
-		sealedSecretsV1Aplha1.DefaultScope,
-		false,
-
-		"", "",
-	)
-	assert.AssertErrNil(ctx, err, "Failed encrypting secret file")
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.

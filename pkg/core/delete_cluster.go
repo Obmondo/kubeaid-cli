@@ -103,9 +103,7 @@ func DeleteCluster(ctx context.Context) {
 	assert.AssertErrNil(ctx, err, "Failed deleting cluster")
 
 	// Wait for the infrastructure to be destroyed.
-	err = wait.PollUntilContextCancel(ctx,
-		2*time.Minute,
-		false,
+	err = wait.PollUntilContextCancel(ctx, 2*time.Minute, false,
 		func(ctx context.Context) (bool, error) {
 			slog.InfoContext(ctx, "Waiting for cluster infrastructure to be destroyed")
 

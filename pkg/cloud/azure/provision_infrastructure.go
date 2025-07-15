@@ -2,13 +2,15 @@ package azure
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	coreV1 "k8s.io/api/core/v1"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -34,83 +36,85 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 	// Wait until the infrastructure is provisioned.
 	// This can be done, by waiting until all the created XRClaims, have their status marked as
 	// ready.
-	{
-		xrClaims := []string{constants.WorkloadIdentityInfrastructureResourceReference}
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-			xrClaims = append(xrClaims,
-				constants.DisasterRecoveryInfrastructureResourceReference,
-			)
-		}
+	xrClaims := []string{"workloadidentityinfrastructure/default"}
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		xrClaims = append(xrClaims, "disasterrecoveryinfrastructure/default")
+	}
 
-		err := wait.PollUntilContextCancel(ctx,
-			20*time.Second,
-			false,
-			func(ctx context.Context) (done bool, err error) {
-				for _, xrClaim := range xrClaims {
-					output, err := utils.ExecuteCommand(fmt.Sprintf(
-						`
-              kubectl get %s \
-                -n crossplane \
-                -o "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
-            `,
-						xrClaim,
-					))
-					if (err != nil) || (output != "True") {
-						return false, nil
-					}
+	err := wait.PollUntilContextCancel(ctx, 30*time.Second, false,
+		func(ctx context.Context) (done bool, err error) {
+			for _, xrClaim := range xrClaims {
+				output, err := utils.ExecuteCommand(fmt.Sprintf(
+					`
+            kubectl get %s \
+              -n crossplane \
+              -o "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
+          `,
+					xrClaim,
+				))
+				if (err != nil) || (output != "True") {
+					return false, nil
 				}
-				return true, nil
-			},
-		)
-		assert.AssertErrNil(ctx, err, "Failed waiting for infrastructures to be provisioned")
-		slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")
+			}
+			return true, nil
+		},
+	)
+	assert.AssertErrNil(ctx, err, "Failed waiting for infrastructures to be provisioned")
+
+	slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")
+}
+
+/*
+Retrieves details about the infrastructure provisioned using CrossPlane.
+
+	After CrossPlane has provisioned the infrastructure, CrossPlane provides us the infrastructure
+	details in a few ways. Here are the 2 ways we care about :
+
+	(1) Resource specific non-secret details are persisted in the status.atProvider field of the
+	    resource object.
+
+	(2) Secret details are persisted to Kubernetes Secrets.
+	    REFER : Write connection details requests in CrossPlane Managed Resources, Compositions
+	            and Composite Resource (XR) Claims.
+*/
+func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client.Client) {
+	// Retrieve resource specific non-secret details.
+
+	globals.CAPIUAMIClientID = utils.ExecuteCommandOrDie(`
+    kubectl get userassignedidentities \
+      -l "uami=capi" \
+      -n crossplane \
+      -o "jsonpath={.items[0].status.atProvider.clientId}"
+  `)
+
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		globals.VeleroUAMIClientID = utils.ExecuteCommandOrDie(`
+      kubectl get userassignedidentities \
+        -l "uami=velero" \
+        -n crossplane \
+        -o "jsonpath={.items[0].status.atProvider.clientId}"
+    `)
 	}
 
-	// Due to the ToFieldPath patches in the CrossPlane compositions, CrossPlane writes details about
-	// the provisioned infrastructure to the corresponding XR claim's status section.
-	// Let's get those details, for each XR claim.
-	{
-		// For the WorkloadIdentityInfrastructure XR claim.
+	// Retrieve secret details,
+	// from Kubernetes Secrets created by CrossPlane.
 
-		output := utils.ExecuteCommandOrDie(fmt.Sprintf(
-			`
-        kubectl get %s \
-          -n crossplane \
-          -o "jsonpath={.status}"
-      `,
-			constants.WorkloadIdentityInfrastructureResourceReference,
-		))
-		err := json.Unmarshal([]byte(output), globals.WorkloadIdentityInfrastructureStatus)
-		assert.AssertErrNil(
-			ctx,
-			err,
-			"Failed JSON unmarshalling status",
-			slog.String(
-				"resource-reference",
-				constants.WorkloadIdentityInfrastructureResourceReference,
-			),
-		)
-
-		// For the DisasterRecoveryInfrastructure XR claim.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-			output := utils.ExecuteCommandOrDie(fmt.Sprintf(
-				`
-          kubectl get %s \
-            -n crossplane \
-            -o "jsonpath={.status}"
-        `,
-				constants.DisasterRecoveryInfrastructureResourceReference,
-			))
-			err := json.Unmarshal([]byte(output), globals.DisasterRecoveryInfrastructureStatus)
-			assert.AssertErrNil(
-				ctx,
-				err,
-				"Failed JSON unmarshalling status",
-				slog.String(
-					"resource-reference",
-					constants.DisasterRecoveryInfrastructureResourceReference,
-				),
-			)
-		}
+	storageAccountConnectionDetailsSecret := &coreV1.Secret{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      "storage-account-details",
+			Namespace: constants.NamespaceCrossPlane,
+		},
 	}
+
+	err := kubernetes.GetKubernetesResource(ctx, clusterClient,
+		storageAccountConnectionDetailsSecret,
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed getting Kubernetes Secret containing storage account connection details",
+	)
+
+	encodedAzureStorageAccountAccessKey, ok := storageAccountConnectionDetailsSecret.Data["attribute.primary_access_key"]
+	assert.Assert(ctx, ok, "Primary access key not found in storage account connection details")
+
+	globals.AzureStorageAccountAccessKey = string(encodedAzureStorageAccountAccessKey)
 }

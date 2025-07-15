@@ -128,19 +128,29 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// Any cloud provider specific tasks.
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAzure:
-		cloudProviderAzure := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
+	// We only need to do this once : while being in the management cluster.
+	if args.ClusterType == constants.ClusterTypeManagement {
+		switch globals.CloudProviderName {
+		case constants.CloudProviderAzure:
+			cloudProviderAzure := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
 
-		// Install CrossPlane.
-		// And create required infrastructure for Azure Workload Identity and Disaster Recovery,
-		// using CrossPlane.
-		cloudProviderAzure.ProvisionInfrastructure(ctx)
+			// Install CrossPlane.
+			// And create required infrastructure for Azure Workload Identity and Disaster Recovery,
+			// using CrossPlane.
+			cloudProviderAzure.ProvisionInfrastructure(ctx)
 
-		// Create the OIDC provider.
-		cloudProviderAzure.CreateOIDCProvider(ctx)
+			// Create the OIDC provider.
+			cloudProviderAzure.CreateOIDCProvider(ctx)
 
-		panic("checkpoint")
+			// Retrieves details about the infrastructure provisioned using CrossPlane.
+			cloudProviderAzure.GetInfrastructureDetails(ctx, args.ClusterClient)
+
+			// Rebuild the cluster's KubeAid Config, with the infrastructure details available.
+			SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+				CreateDevEnvArgs: args.CreateDevEnvArgs,
+				GitAuthMethod:    args.GitAuthMethod,
+			})
+		}
 	}
 
 	// When using ClusterAPI to provision the main cluster.
@@ -183,9 +193,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		slog.String("namespace", capiClusterNamespace),
 	})
 
-	err := wait.PollUntilContextCancel(ctx,
-		time.Minute,
-		false,
+	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (bool, error) {
 			podList := &coreV1.PodList{}
 			err := clusterClient.List(ctx, podList, &client.ListOptions{

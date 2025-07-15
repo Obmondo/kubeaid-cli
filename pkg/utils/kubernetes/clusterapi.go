@@ -35,11 +35,23 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 	return
 }
 
+// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
+// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
+// with the underlying cloud provider.
+func GetCapiClusterNamespace() string {
+	capiClusterNamespace := "capi-cluster"
+	if config.ParsedGeneralConfig.Obmondo != nil {
+		capiClusterNamespace = fmt.Sprintf(
+			"capi-cluster-%s",
+			config.ParsedGeneralConfig.Obmondo.CustomerID,
+		)
+	}
+	return capiClusterNamespace
+}
+
 // Waits for the main cluster to be provisioned.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) {
-	err := wait.PollUntilContextCancel(ctx,
-		time.Minute,
-		false,
+	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (bool, error) {
 			slog.InfoContext(ctx, "Waiting for the main cluster to be provisioned")
 

@@ -66,26 +66,20 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	}
 
 	// Install the ArgoCD Helm chart.
-	{
-		argoCDHelmValues := map[string]any{}
+	HelmInstall(ctx, &HelmInstallArgs{
+		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
 
-		// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
-		// We need to create an ArgoCD account for KubeAid Agent.
-		argoCDHelmValues["argo-cd"] = map[string]any{
-			"configs": map[string]any{
-				"cm": map[string]any{
-					"accounts.kubeaid-agent": "apiKey",
+		Namespace:   constants.NamespaceArgoCD,
+		ReleaseName: constants.ReleaseNameArgoCD,
+
+		Values: map[string]any{
+			"argo-cd": map[string]any{
+				"configs": map[string]any{
+					"cm": getArgoCDConfigMapOptions(),
 				},
 			},
-		}
-
-		HelmInstall(ctx, &HelmInstallArgs{
-			ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
-			Namespace:   constants.NamespaceArgoCD,
-			ReleaseName: constants.ReleaseNameArgoCD,
-			Values:      argoCDHelmValues,
-		})
-	}
+		},
+	})
 
 	// Port-forward ArgoCD and create ArgoCD client.
 	argoCDClient := NewArgoCDClient(ctx, clusterClient)
@@ -134,6 +128,37 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 		setupKubeAgentArgoCDAccount(ctx, argoCDAccountClient, clusterClient)
 	}
+}
+
+func getArgoCDConfigMapOptions() map[string]any {
+	argoCDConfigMapOptions := map[string]any{
+		/*
+			For ArgoCD-CrossPlane integration, we need to use annotation based application resource
+			tracking.
+
+			You ask why? Let me explain :
+
+			Suppose, we define an XR claim (which is namespace scoped) in our git repository. The
+			'infrastructure' ArgoCD App is tracking this XR Claim.
+			The XR Claim will dynamically generate an XR (which is cluster scoped). And this XR
+			will derive the 'argocd.argoproj.io/instance' label from its parent XR Claim.
+
+			So, the situation is : we have a dynamically generated XR, not defined in git, but
+			being tracked by ArgoCD, because of that derived label.
+			This will cause the 'infrastructure' ArgoCD App to be always out of sync. Additionally,
+			if someone syncs the 'infrastructure' ArgoCD App, with pruning enabled, then ArgoCD
+			will delete those XRs.
+		*/
+		"application.resourceTrackingMethod": "annotation",
+	}
+
+	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
+	// We need to create an ArgoCD account for KubeAid Agent.
+	if config.ParsedGeneralConfig.Obmondo != nil {
+		argoCDConfigMapOptions["accounts.kubeaid-agent"] = "apiKey"
+	}
+
+	return argoCDConfigMapOptions
 }
 
 // Port-forwards the ArgoCD server and creates an ArgoCD client.

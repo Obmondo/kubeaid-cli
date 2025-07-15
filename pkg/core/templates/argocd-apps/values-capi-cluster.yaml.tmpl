@@ -62,15 +62,13 @@ azure:
   sshPublicKey: {{ .AzureConfig.SSHPublicKey }}
 
   userAssignedIdentity:
-    name: cluster-api
-    clientID: {{ (.WorkloadIdentityInfrastructureStatus).CAPIUAMIPrincipalID }}
+    name: capi
+    clientID: {{ .CAPIUAMIClientID }}
 
   serviceAccountIssuer:
     url: {{ .ServiceAccountIssuerURL }}
 
-  {{ if .AzureConfig.ImageID }}
-  imageID: {{ .AzureConfig.ImageID }}
-  {{ end }}
+  canonicalUbuntuImage: {{ .AzureConfig.CanonicalUbuntuImage | toIndentYAML 2 | nindent 4 }}
 
   controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 

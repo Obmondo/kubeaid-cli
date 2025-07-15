@@ -197,7 +197,7 @@ type (
 
 		SSHPublicKey string `yaml:"sshPublicKey" validate:"notblank"`
 
-		ImageID *string `yaml:"imageID"`
+		CanonicalUbuntuImage CanonicalUbuntuImage `yaml:"canonicalUbuntuImage" validate:"required"`
 
 		ControlPlane AzureControlPlane            `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []AzureAutoScalableNodeGroup `yaml:"nodeGroups"`
@@ -209,6 +209,11 @@ type (
 
 	WorkloadIdentity struct {
 		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"notblank"`
+	}
+
+	CanonicalUbuntuImage struct {
+		Offer string `yaml:"offer" validate:"notblank"`
+		SKU   string `yaml:"sku"   validate:"notblank"`
 	}
 
 	AzureControlPlane struct {

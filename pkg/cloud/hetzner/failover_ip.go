@@ -101,9 +101,7 @@ func getInitMasterNodeIP(ctx context.Context) string {
 
 	var initMasterNodeIP string
 
-	_ = wait.PollUntilContextCancel(ctx,
-		5*time.Second,
-		false,
+	_ = wait.PollUntilContextCancel(ctx, 5*time.Second, false,
 		func(ctx context.Context) (bool, error) {
 			// Get the HetznerBareMetalMachines.
 			hetznerBareMetalMachines := &caphV1Beta1.HetznerBareMetalMachineList{}
