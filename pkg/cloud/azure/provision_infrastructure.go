@@ -53,6 +53,7 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 					xrClaim,
 				))
 				if (err != nil) || (output != "True") {
+					//nolint:nilerr
 					return false, nil
 				}
 			}
