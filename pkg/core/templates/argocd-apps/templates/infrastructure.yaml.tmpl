@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "10"
+  name: infrastructure
+  namespace: argocd
+spec:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: crossplane
+  project: kubeaid
+  source:
+    repoURL: {{ .KubeaidConfigForkURL }}
+    path: k8s/{{ .ClusterConfig.Name }}/infrastructure
+    targetRevision: HEAD
+    directory:
+      recurse: true

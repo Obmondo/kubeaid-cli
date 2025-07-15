@@ -2,7 +2,6 @@ package core
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -11,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterctlClientLib "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -50,19 +50,31 @@ func DeleteCluster(ctx context.Context) {
 	if kubernetes.IsClusterctlMoveExecuted(ctx) {
 		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
-		// Move back the ClusterAPI manifests back from the provisioned cluster to the management
-		// cluster.
-		// NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
+		/*
+		   Pause the ClusterAPI Infrastructure Provider in the main cluster,
+		   and move back the ClusterAPI manifests to the management cluster. They will be processed by
+		   the management cluster's Infrastructure Provider.
+
+		   NOTE : We need to retry, since we can get 'failed to call webhook' error sometimes.
+		*/
 		err := utils.WithRetry(10*time.Second, 12, func() error {
-			_, err := utils.ExecuteCommand(fmt.Sprintf(
-				"clusterctl move --kubeconfig %s --to-kubeconfig %s -n %s",
-				constants.OutputPathMainClusterKubeconfig,
-				managementClusterKubeconfigPath,
-				kubernetes.GetCapiClusterNamespace(),
-			))
+			clusterctlClient, err := clusterctlClientLib.New(ctx, "")
+			assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
+			err = clusterctlClient.Move(ctx, clusterctlClientLib.MoveOptions{
+				FromKubeconfig: clusterctlClientLib.Kubeconfig{
+					Path: constants.OutputPathMainClusterKubeconfig,
+				},
+
+				ToKubeconfig: clusterctlClientLib.Kubeconfig{
+					Path: kubernetes.GetManagementClusterKubeconfigPath(ctx),
+				},
+
+				Namespace: kubernetes.GetCapiClusterNamespace(),
+			})
 			return err
 		})
-		assert.AssertErrNil(ctx, err, "Failed doing clusterctl move")
+		assert.AssertErrNil(ctx, err, "Failed reverting pivoting by executing 'clusterctl move'")
 	}
 
 	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
@@ -91,9 +103,7 @@ func DeleteCluster(ctx context.Context) {
 	assert.AssertErrNil(ctx, err, "Failed deleting cluster")
 
 	// Wait for the infrastructure to be destroyed.
-	err = wait.PollUntilContextCancel(ctx,
-		2*time.Minute,
-		false,
+	err = wait.PollUntilContextCancel(ctx, 2*time.Minute, false,
 		func(ctx context.Context) (bool, error) {
 			slog.InfoContext(ctx, "Waiting for cluster infrastructure to be destroyed")
 

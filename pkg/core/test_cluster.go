@@ -12,6 +12,9 @@ import (
 )
 
 func TestCluster(ctx context.Context) {
+	// Ensure that required runtime dependencies are installed.
+	utils.EnsureRuntimeDependencyInstalled(ctx, "cilium-cli")
+
 	// Set the KUBECONFIG environment variable to the main cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 
@@ -28,7 +31,7 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	slog.InfoContext(ctx, "🧪 Running minimal Cilium network connectivity tests")
 
 	// Create the cilium-test namespace.
-	kubernetes.CreateNamespace(ctx, "cilium-test", clusterClient)
+	kubernetes.CreateNamespace(ctx, constants.NamespaceCiliumTest, clusterClient)
 	//
 	// Pods spun up during the network connectivity tests, need to do DNS lookups and tcpdumps.
 	// So they need to run in privileged mode.
@@ -39,18 +42,14 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	)
 
 	// Run minimal Cilium network connectivity tests.
-	_, err := utils.ExecuteCommand(`
-    cilium connectivity test \
+	utils.ExecuteCommandOrDie(`
+    cilium-cli connectivity test \
       --namespace cilium \
       --test-namespace cilium-test \
-      --test "!" \
+      --test ! \
       --timeout 5m
   `)
-	if err != nil {
-		slog.ErrorContext(ctx, "🚨 Cilium network connectivity tests failed")
-	} else {
-		slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
-	}
+	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
 	utils.ExecuteCommandOrDie("kubectl delete namespace cilium-test cilium-test-1")

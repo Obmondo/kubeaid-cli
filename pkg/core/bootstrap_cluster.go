@@ -10,6 +10,9 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
+	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
+	"sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -54,15 +57,6 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// but instead, restore the latest backup.
 	if args.IsPartOfDisasterRecovery {
 		return
-	}
-
-	// Create required namespaces before syncing all the ArgoCD Apps.
-	// Otherwise, some syncing of ArgoCD Apps might fail.
-	// For e.g. : syncing of the kube-prometheus ArgoCD App fails if the obmondo namespace doesn't
-	// exist.
-	namespaces := []string{"obmondo"}
-	for _, namespace := range namespaces {
-		kubernetes.CreateNamespace(ctx, namespace, mainClusterClient)
 	}
 
 	// Sync all ArgoCD Apps.
@@ -116,7 +110,6 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	_ = globals.ArgoCDApplicationClientCloser.Close()
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
-	// All Kubernetes operations from now on, will be done against the provisioned cluster.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
@@ -142,10 +135,10 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		       Sealed Secrets controller installed in the provisioned main cluster.
 	*/
 	SetupCluster(ctx, SetupClusterArgs{
-		CreateDevEnvArgs:    args.CreateDevEnvArgs,
-		IsManagementCluster: false,
-		ClusterClient:       provisionedClusterClient,
-		GitAuthMethod:       args.GitAuthMethod,
+		CreateDevEnvArgs: args.CreateDevEnvArgs,
+		ClusterType:      constants.ClusterTypeMain,
+		ClusterClient:    provisionedClusterClient,
+		GitAuthMethod:    args.GitAuthMethod,
 	})
 
 	if !kubernetes.UsingClusterAPI() {
@@ -224,6 +217,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 }
 
 func pivotCluster(ctx context.Context) {
+	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
+
 	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 	//
 	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
@@ -231,22 +226,37 @@ func pivotCluster(ctx context.Context) {
 	if globals.CloudProviderName == constants.CloudProviderAWS {
 		// Zero the credentials CAPA controller started with.
 		// This will force the CAPA controller to fall back to use the attached instance profiles.
-		utils.ExecuteCommandOrDie(
-			"clusterawsadm controller zero-credentials --namespace capi-cluster",
-		)
+		err := credentials.ZeroCredentials(credentials.ZeroCredentialsInput{
+			Namespace: capiClusterNamespace,
+		})
+		assert.AssertErrNil(ctx, err, "Failed zeroing the credentials CAPA controller started with")
 
-		// Rollout and restart on capa-controller-manager deployment.
-		utils.ExecuteCommandOrDie(
-			"clusterawsadm controller rollout-controller --namespace capi-cluster",
-		)
+		// Rollout CAPA controller.
+		err = rollout.RolloutControllers(rollout.RolloutControllersInput{
+			Namespace: capiClusterNamespace,
+		})
+		assert.AssertErrNil(ctx, err, "Failed rolling out CAPA controller")
 	}
 
-	// Move ClusterAPI manifests to the provisioned cluster.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"clusterctl move --kubeconfig %s --namespace %s --to-kubeconfig %s",
-		kubernetes.GetManagementClusterKubeconfigPath(ctx), kubernetes.GetCapiClusterNamespace(),
-		constants.OutputPathMainClusterKubeconfig,
-	))
+	// Pause the ClusterAPI Infrastructure Provider in the management cluster,
+	// and move the ClusterAPI manifests to the main cluster. They will be processed by the main
+	// cluster's Infrastructure Provider.
+
+	clusterctlClient, err := client.New(ctx, "")
+	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
+	err = clusterctlClient.Move(ctx, client.MoveOptions{
+		FromKubeconfig: client.Kubeconfig{
+			Path: kubernetes.GetManagementClusterKubeconfigPath(ctx),
+		},
+
+		ToKubeconfig: client.Kubeconfig{
+			Path: constants.OutputPathMainClusterKubeconfig,
+		},
+
+		Namespace: capiClusterNamespace,
+	})
+	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

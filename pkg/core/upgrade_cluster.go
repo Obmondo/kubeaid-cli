@@ -7,6 +7,7 @@ import (
 	"path"
 	"time"
 
+	yqCmd "github.com/mikefarah/yq/v4/cmd"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	kcpV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
@@ -97,11 +98,18 @@ func updateCapiClusterValuesFile(ctx context.Context, args UpgradeClusterArgs) {
 		)
 
 		// Update Kubernetes version.
-		_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"yq --in-place --yaml-output --yaml-roundtrip '(.global.kubernetes.version) = \"%s\"' %s",
-			args.NewKubernetesVersion,
+		yqCmd := yqCmd.New()
+		yqCmd.SetArgs([]string{
+			"--in-place", "--yaml-output", "--yaml-roundtrip",
+
+			fmt.Sprintf("'(.global.kubernetes.version) = \"%s\"'", args.NewKubernetesVersion),
+
 			capiClusterValuesFilePath,
-		))
+		})
+		err := yqCmd.ExecuteContext(ctx)
+		assert.AssertErrNil(ctx, err,
+			"Failed updating Kubernetes version in values-capi-cluster.yaml file",
+		)
 
 		// Update with cloud-specific details.
 		globals.CloudProvider.UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx,

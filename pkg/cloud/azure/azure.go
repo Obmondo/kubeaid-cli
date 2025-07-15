@@ -2,7 +2,6 @@ package azure
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/Azure/azure-sdk-for-go/profile/p20200901/resourcemanager/compute/armcompute"
 	"github.com/Azure/azure-sdk-for-go/profile/p20200901/resourcemanager/resources/armresources"
@@ -57,19 +56,7 @@ func NewAzureCloudProvider() cloud.CloudProvider {
 	storageClientFactory, err := armstorage.NewClientFactory(subscriptionID, credentials, nil)
 	assert.AssertErrNil(ctx, err, "Failed creating Azure Storage client factory")
 
-	// Create Azure Resource Group, if it doesn't already exist.
 	resourceGroupName := config.ParsedGeneralConfig.Cluster.Name
-	_, err = resourceGroupsClient.CreateOrUpdate(ctx, resourceGroupName,
-		armresources.ResourceGroup{
-			Location: &config.ParsedGeneralConfig.Cloud.Azure.Location,
-		},
-		nil,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating / updating Resource Group",
-		slog.String("name", resourceGroupName),
-	)
-	slog.InfoContext(ctx, "Created Azure Resource Group", slog.String("name", resourceGroupName))
 
 	return &Azure{
 		credentials,

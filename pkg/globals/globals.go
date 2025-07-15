@@ -20,9 +20,7 @@ var (
 	ArgoCDApplicationClient       application.ApplicationServiceClient
 
 	// Azure specific.
-
-	UAMIClientIDClusterAPI,
-	UAMIClientIDVelero,
-
+	CAPIUAMIClientID,
+	VeleroUAMIClientID,
 	AzureStorageAccountAccessKey string
 )

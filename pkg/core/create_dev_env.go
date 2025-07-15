@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -30,15 +29,8 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		aws.SetAWSSpecificEnvs()
-		aws.CreateIAMCloudFormationStack()
-
-	case constants.CloudProviderAzure:
-		azureCloudProvider := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
-		azureCloudProvider.CreateWorkloadIdentityInfrastructure(ctx)
-
-	case constants.CloudProviderHetzner:
-		break
+		aws.SetAWSSpecificEnvs(ctx)
+		aws.CreateIAMCloudFormationStack(ctx)
 	}
 
 	// Set KUBECONFIG env.
@@ -61,9 +53,9 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 
 	// Setup the management cluster.
 	SetupCluster(ctx, SetupClusterArgs{
-		CreateDevEnvArgs:    args,
-		IsManagementCluster: true,
-		ClusterClient:       managementClusterClient,
-		GitAuthMethod:       gitAuthMethod,
+		CreateDevEnvArgs: args,
+		ClusterType:      constants.ClusterTypeManagement,
+		ClusterClient:    managementClusterClient,
+		GitAuthMethod:    gitAuthMethod,
 	})
 }

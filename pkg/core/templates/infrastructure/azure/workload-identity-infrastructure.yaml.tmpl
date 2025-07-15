@@ -1,0 +1,11 @@
+apiVersion: azure.kubeaid.org/v1alpha1
+kind: WorkloadIdentityInfrastructure
+metadata:
+  name: default
+  namespace: crossplane
+spec:
+  clusterName: {{ .ClusterConfig.Name }}
+  subscriptionID: {{ .AzureConfig.SubscriptionID }}
+  location: {{ .AzureConfig.Location }}
+  aadApplicationPrincipalID: {{ .AzureConfig.AADApplication.PrincipalID }}
+  storageAccountName: {{ .AzureConfig.StorageAccount }}

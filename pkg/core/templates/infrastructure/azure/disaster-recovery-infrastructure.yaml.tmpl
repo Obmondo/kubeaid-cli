@@ -1,0 +1,10 @@
+apiVersion: azure.kubeaid.org/v1alpha1
+kind: DisasterRecoveryInfrastructure
+metadata:
+  name: default
+  namespace: crossplane
+spec:
+  clusterName: {{ .ClusterConfig.Name }}
+  subscriptionID: {{ .AzureConfig.SubscriptionID }}
+  location: {{ .AzureConfig.Location }}
+  storageAccountName: {{ .AzureConfig.StorageAccount }}

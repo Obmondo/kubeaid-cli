@@ -2,7 +2,7 @@
 
 #--- Builder stage ---
 
-FROM golang:1.24.3 AS builder
+FROM golang:1.24.5 AS builder
 
 WORKDIR /app
 

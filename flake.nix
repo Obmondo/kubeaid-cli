@@ -26,9 +26,6 @@
           nativeBuildInputs = [
             go
             golangci-lint
-
-            nixfmt-rfc-style
-            direnv
           ];
 
           buildInputs = [
@@ -38,22 +35,12 @@
             jsonnet-bundler
             jq
 
-            k3d
             kubectl
-            kubeseal
-            clusterctl
-            (import ./nix/pkgs/clusterawsadm.nix { inherit pkgs; })
-            (import ./nix/pkgs/azwi.nix { inherit pkgs; })
-            azure-cli
             kubeone
-            cilium-cli
 
-            yq
+            k3d
+            clusterctl
           ];
-
-          # Hitting this issue : https://github.com/Azure/azure-cli/issues/31419.
-          # Got the solution from here : https://github.com/dotnet/orleans/pull/9486/files
-          AZURE_CORE_USE_MSAL_HTTP_CACHE = "false";
         };
       }
     );

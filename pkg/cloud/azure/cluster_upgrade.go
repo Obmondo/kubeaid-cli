@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 	"github.com/sagikazarmark/slog-shim"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capzV1Beta1 "sigs.k8s.io/cluster-api-provider-azure/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -69,8 +69,16 @@ func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
 	// Update the image ID.
-	_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"yq -i -y '(.azure.imageID) = \"%s\"' %s",
-		parsedUpdates.ImageID, capiClusterValuesFilePath,
-	))
+	yqCmd := yqCmdLib.New()
+	yqCmd.SetArgs([]string{
+		"--in-place", "--yaml-output", "--yaml-roundtrip",
+
+		fmt.Sprintf("(.azure.imageId) = \"%s\"", parsedUpdates.ImageID),
+
+		capiClusterValuesFilePath,
+	})
+	err := yqCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err,
+		"Failed updating machine image ID, in values-capi-cluster.yaml file",
+	)
 }

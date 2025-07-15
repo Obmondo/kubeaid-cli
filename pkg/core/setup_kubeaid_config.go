@@ -11,6 +11,7 @@ import (
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -87,12 +88,21 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		if mainClusterEndpoint != nil {
 			ciliumValuesFilePath := path.Join(clusterDir, "argocd-apps/values-cilium.yaml")
 
-			utils.ExecuteCommandOrDie(fmt.Sprintf(
-				"yq -i -y '(.cilium.k8sServiceHost) = \"%s\" | (.cilium.k8sServicePort) = \"%d\"' %s",
-				mainClusterEndpoint.Host,
-				mainClusterEndpoint.Port,
+			yqCmd := yqCmdLib.New()
+			yqCmd.SetArgs([]string{
+				"--in-place", "--yaml-output", "--yaml-roundtrip",
+
+				fmt.Sprintf(
+					"(.cilium.k8sServiceHost) = \"%s\" | (.cilium.k8sServicePort) = \"%d\"",
+					mainClusterEndpoint.Host, mainClusterEndpoint.Port,
+				),
+
 				ciliumValuesFilePath,
-			))
+			})
+			err := yqCmd.ExecuteContext(ctx)
+			assert.AssertErrNil(ctx, err,
+				"Failed updating main cluster's API server endpoint, in values-cilium.yaml file",
+			)
 		}
 	}
 
@@ -238,7 +248,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	)
 
 	// Run the KubePrometheus build script.
-	slog.Info("Running KubePrometheus build script...")
+	slog.InfoContext(ctx, "Running KubePrometheus build script...")
 	kubePrometheusBuildScriptPath := fmt.Sprintf("%s/build/kube-prometheus/build.sh",
 		utils.GetKubeAidDir(),
 	)

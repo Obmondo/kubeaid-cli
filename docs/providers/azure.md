@@ -8,7 +8,7 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
 
 - Autoscalable node-groups, with **scale to / from 0** and **labels and taints propagation** support.
 
-- GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets) and [ClusterAPI](https://cluster-api.sigs.k8s.io).
+- GitOps, using [ArgoCD](https://argoproj.github.io/cd/), [Sealed Secrets](https://github.com/bitnami-labs/sealed-secrets), [ClusterAPI](https://cluster-api.sigs.k8s.io) and [CrossPlane](https://www.crossplane.io).
 
 - Monitoring, using [KubePrometheus](https://prometheus-operator.dev).
 

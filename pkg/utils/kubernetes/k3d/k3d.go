@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/k3d-io/k3d/v5/cmd/cluster"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
+	"github.com/k3d-io/k3d/v5/pkg/types"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -56,52 +58,20 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		slog.String("cluster-name", name),
 	})
 
-	// Generate the K3D config file.
-	{
-		k3dConfigTemplateValues := &K3DConfigTemplateValues{
-			Name:       name,
-			K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
-		}
-		if globals.CloudProviderName == constants.CloudProviderAzure {
-			workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
-
-			k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
-				ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
-
-				SSHPublicKeyFilePath: utils.ToAbsolutePath(ctx,
-					workloadIdentityConfig.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
-				),
-				SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx,
-					workloadIdentityConfig.OpenIDProviderSSHKeyPair.PrivateKeyFilePath,
-				),
-			}
-		}
-
-		k3dConfigAsBytes := templateUtils.ParseAndExecuteTemplate(ctx,
-			&templates, constants.TemplateNameK3DConfig, k3dConfigTemplateValues,
-		)
-
-		k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
-			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm,
-		)
-		assert.AssertErrNil(ctx, err,
-			"Failed opening management cluster K3D config file",
-			slog.String("path", constants.OutputPathManagementClusterK3DConfig),
-		)
-		defer k3dConfigFile.Close()
-
-		_, err = k3dConfigFile.Write(k3dConfigAsBytes)
-		assert.AssertErrNil(ctx, err, "Failed writing K3D config to file")
-	}
+	// Generate the K3D cluster config file.
+	generateK3DClusterConfigFile(ctx, name)
 
 	// Create the K3D cluster, if it doesn't already exist.
 	if !doesK3dClusterExist(ctx, name) {
 		slog.InfoContext(ctx, "Creating the K3D management cluster")
 
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"k3d cluster create --config %s",
+		clusterCreateCmd := cluster.NewCmdClusterCreate()
+		clusterCreateCmd.SetArgs([]string{
+			"--config",
 			constants.OutputPathManagementClusterK3DConfig,
-		))
+		})
+		err := clusterCreateCmd.ExecuteContext(ctx)
+		assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
 	} else {
 		slog.InfoContext(ctx, "Skipped creating the K3D management cluster")
 	}
@@ -124,13 +94,15 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		done
 	`)
 
-	// Create the management cluster's host kubeconfig.
+	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"k3d kubeconfig get %s > %s",
-		name,
+	_, err := k3dClient.KubeconfigGetWrite(ctx, runtimes.Docker,
+		&types.Cluster{Name: name},
+
 		constants.OutputPathManagementClusterHostKubeconfig,
-	))
+		&k3dClient.WriteKubeConfigOptions{OverwriteExisting: true},
+	)
+	assert.AssertErrNil(ctx, err, "Failed getting and persisting K3D cluster's kubeconfig")
 
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
@@ -142,6 +114,44 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		name,
 		name,
 	))
+}
+
+// Generates the K3D cluster config file.
+func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
+	k3dConfigTemplateValues := &K3DConfigTemplateValues{
+		Name:       clusterName,
+		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
+	}
+	if globals.CloudProviderName == constants.CloudProviderAzure {
+		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
+
+		k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
+			ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
+
+			SSHPublicKeyFilePath: utils.ToAbsolutePath(ctx,
+				workloadIdentityConfig.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
+			),
+			SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx,
+				workloadIdentityConfig.OpenIDProviderSSHKeyPair.PrivateKeyFilePath,
+			),
+		}
+	}
+
+	k3dConfigAsBytes := templateUtils.ParseAndExecuteTemplate(ctx,
+		&templates, constants.TemplateNameK3DConfig, k3dConfigTemplateValues,
+	)
+
+	k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm,
+	)
+	assert.AssertErrNil(ctx, err,
+		"Failed opening management cluster K3D config file",
+		slog.String("path", constants.OutputPathManagementClusterK3DConfig),
+	)
+	defer k3dConfigFile.Close()
+
+	_, err = k3dConfigFile.Write(k3dConfigAsBytes)
+	assert.AssertErrNil(ctx, err, "Failed writing K3D config to file")
 }
 
 // Returns whether the given K3D cluster exists or not.

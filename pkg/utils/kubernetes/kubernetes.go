@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path"
 
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	veleroV1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
@@ -135,20 +134,6 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 	return nil
 }
 
-// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
-// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
-// with the underlying cloud provider.
-func GetCapiClusterNamespace() string {
-	capiClusterNamespace := "capi-cluster"
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		capiClusterNamespace = fmt.Sprintf(
-			"capi-cluster-%s",
-			config.ParsedGeneralConfig.Obmondo.CustomerID,
-		)
-	}
-	return capiClusterNamespace
-}
-
 // Creates the given namespace (if it doesn't already exist).
 func CreateNamespace(ctx context.Context, namespaceName string, clusterClient client.Client) {
 	namespace := &coreV1.Namespace{
@@ -165,32 +150,6 @@ func CreateNamespace(ctx context.Context, namespaceName string, clusterClient cl
 		"Failed creating namespace",
 		slog.String("namespace", namespaceName),
 	)
-}
-
-// Installs Sealed Secrets in the underlying Kubernetes cluster.
-func InstallSealedSecrets(ctx context.Context) {
-	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
-		Namespace:   "sealed-secrets",
-		ReleaseName: "sealed-secrets",
-		Values: map[string]any{
-			"sealed-secrets": map[string]any{
-				"namespace":        "sealed-secrets",
-				"fullnameOverride": "sealed-secrets-controller",
-			},
-			"backup": map[string]any{},
-		},
-	})
-}
-
-// Takes the path to a Kubernetes Secret file. It replaces the contents of that file by generating
-// the corresponding Sealed Secret.
-func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
-	utils.ExecuteCommandOrDie(fmt.Sprintf(`
-		kubeseal \
-			--controller-name sealed-secrets-controller --controller-namespace sealed-secrets \
-			--secret-file %s --sealed-secret-file %s
-	`, secretFilePath, secretFilePath))
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.

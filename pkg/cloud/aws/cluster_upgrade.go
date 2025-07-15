@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 	"github.com/sagikazarmark/slog-shim"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -65,14 +65,30 @@ func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Cont
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
 	// Update AMI ID for the Control Plane.
-	_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"yq -i -y '(.aws.controlPlane.ami.id) = \"%s\"' %s",
-		parsedUpdates.AMIID, capiClusterValuesFilePath,
-	))
+	yqCmd := yqCmdLib.New()
+	yqCmd.SetArgs([]string{
+		"--in-place", "--yaml-output", "--yaml-roundtrip",
+
+		fmt.Sprintf("(.aws.controlPlane.ami.id) = \"%s\"", parsedUpdates.AMIID),
+
+		capiClusterValuesFilePath,
+	})
+	err := yqCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err,
+		"Failed updating AMI ID for control-plane nodes, in values-capi-cluster.yaml file",
+	)
 
 	// Update AMI ID in each node-group definition.
-	_ = utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"yq -i -y '(.aws.nodeGroups[].ami.id) = \"%s\"' %s",
-		parsedUpdates.AMIID, capiClusterValuesFilePath,
-	))
+	yqCmd = yqCmdLib.New()
+	yqCmd.SetArgs([]string{
+		"--in-place", "--yaml-output", "--yaml-roundtrip",
+
+		fmt.Sprintf("(.aws.nodeGroups[].ami.id) = \"%s\"", parsedUpdates.AMIID),
+
+		capiClusterValuesFilePath,
+	})
+	err = yqCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err,
+		"Failed updating AMI ID for nodegroups, in values-capi-cluster.yaml file",
+	)
 }

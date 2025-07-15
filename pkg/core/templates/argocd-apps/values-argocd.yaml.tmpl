@@ -1,10 +1,28 @@
----
-{{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
 argo-cd:
   configs:
     cm:
-      accounts.kubeaid-agent: apiKey
+      # For ArgoCD-CrossPlane integration, we need to use annotation based application resource
+      # tracking.
+      #
+      # You ask why? Let me explain :
+      #
+      # Suppose, we define an XR claim (which is namespace scoped) in our git repository. The
+      # 'infrastructure' ArgoCD App is tracking this XR Claim.
+      # The XR Claim will dynamically generate an XR (which is cluster scoped). And this XR will
+      # derive the 'argocd.argoproj.io/instance' label from its parent XR Claim.
+      #
+      # So, the situation is : we have a dynamically generated XR, not defined in git, but being
+      # tracked by ArgoCD, because of that derived label.
+      # This will cause the 'infrastructure' ArgoCD App to be always out of sync. Additionally,
+      # if someone syncs the 'infrastructure' ArgoCD App, with pruning enabled, then ArgoCD will
+      # delete those XRs.
+      application.resourceTrackingMethod: annotation
 
+      {{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
+      accounts.kubeaid-agent: apiKey
+      {{- end }}
+
+  {{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
     rbac:
       policy.csv: |
         p, role:kubeaid-agent, applications, get, kubeaid/*, allow
@@ -13,4 +31,4 @@ argo-cd:
         p, role:kubeaid-agent, applications, status, kubeaid/*, allow
 
         g, kubeaid-agent, role:kubeaid-agent
-{{- end }}
+  {{- end }}

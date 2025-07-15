@@ -63,9 +63,9 @@ const (
 
 // Output paths.
 var (
-	OutputDirectory = "./outputs"
+	OutputsDirectory = "./outputs"
 
-	OutputPathGeneratedConfigsDirectory  = path.Join(OutputDirectory, "configs/")
+	OutputPathGeneratedConfigsDirectory  = path.Join(OutputsDirectory, "configs/")
 	OutputPathGeneratedGeneralConfigFile = path.Join(
 		OutputPathGeneratedConfigsDirectory,
 		FileNameGeneralConfig,
@@ -75,30 +75,29 @@ var (
 		FileNameSecretsConfig,
 	)
 
-	OutputPathLogFile = path.Join(OutputDirectory, ".log")
+	OutputPathLogFile = path.Join(OutputsDirectory, ".log")
 
-	OutputPathManagementClusterK3DConfig = path.Join(OutputDirectory, "k3d.config.yaml")
+	OutputPathManagementClusterK3DConfig = path.Join(OutputsDirectory, "k3d.config.yaml")
 
 	OutputPathManagementClusterHostKubeconfig = path.Join(
-		OutputDirectory,
+		OutputsDirectory,
 		"kubeconfigs/clusters/management/host.yaml",
 	)
 	OutputPathManagementClusterContainerKubeconfig = path.Join(
-		OutputDirectory,
+		OutputsDirectory,
 		"kubeconfigs/clusters/management/container.yaml",
 	)
 
-	OutputPathMainClusterKubeconfig = path.Join(OutputDirectory, "kubeconfigs/clusters/main.yaml")
+	OutputPathMainClusterKubeconfig = path.Join(OutputsDirectory, "kubeconfigs/clusters/main.yaml")
 
 	OutputPathJWKSDocument = path.Join(
-		OutputDirectory,
+		OutputsDirectory,
 		"workload-identity/openid-provider/jwks.json",
 	)
 )
 
 // ArgoCD.
 const (
-	NamespaceArgoCD   = "argocd"
 	ReleaseNameArgoCD = "argocd"
 
 	ArgoCDProjectKubeAid = "kubeaid"
@@ -111,6 +110,12 @@ const (
 	ArgoCDAppVelero            = "velero"
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 	ArgoCDExternalSnapshotter  = "external-snapshotter"
+)
+
+// Sealed Secrets.
+const (
+	SealedSecretsControllerName    = "sealed-secrets-controller"
+	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )
 
 // Azure
@@ -131,10 +136,6 @@ const (
 	AzureRoleIDStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
-
-	UAMIClusterAPI            = "cluster-api"
-	UAMIVelero                = "velero"
-	UAMISealedSecretsBackuper = "sealed-secrets-backuper"
 )
 
 // Hetzner
@@ -148,8 +149,11 @@ const (
 
 const (
 	// Namespaces.
+	NamespaceArgoCD        = "argocd"
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
+	NamespaceCrossPlane    = "crossplane"
+	NamespaceCilium        = "cilium"
 	NamespaceCiliumTest    = "cilium-test"
 
 	// Service Accounts.
@@ -185,6 +189,4 @@ const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	GzippedFilenameSuffix = ".gz"
-
-	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )

@@ -1,0 +1,13 @@
+---
+{{- if .AzureConfig }}
+azure:
+  enable: true
+  compositions:
+    workloadIdentityInfrastructure:
+      enable: true
+
+    {{- if .DisasterRecoveryConfig }}
+    disasterRecoveryInfrastructure:
+      enable: true
+    {{- end }}
+{{- end }}

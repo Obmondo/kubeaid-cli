@@ -26,21 +26,22 @@ type TemplateValues struct {
 	config.GitConfig
 	config.GitCredentials
 	config.ForksConfig
+
 	config.ClusterConfig
-	*config.DisasterRecoveryConfig
 	config.KubePrometheusConfig
-	*config.ObmondoConfig
 	CAPIClusterNamespace string
 
-	AWSConfig *config.AWSConfig
+	AWSConfig      *config.AWSConfig
+	AWSCredentials *config.AWSCredentials
 	AWSB64EncodedCredentials,
 	AWSAccountID string
 
-	AzureConfig *config.AzureConfig
-	ServiceAccountIssuerURL,
-	UAMIClientIDClusterAPI,
-	UAMIClientIDVelero,
-	AzureStorageAccountAccessKey string
+	AzureConfig      *config.AzureConfig
+	AzureCredentials *config.AzureCredentials
+	CAPIUAMIClientID,
+	VeleroUAMIClientID,
+	AzureStorageAccountAccessKey,
+	ServiceAccountIssuerURL string
 
 	HetznerConfig      *config.HetznerConfig
 	HetznerCredentials *config.HetznerCredentials
@@ -48,6 +49,10 @@ type TemplateValues struct {
 	BareMetalConfig *config.BareMetalConfig
 
 	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
+
+	*config.DisasterRecoveryConfig
+
+	*config.ObmondoConfig
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -58,20 +63,28 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		GitConfig:                 config.ParsedGeneralConfig.Git,
 		GitCredentials:            config.ParsedSecretsConfig.Git,
 		ForksConfig:               config.ParsedGeneralConfig.Forks,
-		ClusterConfig:             config.ParsedGeneralConfig.Cluster,
-		DisasterRecoveryConfig:    config.ParsedGeneralConfig.Cloud.DisasterRecovery,
-		KubePrometheusConfig:      config.ParsedGeneralConfig.KubePrometheus,
-		ObmondoConfig:             config.ParsedGeneralConfig.Obmondo,
-		CAPIClusterNamespace:      kubernetes.GetCapiClusterNamespace(),
 
-		AWSConfig: config.ParsedGeneralConfig.Cloud.AWS,
+		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
+		KubePrometheusConfig: config.ParsedGeneralConfig.KubePrometheus,
+		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 
-		AzureConfig: config.ParsedGeneralConfig.Cloud.Azure,
+		AWSConfig:      config.ParsedGeneralConfig.Cloud.AWS,
+		AWSCredentials: config.ParsedSecretsConfig.AWS,
+
+		AzureConfig:                  config.ParsedGeneralConfig.Cloud.Azure,
+		AzureCredentials:             config.ParsedSecretsConfig.Azure,
+		CAPIUAMIClientID:             globals.CAPIUAMIClientID,
+		VeleroUAMIClientID:           globals.VeleroUAMIClientID,
+		AzureStorageAccountAccessKey: globals.AzureStorageAccountAccessKey,
 
 		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
 		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,
 
 		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
+
+		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+
+		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
 	}
 
 	// Set cloud provider specific values.
@@ -84,9 +97,6 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 	case constants.CloudProviderAzure:
 		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(ctx)
-		templateValues.UAMIClientIDClusterAPI = globals.UAMIClientIDClusterAPI
-		templateValues.UAMIClientIDVelero = globals.UAMIClientIDVelero
-		templateValues.AzureStorageAccountAccessKey = globals.AzureStorageAccountAccessKey
 	}
 
 	/*
