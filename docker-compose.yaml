@@ -6,7 +6,7 @@ networks:
 
 services:
   config-generate:
-    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.0
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.1
     container_name: bootstrap-generate
     restart: no
     command:
@@ -21,7 +21,7 @@ services:
       - k3d
 
   bootstrap-cluster:
-    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.0
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.1
     restart: no
     command:
       - bash
@@ -44,15 +44,12 @@ services:
       - ./outputs:/outputs
       - /var/run/docker.sock:/var/run/docker.sock
       - ${SSH_AUTH_SOCK}:${SSH_AUTH_SOCK}
-      - /dev/bus/usb:/dev/bus/usb
-      - /sys/bus/usb/:/sys/bus/usb/
-      - /sys/devices/:/sys/devices/
-      - /dev/hidraw4:/dev/hidraw4
     networks:
       - k3d
+    stdin_open: true
 
   cleanup:
-    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.0
+    image: ghcr.io/obmondo/kubeaid-bootstrap-script:v0.12.1
     restart: no
     command:
       - bash

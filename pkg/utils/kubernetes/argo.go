@@ -51,12 +51,12 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	for {
 		_, err := utils.ExecuteCommand(fmt.Sprintf(
 			`
-      kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
+        kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
 
-      kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
-      kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
-      kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
-    `,
+        kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
+        kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
+        kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
+      `,
 			constants.ReleaseNameArgoCD,
 			constants.NamespaceArgoCD,
 		))

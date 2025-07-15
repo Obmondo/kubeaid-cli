@@ -268,14 +268,21 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		"Failed deleting main cluster's PKI infrastructure backup",
 	)
 
-	// KubeOne also saves the main cluster's kubeconfig locally.
-	// Let's move that kubeconfig file to our specified location.
-	err = os.Rename(
-		fmt.Sprintf("%s-kubeconfig", mainClusterName),
-		constants.OutputPathMainClusterKubeconfig,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed moving main cluster's kubeconfig to our specified location",
+	/*
+		KubeOne also saves the main cluster's kubeconfig locally.
+		Let's move that kubeconfig file to our standardized location for the main cluster's kubeconfig
+		file.
+
+		NOTE : When KubeAid Bootstrap Script runs inside a container, with the outputs folder mounted
+		       from the host, using os.Rename( ) to do the move operation fails with error :
+
+		         rename kubeaid-demo-bare-metal-kubeconfig outputs/kubeconfigs/clusters/main.yaml: invalid cross-device link
+
+		       since those files exist on separate drives.
+	*/
+	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
+	utils.MustMoveFile(ctx,
+		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
 	)
 
 	slog.InfoContext(ctx,
