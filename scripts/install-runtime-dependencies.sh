@@ -47,5 +47,5 @@ mv kubeone_${KUBEONE_VERSION}_linux_amd64/kubeone /usr/local/bin
 CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
 curl -L --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CPU_ARCHITECTURE}.tar.gz{,.sha256sum}
 sha256sum --check cilium-linux-${CPU_ARCHITECTURE}.tar.gz.sha256sum
-sudo tar -C /usr/local/bin -xzvf cilium-linux-${CPU_ARCHITECTURE}.tar.gz
+tar -C /usr/local/bin -xzvf cilium-linux-${CPU_ARCHITECTURE}.tar.gz
 rm cilium-linux-${CPU_ARCHITECTURE}.tar.gz{,.sha256sum}
