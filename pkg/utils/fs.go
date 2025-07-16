@@ -135,7 +135,7 @@ func MustMoveFile(ctx context.Context, sourceFilePath, destinationFilePath strin
 	defer destinationFile.Close()
 
 	// Copy contents of the source file to the destination file.
-	_, err = io.Copy(sourceFile, destinationFile)
+	_, err = io.Copy(destinationFile, sourceFile)
 	assert.AssertErrNil(ctx, err,
 		"Failed copying contents of source file to destination file",
 		slog.String("source", sourceFilePath),
