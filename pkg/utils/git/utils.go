@@ -10,6 +10,7 @@ import (
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/google/go-github/v66/github"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -80,4 +81,20 @@ func GetLatestTag(ctx context.Context, repo *goGit.Repository, repoName string) 
 	})
 	assert.AssertErrNil(ctx, err, fmt.Sprintf("Failed getting latest tag for repo %s", repoName))
 	return latestTag
+}
+
+func GetLatestTagFromObmondoKubeAid(ctx context.Context) string {
+	gitClient := github.NewClient(nil)
+	tags, _, err := gitClient.Repositories.ListTags(ctx, "Obmondo", "KubeAid", nil)
+	assert.AssertErrNil(ctx, err, "Failed getting latest tag from Obmondo KubeAid repo")
+
+	latestTagCommitTime := tags[0].GetCommit().GetCommitter().GetDate().Time
+	latestTag := tags[0].Name
+	for _, tag := range tags {
+		if tag.GetCommit().GetCommitter().GetDate().Time.After(latestTagCommitTime) {
+			latestTagCommitTime = tag.GetCommit().GetCommitter().GetDate().Time
+			latestTag = tag.Name
+		}
+	}
+	return *latestTag
 }

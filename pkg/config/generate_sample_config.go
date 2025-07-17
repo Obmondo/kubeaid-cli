@@ -14,13 +14,19 @@ import (
 //go:embed templates/*
 var SampleConfigs embed.FS
 
-type GenerateSampleConfigArgs struct {
-	CloudProvider string
+type (
+	GenerateSampleConfigArgs struct {
+		CloudProvider string
 
-	HetznerMode *string
-}
+		HetznerMode *string
+	}
 
-func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs) {
+	GeneralConfigTemplateValues struct {
+		KubeAidVersion string
+	}
+)
+
+func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs, latestTag string) {
 	// Create configs directory.
 	err := os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
 	assert.AssertErrNil(
@@ -71,11 +77,15 @@ func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs) {
 	}
 
 	// Generate sample general config file.
+	generalConfigTemplateValues := GeneralConfigTemplateValues{
+		KubeAidVersion: latestTag,
+	}
+
 	{
 		sampleGeneralConfigContent := templates.ParseAndExecuteTemplate(ctx,
 			&SampleConfigs,
 			generalTemplateName,
-			nil,
+			generalConfigTemplateValues,
 		)
 
 		sampleGeneralConfigFile, err := os.OpenFile(
