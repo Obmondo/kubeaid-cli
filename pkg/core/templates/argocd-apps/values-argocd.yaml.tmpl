@@ -17,3 +17,16 @@ argo-cd:
       # if someone syncs the 'infrastructure' ArgoCD App, with pruning enabled, then ArgoCD will
       # delete those XRs.
       application.resourceTrackingMethod: annotation
+
+      {{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
+      accounts.kubeaid-agent: apiKey
+      {{- end }}
+  {{- if and .ObmondoConfig .ObmondoConfig.Monitoring }}
+    rbac:
+      policy.csv: |
+        p, role:kubeaid-agent, applications, get, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, sync, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, health, kubeaid/*, allow
+        p, role:kubeaid-agent, applications, status, kubeaid/*, allow
+        g, kubeaid-agent, role:kubeaid-agent
+  {{- end }}

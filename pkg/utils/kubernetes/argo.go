@@ -268,9 +268,17 @@ func SyncAllArgoCDApps(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
 
 		for _, item := range response.Items {
+			// Skip syncing argocd ArgoCD app while syncing other ArgoCD apps.
+			if item.Name == constants.ArgoCDAppArgoCD {
+				continue
+			}
+
 			SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
 		}
 	}
+
+	// Lastly, sync the argocd ArgoCD app.
+	SyncArgoCDApp(ctx, constants.ArgoCDAppArgoCD, []*argoCDV1Aplha1.SyncOperationResource{})
 }
 
 // Syncs the ArgoCD App (if not synced already).

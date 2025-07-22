@@ -107,6 +107,7 @@ const (
 	ArgoCDRoleKubeAidAgent = "kubeaid-agent"
 
 	// Apps.
+	ArgoCDAppArgoCD            = "argocd"
 	ArgoCDAppRoot              = "root"
 	ArgoCDAppCapiCluster       = "capi-cluster"
 	ArgoCDAppHetznerRobot      = "hetzner-robot"
