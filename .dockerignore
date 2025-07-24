@@ -1,7 +1,0 @@
-build/
-
-.dockerignore
-.gitignore
-.editorconfig
-
-README.md

@@ -7,12 +7,18 @@ set -o nounset # Causes the shell to treat unset variables as errors and exit im
 # Get CPU architecture.
 CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64")
 
-apt update
+# Create /tmp/kubeaid-bootstrap-script.
+# We will do everything here, and then at the end, cleanup by removing this directory.
+mkdir /tmp/kubeaid-bootstrap-script
+cd /tmp/kubeaid-bootstrap-script
 
-apt install -y curl wget
+# Get basic utility tools.
+apt update -y &&
+  apt install -y curl wget unzip
 
 # -------------------------------- Required to build KubePrometheus -------------------------------
 
+# Jsonnet and jq.
 apt install -y jsonnet jq
 
 # GoJsonToYAML
@@ -27,9 +33,9 @@ mv ./gojsontoyaml /usr/local/bin
 JB_VERSION="v0.6.0"
 wget https://github.com/jsonnet-bundler/jsonnet-bundler/releases/download/${JB_VERSION}/jb-linux-${CPU_ARCHITECTURE}
 chmod +x jb-linux-${CPU_ARCHITECTURE}
-mv jb-linux-${CPU_ARCHITECTURE} /usr/local/bin/jb
+mv jb-linux-${CPU_ARCHITECTURE} /usr/local/bin
 
-# ------------------------------ Required by KubeAid Bootstrap Script -----------------------------
+# --------------------------- Required solely by KubeAid Bootstrap Script -------------------------
 
 # Kubectl
 curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/${CPU_ARCHITECTURE}/kubectl"
@@ -38,7 +44,6 @@ mv ./kubectl /usr/local/bin
 
 # KubeOne
 KUBEONE_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/kubermatic/kubeone/releases/latest -o /dev/null | sed -e 's|.*/v||')
-apt-get install -y unzip
 curl -LO "https://github.com/kubermatic/kubeone/releases/download/v${KUBEONE_VERSION}/kubeone_${KUBEONE_VERSION}_linux_amd64.zip"
 unzip kubeone_${KUBEONE_VERSION}_linux_amd64.zip -d kubeone_${KUBEONE_VERSION}_linux_amd64
 mv kubeone_${KUBEONE_VERSION}_linux_amd64/kubeone /usr/local/bin
@@ -48,4 +53,8 @@ CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli
 curl -L --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-linux-${CPU_ARCHITECTURE}.tar.gz{,.sha256sum}
 sha256sum --check cilium-linux-${CPU_ARCHITECTURE}.tar.gz.sha256sum
 tar -C /usr/local/bin -xzvf cilium-linux-${CPU_ARCHITECTURE}.tar.gz
-rm cilium-linux-${CPU_ARCHITECTURE}.tar.gz{,.sha256sum}
+
+# -------------------------------------------- Cleanup --------------------------------------------
+
+# Remove /tmp/kubeaid-bootstrap-script.
+rm -rf /tmp/kubeaid-bootstrap-script
