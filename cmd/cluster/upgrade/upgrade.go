@@ -15,18 +15,19 @@ var UpgradeCmd = &cobra.Command{
 }
 
 var (
-	kubernetesVersion string
-	skipPRWorkflow    bool
+	newKubernetesVersion string
+	skipPRWorkflow       bool
 )
 
 func init() {
 	// Subcommands.
 	UpgradeCmd.AddCommand(AWSCmd)
+	UpgradeCmd.AddCommand(AzureCmd)
 
 	// Flags.
 
 	UpgradeCmd.PersistentFlags().
-		StringVar(&kubernetesVersion, constants.FlagNameK8sVersion, "", "New Kubernetes version the cluster will be upgraded to")
+		StringVar(&newKubernetesVersion, constants.FlagNameNewK8sVersion, "", "New Kubernetes version, the cluster will be upgraded to")
 
 	UpgradeCmd.PersistentFlags().
 		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,

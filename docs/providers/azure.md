@@ -24,11 +24,6 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
 
 - Have [Docker](https://www.docker.com/products/docker-desktop/) running locally.
 
-- Get the utility [docker-compose](https://github.com/Obmondo/kubeaid-bootstrap-script/blob/main/docker-compose.yaml) file, by running :
-  ```shell script
-  wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
-  ```
-
 - Create a `.env` file, in your working directory, with the following content :
   ```env
   CLOUD_PROVIDER=azure
@@ -36,7 +31,7 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
 
 - [Register an application (Service Principal) in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
 
-- An RSA type SSH keypair, whose private key you'll use to SSH into the VMs.
+- An OpenSSH type SSH keypair, whose private key you'll use to SSH into the VMs.
 
 - A PEM type SSH keypair, which will be used for Azure Workload Identity setup.
 
@@ -46,7 +41,7 @@ You need to have 2 configuration files : `general.yaml` and `secrets.yaml` conta
 
 Run :
 ```shell script
-docker compose run config-generate
+kubeaid-bootstrap-script config generate azure
 ```
 and a sample of those 2 configuration files will be generated in `outputs/configs`.
 
@@ -56,7 +51,7 @@ Edit those 2 configuration files, based on your requirements.
 
 Run the following command, to bootstrap the cluster :
 ```shell script
-docker compose run bootstrap-cluster
+kubeaid-bootstrap-script cluster bootstrap
 ```
 
 Aside from the logs getting streamed to your standard output, they'll be saved in `outputs/.log`.

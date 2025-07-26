@@ -16,7 +16,7 @@ import (
 )
 
 type AzureMachineTemplateUpdates struct {
-	ImageID string
+	NewImageOffer string
 }
 
 func (*Azure) UpdateMachineTemplate(ctx context.Context,
@@ -26,6 +26,12 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 	parsedUpdates, ok := updates.(AzureMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
+	// If the user doesn't want to do an OS upgrade,
+	// then we don't need to do anything.
+	if len(parsedUpdates.NewImageOffer) == 0 {
+		return
+	}
+
 	// Get the AzureMachineTemplate currently being referred by KubeadmControlPlane.
 	azureMachineTemplate := &capzV1Beta1.AzureMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
@@ -34,27 +40,22 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 		},
 	}
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient, azureMachineTemplate)
-	assert.AssertErrNil(
-		ctx,
-		err,
+	assert.AssertErrNil(ctx, err,
 		"Failed retrieving the current AzureMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
 
 	// Delete that AzureMachineTemplate.
 	err = clusterClient.Delete(ctx, azureMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(
-		ctx,
-		err,
-		"Failed deleting the current azureMachineTemplate resource used by the KubeadmControlPlane resource",
+	assert.AssertErrNil(ctx, err,
+		"Failed deleting the current AzureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
-	slog.InfoContext(
-		ctx,
-		"Deleted the current azureMachineTemplate resource used by the KubeadmControlPlane resource",
+	slog.InfoContext(ctx,
+		"Deleted the current azureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
 
 	// Recreate the updated AzureMachineTemplate.
 
-	azureMachineTemplate.Spec.Template.Spec.Image.ID = &parsedUpdates.ImageID
+	azureMachineTemplate.Spec.Template.Spec.Image.Marketplace.Offer = parsedUpdates.NewImageOffer
 	azureMachineTemplate.ResourceVersion = ""
 
 	err = clusterClient.Create(ctx, azureMachineTemplate, &client.CreateOptions{})
@@ -68,17 +69,23 @@ func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 	parsedUpdates, ok := updates.(AzureMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
-	// Update the image ID.
+	// If the user doesn't want to do an OS upgrade,
+	// then we don't need to do anything.
+	if len(parsedUpdates.NewImageOffer) == 0 {
+		return
+	}
+
+	// Update the Canonical Ubuntu image offer.
 	yqCmd := yqCmdLib.New()
 	yqCmd.SetArgs([]string{
 		"--in-place", "--yaml-output", "--yaml-roundtrip",
 
-		fmt.Sprintf("(.azure.imageId) = \"%s\"", parsedUpdates.ImageID),
+		fmt.Sprintf("(.azure.canonicalUbuntuImage.offer) = \"%s\"", parsedUpdates.NewImageOffer),
 
 		capiClusterValuesFilePath,
 	})
 	err := yqCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err,
-		"Failed updating machine image ID, in values-capi-cluster.yaml file",
+		"Failed updating Canonical Ubuntu image offer, in values-capi-cluster.yaml file",
 	)
 }

@@ -104,6 +104,10 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 	{
 		slog.InfoContext(ctx, "Generating and uploading JWKS document")
 
+		// Create required intermediate directories,
+		// to save the JWKS document locally.
+		utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathJWKSDocument)
+
 		// Generate the JWKS document.
 
 		jwksCmd := jwks.NewJWKSCmd()

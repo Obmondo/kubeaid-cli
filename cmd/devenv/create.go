@@ -1,4 +1,4 @@
-package create
+package devenv
 
 import (
 	"github.com/spf13/cobra"
@@ -31,17 +31,17 @@ var (
 func init() {
 	// Flags.
 
-	CreateCmd.PersistentFlags().
+	CreateCmd.Flags().
 		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, constants.FlagNameManagementClusterNameDefaultValue,
 			"Name of the local K3D management cluster",
 		)
 
-	CreateCmd.PersistentFlags().
+	CreateCmd.Flags().
 		BoolVar(&skipMonitoringSetup, constants.FlagNameSkipMonitoringSetup, false,
 			"Skip KubePrometheus installation",
 		)
 
-	CreateCmd.PersistentFlags().
+	CreateCmd.Flags().
 		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
 		)

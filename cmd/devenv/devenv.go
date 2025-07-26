@@ -3,7 +3,6 @@ package devenv
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv/create"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
@@ -30,5 +29,5 @@ var DevenvCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
-	DevenvCmd.AddCommand(create.CreateCmd)
+	DevenvCmd.AddCommand(CreateCmd)
 }
