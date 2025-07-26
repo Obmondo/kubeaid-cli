@@ -24,11 +24,6 @@ import (
 // And then provisions required infrastructure for Azure Workload Identity and Disaster Recovery,
 // using CrossPlane.
 func (*Azure) ProvisionInfrastructure(ctx context.Context) {
-	// Install CrossPlane.
-	// Then set it up, by installing required Providers, Functions, Compositions and
-	// Composite Resource Definitions (XRDs).
-	kubernetes.InstallAndSetupCrossplane(ctx)
-
 	// Create Composite Resource (XR) Claims,
 	// to provision the Azure Workload Identity and Disaster Recovery infrastructure.
 	kubernetes.SyncArgoCDApp(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
@@ -41,7 +36,7 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		xrClaims = append(xrClaims, "disasterrecoveryinfrastructure/default")
 	}
 
-	err := wait.PollUntilContextCancel(ctx, 30*time.Second, false,
+	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (done bool, err error) {
 			for _, xrClaim := range xrClaims {
 				output, err := utils.ExecuteCommand(fmt.Sprintf(

@@ -70,8 +70,8 @@ delete-provisioned-cluster-aws-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/aws/
 
-.PHONY: recover-cluster-azure-dev
-recover-cluster-azure-dev:
+.PHONY: recover-cluster-aws-dev
+recover-cluster-aws-dev:
 	@go run ./cmd/ cluster recover aws \
 		--debug \
     --configs-directory ./outputs/configs/aws/ \

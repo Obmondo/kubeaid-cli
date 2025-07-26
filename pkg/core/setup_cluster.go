@@ -128,14 +128,18 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// Any cloud provider specific tasks.
-	// We only need to do this once : while being in the management cluster.
-	if args.ClusterType == constants.ClusterTypeManagement {
-		switch globals.CloudProviderName {
-		case constants.CloudProviderAzure:
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAzure:
+		// Install CrossPlane.
+		// Then set it up, by installing required Providers, Functions, Compositions and
+		// Composite Resource Definitions (XRDs).
+		kubernetes.InstallAndSetupCrossplane(ctx)
+
+		// Doing the following once (i.e., while being in the management cluster) is enough.
+		if args.ClusterType == constants.ClusterTypeManagement {
 			cloudProviderAzure := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
 
-			// Install CrossPlane.
-			// And create required infrastructure for Azure Workload Identity and Disaster Recovery,
+			// Create required infrastructure for Azure Workload Identity and Disaster Recovery,
 			// using CrossPlane.
 			cloudProviderAzure.ProvisionInfrastructure(ctx)
 
