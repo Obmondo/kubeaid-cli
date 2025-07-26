@@ -55,7 +55,80 @@ cluster:
 cloud:
   # Azure specific configurations.
   azure:
-    # TODO
+    tenantID: xxxxxxxxxx
+    subscriptionID: xxxxxxxxxx
+
+    aadApplication:
+      # Object ID of the Service Principal corresponding to the AAD application you created,
+      # while following the pre-requisites section in the provider guide.
+      principalID: xxxxxxxxxx
+
+    location: northcentralus
+
+    # Storage account name.
+    # It must be between 3 and 24 characters in length and use numbers and lower-case letters only.
+    #
+    # KubeAid Bootstrap Script will create it, (if it doesn't already exist).
+    #
+    # For now, the same storage account is used to :
+    #
+    #   (1) host the OIDC provider which issues AAD tokens to pods in exchange of ServiceAccount
+    #       tokens.
+    #
+    #   (2) store backups.
+    storageAccount: kubeaiddemo
+
+    workloadIdentity:
+      # Details about the PEM type SSH KeyPair, to be used for Workload Identity setup.
+      openIDProviderSSHKeyPair:
+        publicKeyFilePath: ./outputs/ssh/rsa/pem/.pub
+        privateKeyFilePath: ./outputs/ssh/rsa/pem/.key
+
+    # Public key of the RSA type SSH keypair, that'll be added to each VM.
+    sshPublicKey: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCMB0BJ1vL53/xiDCfswJWOrBYc39MbnmMnAK9ATohDqgT1ZrvLODbw5T1NTOLsVyuWNXMB9HfPPXg3Qm5L5UXoIj5JeyIY1ArUxjdW5LI4fsYgYHfRSv3gSZFpuJj12+myBxdoNYCDNDrzYF5T3D2is0lqcSG+3UerkY7ox8WuHMSO69bUAn72ugw01TgycdXpX5jvGLb84yl2Xct1/YFsh9UKhVYWx8qdz5r7FM4h5KDIIi2yjAEjwm4DfYKT/9dlzTodzeim4Z755AGXpFWjlQYaV8vNLHhIkDEtDOZTDtePFwQ64cw1e8cYzuRqDRxCVA9mWQtWwbMgklAv5h0ZTu8cJ9XcomQV9W2NCieBJyu+bj71AKFg3qTD9aMBq2zBXshoZwvmPlrIfAreALPEcPQvn6T8vHGvfk6Pf91B7I1Tu9ds0X0Vp5KELR6wwZQx2JKwMJillzC4Z3GY4/oi5J5C6WnlB3TxCvsivBo3TtEc3phylnfHNvRbwCqch2k= robot-webservice-app-user
+
+    # Details about the machine image that'll be used for each VM.
+    #
+    # NOTE : We only support Ubuntu OS.
+    canonicalUbuntuImage:
+      sku: server-arm64
+      offer: ubuntu-24_04-lts
+
+    controlPlane:
+      loadBalancerType: Public
+      vmSize: Standard_D2ps_v6
+      diskSizeGB: 128
+      replicas: 1
+
+    nodeGroups:
+      - name: primary
+
+        vmSize: Standard_D2ps_v6
+        diskSizeGB: 128
+
+        minSize: 1
+        maxSize: 3
+
+        # Label should meet one of the following criterias to propagate to Node :
+        #
+        # (1) Has node-role.kubernetes.io as prefix.
+        # (2) Belongs to node-restriction.kubernetes.io domain.
+        # (3) Belongs to node.cluster.x-k8s.io domain.
+        #
+        # REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine
+        labels:
+          node.cluster.x-k8s.io/nodegroup: bootstrapper
+          node-role.kubernetes.io/bootstrapper: ""
+
+        taints: []
+
+  # A bucket corresponds to a Blob Container in the Azure Storage Account.
+  #
+  # KubeAid Bootstrap Script will create the corresponding Blob Container , if it doesn't already
+  # exist.
+  disasterRecovery:
+    veleroBackupsBucketName: velero-backups
+    sealedSecretsBackupsBucketName: sealed-secrets-backups
 
 # monitoring:
 #   kubePrometheusVersion: v0.14.0

@@ -34,7 +34,11 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
   CLOUD_PROVIDER=azure
   ```
 
-- [Register an application in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
+- [Register an application (Service Principal) in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
+
+- An RSA type SSH keypair, whose private key you'll use to SSH into the VMs.
+
+- A PEM type SSH keypair, which will be used for Azure Workload Identity setup.
 
 ## Preparing the Configuration Files
 
