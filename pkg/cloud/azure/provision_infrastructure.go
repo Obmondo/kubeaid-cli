@@ -31,6 +31,7 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 	// Wait until the infrastructure is provisioned.
 	// This can be done, by waiting until all the created XRClaims, have their status marked as
 	// ready.
+
 	xrClaims := []string{"workloadidentityinfrastructure/default"}
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		xrClaims = append(xrClaims, "disasterrecoveryinfrastructure/default")
@@ -56,6 +57,39 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		},
 	)
 	assert.AssertErrNil(ctx, err, "Failed waiting for infrastructures to be provisioned")
+
+	/*
+		Recreate the Role Assignments.
+
+		Why do we need to this? Let's pick the WorkloadIdentityInfrastructure Composition to understand
+		that.
+
+		We assume that you don't have any existing corresponding infrastructure in Azure.
+		So, for the first time, when you create an XR out of that Composition, CrossPlane Azure
+		providers will create the required infrastructure one by one.
+
+		This includes, creation of the capi UAMI. But, the catch is, UAMI creation is asynchronous.
+		So, Azure will return a canonical Principal ID for that UAMI, which will be used by CrossPlane
+		to create the Contributor RoleAssignment for that UAMI.
+
+		Later, when the UAMI creation is complete, Azure returns the actual Principal ID back.
+		CrossPlane detects a drift, and tries to change the Principal ID in the RoleAssignment, from
+		the canonical to the actual one.
+		Since, the Principal ID field of the RoleAssignment is immutable, CrossPlane errors out, not
+		being able to create the proper RoleAssignment.
+
+		NOTE : We just delete the RoleAssignments.
+		       CrossPlane will recreate the proper RoleAssignments in a few seconds.
+
+		TODOs:
+
+		  (1) Recreate them, only if they're marked as ready but not synced.
+
+		  (2) Wait for the proper RoleAssignments to be created.
+	*/
+	utils.ExecuteCommandOrDie(
+		"kubectl delete roleassignment -l 'uami in (capi, velero)' --all-namespaces",
+	)
 
 	slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")
 }

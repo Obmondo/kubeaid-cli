@@ -24,16 +24,23 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
 
 - Have [Docker](https://www.docker.com/products/docker-desktop/) running locally.
 
-- Create a `.env` file, in your working directory, with the following content :
-  ```env
-  CLOUD_PROVIDER=azure
-  ```
-
 - [Register an application (Service Principal) in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
 
 - An OpenSSH type SSH keypair, whose private key you'll use to SSH into the VMs.
 
 - A PEM type SSH keypair, which will be used for Azure Workload Identity setup.
+
+Additionally, have the following runtime dependencies installed :
+
+- [jsonnet](https://github.com/google/jsonnet?tab=readme-ov-file#packages), [jsonnet-bundler](https://github.com/jsonnet-bundler/jsonnet-bundler?tab=readme-ov-file#package-install) and [gojsontoyaml](https://github.com/brancz/gojsontoyaml?tab=readme-ov-file#install)
+
+- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
+
+- [kubeseal](https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#installation)
+
+- [clusterctl](https://cluster-api.sigs.k8s.io/user/quick-start#install-clusterctl)
+
+- [k3d](https://k3d.io/stable/#installation)
 
 ## Preparing the Configuration Files
 
