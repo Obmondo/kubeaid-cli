@@ -70,14 +70,6 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
-
-		Values: map[string]any{
-			"argo-cd": map[string]any{
-				"configs": map[string]any{
-					"cm": getArgoCDConfigMapOptions(),
-				},
-			},
-		},
 	})
 
 	// Port-forward ArgoCD and create ArgoCD client.

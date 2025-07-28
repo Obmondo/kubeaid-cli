@@ -9,6 +9,8 @@ import (
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/cli/values"
+	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -19,7 +21,7 @@ type HelmInstallArgs struct {
 	ChartPath,
 	ReleaseName,
 	Namespace string
-	Values map[string]interface{}
+	Values *values.Options
 }
 
 // Installs the Helm chart (if not already deployed), present at the given local path.
@@ -65,6 +67,14 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 
 	// Load and install the Helm chart.
 	{
+		// Load the custom values into map[string]any
+		valuesMap := make(map[string]any)
+		if args.Values != nil {
+			p := getter.All(settings)
+			valuesMap, err = args.Values.MergeValues(p)
+			assert.AssertErrNil(ctx, err, "Failed merging the Helm chart values")
+		}
+
 		// Load Helm chart from the local chart path.
 		chart, err := loader.Load(args.ChartPath)
 		assert.AssertErrNil(ctx, err,
@@ -82,7 +92,7 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) {
 		installAction.Timeout = 10 * time.Minute
 		installAction.Wait = true
 
-		_, err = installAction.Run(chart, args.Values)
+		_, err = installAction.Run(chart, valuesMap)
 		assert.AssertErrNil(ctx, err, "Failed installing Helm chart")
 	}
 }

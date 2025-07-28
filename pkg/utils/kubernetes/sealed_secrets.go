@@ -24,13 +24,6 @@ func InstallSealedSecrets(ctx context.Context) {
 		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
 		Namespace:   constants.NamespaceSealedSecrets,
 		ReleaseName: "sealed-secrets",
-		Values: map[string]any{
-			"sealed-secrets": map[string]any{
-				"namespace":        constants.NamespaceSealedSecrets,
-				"fullnameOverride": "sealed-secrets-controller",
-			},
-			"backup": map[string]any{},
-		},
 	})
 }
 
