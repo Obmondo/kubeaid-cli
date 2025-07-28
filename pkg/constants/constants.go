@@ -1,6 +1,9 @@
 package constants
 
-import "path"
+import (
+	"path"
+	"time"
+)
 
 // Environment variable names.
 const (
@@ -100,9 +103,11 @@ var (
 const (
 	ReleaseNameArgoCD = "argocd"
 
-	ArgoCDProjectKubeAid = "kubeaid"
+	ArgoCDProjectKubeAid   = "kubeaid"
+	ArgoCDRoleKubeAidAgent = "kubeaid-agent"
 
 	// Apps.
+	ArgoCDAppArgoCD            = "argocd"
 	ArgoCDAppRoot              = "root"
 	ArgoCDAppCapiCluster       = "capi-cluster"
 	ArgoCDAppHetznerRobot      = "hetzner-robot"
@@ -110,6 +115,14 @@ const (
 	ArgoCDAppVelero            = "velero"
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 	ArgoCDExternalSnapshotter  = "external-snapshotter"
+
+	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect
+	ArgoCDLabelKeyManagedBy    = "kubeaid.io/managed-by"
+
+	ArgoCDRBACEffectAllow = "allow"
+	ArgoCDRBACEffectDeny  = "deny"
+
+	ArgoCDProjectRoleSecretName = "argocd-project-role-kubeaid-agent"
 )
 
 // Sealed Secrets.
@@ -189,4 +202,10 @@ const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	GzippedFilenameSuffix = ".gz"
+)
+
+// Time durations
+const (
+	OneDay   = 24 * time.Hour
+	OneMonth = 30 * OneDay
 )

@@ -6,17 +6,16 @@ import (
 	"log/slog"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/account"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/certificate"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v2/util/rbac"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -71,14 +70,6 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
-
-		Values: map[string]any{
-			"argo-cd": map[string]any{
-				"configs": map[string]any{
-					"cm": getArgoCDConfigMapOptions(),
-				},
-			},
-		},
 	})
 
 	// Port-forward ArgoCD and create ArgoCD client.
@@ -123,42 +114,11 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	if (config.ParsedGeneralConfig.Obmondo != nil) &&
 		(config.ParsedGeneralConfig.Obmondo.Monitoring) {
 
-		argoCDAccountClientCloser, argoCDAccountClient := argoCDClient.NewAccountClientOrDie()
-		defer argoCDAccountClientCloser.Close()
+		projectClientCloser, projectClient := argoCDClient.NewProjectClientOrDie()
+		defer projectClientCloser.Close()
 
-		setupKubeAgentArgoCDAccount(ctx, argoCDAccountClient, clusterClient)
+		setupKubeAgentArgoCDProjectRole(ctx, projectClient, clusterClient)
 	}
-}
-
-func getArgoCDConfigMapOptions() map[string]any {
-	argoCDConfigMapOptions := map[string]any{
-		/*
-			For ArgoCD-CrossPlane integration, we need to use annotation based application resource
-			tracking.
-
-			You ask why? Let me explain :
-
-			Suppose, we define an XR claim (which is namespace scoped) in our git repository. The
-			'infrastructure' ArgoCD App is tracking this XR Claim.
-			The XR Claim will dynamically generate an XR (which is cluster scoped). And this XR
-			will derive the 'argocd.argoproj.io/instance' label from its parent XR Claim.
-
-			So, the situation is : we have a dynamically generated XR, not defined in git, but
-			being tracked by ArgoCD, because of that derived label.
-			This will cause the 'infrastructure' ArgoCD App to be always out of sync. Additionally,
-			if someone syncs the 'infrastructure' ArgoCD App, with pruning enabled, then ArgoCD
-			will delete those XRs.
-		*/
-		"application.resourceTrackingMethod": "annotation",
-	}
-
-	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
-	// We need to create an ArgoCD account for KubeAid Agent.
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		argoCDConfigMapOptions["accounts.kubeaid-agent"] = "apiKey"
-	}
-
-	return argoCDConfigMapOptions
 }
 
 // Port-forwards the ArgoCD server and creates an ArgoCD client.
@@ -275,9 +235,17 @@ func SyncAllArgoCDApps(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
 
 		for _, item := range response.Items {
+			// Skip syncing argocd ArgoCD app while syncing other ArgoCD apps.
+			if item.Name == constants.ArgoCDAppArgoCD {
+				continue
+			}
+
 			SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
 		}
 	}
+
+	// Lastly, sync the argocd ArgoCD app.
+	SyncArgoCDApp(ctx, constants.ArgoCDAppArgoCD, []*argoCDV1Aplha1.SyncOperationResource{})
 }
 
 // Syncs the ArgoCD App (if not synced already).
@@ -441,52 +409,101 @@ func isArgoCDAppSynced(
 	}
 }
 
-func setupKubeAgentArgoCDAccount(ctx context.Context,
-	argoCDAccountServiceClient account.AccountServiceClient,
+func setupKubeAgentArgoCDProjectRole(ctx context.Context,
+	projectClient project.ProjectServiceClient,
 	clusterClient client.Client,
 ) {
-	// During Helm installation, an ArgoCD account for KubeAid Agent got created.
-	// Unfortunately, ArgoCD will not auto-generate an initial password for that account.
-	// So, we need to do it ourselves. And save it in the 'argocd-initial-kubeaid-agent-secret'
-	// Kubernetes Secret, from where KubeAid Agent can pick it up.
+	// We'll create a project token for the 'kubeaid-agent' role.
+	// And save it in the 'argocd-project-role-kubeaid-agent' Kubernetes Secret with token
+	// from where KubeAid Agent can pick it up.
+	slog.InfoContext(ctx, "Setting up KubeAid Agent ArgoCD project role")
 
-	slog.InfoContext(ctx, "Setting up KubeAid Agent ArgoCD account")
+	projectQuery := &project.ProjectQuery{
+		Name: constants.ArgoCDProjectKubeAid,
+	}
 
-	// Generate a random password.
-	password := strconv.Itoa(int(time.Now().Unix()))
-
-	// Use it for the KubeAid Agent user.
-	_, err := argoCDAccountServiceClient.UpdatePassword(ctx, &account.UpdatePasswordRequest{
-		Name:            "kubeaid-agent",
-		CurrentPassword: getArgoCDAdminPassword(ctx, clusterClient),
-		NewPassword:     password,
-	})
+	// Fetch 'kubeaid' project details
+	kubeAidProject, err := projectClient.Get(ctx, projectQuery)
 	assert.AssertErrNil(ctx, err,
-		"Failed generating initial password for KubeAid Agent ArgoCD account",
+		"Failed fetching KubeAid project details",
 	)
 
-	// Store it in the 'argocd-initial-kubeaid-agent-secret' Kubernetes Secret.
+	description := "Role kubeaid-agent to perform necessary operations via KubeAid Agent"
+	policies := []string{
+		getKubeAidAgentRolePolicy(
+			rbac.ResourceApplications,
+			rbac.ActionGet,
+			constants.ArgoCDRBACEffectAllow,
+		),
+		getKubeAidAgentRolePolicy(
+			rbac.ResourceApplications,
+			rbac.ActionSync,
+			constants.ArgoCDRBACEffectAllow,
+		),
+	}
+	projectRole := argoCDV1Aplha1.ProjectRole{
+		Name:        constants.ArgoCDRoleKubeAidAgent,
+		Description: description,
+		Policies:    policies,
+		Groups:      []string{constants.ArgoCDRoleKubeAidAgent},
+	}
+	kubeAidProject.Spec.Roles = append(kubeAidProject.Spec.Roles, projectRole)
 
-	secretName := "argocd-initial-kubeaid-agent-secret"
+	// Update the project 'kubeaid' by adding role 'kubeaid-agent' details
+	projectRequest := &project.ProjectUpdateRequest{
+		Project: kubeAidProject,
+	}
+	_, err = projectClient.Update(ctx, projectRequest)
+	assert.AssertErrNil(ctx, err,
+		"Failed updating KubeAid project with KubeAid Agent role details",
+	)
 
-	argoCDInitialKubeAidAgentSecret := &coreV1.Secret{
+	// Generate the 'kubeaid-agent' project token with no expiry.
+	// KubeAid Agent is then uses this token to perform sync operations.
+	tokenRequest := &project.ProjectTokenCreateRequest{
+		Project: constants.ArgoCDProjectKubeAid,
+		Role:    constants.ArgoCDRoleKubeAidAgent,
+	}
+	tokenResponse, err := projectClient.CreateToken(ctx, tokenRequest)
+	assert.AssertErrNil(ctx, err,
+		"Failed generating KubeAid project token for KubeAid Agent role",
+	)
+
+	// Store it in the 'argocd-project-role-kubeaid-agent' Kubernetes Secret.
+	// We adding a label to identify the secret was created by 'kubeaid-bootstrap-script'.
+	secretObj := &coreV1.Secret{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      secretName,
+			Name:      constants.ArgoCDProjectRoleSecretName,
 			Namespace: constants.NamespaceArgoCD,
+			Labels: map[string]string{
+				constants.ArgoCDLabelKeyManagedBy: constants.ArgoCDProjectKubeAid,
+			},
 		},
 
 		StringData: map[string]string{
-			"password": password,
+			"token": tokenResponse.GetToken(),
 		},
 	}
-	err = clusterClient.Create(ctx, argoCDInitialKubeAidAgentSecret, &client.CreateOptions{})
+	err = clusterClient.Create(ctx, secretObj, &client.CreateOptions{})
 	if k8sAPIErrors.IsAlreadyExists(err) {
 		return
 	}
 	assert.AssertErrNil(ctx, err,
 		"Failed creating Kubernetes Secret",
-		slog.String("secret", secretName),
+		slog.String("secret", constants.ArgoCDProjectRoleSecretName),
 		slog.String("namespace", constants.NamespaceArgoCD),
+	)
+}
+
+func getKubeAidAgentRolePolicy(resource, action, effect string) string {
+	return fmt.Sprintf(
+		constants.ArgoCDProjectRolePolicyFmt,
+		constants.ArgoCDProjectKubeAid,
+		constants.ArgoCDRoleKubeAidAgent,
+		resource,
+		action,
+		constants.ArgoCDProjectKubeAid,
+		effect,
 	)
 }
 
