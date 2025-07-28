@@ -174,7 +174,13 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 		*/
 
 		// Wait until the user creates a PR and merges it to the default branch.
-		git.WaitUntilPRMerged(ctx, repo, defaultBranchName, commitHash, gitAuthMethod, targetBranchName)
+		git.WaitUntilPRMerged(ctx,
+			repo,
+			defaultBranchName,
+			commitHash,
+			gitAuthMethod,
+			targetBranchName,
+		)
 	}
 }
 

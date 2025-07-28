@@ -40,16 +40,21 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 		},
 	}
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient, azureMachineTemplate)
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx,
+		err,
 		"Failed retrieving the current AzureMachineTemplate resource used by the KubeadmControlPlane resource",
 	)
 
 	// Delete that AzureMachineTemplate.
 	err = clusterClient.Delete(ctx, azureMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx,
+		err,
 		"Failed deleting the current AzureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
-	slog.InfoContext(ctx,
+	slog.InfoContext(
+		ctx,
 		"Deleted the current azureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
 
