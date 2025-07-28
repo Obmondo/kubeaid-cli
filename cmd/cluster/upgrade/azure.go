@@ -6,29 +6,37 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 var AzureCmd = &cobra.Command{
 	Use: "azure",
 
-	Short: "Trigger Kubernetes version upgrade for the provisioned Azure based cluster",
+	Short: "Trigger Kubernetes version and / or OS upgrade for a KubeAid managed Azure based cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		core.UpgradeCluster(cmd.Context(), skipPRWorkflow, core.UpgradeClusterArgs{
-			NewKubernetesVersion: kubernetesVersion,
+		assert.Assert(cmd.Context(),
+			(len(newKubernetesVersion) > 0) || (len(newImageOffer) > 0),
+			"No upgrade details provided",
+		)
+
+		core.UpgradeCluster(cmd.Context(), core.UpgradeClusterArgs{
+			SkipPRWorkflow: skipPRWorkflow,
+
+			NewKubernetesVersion: newKubernetesVersion,
 
 			CloudSpecificUpdates: azure.AzureMachineTemplateUpdates{
-				ImageID: newImageID,
+				NewImageOffer: newImageOffer,
 			},
 		})
 	},
 }
 
-var newImageID string
+var newImageOffer string
 
 func init() {
 	// Flags.
 
-	AzureCmd.PersistentFlags().
-		StringVar(&newImageID, constants.FlagNameImageID, "", "ID of the image which supports the new Kubernetes version")
+	AzureCmd.Flags().
+		StringVar(&newImageOffer, constants.FlagNameNewImageOffer, "", "New Canonical Ubuntu image offer to use for the OS upgrade")
 }

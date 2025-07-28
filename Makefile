@@ -70,6 +70,13 @@ delete-provisioned-cluster-aws-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/aws/
 
+.PHONY: recover-cluster-aws-dev
+recover-cluster-aws-dev:
+	@go run ./cmd/ cluster recover aws \
+		--debug \
+    --configs-directory ./outputs/configs/aws/ \
+    --skip-pr-workflow
+
 .PHONY: sample-config-generate-azure-dev
 sample-config-generate-azure-dev:
 	@go run ./cmd/ config generate azure
@@ -108,9 +115,9 @@ recover-cluster-azure-dev:
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-workflow
 
-.PHONY: sample-config-generate-hetzner-dev
-sample-config-generate-hetzner-dev:
-	@go run ./cmd/ config generate hetzner
+.PHONY: sample-config-generate-hcloud-dev
+sample-config-generate-hcloud-dev:
+	@go run ./cmd/ config generate hetzner hcloud
 
 .PHONY: devenv-create-hcloud-dev
 devenv-create-hcloud-dev:
@@ -133,6 +140,10 @@ delete-provisioned-cluster-hcloud-dev:
 	@go run ./cmd/ cluster delete \
     --configs-directory ./outputs/configs/hetzner/hcloud/
 
+.PHONY: sample-config-generate-hcloud-dev
+sample-config-generate-hetzner-bare-metal-dev:
+	@go run ./cmd/ config generate hetzner bare-metal
+
 .PHONY: devenv-create-hetzner-bare-metal-dev
 devenv-create-hetzner-bare-metal-dev:
 	@go run ./cmd/ devenv create \
@@ -153,6 +164,10 @@ delete-provisioned-cluster-hetzner-bare-metal-dev:
 	@go run ./cmd/ cluster delete \
     --debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal/
+
+.PHONY: sample-config-generate-hetzner-hybrid-dev
+sample-config-generate-hetzner-hybrid-dev:
+	@go run ./cmd/ config generate hetzner hybrid
 
 .PHONY: devenv-create-hetzner-hybrid-dev
 devenv-create-hetzner-hybrid-dev:

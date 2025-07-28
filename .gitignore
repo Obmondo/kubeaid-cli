@@ -3,6 +3,7 @@
 
 vendor/
 
+build/
 outputs/
 
 temp/

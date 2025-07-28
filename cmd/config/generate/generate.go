@@ -32,6 +32,7 @@ var GenerateCmd = &cobra.Command{
 func init() {
 	// Subcommands.
 	GenerateCmd.AddCommand(AWSCmd)
+	GenerateCmd.AddCommand(AzureCmd)
 	GenerateCmd.AddCommand(hetzner.HetznerCmd)
 	GenerateCmd.AddCommand(LocalCmd)
 	GenerateCmd.AddCommand(BareMetalCmd)

@@ -30,11 +30,9 @@ func (c *CustomTextHandler) Handle(_ context.Context, record slog.Record) error 
 	logSections := []string{}
 
 	// Time.
-	if c.options.Level == slog.LevelDebug {
-		logSections = append(logSections,
-			fmt.Sprintf("(%s)", record.Time.Format("15:04")),
-		)
-	}
+	logSections = append(logSections,
+		fmt.Sprintf("(%s)", record.Time.Format("15:04")),
+	)
 
 	// Log level.
 	logLevel := record.Level.String() + " :"

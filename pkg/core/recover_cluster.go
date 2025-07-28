@@ -21,6 +21,8 @@ import (
 func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWorkflow bool) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderHetzner:
+	case constants.CloudProviderBareMetal:
+	case constants.CloudProviderLocal:
 		panic("unimplemented")
 
 	default:
@@ -51,8 +53,7 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 
 		s3Client := s3.NewFromConfig(awsSDKConfig)
 
-		awsServices.DownloadS3BucketContents(
-			ctx,
+		awsServices.DownloadS3BucketContents(ctx,
 			s3Client,
 			sealedSecretsKeysBackupsBucketName,
 			true,
@@ -68,9 +69,6 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 			blobClient,
 			sealedSecretsKeysBackupsBucketName,
 		)
-
-	case constants.CloudProviderHetzner:
-		panic("unimplemented")
 
 	default:
 		panic("unreachable")

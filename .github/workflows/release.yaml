@@ -1,94 +1,67 @@
 name: Release
 
-# This Github Action workflow is triggered, when a new release is published.
+# This Github Action workflow is triggered, when a new release is created.
 on:
   release:
-    types: [published]
+    types: [created]
+
+permissions:
+  packages: write
+  security-events: write
 
 jobs:
-  build_and_push_container_image:
-    name: Build and push container image
+  scan_sourcecode:
+    name: Scanning sourcecode to find vulberabilities, misconfigurations and exposed secrets
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      security-events: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+      - name: Create outputs directory
+        run: mkdir -p /tmp/trivy
+
+      - name: Run Trivy security scan against the sourcecode
+        id: security-scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          vuln-type: library
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: table
+          output: security-scan-result.txt
+
+      - name: Append the security scan result to the job summary
+        run: |
+          {
+            echo "### 🛡️ Sourcecode security scan result :"
+            echo ""
+            echo '```terraform'
+            cat security-scan-result.txt
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+  build_and_publish_binaries:
+    name: Build and publish binary
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Create outputs directory
         run: mkdir -p ./outputs/trivy
 
-      - name: Run Trivy vulnerability and secret scanner in fs mode
-        uses: aquasecurity/trivy-action@master
+      - uses: wangyoucao577/go-release-action@v1
         with:
-          scan-type: fs
-          scan-ref: .
-          trivy-config: trivy.yaml
-          format: sarif
-          output: ./outputs/trivy/fs.sarif
-
-      - name: Upload the scan result to CodeQL
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ./outputs/trivy/fs.sarif
-          category: fs
-
-      - name: Detect IaC vulnerabilities and misconfigurations using Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          trivy-config: trivy.yaml
-          format: sarif
-          output: ./outputs/trivy/iac-and-config.sarif
-
-      - name: Upload the scan result to CodeQL
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ./outputs/trivy/iac-and-config.sarif
-          category: iac-and-configurations
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2.1.0
-        with:
-          registry: ghcr.io
-          username: obmondo
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push KubeAid Bootstrap Script AMD64 and ARM64 container images
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: build/docker/Dockerfile
-          # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
-          # using QEMU).
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/obmondo/kubeaid-bootstrap-script:${{ github.event.release.tag_name }}
-          push: true
-          # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
-          # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
-          # builds.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Scan container image for vulnerabilities
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ghcr.io/obmondo/kubeaid-bootstrap-script:${{ github.event.release.tag_name }}
-          vuln-type: os,library
-          trivy-config: trivy.yaml
-          format: sarif
-          output: ./outputs/trivy/container-image.sarif
-
-      - name: Upload the container image scan result to CodeQL
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ./outputs/trivy/container-image.sarif
-          category: container-image
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          project_path: ./cmd
+          binary_name: kubeaid-bootstrap-script-${{ matrix.goos }}-${{ matrix.goarch }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          compress_assets: OFF

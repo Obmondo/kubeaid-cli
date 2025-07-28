@@ -21,7 +21,7 @@ const (
 const (
 	FlagNameDebug = "debug"
 
-	FlagNameK8sVersion = "k8s-version"
+	FlagNameNewK8sVersion = "new-k8s-version"
 
 	FlagNameManagementClusterName             = "management-cluster-name"
 	FlagNameManagementClusterNameDefaultValue = "kubeaid-bootstrapper"
@@ -39,7 +39,7 @@ const (
 	FlagNameAMIID              = "ami-id"
 
 	FlagNameAzureClientSecret = "azure-client-secret"
-	FlagNameImageID           = "image-id"
+	FlagNameNewImageOffer     = "new-image-offer"
 
 	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
