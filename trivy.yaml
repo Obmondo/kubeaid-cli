@@ -19,5 +19,3 @@ security-checks:
 
 vulnerability:
   ignore-unfixed: true
-  type:
-    - library

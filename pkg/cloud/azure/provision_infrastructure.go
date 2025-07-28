@@ -87,8 +87,9 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 
 		  (2) Wait for the proper RoleAssignments to be created.
 	*/
+	slog.InfoContext(ctx, "Recreating UAMI RoleAssignments")
 	utils.ExecuteCommandOrDie(
-		"kubectl delete roleassignment -l 'uami in (capi, velero)' --all-namespaces",
+		"kubectl delete roleassignments.authorization.azure.upbound.io -l 'uami in (capi, velero)'",
 	)
 
 	slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")

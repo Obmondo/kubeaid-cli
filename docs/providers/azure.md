@@ -22,6 +22,9 @@ The `azure` provider is used to provision a KubeAid managed Kubernetes cluster i
   > For GitHub, you can create a [Personal Access Token (PAT)](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens#creating-a-fine-grained-personal-access-token), which has the permission to write to your KubeAid Config fork.
   > That PAT will be used as the password.
 
+- A Linux or MacOS computer, with atleast 16GB of RAM.
+  > You can try with one having 8GB RAM, but some of the pods might get killed due to OOM issue.
+
 - Have [Docker](https://www.docker.com/products/docker-desktop/) running locally.
 
 - [Register an application (Service Principal) in Microsoft Entra ID](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app).
@@ -53,6 +56,7 @@ kubeaid-bootstrap-script config generate azure
 and a sample of those 2 configuration files will be generated in `outputs/configs`.
 
 Edit those 2 configuration files, based on your requirements.
+> Let's assuming that, you'll be using Kubernetes `v1.31.0`.
 
 ## Bootstrapping the Cluster
 
@@ -74,17 +78,18 @@ Go ahead and explore it by accessing the [ArgoCD]() and [Grafana]() dashboards.
 
 ## Upgrading the Cluster
 
-In `outputs/configs/general.yaml`, change the `cluster.k8sVersion` to the Kubernetes version you want to upgrade to.
-
-Then re-run :
+Let's upgrade the cluster from Kubernetes `v1.31.0` to `v1.32.0` :
 ```shell script
-docker compose run bootstrap-cluster
+kubeaid-bootstrap-script cluster upgrade \
+  --new-k8s-version v1.32.0
 ```
+
+> If you want to do an OS upgrade as well, you can specify the new Canonical Ubuntu image offer to be used, via the `--new-image-offer` flag.
 
 ## Deleting the Cluster
 
 You can delete the cluster, by running :
 ```shell script
-docker compose run delete-cluster
-docker compose run cleanup
+kubeaid-bootstrap-script cluster delete
+k3d cluster delete kubeaid-bootstrapper
 ```

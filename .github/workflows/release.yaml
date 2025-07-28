@@ -5,13 +5,51 @@ on:
   release:
     types: [created]
 
+permissions:
+  packages: write
+  security-events: write
+
 jobs:
-  build_and_publish_binaries:
-    name: Build and publish binaries
+  scan_sourcecode:
+    name: Scanning sourcecode to find vulberabilities, misconfigurations and exposed secrets
     runs-on: ubuntu-latest
-    permissions:
-      packages: write
-      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create outputs directory
+        run: mkdir -p /tmp/trivy
+
+      - name: Run Trivy security scan against the sourcecode
+        id: security-scan
+        uses: aquasecurity/trivy-action@0.32.0
+        with:
+          scan-type: fs
+          vuln-type: library
+          scan-ref: .
+          trivy-config: trivy.yaml
+          format: table
+          output: security-scan-result.txt
+
+      - name: Append the security scan result to the job summary
+        run: |
+          {
+            echo "### 🛡️ Sourcecode security scan result :"
+            echo ""
+            echo '```terraform'
+            cat security-scan-result.txt
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY
+
+  build_and_publish_binaries:
+    name: Build and publish binary
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,40 +57,11 @@ jobs:
       - name: Create outputs directory
         run: mkdir -p ./outputs/trivy
 
-      - name: Run Trivy vulnerability and secret scanner in fs mode
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: fs
-          scan-ref: .
-          trivy-config: trivy.yaml
-          format: sarif
-          output: ./outputs/trivy/fs.sarif
-
-      - name: Upload the scan result to CodeQL
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ./outputs/trivy/fs.sarif
-          category: fs
-
-      - name: Detect IaC vulnerabilities and misconfigurations using Trivy
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: config
-          scan-ref: .
-          trivy-config: trivy.yaml
-          format: sarif
-          output: ./outputs/trivy/iac-and-config.sarif
-
-      - name: Upload the scan result to CodeQL
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: ./outputs/trivy/iac-and-config.sarif
-          category: iac-and-configurations
-
       - uses: wangyoucao577/go-release-action@v1
         with:
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
           project_path: ./cmd
-          goos: linux
-          goarch: amd64
-          binary_name: kubeaid-bootstrap-script
+          binary_name: kubeaid-bootstrap-script-${{ matrix.goos }}-${{ matrix.goarch }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          compress_assets: OFF
