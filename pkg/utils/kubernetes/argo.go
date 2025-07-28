@@ -129,31 +129,6 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	}
 }
 
-func getArgoCDConfigMapOptions() map[string]any {
-	argoCDConfigMapOptions := map[string]any{
-		/*
-			For ArgoCD-CrossPlane integration, we need to use annotation based application resource
-			tracking.
-
-			You ask why? Let me explain :
-
-			Suppose, we define an XR claim (which is namespace scoped) in our git repository. The
-			'infrastructure' ArgoCD App is tracking this XR Claim.
-			The XR Claim will dynamically generate an XR (which is cluster scoped). And this XR
-			will derive the 'argocd.argoproj.io/instance' label from its parent XR Claim.
-
-			So, the situation is : we have a dynamically generated XR, not defined in git, but
-			being tracked by ArgoCD, because of that derived label.
-			This will cause the 'infrastructure' ArgoCD App to be always out of sync. Additionally,
-			if someone syncs the 'infrastructure' ArgoCD App, with pruning enabled, then ArgoCD
-			will delete those XRs.
-		*/
-		"application.resourceTrackingMethod": "annotation",
-	}
-
-	return argoCDConfigMapOptions
-}
-
 // Port-forwards the ArgoCD server and creates an ArgoCD client.
 // Returns the ArgoCD client.
 func NewArgoCDClient(ctx context.Context, clusterClient client.Client) apiclient.Client {
