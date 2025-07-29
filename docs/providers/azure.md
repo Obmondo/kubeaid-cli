@@ -39,8 +39,6 @@ Additionally, have the following runtime dependencies installed :
 
 - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
 
-- [k3d](https://k3d.io/stable/#installation)
-
 ## Preparing the Configuration Files
 
 You need to have 2 configuration files : `general.yaml` and `secrets.yaml` containing required credentials.
@@ -86,6 +84,6 @@ kubeaid-bootstrap-script cluster upgrade \
 
 You can delete the cluster, by running :
 ```shell script
-kubeaid-bootstrap-script cluster delete
-k3d cluster delete kubeaid-bootstrapper
+kubeaid-bootstrap-script cluster delete main
+kubeaid-bootstrap-script cluster delete management
 ```

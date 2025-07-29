@@ -1,4 +1,4 @@
-package cluster
+package delete
 
 import (
 	"github.com/spf13/cobra"
@@ -6,8 +6,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
 )
 
-var DeleteCmd = &cobra.Command{
-	Use: "delete",
+var MainCmd = &cobra.Command{
+	Use: "main",
 
 	Short: "Delete a KubeAid managed cluster",
 

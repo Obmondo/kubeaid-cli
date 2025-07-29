@@ -3,6 +3,7 @@ package cluster
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/delete"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster/upgrade"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -34,7 +35,7 @@ func init() {
 	ClusterCmd.AddCommand(BootstrapCmd)
 	ClusterCmd.AddCommand(TestCmd)
 	ClusterCmd.AddCommand(upgrade.UpgradeCmd)
-	ClusterCmd.AddCommand(DeleteCmd)
+	ClusterCmd.AddCommand(delete.DeleteCmd)
 	ClusterCmd.AddCommand(RecoverCmd)
 
 	// Flags.

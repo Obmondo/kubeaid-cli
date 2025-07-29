@@ -166,3 +166,15 @@ func doesK3dClusterExist(ctx context.Context, name string) bool {
 	}
 	return false
 }
+
+func DeleteK3DCluster(ctx context.Context) {
+	slog.InfoContext(ctx, "Deleting the K3D management cluster")
+
+	clusterDeleteCmd := cluster.NewCmdClusterDelete()
+	clusterDeleteCmd.SetArgs([]string{
+		"--config",
+		constants.OutputPathManagementClusterK3DConfig,
+	})
+	err := clusterDeleteCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err, "Failed deleting K3D cluster")
+}
