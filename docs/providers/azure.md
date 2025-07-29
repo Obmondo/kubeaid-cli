@@ -39,10 +39,6 @@ Additionally, have the following runtime dependencies installed :
 
 - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
 
-- [kubeseal](https://github.com/bitnami-labs/sealed-secrets?tab=readme-ov-file#installation)
-
-- [clusterctl](https://cluster-api.sigs.k8s.io/user/quick-start#install-clusterctl)
-
 - [k3d](https://k3d.io/stable/#installation)
 
 ## Preparing the Configuration Files
