@@ -9,6 +9,7 @@ import (
 
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
+	clusterctlClientLib "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -218,10 +219,17 @@ func upgradeControlPlane(
 		)
 
 		// Rollout the control-plane, immediately
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"clusterctl alpha rollout restart kubeadmcontrolplane/%s -n %s",
-			kubeadmControlPlaneName, kubernetes.GetCapiClusterNamespace(),
-		))
+
+		clusterctlClient, err := clusterctlClientLib.New(ctx, "")
+		assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
+		err = clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Resources: []string{
+				fmt.Sprintf("kubeadmcontrolplane/%s", kubeadmControlPlaneName),
+			},
+		})
+		assert.AssertErrNil(ctx, err, "Failed rolling out KubeadmControlPlane")
 	}
 }
 
@@ -282,9 +290,18 @@ func upgradeNodeGroup(ctx context.Context,
 		)
 
 		// Rollout the node-group, immediately.
-		utils.ExecuteCommandOrDie(fmt.Sprintf(
-			"clusterctl alpha rollout restart machinedeployment/%s -n %s",
-			machineDeploymentName, kubernetes.GetCapiClusterNamespace(),
-		))
+
+		clusterctlClient, err := clusterctlClientLib.New(ctx, "")
+		assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
+		err = clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Resources: []string{
+				fmt.Sprintf("machinedeployment/%s", machineDeploymentName),
+			},
+		})
+		assert.AssertErrNil(ctx, err, "Failed rolling out MachineDeployment",
+			slog.String("name", machineDeploymentName),
+		)
 	}
 }
