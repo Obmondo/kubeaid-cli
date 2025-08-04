@@ -2,13 +2,17 @@
 SHELL = /bin/bash
 CURRENT_DIR := $(CURDIR)
 IMAGE_NAME=kubeaid-bootstrap-script-dev:latest
+NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 CONTAINER_NAME=kubeaid-bootstrap-script-dev
 MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
-NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 
 .PHONY: lint
 lint:
 	@golangci-lint run ./...
+
+.PHONY: build
+build:
+	@go build -o build/kubeaid-bootstrap-script ./cmd
 
 .PHONY: build-image-dev
 build-image-dev:

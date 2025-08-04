@@ -28,8 +28,9 @@ func InstallSealedSecrets(ctx context.Context) {
 		Values: &values.Options{
 			Values: []string{
 				fmt.Sprintf("sealed-secrets.namespace=%s", constants.NamespaceSealedSecrets),
-				fmt.Sprintf("sealed-secrets.fullnameOverride=%s", constants.SealedSecretsControllerName),
-
+				fmt.Sprintf(
+					"sealed-secrets.fullnameOverride=%s", constants.SealedSecretsControllerName,
+				),
 				"backup=null",
 			},
 		},
