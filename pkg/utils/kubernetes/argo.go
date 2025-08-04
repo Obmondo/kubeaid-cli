@@ -62,11 +62,14 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 		if err == nil {
 			break
 		}
+
+		// Retry after 10 seconds.
+		time.Sleep(10 * time.Second)
 	}
 
 	// Install the ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
+		ChartPath: path.Join(constants.KubeAidDirectory, "argocd-helm-charts/argo-cd"),
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,

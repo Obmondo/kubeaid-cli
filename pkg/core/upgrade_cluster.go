@@ -89,7 +89,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 	// Clone the KubeAid config fork locally (if not already cloned).
 	repo := git.CloneRepo(ctx,
 		config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
-		utils.GetKubeAidConfigDir(),
+		constants.KubeAidConfigDirectory,
 		gitAuthMethod,
 	)
 

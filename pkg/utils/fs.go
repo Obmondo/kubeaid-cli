@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/url"
@@ -10,50 +9,38 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 // Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
 // Then sets the value of constants.TempDir as the temp dir path.
 // If the temp dir already exists, then that gets reused.
 func InitTempDir(ctx context.Context) {
-	namePrefix := "kubeaid-bootstrap-script-"
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("path", constants.TempDirectory),
+	})
 
 	// Check if a temp dir already exists for KubeAid Bootstrap Script.
 	// If yes, then reuse that.
 	filesAndFolders, err := os.ReadDir("/tmp")
 	assert.AssertErrNil(ctx, err, "Failed listing files and folders in /tmp")
 	for _, item := range filesAndFolders {
-		if item.IsDir() && strings.HasPrefix(item.Name(), namePrefix) {
-			path := "/tmp/" + item.Name()
-			slog.InfoContext(ctx,
-				"Skipped creating temp dir, since it already exists",
-				slog.String("path", path),
-			)
-
-			globals.TempDir = path
-
+		if item.IsDir() && (item.Name() == constants.TempDirectory) {
+			slog.InfoContext(ctx, "Skipped creating temp dir, since it already exists")
 			return
 		}
 	}
 
 	// Otherwise, create it.
 
-	dirName := fmt.Sprintf("%s%d", namePrefix, time.Now().Unix())
-
-	path, err := os.MkdirTemp("/tmp", dirName)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating temp dir",
-		slog.String("path", path),
-	)
+	path, err := os.MkdirTemp("/tmp", constants.TempDirectoryName)
+	assert.AssertErrNil(ctx, err, "Failed creating temp dir")
 
 	slog.InfoContext(ctx, "Created temp dir", slog.String("path", path))
-
-	globals.TempDir = path
 }
 
 // Returns path to the parent dir of the given file.
@@ -76,27 +63,15 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 	)
 }
 
-// Returns path to the directory (in temp directory), where the KubeAid repo is / will be cloned.
-func GetKubeAidDir() string {
-	return path.Join(globals.TempDir, "KubeAid")
-}
-
-// Returns path to the directory (in temp directory), where the customer's KubeAid Config repo
-// is / will be cloned.
-func GetKubeAidConfigDir() string {
-	return path.Join(globals.TempDir, "kubeaid-config")
-}
-
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
 func GetClusterDir() string {
-	clusterDir := path.Join(GetKubeAidConfigDir(), "k8s", config.ParsedGeneralConfig.Cluster.Name)
-	return clusterDir
+	return path.Join(constants.KubeAidConfigDirectory, "k8s", config.ParsedGeneralConfig.Cluster.Name)
 }
 
 // Returns the path to the local temp directory, where contents of the given blob storage bucket
 // will be / is downloaded.
 func GetDownloadedStorageBucketContentsDir(bucketName string) string {
-	return path.Join(globals.TempDir, "buckets", bucketName)
+	return path.Join(constants.TempDirectory, "buckets", bucketName)
 }
 
 // Converts the given relative path to an absolute path.

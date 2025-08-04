@@ -11,8 +11,6 @@ import (
 var (
 	ConfigsDirectory,
 
-	TempDir,
-
 	CloudProviderName string
 	CloudProvider cloud.CloudProvider
 

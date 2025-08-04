@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -15,33 +16,39 @@ import (
 
 // Executes the given command.
 // The command output is streamed to the standard output.
-func ExecuteCommand(command string) (output string, err error) {
+func ExecuteCommand(command string) (stdOutOutput string, err error) {
 	slog.Info("Executing command", slog.String("command", sensorCredentials(command)))
 
 	commandExecutionOptions := cmd.Options{
-		CombinedOutput: true,
-		Streaming:      true,
+		Streaming: true,
 	}
 	commandExecutor := cmd.NewCmdOptions(commandExecutionOptions,
 		"sh", "-c", command,
 	)
 
-	// Stream the command execution output to the standard output.
+	// Execute the command,
+	// while streaming the stdout contents to the user.
 	for !commandExecutor.Status().Complete {
 		select {
-		case outputLine := <-commandExecutor.Stdout:
-			println(outputLine)
+		case output := <-commandExecutor.Stdout:
+			println(output)
 
-		case outputLine := <-commandExecutor.Stderr:
-			println(outputLine)
+			// Keep aggregating the stdout contents in stdOutOutput.
+			// We need to return the aggregated result to the invoker.
+			stdOutOutput += output
+
+		case output := <-commandExecutor.Stderr:
+			// Error occurred, while execution some portion of the command.
+			// We'll not execute the remaining portion of the command,
+			// but just return the aggregated stdout contents and the error that occurred.
+			if len(output) > 0 {
+				return stdOutOutput, errors.New(output)
+			}
 
 		case <-commandExecutor.Start():
 		}
 	}
-
-	output = strings.Join(commandExecutor.Status().Stdout, "")
-	err = commandExecutor.Status().Error
-	return
+	return stdOutOutput, nil
 }
 
 // Executes the given command. Panics if the command execution fails.
