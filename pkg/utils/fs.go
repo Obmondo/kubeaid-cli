@@ -65,7 +65,9 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
 func GetClusterDir() string {
-	return path.Join(constants.KubeAidConfigDirectory, "k8s", config.ParsedGeneralConfig.Cluster.Name)
+	return path.Join(
+		constants.KubeAidConfigDirectory, "k8s", config.ParsedGeneralConfig.Cluster.Name,
+	)
 }
 
 // Returns the path to the local temp directory, where contents of the given blob storage bucket

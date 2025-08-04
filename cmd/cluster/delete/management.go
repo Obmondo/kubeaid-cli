@@ -1,8 +1,9 @@
 package delete
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 	"github.com/spf13/cobra"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 )
 
 var ManagementCmd = &cobra.Command{
