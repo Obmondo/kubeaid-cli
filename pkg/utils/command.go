@@ -23,7 +23,7 @@ func ExecuteCommand(command string) (output string, err error) {
 		Streaming:      true,
 	}
 	commandExecutor := cmd.NewCmdOptions(commandExecutionOptions,
-		"bash", "-c", command,
+		"sh", "-c", command,
 	)
 
 	// Stream the command execution output to the standard output.

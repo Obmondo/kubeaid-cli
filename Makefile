@@ -12,7 +12,7 @@ lint:
 
 .PHONY: build-image-dev
 build-image-dev:
-	@docker build -f ./build/docker/Dockerfile.dev --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build -f ./Dockerfile --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
 
 .PHONY: remove-image-dev
 remove-image-dev:

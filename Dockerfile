@@ -23,7 +23,7 @@ RUN apk add wget curl unzip
 
 COPY scripts/install-runtime-dependencies.sh /opt/install-runtime-dependencies.sh
 
-RUN /opt/install-runtime-dependencies.sh
+RUN CLOUD_PROVIDER=all /opt/install-runtime-dependencies.sh
 
 #--- Packager stage ---
 FROM alpine:3.22 AS packager
