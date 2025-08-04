@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path"
@@ -9,6 +10,7 @@ import (
 	sealedSecretsV1Aplha1 "github.com/bitnami-labs/sealed-secrets/pkg/apis/sealedsecrets/v1alpha1"
 	"github.com/bitnami-labs/sealed-secrets/pkg/kubeseal"
 	"github.com/google/renameio"
+	"helm.sh/helm/v3/pkg/cli/values"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -24,6 +26,14 @@ func InstallSealedSecrets(ctx context.Context) {
 		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
 		Namespace:   constants.NamespaceSealedSecrets,
 		ReleaseName: "sealed-secrets",
+		Values: &values.Options{
+			Values: []string{
+				fmt.Sprintf("sealed-secrets.namespace=%s", constants.NamespaceSealedSecrets),
+				fmt.Sprintf("sealed-secrets.fullnameOverride=%s", constants.SealedSecretsControllerName),
+
+				"backup=null",
+			},
+		},
 	})
 }
 

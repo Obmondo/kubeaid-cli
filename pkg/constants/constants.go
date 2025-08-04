@@ -127,7 +127,9 @@ const (
 
 // Sealed Secrets.
 const (
-	SealedSecretsControllerName    = "sealed-secrets-controller"
+	ReleaseNameSealedSecrets    = "sealed-secrets"
+	SealedSecretsControllerName = ReleaseNameSealedSecrets + "-controller"
+
 	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )
 
