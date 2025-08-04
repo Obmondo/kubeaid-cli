@@ -23,7 +23,11 @@ RUN apk add wget curl unzip
 
 COPY scripts/install-runtime-dependencies.sh /opt/install-runtime-dependencies.sh
 
-RUN CLOUD_PROVIDER=all /opt/install-runtime-dependencies.sh
+# We want to bundle dependencies for all the cloud providers,
+# into the KubeAid Bootstrap Script container image.
+ENV CLOUD_PROVIDER=all
+
+RUN /opt/install-runtime-dependencies.sh
 
 #--- Packager stage ---
 FROM alpine:3.22 AS packager
