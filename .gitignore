@@ -3,11 +3,10 @@
 
 vendor/
 
-build/
 outputs/
 
 temp/
 robot-ssh
 *.pub
 
-kubeaid-bootstrap-script
+build

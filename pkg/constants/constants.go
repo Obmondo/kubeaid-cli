@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+var (
+	TempDirectoryName = "kubeaid-bootstrap-script"
+	TempDirectory     = "/tmp/" + TempDirectoryName
+
+	KubeAidDirectory       = path.Join(TempDirectory, "KubeAid")
+	KubeAidConfigDirectory = path.Join(TempDirectory, "kubeaid-config")
+)
+
 // Environment variable names.
 const (
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
@@ -127,7 +135,9 @@ const (
 
 // Sealed Secrets.
 const (
-	SealedSecretsControllerName    = "sealed-secrets-controller"
+	ReleaseNameSealedSecrets    = "sealed-secrets"
+	SealedSecretsControllerName = ReleaseNameSealedSecrets + "-controller"
+
 	CRONJobNameBackupSealedSecrets = "backup-sealed-secrets"
 )
 
