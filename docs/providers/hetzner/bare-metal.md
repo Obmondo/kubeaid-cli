@@ -20,17 +20,6 @@ The `hetzner` provider, in `bare-metal` mode, is used to provision a KubeAid man
 
 - Have [Docker](https://www.docker.com/products/docker-desktop/) running locally.
 
-- Get the utility [docker-compose](https://github.com/Obmondo/kubeaid-bootstrap-script/blob/main/docker-compose.yaml) file, by running :
-  ```shell script
-  wget https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/docker-compose.yaml
-  ```
-
-- Create a `.env` file, in your working directory, with the following content :
-  ```env
-  CLOUD_PROVIDER=hetzner
-  FLAVOR=bare-metal
-  ```
-
 - Create a Hetzner Bare Metal SSH KeyPair, by visiting <https://robot.hetzner.com/key/index>.
   > Ensure that you don't already have a Hetzner Bare Metal SSH KeyPair with the SSH key-pair
   > you'll be using.
@@ -44,13 +33,73 @@ The `hetzner` provider, in `bare-metal` mode, is used to provision a KubeAid man
   wipefs -fa /dev/sdb
   ```
 
+## Choose your UX
+
+KubeAid Bootstrap Script depends on the following CLI tools during runtime :
+
+- [jsonnet](https://github.com/google/jsonnet?tab=readme-ov-file#packages), [jsonnet-bundler](https://github.com/jsonnet-bundler/jsonnet-bundler?tab=readme-ov-file#package-install) and [gojsontoyaml](https://github.com/brancz/gojsontoyaml?tab=readme-ov-file#install)
+
+- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
+
+You can either :
+
+- First, install them on your host system.
+  We provide a convenience [Bash script](https://github.com/Obmondo/kubeaid-bootstrap-script/blob/main/scripts/install-runtime-dependencies.sh), which you can use like so to get them :
+  ```shell script
+  CLOUD_PROVIDER=hetzner
+  wget -qO - https://raw.githubusercontent.com/Obmondo/kubeaid-bootstrap-script/refs/heads/main/scripts/install-runtime-dependencies.sh | sh
+  ```
+
+  Then, grab the KubeAid Bootstrap Script binary, from our [releases page](https://github.com/Obmondo/kubeaid-bootstrap-script/releases) :
+  ```shell scrip
+  KUBEAID_BOOTSTRAP_SCRIPT_VERSION=$(curl -s "https://api.github.com/repos/Obmondo/kubeaid-bootstrap-script/releases/latest" | jq -r .tag_name)
+
+  OS=$([ "$(uname -s)" = "Linux" ] && echo "linux" || echo "darwin")
+  CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64")
+
+  curl -L -o kubeaid-bootstrap-script "https://github.com/Obmondo/kubeaid-bootstrap-script/releases/download/${KUBEAID_BOOTSTRAP_SCRIPT_VERSION}/kubeaid-bootstrap-script-${OS}-${CPU_ARCHITECTURE}-${KUBEAID_BOOTSTRAP_SCRIPT_VERSION}-${OS}-${CPU_ARCHITECTURE}"
+
+  mv kubeaid-bootstrap-script /usr/local/bin
+  ```
+
+  And run it directly on your host system.
+
+Or rather, use the KubeAid Bootstrap Script container image, which contains all the required runtime dependencies bundled in it, like so :
+
+```shell script
+KUBEAID_BOOTSTRAP_SCRIPT_VERSION=$(curl -s "https://api.github.com/repos/Obmondo/kubeaid-bootstrap-script/releases/latest" | jq -r .tag_name)
+
+MANAGEMENT_CLUSTER_NAME="kubeaid-bootstrapper"
+
+CONTAINER_IMAGE_NAME="ghcr.io/obmondo/kubeaid-bootstrap-script:${KUBEAID_BOOTSTRAP_SCRIPT_VERSION}"
+CONTAINER_NETWORK_NAME="k3d-${MANAGEMENT_CLUSTER_NAME}"
+CONTAINER_NAME="kubeaid-bootstrap-script"
+
+cat <<EOF > kubeaid-bootstrap-script.sh
+  if ! docker network ls | grep -q "${NETWORK_NAME}"; then \
+    docker network create "${NETWORK_NAME}"; \
+  fi
+
+  docker run --name "${CONTAINER_NAME}" \\
+    --network "${CONTAINER_NETWORK_NAME}" \\
+    -v ./outputs:/outputs \\
+    -v /var/run/docker.sock:/var/run/docker.sock \\
+    --rm \\
+    "${CONTAINER_IMAGE_NAME}" "\$@"
+EOF
+
+chmod +x kubeaid-bootstrap-script.sh
+
+alias kubeaid-bootstrap-script="$(pwd)/kubeaid-bootstrap-script.sh"
+```
+
 ## Preparing the Configuration Files
 
 You need to have 2 configuration files : `general.yaml` and `secrets.yaml` containing required credentials.
 
 Run :
 ```shell script
-docker compose run config-generate
+kubeaid-bootstrap-script config generate hetzner bare-metal
 ```
 and a sample of those 2 configuration files will be generated in `outputs/configs`.
 
@@ -60,7 +109,7 @@ Edit those 2 configuration files, based on your requirements.
 
 Run the following command, to bootstrap the cluster :
 ```shell script
-docker compose run bootstrap-cluster
+kubeaid-bootstrap-script cluster bootstrap
 ```
 
 Aside from the logs getting streamed to your standard output, they'll be saved in `outputs/.log`.
@@ -74,19 +123,10 @@ kubectl cluster-info
 ```
 Go ahead and explore it by accessing the [ArgoCD]() and [Grafana]() dashboards.
 
-## Upgrading the Cluster
-
-In `outputs/configs/general.yaml`, change the `cluster.k8sVersion` to the Kubernetes version you want to upgrade to.
-
-Then re-run :
-```shell script
-docker compose run bootstrap-cluster
-```
-
 ## Deleting the Cluster
 
 You can delete the cluster, by running :
 ```shell script
-docker compose run delete-cluster
-docker compose run cleanup
+kubeaid-bootstrap-script cluster delete main
+kubeaid-bootstrap-script cluster delete management
 ```

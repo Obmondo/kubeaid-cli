@@ -29,9 +29,9 @@ run-container-dev: build-image-dev
 	fi
 	@docker run --name $(CONTAINER_NAME) \
     --network $(NETWORK_NAME) \
-    --detach \
+    -v ./outputs:/outputs \
     -v /var/run/docker.sock:/var/run/docker.sock \
-    -v $(CURRENT_DIR):/app \
+    --rm \
     $(IMAGE_NAME)
 
 .PHONY: exec-container-dev

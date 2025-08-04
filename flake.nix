@@ -36,10 +36,12 @@
             jq
 
             kubectl
+
             kubeone
 
-            k3d
             clusterctl
+
+            cilium-cli
           ];
         };
       }

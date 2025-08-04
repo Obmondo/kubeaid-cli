@@ -29,11 +29,10 @@ CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64")
 
 # Create /tmp/kubeaid-bootstrap-script.
 # We will do everything here, and then at the end, cleanup by removing this directory.
-mkdir /tmp/kubeaid-bootstrap-script
+mkdir -p /tmp/kubeaid-bootstrap-script
 cd /tmp/kubeaid-bootstrap-script
 
 mkdir -p "${BINARY_DESTINATION}"
-
 
 # -------------------------------------------- Functions --------------------------------------------
 
