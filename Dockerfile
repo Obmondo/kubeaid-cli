@@ -39,5 +39,6 @@ ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
 COPY --from=builder /usr/local/bin/kubeaid-bootstrap-script /usr/local/bin/kubeaid-bootstrap-script
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin
 COPY --from=runtime-dependencies-installer /etc/ssl/ /etc/ssl
+RUN apk add --no-cache bash
 
 ENTRYPOINT [ "kubeaid-bootstrap-script" ]

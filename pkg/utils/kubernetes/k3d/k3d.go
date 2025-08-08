@@ -44,7 +44,7 @@ type (
 /*
 Creates a K3D cluster with the given name, if it doesn't already exist.
 
-	The user needs to create a Docker Network (preferably named `k3d-management-cluster`) and run
+	The user needs to create a Docker Network (preferably named `k3d-kubeaid-bootstrapper`) and run
 	the KubeAid Bootstrap Script container in that Docker Network. The K3D cluster will reuse that
 	existing network.
 

@@ -6,26 +6,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/cluster"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/devenv"
+	clustercli "github.com/Obmondo/kubeaid-bootstrap-script/cli/cluster"
+	configcli "github.com/Obmondo/kubeaid-bootstrap-script/cli/config"
+	devenvcli "github.com/Obmondo/kubeaid-bootstrap-script/cli/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 var RootCmd = &cobra.Command{
-	Use: "kubeaid-bootstrap-script",
-
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// nolint: revive
-		// Create outputs directory.
-		os.MkdirAll(constants.OutputsDirectory, os.ModePerm)
-
-		// Initialize logger.
-		logger.InitLogger(globals.IsDebugModeEnabled)
-	},
-
+	Use: "kubeaid-cli",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -33,12 +22,11 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
-	RootCmd.AddCommand(config.ConfigCmd)
-	RootCmd.AddCommand(devenv.DevenvCmd)
-	RootCmd.AddCommand(cluster.ClusterCmd)
+	RootCmd.AddCommand(configcli.ConfigCmd)
+	RootCmd.AddCommand(devenvcli.DevenvCmd)
+	RootCmd.AddCommand(clustercli.ClusterCmd)
 
 	// Flags.
-
 	RootCmd.PersistentFlags().
 		BoolVar(&globals.IsDebugModeEnabled, constants.FlagNameDebug, false, "Generate debug logs")
 
@@ -54,7 +42,7 @@ func main() {
 	// By default, parent's PersistentPreRun gets overridden by a child's PersistentPreRun.
 	// We want to disable this overriding behaviour and chain all the PersistentPreRuns.
 	// REFERENCE : https://github.com/spf13/cobra/pull/2044.
-	cobra.EnableTraverseRunHooks = true
+	// cobra.EnableTraverseRunHooks = true
 
 	err := RootCmd.Execute()
 	if err != nil {

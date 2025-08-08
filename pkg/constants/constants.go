@@ -72,9 +72,16 @@ const (
 	CloudProviderLocal     = "local"
 )
 
+// kubeaid-cli constants
+const (
+	MountDirectory     = "/data"
+	BootstrapImageName = "ghcr.io/obmondo/kubeaid-bootstrap-script"
+	BootstrapImageTag  = "v0.14.0" // This should always be set to the latest release
+)
+
 // Output paths.
 var (
-	OutputsDirectory = "./outputs"
+	OutputsDirectory = path.Join(MountDirectory, "outputs")
 
 	OutputPathGeneratedConfigsDirectory  = path.Join(OutputsDirectory, "configs/")
 	OutputPathGeneratedGeneralConfigFile = path.Join(

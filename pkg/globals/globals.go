@@ -21,4 +21,5 @@ var (
 	CAPIUAMIClientID,
 	VeleroUAMIClientID,
 	AzureStorageAccountAccessKey string
+	IsDebugModeEnabled bool
 )
