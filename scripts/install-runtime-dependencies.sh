@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 # -------------------------------- Control flow -------------------------------
 
@@ -17,7 +17,7 @@ if ! command -v curl &> /dev/null; then
 fi
 
 if ! command -v unzip &> /dev/null; then
-  echo "🚨 Error: wget is not installed."
+  echo "🚨 Error: unzip is not installed."
   exit 1
 fi
 
