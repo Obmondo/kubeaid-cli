@@ -2,7 +2,7 @@ package utils
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -16,7 +16,7 @@ import (
 
 // Executes the given command.
 // The command output is streamed to the standard output.
-func ExecuteCommand(command string) (stdOutOutput string, err error) {
+func ExecuteCommand(command string) (string, error) {
 	slog.Info("Executing command", slog.String("command", sensorCredentials(command)))
 
 	commandExecutionOptions := cmd.Options{
@@ -26,29 +26,48 @@ func ExecuteCommand(command string) (stdOutOutput string, err error) {
 		"bash", "-c", command,
 	)
 
+	var (
+		stdoutOutputBuilder = strings.Builder{}
+		stderrOutput        string
+	)
+
 	// Execute the command,
 	// while streaming the stdout contents to the user.
-	for !commandExecutor.Status().Complete {
-		select {
-		case output := <-commandExecutor.Stderr:
-			// Error occurred, while execution some portion of the command.
-			// We'll not execute the remaining portion of the command,
-			// but just return the aggregated stdout contents and the error that occurred.
-			if len(output) > 0 {
-				return stdOutOutput, errors.New(output)
-			}
 
-		case output := <-commandExecutor.Stdout:
-			println(output)
+	commandExecutionStatusChan := commandExecutor.Start()
 
-			// Keep aggregating the stdout contents in stdOutOutput.
-			// We need to return the aggregated result to the invoker.
-			stdOutOutput += output
+	go func() {
+		for line := range commandExecutor.Stdout {
+			println(line)
 
-		case <-commandExecutor.Start():
+			stdoutOutputBuilder.WriteString(line)
 		}
+	}()
+
+	go func() {
+		for line := range commandExecutor.Stderr {
+			println(line)
+
+			stderrOutput = line
+
+			// An error occurred.
+			// We stop the command execution immediately.
+			commandExecutor.Stop()
+		}
+	}()
+
+	commandExecutionStatus := <-commandExecutionStatusChan
+
+	// Command execution finished.
+
+	stdoutOutput := stdoutOutputBuilder.String()
+
+	if commandExecutionStatus.Error != nil {
+		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
+
+		return stdoutOutput, err
 	}
-	return stdOutOutput, nil
+	return stdoutOutput, nil
 }
 
 // Executes the given command. Panics if the command execution fails.
