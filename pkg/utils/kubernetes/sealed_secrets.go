@@ -24,7 +24,7 @@ func InstallSealedSecrets(ctx context.Context) {
 	HelmInstall(ctx, &HelmInstallArgs{
 		ChartPath:   path.Join(constants.KubeAidDirectory, "argocd-helm-charts/sealed-secrets"),
 		Namespace:   constants.NamespaceSealedSecrets,
-		ReleaseName: "sealed-secrets",
+		ReleaseName: constants.ReleaseNameSealedSecrets,
 		Values: &values.Options{
 			Values: []string{
 				fmt.Sprintf("sealed-secrets.namespace=%s", constants.NamespaceSealedSecrets),

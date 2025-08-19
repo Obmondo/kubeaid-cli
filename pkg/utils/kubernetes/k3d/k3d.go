@@ -42,7 +42,17 @@ type (
 )
 
 /*
-Creates a K3D cluster with the given name, if it doesn't already exist.
+Does the following :
+
+	(1) Creates a K3D cluster with the given name, if it doesn't already exist.
+
+	(2) Creates 2 kubeconfig files, which can be used to access the cluster, from inside the
+	    KubeAid Bootstrap Script container, or from the user's host machine.
+
+	(3) Ensures that each master node has the node-role.kubernetes.io/control-plane= label,
+	    just like it is for a Vanilla Kubernetes cluster.
+
+Keep in mind :
 
 	The user needs to create a Docker Network (preferably named `k3d-management-cluster`) and run
 	the KubeAid Bootstrap Script container in that Docker Network. The K3D cluster will reuse that
@@ -62,37 +72,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	generateK3DClusterConfigFile(ctx, name)
 
 	// Create the K3D cluster, if it doesn't already exist.
-	if !doesK3dClusterExist(ctx, name) {
-		slog.InfoContext(ctx, "Creating the K3D management cluster")
-
-		clusterCreateCmd := cluster.NewCmdClusterCreate()
-		clusterCreateCmd.SetArgs([]string{
-			"--config",
-			constants.OutputPathManagementClusterK3DConfig,
-		})
-		err := clusterCreateCmd.ExecuteContext(ctx)
-		assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
-	} else {
-		slog.InfoContext(ctx, "Skipped creating the K3D management cluster")
-	}
-
-	/*
-		Initially the master nodes have label node-role.kubernetes.io/control-plane=true.
-
-		We'll change the label value to "" (just like it is, in Vanilla Kubernetes). Some ArgoCD Apps
-		(like capi-cluster) rely on this label to get scheduled to the master node.
-
-		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
-		       The cluster won't even startup.
-	*/
-	utils.ExecuteCommandOrDie(`
-		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
-
-		for node in $master_nodes; do
-			kubectl label $node node-role.kubernetes.io/control-plane-
-			kubectl label $node node-role.kubernetes.io/control-plane=""
-		done
-	`)
+	createK3dCluster(ctx, name)
 
 	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
@@ -114,6 +94,25 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		name,
 		name,
 	))
+
+	/*
+		Initially the master nodes have label node-role.kubernetes.io/control-plane=true.
+
+		We'll remove that (using - at the end of the label key) and then update the value to ""
+		(just like it is, in Vanilla Kubernetes). Some ArgoCD Apps (like capi-cluster) rely
+		on this label to get scheduled to the master node.
+
+		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
+		       The cluster won't even startup.
+	*/
+	utils.ExecuteCommandOrDie(`
+		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
+
+		for node in $master_nodes; do
+			kubectl label $node node-role.kubernetes.io/control-plane-
+			kubectl label $node node-role.kubernetes.io/control-plane=""
+		done
+	`)
 }
 
 // Generates the K3D cluster config file.
@@ -152,6 +151,24 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 
 	_, err = k3dConfigFile.Write(k3dConfigAsBytes)
 	assert.AssertErrNil(ctx, err, "Failed writing K3D config to file")
+}
+
+// Create the K3D cluster, if it doesn't already exist.
+func createK3dCluster(ctx context.Context, name string) {
+	if doesK3dClusterExist(ctx, name) {
+		slog.InfoContext(ctx, "Skipped creating the K3D management cluster")
+		return
+	}
+
+	slog.InfoContext(ctx, "Creating the K3D management cluster")
+
+	clusterCreateCmd := cluster.NewCmdClusterCreate()
+	clusterCreateCmd.SetArgs([]string{
+		"--config",
+		constants.OutputPathManagementClusterK3DConfig,
+	})
+	err := clusterCreateCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
 }
 
 // Returns whether the given K3D cluster exists or not.

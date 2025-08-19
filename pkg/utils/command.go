@@ -23,20 +23,13 @@ func ExecuteCommand(command string) (stdOutOutput string, err error) {
 		Streaming: true,
 	}
 	commandExecutor := cmd.NewCmdOptions(commandExecutionOptions,
-		"sh", "-c", command,
+		"bash", "-c", command,
 	)
 
 	// Execute the command,
 	// while streaming the stdout contents to the user.
 	for !commandExecutor.Status().Complete {
 		select {
-		case output := <-commandExecutor.Stdout:
-			println(output)
-
-			// Keep aggregating the stdout contents in stdOutOutput.
-			// We need to return the aggregated result to the invoker.
-			stdOutOutput += output
-
 		case output := <-commandExecutor.Stderr:
 			// Error occurred, while execution some portion of the command.
 			// We'll not execute the remaining portion of the command,
@@ -44,6 +37,13 @@ func ExecuteCommand(command string) (stdOutOutput string, err error) {
 			if len(output) > 0 {
 				return stdOutOutput, errors.New(output)
 			}
+
+		case output := <-commandExecutor.Stdout:
+			println(output)
+
+			// Keep aggregating the stdout contents in stdOutOutput.
+			// We need to return the aggregated result to the invoker.
+			stdOutOutput += output
 
 		case <-commandExecutor.Start():
 		}
