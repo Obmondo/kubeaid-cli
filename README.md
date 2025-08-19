@@ -1,1 +1,1 @@
-# KubeAid Bootstrap Script
+# KubeAid CLI

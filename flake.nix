@@ -1,5 +1,5 @@
 {
-  description = "KubeAid Bootstrap Script development environment";
+  description = "KubeAid CLI development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -36,11 +36,8 @@
             jq
 
             kubectl
-
             kubeone
-
             clusterctl
-
             cilium-cli
           ];
         };

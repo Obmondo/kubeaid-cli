@@ -20,8 +20,7 @@ func InitLogger(isDebugModeEnabled bool) {
 		logLevel = slog.LevelDebug
 	}
 
-	logFile, err := os.OpenFile(
-		constants.OutputPathLogFile,
+	logFile, err := os.OpenFile(constants.OutputPathLogFile,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 		os.ModePerm,
 	)

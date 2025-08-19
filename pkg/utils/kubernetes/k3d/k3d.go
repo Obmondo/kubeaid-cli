@@ -44,14 +44,13 @@ type (
 /*
 Creates a K3D cluster with the given name, if it doesn't already exist.
 
-	The user needs to create a Docker Network (preferably named `k3d-kubeaid-bootstrapper`) and run
-	the KubeAid Bootstrap Script container in that Docker Network. The K3D cluster will reuse that
-	existing network.
+	The created K3D cluster and the KubeAid core container, must be running in the same network.
+	Otherwise, access to the K3D cluster will break.
 
-	  (1) From inside the container, we can access the K3D cluster's API server using
-	      https://k3d-management-cluster-server-0:6443.
+	(1) From inside the container, we can access the K3D cluster's API server using
+	    https://k3d-management-cluster-server-0:6443.
 
-	  (2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
+	(2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 */
 func CreateK3DCluster(ctx context.Context, name string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
