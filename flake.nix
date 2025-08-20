@@ -50,7 +50,7 @@
 
         packages.default = buildGoModule {
           pname = "kubeaid-cli";
-          version = "v0.13.2";
+          version = "v" + builtins.readFile ./cmd/kubeaid-core/root/version/version.txt;
 
           meta = {
             description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
