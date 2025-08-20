@@ -26,6 +26,8 @@
           nativeBuildInputs = [
             go
             golangci-lint
+
+            bun
           ];
 
           buildInputs = [

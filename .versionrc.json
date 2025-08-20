@@ -1,0 +1,19 @@
+{
+	"packageFiles": [
+		{
+			"filename": "cmd/kubeaid-core/root/version/version.txt",
+			"type": "plain-text"
+		}
+	],
+
+	"bumpFiles": [
+		{
+			"filename": "cmd/kubeaid-core/root/version/version.txt",
+			"type": "plain-text"
+		}
+	],
+
+	"skip": {
+		"changelog": true
+	}
+}
