@@ -8,7 +8,7 @@ metadata:
   name: argocd
   namespace: argocd
   finalizers:
-    - resources-finalizer.argocd.argoproj.io
+    - argocd.argoproj.io/resources-finalizer
 spec:
   destination:
     server: https://kubernetes.default.svc
@@ -28,8 +28,9 @@ spec:
     syncOptions:
       - ApplyOutOfSyncOnly=true
       - CreateNamespace=true
-      - RespectIgnoreDifferences=true # When syncing changes, respect fields ignored by the
-                                      # ignoreDifferences configuration.
+      # When syncing changes, respect fields ignored by the
+      # ignoreDifferences configuration.
+      - RespectIgnoreDifferences=true
   # Will ignore differences between live and desired states during the diff.
   # NOTE : these configurations are not used during the sync process unless the
   #        RespectIgnoreDifferences=true sync option is enabled.

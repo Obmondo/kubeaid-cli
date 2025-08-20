@@ -36,11 +36,10 @@ func InitTempDir(ctx context.Context) {
 	}
 
 	// Otherwise, create it.
-
-	path, err := os.MkdirTemp("/tmp", constants.TempDirectoryName)
+	err = os.MkdirAll(constants.TempDirectory, os.ModePerm)
 	assert.AssertErrNil(ctx, err, "Failed creating temp dir")
 
-	slog.InfoContext(ctx, "Created temp dir", slog.String("path", path))
+	slog.InfoContext(ctx, "Created temp dir")
 }
 
 // Returns path to the parent dir of the given file.

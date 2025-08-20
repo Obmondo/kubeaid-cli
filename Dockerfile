@@ -17,21 +17,24 @@ RUN --mount=type=bind,src=.,target=. \
 #--- Dependencies layer ---
 FROM alpine:3.22 AS runtime-dependencies-installer
 
-RUN apk add wget curl unzip
+RUN apk add --no-cache bash curl wget unzip 
 
 COPY scripts/install-runtime-dependencies.sh /opt/install-runtime-dependencies.sh
+
+# We want to bundle dependencies for all the cloud providers,
+# into the KubeAid Bootstrap Script container image.
+ENV CLOUD_PROVIDER=all
 
 RUN /opt/install-runtime-dependencies.sh
 
 #--- Packager stage ---
 FROM alpine:3.22 AS packager
 
-RUN apk add --no-cache bash
-
 ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
+
+RUN apk add --no-cache bash
 
 COPY --from=builder /usr/local/bin/kubeaid-core /usr/local/bin/kubeaid-core
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin
-COPY --from=runtime-dependencies-installer /etc/ssl/ /etc/ssl
 
 ENTRYPOINT [ "kubeaid-core" ]
