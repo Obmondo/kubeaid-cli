@@ -55,7 +55,7 @@
           meta = {
             description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
             homepage = "https://github.com/Obmondo/kubeaid-cli";
-            license = lib.licenses.agpl3;
+            license = lib.licenses.gpl3;
             maintainers = with lib.maintainers; [
               archisman-mridha
               ashish1099
@@ -63,7 +63,7 @@
             mainProgram = "kubeaid-cli";
           };
 
-          vendorHash = "";
+          vendorHash = "sha256-HndNtKWxYWp81r1AWcOmlGToQ+udglmqkE3Md6zfpSY=";
 
           src = self;
           subPackages = [ "cmd/kubeaid-cli" ];

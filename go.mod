@@ -1,6 +1,11 @@
 module github.com/Obmondo/kubeaid-bootstrap-script
 
-go 1.24.5
+// This indicates the required minimum version of Go compiler.
+go 1.24.4
+
+// This indicates the specific version of Go compiler to use,
+// while building the module.
+toolchain go1.24.5
 
 require (
 	github.com/Azure/azure-sdk-for-go/profile/p20200901 v0.1.1
