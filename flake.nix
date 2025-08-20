@@ -45,6 +45,42 @@
             cilium-cli
           ];
         };
+
+        CGO_ENABLED = 0;
+
+        packages.default = buildGoModule {
+          pname = "kubeaid-cli";
+          version = "v0.13.2";
+
+          meta = {
+            description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
+            homepage = "https://github.com/Obmondo/kubeaid-cli";
+            license = lib.licenses.agpl3;
+            maintainers = with lib.maintainers; [
+              archisman-mridha
+              ashish1099
+            ];
+            mainProgram = "kubeaid-cli";
+          };
+
+          vendorHash = "";
+
+          src = self;
+          subPackages = [ "cmd/kubeaid-cli" ];
+          goSum = ./go.sum;
+          ldflags = [
+            # Disable symbol table generation.
+            # You will not be able to use go tool nm to list the symbols in the binary.
+            "-s"
+
+            # Disable DWARF debugging information generation.
+            # You will not be able to use gdb on the binary to look at specific functions or set
+            # breakpoints or get stack traces, because all the metadata gdb needs will not be
+            # there. You will also not be able to use other tools that depend on the information,
+            # like pprof profiling.
+            "-w"
+          ];
+        };
       }
     );
 }
