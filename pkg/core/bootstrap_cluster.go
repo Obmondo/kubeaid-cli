@@ -157,6 +157,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		pivotCluster(ctx)
 	}
 
+	//nolint:staticcheck
 	// Sync cluster-autoscaler ArgoCD App,
 	// if not using Hetzner in bare-metal mode.
 	if !((globals.CloudProviderName == constants.CloudProviderHetzner) &&

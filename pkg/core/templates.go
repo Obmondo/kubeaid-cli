@@ -192,17 +192,16 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
-	// nolint: revive
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		// nolint: godox
-		// TODO : Some regex validation, and add customer specific templates
+	// We'll deal with the TODOs, once KubeAid Agent is ready.
+	/*
+		if config.ParsedGeneralConfig.Obmondo != nil {
+		  // TODO : Some regex validation, and add customer specific templates
 
-		// nolint: revive
-		if config.ParsedGeneralConfig.Obmondo.Monitoring {
-			// nolint: godox
-			// TODO : Enable monitoring for the customer and setup kubeaid-agent
+		  if config.ParsedGeneralConfig.Obmondo.Monitoring {
+		    // TODO : Enable monitoring for the customer and setup kubeaid-agent
+		  }
 		}
-	}
+	*/
 
 	return embeddedTemplateNames
 }
@@ -246,14 +245,14 @@ func getEmbeddedSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonSecretTemplateNames
 	}
 
-	// nolint: revive
+	//nolint:staticcheck,revive
 	if config.ParsedGeneralConfig.Obmondo != nil {
-		// nolint: godox
+		//nolint:godox
 		// TODO : Some regex validation, and add customer specific templates
 
-		// nolint: revive
+		//nolint:staticcheck,revive
 		if config.ParsedGeneralConfig.Obmondo.Monitoring {
-			// nolint: godox
+			//nolint:godox
 			// TODO : Enable monitoring for the customer and setup kubeaid-agent
 		}
 	}

@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	//nolint:reassign
 	// By default, parent's PersistentPreRun gets overridden by a child's PersistentPreRun.
 	// We want to disable this overriding behaviour and chain all the PersistentPreRuns.
 	// REFERENCE : https://github.com/spf13/cobra/pull/2044.

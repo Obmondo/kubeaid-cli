@@ -68,11 +68,18 @@ func GenerateSealedSecret(ctx context.Context, secretFilePath string) {
 	assert.AssertErrNil(ctx, err, "Failed opening secret file")
 	defer secretFile.Close()
 
-	// Open the file, from where KubeSeal will write the sealed-secret.
+	// Open the file, to where KubeSeal will write the sealed-secret.
+	//
 	// Notice, that it's the same file 👀.
+	// Behind the scenes, a temporary file is created, where kubeseal will write the Sealed Secret.
+	// Contents of the Kubernetes Secret file will then be replaced with that of the temporary
+	// Sealed Secret file.
 	sealedSecretFile, err := renameio.TempFile("", secretFilePath)
 	assert.AssertErrNil(ctx, err, "Failed creating temporary sealed-secret file")
-	defer sealedSecretFile.CloseAtomicallyReplace()
+	defer func() {
+		err := sealedSecretFile.CloseAtomicallyReplace()
+		assert.AssertErrNil(ctx, err, "CloseAtomicReplace failed")
+	}()
 
 	// Encrypt the secret file.
 	err = kubeseal.Seal(kubesealClientConfig,

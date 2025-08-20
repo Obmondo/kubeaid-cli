@@ -34,7 +34,7 @@ func DownloadBlobContainerContents(ctx context.Context,
 
 	// Create directory where S3 objects will be downloaded.
 	downloadDir := utils.GetDownloadedStorageBucketContentsDir(blobContainerName)
-	err := os.MkdirAll(downloadDir, os.ModePerm)
+	err := os.MkdirAll(downloadDir, 0o750)
 	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
 
 	blobsPager := blobClient.NewListBlobsFlatPager(blobContainerName,
@@ -98,7 +98,7 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 	}
 
 	// Create the file where the contents of the given blob will be stored.
-	destinationFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm)
+	destinationFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	assert.AssertErrNil(ctx, err, "Failed opening file", slog.String("path", filePath))
 	defer destinationFile.Close()
 

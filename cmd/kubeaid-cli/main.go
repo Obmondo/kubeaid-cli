@@ -23,10 +23,10 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 func main() {
+	//nolint:reassign
 	// By default, parent's PersistentPreRun gets overridden by a child's PersistentPreRun.
 	// We want to disable this overriding behaviour and chain all the PersistentPreRuns.
 	// REFERENCE : https://github.com/spf13/cobra/pull/2044.
@@ -189,8 +189,7 @@ func proxyRun(command *cobra.Command, args []string) {
 
 	select {
 	case err := <-containerExecutionErrorChan:
-		slog.ErrorContext(ctx, "KubeAid Core container execution failed", logger.Error(err))
-		os.Exit(1)
+		assert.AssertErrNil(ctx, err, "KubeAid Core container execution failed")
 
 	case <-containerStatusChan:
 

@@ -55,7 +55,10 @@ func ExecuteCommand(command string) (string, error) {
 
 			// An error occurred.
 			// We stop the command execution immediately.
-			commandExecutor.Stop()
+			err := commandExecutor.Stop()
+			assert.AssertErrNil(context.Background(), err,
+				"Failed stopping shell command executio, after error occurred",
+			)
 		}
 	}()
 

@@ -29,7 +29,6 @@ var BootstrapCmd = &cobra.Command{
 }
 
 var skipMonitoringSetup,
-	skipKubePrometheusBuild,
 	skipClusterctlMove bool
 
 func init() {

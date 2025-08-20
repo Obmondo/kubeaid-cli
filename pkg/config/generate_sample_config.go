@@ -31,7 +31,7 @@ type (
 
 func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs, latestTag string) {
 	// Create configs directory.
-	err := os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, os.ModePerm)
+	err := os.MkdirAll(constants.OutputPathGeneratedConfigsDirectory, 0o750)
 	assert.AssertErrNil(
 		ctx,
 		err,
@@ -94,7 +94,7 @@ func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs, l
 		sampleGeneralConfigFile, err := os.OpenFile(
 			constants.OutputPathGeneratedGeneralConfigFile,
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-			0644,
+			0o600,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",
@@ -120,7 +120,7 @@ func GenerateSampleConfig(ctx context.Context, args *GenerateSampleConfigArgs, l
 		sampleSecretsConfigFile, err := os.OpenFile(
 			constants.OutputPathGeneratedSecretsConfigFile,
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-			0644,
+			0o600,
 		)
 		assert.AssertErrNil(ctx, err,
 			"Failed opening file",

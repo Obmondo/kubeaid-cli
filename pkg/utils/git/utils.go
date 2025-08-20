@@ -94,7 +94,7 @@ func GetLatestTagFromObmondoKubeAid(ctx context.Context) string {
 	latestTagCommitTime := tags[0].GetCommit().GetCommitter().GetDate().Time
 	latestTag := tags[0].Name
 	for _, tag := range tags {
-		if tag.GetCommit().GetCommitter().GetDate().Time.After(latestTagCommitTime) {
+		if tag.GetCommit().GetCommitter().GetDate().After(latestTagCommitTime) {
 			latestTagCommitTime = tag.GetCommit().GetCommitter().GetDate().Time
 			latestTag = tag.Name
 		}

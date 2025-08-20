@@ -14,6 +14,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -21,9 +22,9 @@ var RootCmd = &cobra.Command{
 	Use: "kubeaid-core",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// nolint: revive
 		// Create outputs directory.
-		os.MkdirAll(constants.OutputsDirectory, os.ModePerm)
+		err := os.MkdirAll(constants.OutputsDirectory, 0o750)
+		assert.AssertErrNil(cmd.Context(), err, "Failed ensuring that outputs directory exists")
 
 		// Initialize logger.
 		logger.InitLogger(globals.IsDebugModeEnabled)
