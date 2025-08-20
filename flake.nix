@@ -30,6 +30,7 @@
             bun
             addlicense
             pre-commit
+            nix-update
           ];
 
           buildInputs = [
@@ -53,14 +54,27 @@
           version = "v" + builtins.readFile ./cmd/kubeaid-core/root/version/version.txt;
 
           meta = {
+            mainProgram = "kubeaid-cli";
+
             description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
             homepage = "https://github.com/Obmondo/kubeaid-cli";
             license = lib.licenses.gpl3;
-            maintainers = with lib.maintainers; [
-              archisman-mridha
-              ashish1099
-            ];
-            mainProgram = "kubeaid-cli";
+
+            maintainers =
+              with lib.maintainers
+              // {
+                archisman-mridha = {
+                  name = "Archisman Mridha";
+                  email = "archisman@obmondo.com";
+                };
+                ashish1099 = {
+                  name = "Ashish Jaiswal";
+                  email = "ashish@obmondo.com";
+                };
+              }; [
+                archisman-mridha
+                ashish1099
+              ];
           };
 
           vendorHash = "sha256-HndNtKWxYWp81r1AWcOmlGToQ+udglmqkE3Md6zfpSY=";
