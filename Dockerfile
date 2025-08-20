@@ -30,6 +30,12 @@ RUN /opt/install-runtime-dependencies.sh
 #--- Packager stage ---
 FROM alpine:3.22 AS packager
 
+LABEL org.opencontainers.image.authors="archisman@obmondo.com,ashish@obmondo.com"
+LABEL org.opencontainers.image.url="https://github.com/Obmondo/kubeaid-cli"
+LABEL org.opencontainers.image.source="https://github.com/Obmondo/kubeaid-cli"
+LABEL org.opencontainers.image.vendor="Obmondo"
+LABEL org.opencontainers.image.licenses="GPL3"
+
 ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
 
 RUN apk add --no-cache bash
