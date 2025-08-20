@@ -28,6 +28,7 @@
             golangci-lint
 
             bun
+            addlicense
           ];
 
           buildInputs = [

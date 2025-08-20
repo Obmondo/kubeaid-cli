@@ -243,3 +243,7 @@ bootstrap-cluster-local-dev:
 management-cluster-delete:
 	KUBECONFIG=./outputs/kubeconfigs/clusters/management/container.yaml \
 		k3d cluster delete $(MANAGEMENT_CLUSTER_NAME)
+
+.PHONY: addlicense
+addlicense:
+	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
