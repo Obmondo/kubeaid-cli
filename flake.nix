@@ -29,6 +29,7 @@
 
             bun
             addlicense
+            pre-commit
           ];
 
           buildInputs = [

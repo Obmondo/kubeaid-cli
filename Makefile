@@ -6,9 +6,17 @@ NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 CONTAINER_NAME=kubeaid-bootstrap-script-dev
 MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
 
+.PHONY: format
+format:
+	@golangci-lint fmt
+
 .PHONY: lint
 lint:
 	@golangci-lint run ./...
+
+.PHONY: addlicense
+addlicense:
+	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
 
 .PHONY: build
 build:
@@ -243,7 +251,3 @@ bootstrap-cluster-local-dev:
 management-cluster-delete:
 	KUBECONFIG=./outputs/kubeconfigs/clusters/management/container.yaml \
 		k3d cluster delete $(MANAGEMENT_CLUSTER_NAME)
-
-.PHONY: addlicense
-addlicense:
-	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +

@@ -1,0 +1,32 @@
+repos:
+  - repo: local
+    hooks:
+      - id: gomodtidy
+        name: Tidy go.mod
+        entry: go mod tidy
+        language: system
+        pass_filenames: false
+
+      - id: format
+        name: Format GoLang code
+        entry: make format
+        language: system
+        pass_filenames: false
+
+      - id: lint
+        name: Lint GoLang code
+        entry: make lint
+        language: system
+        pass_filenames: false
+
+      - id: addlicense
+        name: Ensure each GoLang file has a license header.
+        entry: make addlicense
+        language: system
+        pass_filenames: false
+
+      - id: commitlint
+        name: Lint commit message
+        entry: bun run commitlint --from HEAD~1 --to HEAD
+        language: system
+        pass_filenames: false
