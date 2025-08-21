@@ -1,6 +1,6 @@
 {
 	"scripts": {
-		"prerelease": "nix-update --flake --version=skip default"
+		"nix-flake-update": "nix-update --flake --version=skip default && git add flake.nix"
 	},
 
 	"packageFiles": [
