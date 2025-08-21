@@ -44,9 +44,6 @@ linters:
     # checks exhaustiveness of enum switch statements.
     - exhaustive
 
-    # checks the order of functions, methods, and constructors.
-    - funcorder
-
     # checks exhaustiveness on Go "sum types".
     - gochecksumtype
 
@@ -127,10 +124,6 @@ linters:
   # All settings can be found here :
   # https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml
   settings:
-    embeddedstructfieldcheck:
-      # Checks that sync.Mutex and sync.RWMutex are not used as embedded fields.
-      forbid-mutex: true
-
     errcheck:
       exclude-functions:
         - (*github.com/spf13/cobra.Command).MarkFlagRequired
