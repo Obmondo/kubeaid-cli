@@ -9,7 +9,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 )
 
 var HCloudCmd = &cobra.Command{
@@ -18,10 +17,9 @@ var HCloudCmd = &cobra.Command{
 	Short: "Generate a sample KubeAid Bootstrap Script config file for Hetzner (using only HCloud)",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx := cmd.Context()
-		config.GenerateSampleConfig(ctx, &config.GenerateSampleConfigArgs{
+		config.GenerateSampleConfig(cmd.Context(), &config.GenerateSampleConfigArgs{
 			CloudProvider: constants.CloudProviderHetzner,
 			HetznerMode:   aws.String(constants.HetznerModeHCloud),
-		}, gitUtils.GetLatestTagFromObmondoKubeAid(ctx))
+		})
 	},
 }

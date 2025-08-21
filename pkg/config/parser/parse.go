@@ -7,7 +7,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -29,9 +28,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 	// Read contents of the general config file into ParsedGeneralConfig.
 	{
-		generalConfigFilePath := path.Join(configsDirectory, constants.FileNameGeneralConfig)
-
-		config.GeneralConfigFileContents, err = os.ReadFile(generalConfigFilePath)
+		config.GeneralConfigFileContents, err = os.ReadFile(config.GetGeneralConfigFilePath())
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
 
 		//nolint:musttag
@@ -65,9 +62,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	// Read contents of the secrets config file into ParsedSecretsConfig.
 	// This needs to be done before reading the general config.
 	{
-		secretsConfigFilePath := path.Join(configsDirectory, constants.FileNameSecretsConfig)
-
-		secretsConfigFileContents, err := os.ReadFile(secretsConfigFilePath)
+		secretsConfigFileContents, err := os.ReadFile(config.GetSecretsConfigFilePath())
 		assert.AssertErrNil(ctx, err, "Failed reading secrets config file")
 
 		err = yaml.Unmarshal([]byte(secretsConfigFileContents), config.ParsedSecretsConfig)

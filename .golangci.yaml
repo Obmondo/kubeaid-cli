@@ -133,6 +133,12 @@ linters:
 
     errcheck:
       exclude-functions:
+        - (*github.com/spf13/cobra.Command).MarkFlagRequired
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagRequired
+        - (*github.com/spf13/cobra.Command).MarkFlagFilename
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagFilename
+        - (*github.com/spf13/cobra.Command).MarkFlagDirname
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagDirname
         - (io.Closer).Close
         - (*compress/gzip.Reader).Close
         - (*os.File).Close

@@ -126,7 +126,8 @@ recover-cluster-azure:
 
 .PHONY: sample-config-generate-hcloud
 sample-config-generate-hcloud:
-	@go run ./cmd/kubeaid-core config generate hetzner hcloud
+	@go run ./cmd/kubeaid-core config generate hetzner hcloud \
+    --configs-directory ./outputs/configs/hetzner/hcloud
 
 .PHONY: devenv-create-hcloud
 devenv-create-hcloud:

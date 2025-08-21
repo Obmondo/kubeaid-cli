@@ -49,8 +49,9 @@ func init() {
 
 	RootCmd.PersistentFlags().
 		StringVar(&globals.ConfigsDirectory,
-			constants.FlagNameConfigsDirectoy,
-			constants.OutputPathGeneratedConfigsDirectory,
+			constants.FlagNameConfigsDirectory,
+			constants.FlagNameConfigsDirectoryDefaultValue,
 			"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
 		)
+	RootCmd.MarkPersistentFlagDirname(constants.FlagNameConfigsDirectory)
 }

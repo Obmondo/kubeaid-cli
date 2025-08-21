@@ -41,5 +41,8 @@ func init() {
 	// Flags.
 
 	AzureCmd.Flags().
-		StringVar(&newImageOffer, constants.FlagNameNewImageOffer, "", "New Canonical Ubuntu image offer to use for the OS upgrade")
+		StringVar(&newImageOffer, constants.FlagNameNewImageOffer, "",
+			"New Canonical Ubuntu image offer to use for the OS upgrade",
+		)
+	AzureCmd.MarkFlagRequired(constants.FlagNameNewImageOffer)
 }

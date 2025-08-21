@@ -26,7 +26,10 @@ func init() {
 	// Flags.
 
 	UpgradeCmd.PersistentFlags().
-		StringVar(&newKubernetesVersion, constants.FlagNameNewK8sVersion, "", "New Kubernetes version, the cluster will be upgraded to")
+		StringVar(&newKubernetesVersion, constants.FlagNameNewK8sVersion, "",
+			"New Kubernetes version, the cluster will be upgraded to",
+		)
+	UpgradeCmd.MarkPersistentFlagRequired(constants.FlagNameNewK8sVersion)
 
 	UpgradeCmd.PersistentFlags().
 		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,

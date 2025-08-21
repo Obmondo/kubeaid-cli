@@ -4,6 +4,8 @@
 package hetzner
 
 import (
+	_ "unsafe"
+
 	"github.com/spf13/cobra"
 )
 

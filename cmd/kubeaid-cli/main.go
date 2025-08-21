@@ -113,7 +113,7 @@ func proxyRun(command *cobra.Command, args []string) {
 	workingDirectory, err := os.Getwd()
 	assert.AssertErrNil(ctx, err, "Failed determining working directory")
 
-	configsDirectory, err := command.Flags().GetString(constants.FlagNameConfigsDirectoy)
+	configsDirectory, err := command.Flags().GetString(constants.FlagNameConfigsDirectory)
 	assert.AssertErrNil(ctx, err, "Failed determining configs directory")
 
 	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,

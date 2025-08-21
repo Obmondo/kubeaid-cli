@@ -35,5 +35,8 @@ func init() {
 	// Flags.
 
 	AWSCmd.PersistentFlags().
-		StringVar(&newAMIID, constants.FlagNameAMIID, "", "ID of the AMI which supports the new Kubernetes version")
+		StringVar(&newAMIID, constants.FlagNameAMIID, "",
+			"ID of the AMI which supports the new Kubernetes version",
+		)
+	AWSCmd.MarkFlagRequired(constants.FlagNameAMIID)
 }

@@ -36,7 +36,9 @@ func init() {
 	// Flags.
 
 	DevenvCmd.PersistentFlags().
-		StringVar(&managementClusterName, constants.FlagNameManagementClusterName, constants.FlagNameManagementClusterNameDefaultValue,
+		StringVar(&managementClusterName,
+			constants.FlagNameManagementClusterName,
+			constants.FlagNameManagementClusterNameDefaultValue,
 			"Name of the local K3D management cluster",
 		)
 }

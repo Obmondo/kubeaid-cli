@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/config/generate/hetzner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
 var GenerateCmd = &cobra.Command{
@@ -18,15 +18,18 @@ var GenerateCmd = &cobra.Command{
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Verify that config files directory doesn't already exist.
-		if _, err := os.Stat(constants.OutputPathGeneratedConfigsDirectory); err == nil {
+		_, err := os.Stat(globals.ConfigsDirectory)
+		if err == nil {
 			slog.ErrorContext(cmd.Context(),
 				"Config files directory already exists",
-				slog.String("path", constants.OutputPathGeneratedConfigsDirectory),
+				slog.String("path", globals.ConfigsDirectory),
 			)
 			os.Exit(1)
 		}
 	},
 }
+
+var KubeAidVersion string
 
 func init() {
 	// Subcommands.

@@ -9,8 +9,7 @@ import (
 )
 
 var (
-	TempDirectoryName = "kubeaid-bootstrap-script"
-	TempDirectory     = "/tmp/" + TempDirectoryName
+	TempDirectory = "/tmp/kubeaid-bootstrap-script"
 
 	KubeAidDirectory       = path.Join(TempDirectory, "KubeAid")
 	KubeAidConfigDirectory = path.Join(TempDirectory, "kubeaid-config")
@@ -35,12 +34,13 @@ const (
 const (
 	FlagNameDebug = "debug"
 
-	FlagNameNewK8sVersion = "new-k8s-version"
+	FlagNameKubeAidVersion = "kubeaid-version"
 
 	FlagNameManagementClusterName             = "management-cluster-name"
 	FlagNameManagementClusterNameDefaultValue = "kubeaid-bootstrapper"
 
-	FlagNameConfigsDirectoy = "configs-directory"
+	FlagNameConfigsDirectory             = "configs-directory"
+	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
 
 	FlagNameSkipMonitoringSetup = "skip-monitoring-setup"
 	FlagNameSkipPRWorkflow      = "skip-pr-workflow"
@@ -58,6 +58,8 @@ const (
 	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
+
+	FlagNameNewK8sVersion = "new-k8s-version"
 )
 
 // Kube API server CLI flags.
@@ -78,16 +80,6 @@ const (
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
-
-	OutputPathGeneratedConfigsDirectory  = path.Join(OutputsDirectory, "configs/")
-	OutputPathGeneratedGeneralConfigFile = path.Join(
-		OutputPathGeneratedConfigsDirectory,
-		FileNameGeneralConfig,
-	)
-	OutputPathGeneratedSecretsConfigFile = path.Join(
-		OutputPathGeneratedConfigsDirectory,
-		FileNameSecretsConfig,
-	)
 
 	OutputPathLogFile = path.Join(OutputsDirectory, ".log")
 
@@ -187,12 +179,6 @@ const (
 	ServiceAccountASO           = "azureserviceoperator-default"
 	ServiceAccountVelero        = "velero"
 	ServiceAccountSealedSecrets = "sealed-secrets"
-)
-
-// File names
-const (
-	FileNameGeneralConfig = "general.yaml"
-	FileNameSecretsConfig = "secrets.yaml"
 )
 
 // SSH keys.
