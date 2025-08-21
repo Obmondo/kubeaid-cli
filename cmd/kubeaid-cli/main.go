@@ -9,7 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
+	"path"
+	"path/filepath"
 	"syscall"
 
 	"github.com/containerd/containerd/errdefs"
@@ -138,11 +139,15 @@ func proxyRun(command *cobra.Command, args []string) {
 			Binds: []string{
 				"/var/run/docker.sock:/var/run/docker.sock",
 
-				fmt.Sprintf("%s/%s:/%s",
-					workingDirectory, configsDirectory,
-					strings.TrimPrefix(strings.TrimPrefix(configsDirectory, "../"), "./"),
-				),
-				fmt.Sprintf("%s/outputs:/outputs", workingDirectory),
+				fmt.Sprintf("%s:/%s",
+					path.Join(workingDirectory, configsDirectory),
+					filepath.Clean(configsDirectory)),
+
+				fmt.Sprintf("%s:/outputs",
+					path.Join(workingDirectory, "outputs")),
+
+				fmt.Sprintf("%s:%s",
+					constants.TempDirectory, constants.TempDirectory),
 			},
 
 			AutoRemove: true,
