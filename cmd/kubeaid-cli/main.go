@@ -15,14 +15,18 @@ import (
 
 	"github.com/containerd/containerd/errdefs"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/moby/term"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
@@ -82,6 +86,8 @@ func unsetRunners(command *cobra.Command) {
 func proxyRun(command *cobra.Command, args []string) {
 	ctx := command.Context()
 
+	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
+
 	// Determine management cluster name.
 	managementClusterName, err := command.Flags().GetString(constants.FlagNameManagementClusterName)
 	assert.AssertErrNil(ctx, err, "Failed getting management-cluster-name flag value")
@@ -106,6 +112,17 @@ func proxyRun(command *cobra.Command, args []string) {
 		)
 	}
 
+	// Pull the KubeAid Core container image, if it doesn't exist locally.
+
+	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:v%s", version.Version)
+
+	pullProgressReader, err := dockerCLI.ImagePull(ctx, containerImageName, image.PullOptions{})
+	assert.AssertErrNil(ctx, err, "Failed ensuring that KubeAid Core container image exists locally")
+	defer pullProgressReader.Close()
+
+	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
+	jsonmessage.DisplayJSONMessagesStream(pullProgressReader, os.Stdout, stdoutFD, isTerminal, nil)
+
 	// Spin up KubeAid Core container,
 	// proxying the command execution.
 
@@ -114,12 +131,9 @@ func proxyRun(command *cobra.Command, args []string) {
 	workingDirectory, err := os.Getwd()
 	assert.AssertErrNil(ctx, err, "Failed determining working directory")
 
-	configsDirectory, err := command.Flags().GetString(constants.FlagNameConfigsDirectory)
-	assert.AssertErrNil(ctx, err, "Failed determining configs directory")
-
 	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,
 		&container.Config{
-			Image: fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:v%s", version.Version),
+			Image: containerImageName,
 
 			// In case of the bare-metal provider, the user might need to provide YubiKey pin for SSH
 			// authentication against bare-metal servers.
@@ -140,8 +154,8 @@ func proxyRun(command *cobra.Command, args []string) {
 				"/var/run/docker.sock:/var/run/docker.sock",
 
 				fmt.Sprintf("%s:/%s",
-					path.Join(workingDirectory, configsDirectory),
-					filepath.Clean(configsDirectory)),
+					path.Join(workingDirectory, globals.ConfigsDirectory),
+					filepath.Clean(globals.ConfigsDirectory)),
 
 				fmt.Sprintf("%s:/outputs",
 					path.Join(workingDirectory, "outputs")),

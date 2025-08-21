@@ -25,7 +25,7 @@ formatters:
         - github.com/Obmondo/kubeaid-bootstrap-script
 
     golines:
-      max-len: 100
+      max-len: 110
 
 linters:
   enable:
