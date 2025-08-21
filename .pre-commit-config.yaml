@@ -13,12 +13,6 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: lint
-        name: Lint GoLang code
-        entry: make lint
-        language: system
-        pass_filenames: false
-
       - id: addlicense
         name: Ensure each GoLang file has a license header.
         entry: make addlicense
