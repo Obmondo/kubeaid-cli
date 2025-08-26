@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package core
 
 import (
@@ -207,7 +210,7 @@ func createFileFromTemplate(ctx context.Context,
 	destinationFile, err := os.OpenFile(
 		destinationFilePath,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		0644,
+		0o600,
 	)
 	assert.AssertErrNil(ctx, err, "Failed opening file")
 	defer destinationFile.Close()
@@ -241,7 +244,7 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 
 	// Create the kube-prometheus folder.
 	kubePrometheusDir := fmt.Sprintf("%s/kube-prometheus", clusterDir)
-	err := os.MkdirAll(kubePrometheusDir, os.ModePerm)
+	err := os.MkdirAll(kubePrometheusDir, 0o750)
 	assert.AssertErrNil(ctx, err,
 		"Failed creating intermediate paths",
 		slog.String("path", kubePrometheusDir),

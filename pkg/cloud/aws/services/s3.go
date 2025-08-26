@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package services
 
 import (
@@ -70,7 +73,7 @@ func DownloadS3BucketContents(ctx context.Context,
 
 	// Create directory where S3 objects will be downloaded.
 	downloadDir := utils.GetDownloadedStorageBucketContentsDir(bucketName)
-	err := os.MkdirAll(downloadDir, os.ModePerm)
+	err := os.MkdirAll(downloadDir, 0o750)
 	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
 
 	listObjectsInput := s3.ListObjectsV2Input{
@@ -110,7 +113,7 @@ func downloadS3Object(ctx context.Context,
 	}
 
 	// Create the file where the contents of the given S3 object will be stored.
-	destinationFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	destinationFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	assert.AssertErrNil(ctx, err, "Failed opening file", slog.String("path", filePath))
 	defer destinationFile.Close()
 

@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package config
 
 import (
@@ -31,7 +34,7 @@ type (
 	}
 
 	ForksConfig struct {
-		KubeaidForkURL       string `yaml:"kubeaid"       default:"https://github.com/Obmondo/KubeAid"`
+		KubeaidForkURL       string `yaml:"kubeaid"       default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
 		KubeaidConfigForkURL string `yaml:"kubeaidConfig"                                              validate:"notblank"`
 	}
 

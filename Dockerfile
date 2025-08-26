@@ -12,12 +12,10 @@ RUN --mount=type=bind,src=go.mod,target=go.mod \
 
 RUN --mount=type=bind,src=.,target=. \
   --mount=type=cache,target=/go/pkg/mod  \
-  CGO_ENABLED=0 go build -ldflags="-s -w" -v -o /usr/local/bin/kubeaid-bootstrap-script ./cmd
+  CGO_ENABLED=0 go build -ldflags="-s -w" -v -o /usr/local/bin/kubeaid-core ./cmd/kubeaid-core
 
 #--- Dependencies layer ---
 FROM alpine:3.22 AS runtime-dependencies-installer
-
-WORKDIR /
 
 RUN apk add --no-cache bash curl wget unzip 
 
@@ -32,13 +30,17 @@ RUN /opt/install-runtime-dependencies.sh
 #--- Packager stage ---
 FROM alpine:3.22 AS packager
 
-WORKDIR /build
+LABEL org.opencontainers.image.authors="archisman@obmondo.com,ashish@obmondo.com"
+LABEL org.opencontainers.image.url="https://github.com/Obmondo/kubeaid-cli"
+LABEL org.opencontainers.image.source="https://github.com/Obmondo/kubeaid-cli"
+LABEL org.opencontainers.image.vendor="Obmondo"
+LABEL org.opencontainers.image.licenses="GPL3"
 
 ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
 
-RUN apk add --no-cache bash curl
+RUN apk add --no-cache bash
 
-COPY --from=builder /usr/local/bin/kubeaid-bootstrap-script /usr/local/bin/kubeaid-bootstrap-script
+COPY --from=builder /usr/local/bin/kubeaid-core /usr/local/bin/kubeaid-core
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin
 
-ENTRYPOINT [ "kubeaid-bootstrap-script" ]
+ENTRYPOINT [ "kubeaid-core" ]

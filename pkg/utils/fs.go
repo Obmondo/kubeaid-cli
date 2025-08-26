@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package utils
 
 import (
@@ -36,7 +39,7 @@ func InitTempDir(ctx context.Context) {
 	}
 
 	// Otherwise, create it.
-	err = os.MkdirAll(constants.TempDirectory, os.ModePerm)
+	err = os.MkdirAll(constants.TempDirectory, 0o750)
 	assert.AssertErrNil(ctx, err, "Failed creating temp dir")
 
 	slog.InfoContext(ctx, "Created temp dir")
@@ -55,7 +58,7 @@ func GetParentDirPath(filePath string) string {
 func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 	parentDir := filepath.Dir(filePath)
 
-	err := os.MkdirAll(parentDir, os.ModePerm)
+	err := os.MkdirAll(parentDir, 0o750)
 	assert.AssertErrNil(ctx, err,
 		"Failed creating intermediate directories for file",
 		slog.String("path", filePath),
@@ -102,7 +105,7 @@ func MustMoveFile(ctx context.Context, sourceFilePath, destinationFilePath strin
 	defer sourceFile.Close()
 
 	destinationFile, err := os.OpenFile(
-		destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644,
+		destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600,
 	)
 	assert.AssertErrNil(ctx, err,
 		"Failed opening destination file",

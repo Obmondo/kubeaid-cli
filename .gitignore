@@ -3,6 +3,8 @@
 
 vendor/
 
+node_modules/
+
 outputs/
 
 temp/

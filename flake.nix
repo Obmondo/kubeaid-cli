@@ -1,5 +1,5 @@
 {
-  description = "KubeAid Bootstrap Script development environment";
+  description = "KubeAid CLI development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -26,6 +26,11 @@
           nativeBuildInputs = [
             go
             golangci-lint
+
+            bun
+            addlicense
+            pre-commit
+            nix-update
           ];
 
           buildInputs = [
@@ -36,12 +41,58 @@
             jq
 
             kubectl
-
             kubeone
-
             clusterctl
-
             cilium-cli
+          ];
+        };
+
+        CGO_ENABLED = 0;
+
+        packages.default = buildGoModule {
+          pname = "kubeaid-cli";
+          version = "v" + builtins.readFile ./cmd/kubeaid-core/root/version/version.txt;
+
+          meta = {
+            mainProgram = "kubeaid-cli";
+
+            description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
+            homepage = "https://github.com/Obmondo/kubeaid-cli";
+            license = lib.licenses.gpl3;
+
+            maintainers =
+              with lib.maintainers
+              // {
+                archisman-mridha = {
+                  name = "Archisman Mridha";
+                  email = "archisman@obmondo.com";
+                };
+                ashish1099 = {
+                  name = "Ashish Jaiswal";
+                  email = "ashish@obmondo.com";
+                };
+              }; [
+                archisman-mridha
+                ashish1099
+              ];
+          };
+
+          vendorHash = "sha256-HndNtKWxYWp81r1AWcOmlGToQ+udglmqkE3Md6zfpSY=";
+
+          src = self;
+          subPackages = [ "cmd/kubeaid-cli" ];
+          goSum = ./go.sum;
+          ldflags = [
+            # Disable symbol table generation.
+            # You will not be able to use go tool nm to list the symbols in the binary.
+            "-s"
+
+            # Disable DWARF debugging information generation.
+            # You will not be able to use gdb on the binary to look at specific functions or set
+            # breakpoints or get stack traces, because all the metadata gdb needs will not be
+            # there. You will also not be able to use other tools that depend on the information,
+            # like pprof profiling.
+            "-w"
           ];
         };
       }

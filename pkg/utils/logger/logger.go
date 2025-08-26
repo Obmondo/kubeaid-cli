@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package logger
 
 import (
@@ -20,10 +23,9 @@ func InitLogger(isDebugModeEnabled bool) {
 		logLevel = slog.LevelDebug
 	}
 
-	logFile, err := os.OpenFile(
-		constants.OutputPathLogFile,
+	logFile, err := os.OpenFile(constants.OutputPathLogFile,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		os.ModePerm,
+		0o600,
 	)
 	if err != nil {
 		log.Fatal("Failed opening log file")

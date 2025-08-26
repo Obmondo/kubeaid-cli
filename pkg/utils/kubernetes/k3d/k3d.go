@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package k3d
 
 import (
@@ -54,14 +57,13 @@ Does the following :
 
 Keep in mind :
 
-	The user needs to create a Docker Network (preferably named `k3d-management-cluster`) and run
-	the KubeAid Bootstrap Script container in that Docker Network. The K3D cluster will reuse that
-	existing network.
+	The created K3D cluster and the KubeAid core container, must be running in the same network.
+	Otherwise, access to the K3D cluster will break.
 
-	  (1) From inside the container, we can access the K3D cluster's API server using
-	      https://k3d-management-cluster-server-0:6443.
+	(1) From inside the container, we can access the K3D cluster's API server using
+	    https://k3d-management-cluster-server-0:6443.
 
-	  (2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
+	(2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 */
 func CreateK3DCluster(ctx context.Context, name string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
@@ -141,7 +143,7 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 	)
 
 	k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
-		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModePerm,
+		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600,
 	)
 	assert.AssertErrNil(ctx, err,
 		"Failed opening management cluster K3D config file",

@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package kubernetes
 
 import (
@@ -144,7 +147,7 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 
 	kubeConfig := secret.Data["value"]
 
-	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, os.ModePerm)
+	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, 0o600)
 	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
 
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")

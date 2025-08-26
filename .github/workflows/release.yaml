@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Create outputs directory
         run: mkdir -p /tmp/trivy
@@ -40,63 +40,59 @@ jobs:
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
-  build_and_publish_binaries:
-    name: Build and publish binary
-    runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Create outputs directory
-        run: mkdir -p ./outputs/trivy
-
-      - uses: wangyoucao577/go-release-action@v1
-        with:
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          project_path: ./cmd
-          binary_name: kubeaid-bootstrap-script-${{ matrix.goos }}-${{ matrix.goarch }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          compress_assets: OFF
-
-  build_and_push_container_images:
-    name: Build and push container images
+  build_and_push_kubeaid_core_container_images:
+    name: Build and push KubeAid Core container images
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v5
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2.1.0
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: obmondo
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push KubeAid Bootstrap Script AMD64 and ARM64 container images
-        uses: docker/build-push-action@v4
+      - name: Build and push KubeAid Core AMD64 and ARM64 container images
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
           # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
           # using QEMU).
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/obmondo/kubeaid-bootstrap-script:${{ github.event.release.tag_name }}
+          tags: ghcr.io/obmondo/kubeaid-core:${{ github.event.release.tag_name }}
           push: true
           # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
           # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
           # builds.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  build_and_publish_kubeaid_cli_binaries:
+    name: Build and publish KubeAid CLI binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

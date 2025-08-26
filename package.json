@@ -1,0 +1,8 @@
+{
+	"private": true,
+	"devDependencies": {
+		"@commitlint/config-conventional": "^19.8.1",
+		"commitlint": "^19.8.1",
+		"standard-version": "^9.5.0"
+	}
+}

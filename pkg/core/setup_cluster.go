@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package core
 
 import (
@@ -44,22 +47,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			args.GitAuthMethod,
 		)
 
-		var tag string
-		// if no KubeaidVersion is given, get the latest tag
-		if config.ParsedGeneralConfig.Cluster.KubeaidVersion == "" {
-			tag = gitUtils.GetLatestTag(
-				ctx,
-				kubeAidRepo,
-				config.ParsedGeneralConfig.Forks.KubeaidForkURL,
-			)
-		} else {
-			tag = config.ParsedGeneralConfig.Cluster.KubeaidVersion
-		}
-
-		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script config file.
+		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script general config file.
 		gitUtils.HardResetRepoToTag(ctx,
 			kubeAidRepo,
-			tag,
+			config.ParsedGeneralConfig.Cluster.KubeaidVersion,
 		)
 	}
 

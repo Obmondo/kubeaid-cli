@@ -1,0 +1,23 @@
+{
+	"scripts": {
+		"nix-flake-update": "nix-update --flake --version=skip default && git add flake.nix"
+	},
+
+	"packageFiles": [
+		{
+			"filename": "cmd/kubeaid-core/root/version/version.txt",
+			"type": "plain-text"
+		}
+	],
+
+	"bumpFiles": [
+		{
+			"filename": "cmd/kubeaid-core/root/version/version.txt",
+			"type": "plain-text"
+		}
+	],
+
+	"skip": {
+		"changelog": true
+	}
+}

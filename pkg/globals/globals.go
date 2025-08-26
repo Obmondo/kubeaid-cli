@@ -1,3 +1,6 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 package globals
 
 import (
@@ -21,4 +24,5 @@ var (
 	CAPIUAMIClientID,
 	VeleroUAMIClientID,
 	AzureStorageAccountAccessKey string
+	IsDebugModeEnabled bool
 )

@@ -1,88 +1,198 @@
+# Derived from https://gist.github.com/maratori/47a4d00457a92aa426dbd48a18776322.
+
 version: "2"
+
+issues:
+  # Maximum count of issues with the same text.
+  max-same-issues: 50
 
 formatters:
   enable:
+    # checks if the code and import statements are formatted according to the 'goimports' command
     - goimports
+
+    # checks if code is formatted, and fixes long lines
     - golines
+
+    # enforces a stricter format than 'gofmt', while being backwards compatible
+    - gofumpt
+
   settings:
     goimports:
+      # A list of prefixes, which, if set, checks import paths with the given prefixes are grouped
+      # after 3rd-party packages.
       local-prefixes:
         - github.com/Obmondo/kubeaid-bootstrap-script
+
     golines:
-      max-len: 100
+      max-len: 110
 
 linters:
-  default: none
   enable:
-    - usetesting
-    - unparam
-    - usestdlibvars
-    - reassign
-    - prealloc
-    - nilerr
-    - nestif
-    - musttag
-    - makezero
-    - maintidx
-    - importas
-    # - mnd # don't wanna make constants for all those timeouts, as of now :).
-    - godox
-    - goconst
-    - gocognit
-    - gocyclo
-    - forcetypeassert
-    # - forbidigo
+    # detects places where loop variables are copied (Go 1.22+).
     - copyloopvar
-    - errorlint
-    - dupword
-    - revive
-    - misspell
-    - bodyclose
 
+    # checks function and package cyclomatic complexity.
+    # - cyclop
+
+    # tool for code clone detection.
+    - dupl
+
+    # checking for unchecked errors, these unchecked errors can be critical bugs in some cases.
+    - errcheck
+
+    # checks exhaustiveness of enum switch statements.
+    - exhaustive
+
+    # checks exhaustiveness on Go "sum types".
+    - gochecksumtype
+
+    # computes and checks the cognitive complexity of functions.
+    - gocognit
+
+    # finds repeated strings that could be replaced by a constant.
+    - goconst
+
+    # provides diagnostics that check for bugs, performance and style issues.
+    - gocritic
+
+    # computes and checks the cyclomatic complexity of functions.
+    - gocyclo
+
+    # reports suspicious constructs, such as Printf calls whose arguments do not align with the
+    # format string.
+    - govet
+
+    # checks the incorrect use of interfaces, helping developers avoid interface pollution.
+    - iface
+
+    # detects when assignments to existing variables are not used.
+    - ineffassign
+
+    # finds places where for loops could make use of an integer range.
+    - intrange
+
+    # enforces field tags in (un)marshaled structs.
+    - musttag
+
+    # reports deeply nested if statements.
+    - nestif
+
+    # reports all named returns.
+    # - nonamedreturns
+
+    # reports direct reads from proto message fields when getters should be used.
+    - protogetter
+
+    # checks that package variables are not reassigned.
+    - reassign
+
+    # ensure consistent code style when using log/slog.
+    - sloglint
+
+    # is a go vet on steroids, applying a ton of static analysis checks.
+    - staticcheck
+
+    # detects inappropriate usage of t.Parallel() method in your Go test codes.
+    - tparallel
+
+    # reports unused function parameters.
+    - unparam
+
+    # checks for unused constants, variables, functions and types.
+    - unused
+
+    # detects the possibility to use variables/constants from the Go standard library.
+    - usestdlibvars
+
+    # finds wasted assignment statements.
+    - wastedassign
+
+    # checks declaration order and count of types, constants, variables and functions
+    - decorder
+
+    # checks if all structure fields are initialized
+    - exhaustruct
+
+    # checks that errors returned from external packages are wrapped
+    # We're using pkg/utils/errors.WrapError.
+    # - wrapcheck
+
+    # inspects source code for security problems.
+    - gosec
+
+  # All settings can be found here :
+  # https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml
   settings:
     errcheck:
       exclude-functions:
-        - "(io.Closer).Close"
-        - "(*database/sql.Rows).Close"
-    funlen:
-      lines: 70
-      statements: 50
-      ignore-comments: true
-    revive:
-      severity: error
-      rules:
-        - name: bool-literal-in-expr
-        - name: comment-spacings
-        - name: constant-logical-expr
-        - name: context-as-argument
-        - name: datarace
-        - name: nested-structs
-        - name: defer
-        - name: duplicated-imports
-        - name: early-return
-        - name: empty-block
-        - name: error-naming
-        - name: error-strings
-        - name: errorf
-        - name: identical-branches
-        - name: increment-decrement
-        - name: modifies-value-receiver
-        - name: range
-        - name: range-val-address
-        - name: receiver-naming
-        - name: string-of-int
-        # - name: struct-tag
-        - name: superfluous-else
-        - name: time-equal
-        - name: time-naming
-        - name: var-naming
-        - name: var-declaration
-        - name: unconditional-recursion
-        - name: unexported-naming
-        - name: unhandled-error
-        - name: unreachable-code
-        # - name: unnecessary-stmt
-        # - name: unused-parameter
-        # - name: unused-receiver
-        # - name: useless-break
-        - name: waitgroup-by-value
+        - (*github.com/spf13/cobra.Command).MarkFlagRequired
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagRequired
+        - (*github.com/spf13/cobra.Command).MarkFlagFilename
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagFilename
+        - (*github.com/spf13/cobra.Command).MarkFlagDirname
+        - (*github.com/spf13/cobra.Command).MarkPersistentFlagDirname
+        - (io.Closer).Close
+        - (*compress/gzip.Reader).Close
+        - (*os.File).Close
+      # Report about not checking of errors in type assertions: 'a := b.(MyStruct)'.
+      # Such cases aren't reported by default.
+      check-type-assertions: true
+
+    exhaustive:
+      # Program elements to check for exhaustiveness.
+      check:
+        - switch
+        - map
+
+    exhaustruct:
+      include:
+        - "^github.com/Obmondo/kubeaid-bootstrap-script"
+
+    gochecksumtype:
+      # Presence of default case in switch statements satisfies exhaustiveness, if all members are
+      # not listed.
+      default-signifies-exhaustive: false
+
+    gocritic:
+      # Settings passed to gocritic.
+      # The list of supported checkers can be found at https://go-critic.com/overview.
+      settings:
+        captLocal:
+          # Whether to restrict checker to params only.
+          paramsOnly: false
+        underef:
+          # Whether to skip (*x).method() calls where x is a pointer receiver.
+          skipRecvDeref: false
+      disabled-checks:
+        - singleCaseSwitch
+        - appendAssign
+
+    govet:
+      # Enable all analyzers.
+      enable-all: true
+
+      # Disable analyzers by name.
+      disable:
+        - fieldalignment
+        - shadow # otherwise, it's too noisy.
+
+    gosec:
+      excludes:
+        # Potential hardcoded credentials.
+        - G101
+
+        # Errors unhandled.
+        - G104
+
+        # Potential HTTP request made with variable url.
+        - G107
+
+        # Integer overflow conversion int -> uint32.
+        - G115
+
+        # Potential file inclusion via variable.
+        - G304
+
+        # TLS MinVersion too low.
+        - G402
