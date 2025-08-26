@@ -1,6 +1,6 @@
 {
 	"scripts": {
-		"nix-flake-update": "nix-update --flake --version=skip default && git add flake.nix"
+		"postbump": "nix-update --flake --version=skip default"
 	},
 
 	"packageFiles": [
