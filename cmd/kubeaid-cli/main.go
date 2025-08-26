@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -86,6 +87,9 @@ func unsetRunners(command *cobra.Command) {
 func proxyRun(command *cobra.Command, args []string) {
 	ctx := command.Context()
 
+	workingDirectory, err := os.Getwd()
+	assert.AssertErrNil(ctx, err, "Failed determining working directory")
+
 	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
 
 	// Determine management cluster name.
@@ -121,15 +125,12 @@ func proxyRun(command *cobra.Command, args []string) {
 	defer pullProgressReader.Close()
 
 	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
-	jsonmessage.DisplayJSONMessagesStream(pullProgressReader, os.Stdout, stdoutFD, isTerminal, nil)
+	_ = jsonmessage.DisplayJSONMessagesStream(pullProgressReader, os.Stdout, stdoutFD, isTerminal, nil)
 
 	// Spin up KubeAid Core container,
 	// proxying the command execution.
 
 	slog.InfoContext(ctx, "Spinning up KubeAid Core container")
-
-	workingDirectory, err := os.Getwd()
-	assert.AssertErrNil(ctx, err, "Failed determining working directory")
 
 	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,
 		&container.Config{
@@ -154,7 +155,7 @@ func proxyRun(command *cobra.Command, args []string) {
 				"/var/run/docker.sock:/var/run/docker.sock",
 
 				fmt.Sprintf("%s:/%s",
-					path.Join(workingDirectory, globals.ConfigsDirectory),
+					MustAbs(ctx, globals.ConfigsDirectory),
 					filepath.Clean(globals.ConfigsDirectory)),
 
 				fmt.Sprintf("%s:/outputs",
@@ -216,4 +217,12 @@ func proxyRun(command *cobra.Command, args []string) {
 		err := dockerCLI.ContainerStop(ctx, containerID, container.StopOptions{})
 		assert.AssertErrNil(ctx, err, "Failed stopping the KubeAid Core container")
 	}
+}
+
+// Returns canonical version of the given path.
+func MustAbs(ctx context.Context, path string) string {
+	absolutePath, err := filepath.Abs(path)
+	assert.AssertErrNil(ctx, err, "Failed canonicalizing given path", slog.String("path", path))
+
+	return absolutePath
 }
