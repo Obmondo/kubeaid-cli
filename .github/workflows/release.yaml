@@ -2,8 +2,9 @@ name: Release
 
 # This Github Action workflow is triggered, when a new release is created.
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "*"
 
 permissions:
   contents: write
@@ -68,7 +69,7 @@ jobs:
           # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
           # using QEMU).
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/obmondo/kubeaid-core:${{ github.event.release.tag_name }}
+          tags: ghcr.io/obmondo/kubeaid-core:${{ github.ref_name }}
           push: true
           # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
           # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
@@ -80,8 +81,19 @@ jobs:
     name: Build and publish KubeAid CLI binaries
     runs-on: ubuntu-latest
     steps:
+      - name: Maximize build space
+        uses: easimon/maximize-build-space@master
+        with:
+          root-reserve-mb: 512
+          swap-size-mb: 1024
+          remove-dotnet: "true"
+          remove-android: "true"
+          remove-haskell: "true"
+          remove-codeql: "true"
+          remove-docker-images: "true"
+
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

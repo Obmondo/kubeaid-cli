@@ -77,7 +77,7 @@
               ];
           };
 
-          vendorHash = "sha256-HndNtKWxYWp81r1AWcOmlGToQ+udglmqkE3Md6zfpSY=";
+          vendorHash = "sha256-gMwW3iv97YkcoiXuXT/jXRsflVvgc9GJYZglhHIYKEo=";
 
           src = self;
           subPackages = [ "cmd/kubeaid-cli" ];
