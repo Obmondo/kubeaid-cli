@@ -22,7 +22,8 @@ controlPlane:
 
       {{- if $host.PublicAddress }}
       publicAddress: {{ $host.PublicAddress }}
-      {{- else }}
+      {{- end }}
+      {{- if $host.PrivateAddress }}
       privateAddress: {{ $host.PrivateAddress }}
       {{- end }}
   {{- end }}
@@ -53,7 +54,8 @@ staticWorkers:
 
       {{- if $host.PublicAddress }}
       publicAddress: {{ $host.PublicAddress }}
-      {{- else }}
+      {{- end }}
+      {{- if $host.PrivateAddress }}
       privateAddress: {{ $host.PrivateAddress }}
       {{- end }}
 
