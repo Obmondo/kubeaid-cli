@@ -32,6 +32,8 @@ cloud:
     # So, whenever Kubermatic KubeOne tries to authenticate to your bare-metal Linux servers,
     # KubeAid Bootstrap Script will prompt you to touch the YubiKey.
     ssh: {}
+    #   port: 22
+    #   username: root
     #   privateKey:
     #     privateKeyFilePath: ./outputs/ssh/rsa/openssh/.key
 
@@ -45,9 +47,6 @@ cloud:
           # Or you can specify a private IP address.
           # privateAddress: ""
 
-          sshPort: 22
-          sshUsername: root
-
     nodeGroups:
       - name: bootstrapper
         hosts:
@@ -55,9 +54,6 @@ cloud:
             #
             # Or you can specify a private IP address.
             # privateAddress: ""
-
-            sshPort: 22
-            sshUsername: root
 
         # These labels and taints will be propagated to each node managed by this node-group.
         labels:
