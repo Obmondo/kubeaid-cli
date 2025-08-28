@@ -26,22 +26,21 @@ func ExecuteCommand(command string) (string, error) {
 		Streaming: true,
 	}
 	commandExecutor := cmd.NewCmdOptions(commandExecutionOptions,
-		"bash", "-c", command,
+		"bash", "-e", "-c", command,
 	)
 
 	var (
 		stdoutOutputBuilder = strings.Builder{}
-		stderrOutput        string
+		stderrOutputBuilder = strings.Builder{}
 	)
 
 	// Execute the command,
 	// while streaming the stdout contents to the user.
-
 	commandExecutionStatusChan := commandExecutor.Start()
 
 	go func() {
 		for line := range commandExecutor.Stdout {
-			println(line)
+			fmt.Println(line)
 
 			stdoutOutputBuilder.WriteString(line)
 		}
@@ -49,30 +48,23 @@ func ExecuteCommand(command string) (string, error) {
 
 	go func() {
 		for line := range commandExecutor.Stderr {
-			println(line)
+			fmt.Println(line)
 
-			stderrOutput = line
-
-			// An error occurred.
-			// We stop the command execution immediately.
-			err := commandExecutor.Stop()
-			assert.AssertErrNil(context.Background(), err,
-				"Failed stopping shell command executio, after error occurred",
-			)
+			stderrOutputBuilder.WriteString(line)
 		}
 	}()
 
 	commandExecutionStatus := <-commandExecutionStatusChan
 
 	// Command execution finished.
-
 	stdoutOutput := stdoutOutputBuilder.String()
+	stdErrOutput := stderrOutputBuilder.String()
 
 	if commandExecutionStatus.Error != nil {
-		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
-
+		err := fmt.Errorf("%s: %w", stdErrOutput, commandExecutionStatus.Error)
 		return stdoutOutput, err
 	}
+
 	return stdoutOutput, nil
 }
 
