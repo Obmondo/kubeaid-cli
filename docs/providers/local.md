@@ -16,11 +16,12 @@ The `local` provider is used to provision a KubeAid managed `K3D` cluster in you
 ## Installation
 
 ```bash
-KUBEAID_CLI_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/Obmondo/kubeaid-bootstrap-script/releases/latest -o /dev/null | sed -e 's|.*/v||')
+KUBEAID_CLI_VERSION=$(curl -s "https://api.github.com/repos/Obmondo/kubeaid-cli/releases/latest" | jq -r .tag_name)
 OS=$([ "$(uname -s)" = "Linux" ] && echo "linux" || echo "darwin")
 CPU_ARCHITECTURE=$([ "$(uname -m)" = "x86_64" ] && echo "amd64" || echo "arm64")
-wget https://github.com/Obmondo/kubeaid-bootstrap-script/releases/download/v${KUBEAID_CLI_VERSION}/kubeaid-cli-${OS}-${CPU_ARCHITECTURE}-v${KUBEAID_CLI_VERSION}-${OS}-${CPU_ARCHITECTURE}
-sudo mv kubeaid-cli-${OS}-${CPU_ARCHITECTURE}-v${KUBEAID_CLI_VERSION}-${OS}-${CPU_ARCHITECTURE} /usr/local/bin/kubeaid-cli
+
+wget "https://github.com/Obmondo/kubeaid-cli/releases/download/${KUBEAID_CLI_VERSION}/kubeaid-cli-${KUBEAID_CLI_VERSION}-${OS}-${CPU_ARCHITECTURE}"
+sudo mv kubeaid-cli-${KUBEAID_CLI_VERSION}-${OS}-${CPU_ARCHITECTURE} /usr/local/bin/kubeaid-cli
 sudo chmod +x /usr/local/bin/kubeaid-cli
 ```
 
@@ -40,7 +41,7 @@ Edit those 2 configuration files, based on your requirements.
 
 Run the following command, to bootstrap the cluster :
 ```shell script
-kubeaid-bootstrap-script cluster bootstrap
+kubeaid-cli cluster bootstrap
 ```
 
 Aside from the logs getting streamed to your standard output, they'll be saved in `outputs/.log`.
