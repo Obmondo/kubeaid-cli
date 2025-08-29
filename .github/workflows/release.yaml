@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Create outputs directory
         run: mkdir -p /tmp/trivy
@@ -46,6 +48,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -79,20 +83,22 @@ jobs:
   build_and_publish_kubeaid_cli_binaries:
     name: Build and publish KubeAid CLI binaries
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goos: [linux, darwin]
+        goarch: [amd64, arm64]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+      - uses: wangyoucao577/go-release-action@v1
         with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          project_path: ./cmd/kubeaid-cli
+          binary_name: kubeaid-cli
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          compress_assets: OFF
+          ldflags: -s -w
