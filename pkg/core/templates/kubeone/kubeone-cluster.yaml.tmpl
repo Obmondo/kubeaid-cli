@@ -15,7 +15,6 @@ controlPlane:
   hosts:
   {{- range $hostIndex, $host := .BareMetalConfig.ControlPlane.Hosts }}
     - sshPort: {{ $.BareMetalConfig.SSH.Port }}
-      sshUsername: {{ $.BareMetalConfig.SSH.Username }}
       {{- if ($.BareMetalConfig.SSH).PrivateKey }}
       sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
       {{- end }}

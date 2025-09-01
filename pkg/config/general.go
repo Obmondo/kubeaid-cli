@@ -326,8 +326,7 @@ type (
 	BareMetalSSHConfig struct {
 		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
 
-		Port     uint   `yaml:"port"     validate:"required" default:"22"`
-		Username string `yaml:"username" validate:"notblank" default:"root"`
+		Port uint `yaml:"port" validate:"required" default:"22"`
 	}
 
 	BareMetalControlPlane struct {
