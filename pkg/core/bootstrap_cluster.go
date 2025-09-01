@@ -199,7 +199,7 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	// then we need to make the Failover IP point to the 'init master node'.
 	// 'init master node' is the very first master node, where 'kubeadm init' is executed.
 	if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
-		config.IsControlPlaneInHetznerBareMetal() &&
+		config.ControlPlaneInHetznerBareMetal() &&
 		config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)

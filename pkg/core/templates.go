@@ -159,7 +159,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
-		if config.IsUsingHetznerBareMetal() {
+		if config.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
@@ -167,7 +167,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
 			// to a healthy master node, in a failover scenario.
-			if config.IsControlPlaneInHetznerBareMetal() &&
+			if config.ControlPlaneInHetznerBareMetal() &&
 				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
 				embeddedTemplateNames = append(embeddedTemplateNames,
@@ -177,7 +177,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			}
 		}
 
-		if config.IsUsingHCloud() {
+		if config.UsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudSpecificNonSecretTemplateNames...,
 			)
@@ -235,7 +235,7 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.CommonHetznerSpecificSecretTemplateNames...,
 		)
 
-		if config.IsUsingHetznerBareMetal() {
+		if config.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificSecretTemplateNames...,
 			)

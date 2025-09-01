@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -35,48 +36,20 @@ func validateConfigs() {
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
 
 	// Validate based on struct tags.
-	{
-		err = validator.Struct(config.ParsedGeneralConfig)
-		assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
 
-		err = validator.Struct(config.ParsedSecretsConfig)
-		assert.AssertErrNil(ctx, err, "Struct validation failed for secrets config")
-	}
+	err = validator.Struct(config.ParsedGeneralConfig)
+	assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
 
-	// Validate that cloud provider credentials have been provided.
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-		assert.AssertNotNil(ctx, config.ParsedSecretsConfig.AWS, "AWS credentials not provided")
-
-	case constants.CloudProviderAzure:
-		assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Azure, "Azure credentials not provided")
-
-	case constants.CloudProviderHetzner:
-		assert.AssertNotNil(
-			ctx,
-			config.ParsedSecretsConfig.Hetzner,
-			"Hetzner credentials not provided",
-		)
-
-		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
-
-		// Hetzner Robot username and password must be provided, when using Hetzner bare-metal.
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
-			assert.AssertNotNil(
-				ctx,
-				config.ParsedSecretsConfig.Hetzner.Robot,
-				"HCloud robot user and password not provided",
-			)
-		}
-	}
+	err = validator.Struct(config.ParsedSecretsConfig)
+	assert.AssertErrNil(ctx, err, "Struct validation failed for secrets config")
 
 	// Validate K8s version.
-	ValidateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
+	validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
 
 	// Validate additional users.
 	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
 		// Additional user name cannot be ubuntu.
-		assert.Assert(ctx, additionalUser.Name != "ubuntu", "additional user name cannot be ubuntu")
+		assert.Assert(ctx, additionalUser.Name != "ubuntu", "Additional user name cannot be ubuntu")
 
 		// Validate the public SSH key.
 		_, _, _, _, err = ssh.ParseAuthorizedKey([]byte(additionalUser.SSHPublicKey))
@@ -86,99 +59,28 @@ func validateConfigs() {
 		)
 	}
 
+	// Validate provider specific configurations.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		// Validate auto-scalable node-groups.
-		for _, awsAutoScalableNodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
-			validateAutoScalableNodeGroup(ctx, &awsAutoScalableNodeGroup.AutoScalableNodeGroup)
-		}
+		validateAWSConfig(ctx)
 
 	case constants.CloudProviderAzure:
-		// Validate auto-scalable node-groups.
-		for _, azureAutoScalableNodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			validateAutoScalableNodeGroup(ctx, &azureAutoScalableNodeGroup.AutoScalableNodeGroup)
-		}
+		validateAzureConfig(ctx)
 
 	case constants.CloudProviderHetzner:
-		hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-
-		// If we're using Hetzner bare-metal.
-		if config.IsUsingHetznerBareMetal() {
-			// Then Hetzner bare-metal specific options must be provided.
-			assert.AssertNotNil(ctx,
-				hetznerConfig.BareMetal,
-				"Hetzner bare metal specific details not provided",
-			)
-
-			// If the control-plane is in Hetzner bare-metal.
-			if config.IsControlPlaneInHetznerBareMetal() {
-				// Then Hetzner bare-metal specific control-plane options must be provided.
-				assert.AssertNotNil(ctx,
-					hetznerConfig.ControlPlane.BareMetal,
-					"Hetzner bare metal specific control-plane details not provided",
-				)
-			}
-
-			// Validate node-groups in Hetzner bare-metal.
-			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.BareMetal {
-				validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
-			}
-		}
-
-		// If we're using HCloud.
-		if config.IsUsingHCloud() {
-			// Then HCloud specific options must be provided.
-			assert.AssertNotNil(ctx,
-				config.ParsedGeneralConfig.Cloud.Hetzner.HCloud,
-				"HCloud specific details not provided",
-			)
-
-			// If the control-plane is in HCloud,
-			// then HCloud specific control-plane options must be provided.
-			if config.IsControlPlaneInHCloud() {
-				assert.AssertNotNil(ctx,
-					config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud,
-					"HCloud specific control-plane details not provided",
-				)
-			}
-
-			// Validate auto-scalable node-groups in HCloud.
-			for _, hetznerBaremetalNodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
-				validateAutoScalableNodeGroup(ctx, &hetznerBaremetalNodeGroup.AutoScalableNodeGroup)
-			}
-		}
+		validateHetznerConfig(ctx)
 
 	case constants.CloudProviderBareMetal:
+		validateBareMetalConfig(ctx)
+
 	case constants.CloudProviderLocal:
 		break
-
-	default:
-		panic("unreachable")
 	}
-}
-
-func validateAutoScalableNodeGroup(
-	ctx context.Context,
-	autoScalableNodeGroup *config.AutoScalableNodeGroup,
-) {
-	// Validate auto-scaling options.
-	assert.Assert(ctx,
-		autoScalableNodeGroup.MinSize <= autoScalableNodeGroup.Maxsize,
-		"replica count should be <= its max-size",
-		slog.String("node-group", autoScalableNodeGroup.Name),
-	)
-
-	validateNodeGroup(ctx, &autoScalableNodeGroup.NodeGroup)
-}
-
-func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
-	// Validate labels and taints.
-	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
 // Checks whether the given string represents a valid  and supported Kubernetes version or not.
 // If not, then panics.
-func ValidateK8sVersion(ctx context.Context, k8sVersion string) {
+func validateK8sVersion(ctx context.Context, k8sVersion string) {
 	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
@@ -220,6 +122,151 @@ func getLatestStableK8sVersion(ctx context.Context) string {
 	return string(latestStableK8sVersion)
 }
 
+func validateAWSConfig(ctx context.Context) {
+	// Ensure that the user has provided AWS specific credentials.
+	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.AWS, "AWS credentials not provided")
+
+	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
+
+	// Validate auto-scalable node-groups.
+	for _, awsAutoScalableNodeGroup := range awsConfig.NodeGroups {
+		validateAutoScalableNodeGroup(ctx, &awsAutoScalableNodeGroup.AutoScalableNodeGroup)
+	}
+}
+
+func validateAzureConfig(ctx context.Context) {
+	// Ensure that the user has provided Azure specific credentials.
+	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Azure, "Azure credentials not provided")
+
+	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
+
+	// Validate auto-scalable node-groups.
+	for _, azureAutoScalableNodeGroup := range azureConfig.NodeGroups {
+		validateAutoScalableNodeGroup(ctx, &azureAutoScalableNodeGroup.AutoScalableNodeGroup)
+	}
+}
+
+func validateHetznerConfig(ctx context.Context) {
+	// Ensure that the user has provided Hetzner specific credentials.
+	assert.AssertNotNil(ctx,
+		config.ParsedSecretsConfig.Hetzner,
+		"Hetzner credentials not provided",
+	)
+
+	if config.UsingHCloud() {
+		validateHCloudConfig(ctx)
+	}
+
+	if config.UsingHetznerBareMetal() {
+		validateHetznerBareMetalConfig(ctx)
+	}
+}
+
+func validateHCloudConfig(ctx context.Context) {
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+
+	// HCloud specific options must be provided.
+	assert.AssertNotNil(ctx, hetznerConfig.HCloud, "HCloud specific details not provided")
+
+	// If the control-plane is in HCloud,
+	// then HCloud specific control-plane options must be provided.
+	if config.ControlPlaneInHCloud() {
+		assert.AssertNotNil(ctx,
+			hetznerConfig.ControlPlane.HCloud,
+			"HCloud specific control-plane details not provided",
+		)
+	}
+
+	// Validate auto-scalable node-groups in HCloud.
+	for _, hCloudNodeGroup := range hetznerConfig.NodeGroups.HCloud {
+		validateAutoScalableNodeGroup(ctx, &hCloudNodeGroup.AutoScalableNodeGroup)
+	}
+}
+
+func validateHetznerBareMetalConfig(ctx context.Context) {
+	// Hetzner Robot username and password must be provided.
+	assert.AssertNotNil(ctx,
+		config.ParsedSecretsConfig.Hetzner.Robot,
+		"HCloud robot user and password not provided",
+	)
+
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+
+	// Hetzner bare-metal specific options must be provided.
+	assert.AssertNotNil(ctx,
+		hetznerConfig.BareMetal,
+		"Hetzner bare metal specific details not provided",
+	)
+
+	// If the control-plane is in Hetzner bare-metal.
+	if config.ControlPlaneInHetznerBareMetal() {
+		// Then Hetzner bare-metal specific control-plane options must be provided.
+		assert.AssertNotNil(ctx,
+			hetznerConfig.ControlPlane.BareMetal,
+			"Hetzner bare metal specific control-plane details not provided",
+		)
+	}
+
+	// Validate node-groups in Hetzner bare-metal.
+	for _, hetznerBaremetalNodeGroup := range hetznerConfig.NodeGroups.BareMetal {
+		validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
+	}
+}
+
+func validateBareMetalConfig(ctx context.Context) {
+	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
+
+	// Validate bare-metal hosts.
+
+	for _, host := range bareMetalConfig.ControlPlane.Hosts {
+		validateBareMetalHost(ctx, host)
+	}
+
+	for _, nodeGroup := range bareMetalConfig.NodeGroups {
+		for _, host := range nodeGroup.Hosts {
+			validateBareMetalHost(ctx, host)
+		}
+	}
+}
+
+func validateAutoScalableNodeGroup(ctx context.Context,
+	autoScalableNodeGroup *config.AutoScalableNodeGroup,
+) {
+	validateNodeGroup(ctx, &autoScalableNodeGroup.NodeGroup)
+
+	// Validate auto-scaling options.
+	assert.Assert(ctx,
+		autoScalableNodeGroup.MinSize <= autoScalableNodeGroup.Maxsize,
+		"replica count should be <= its max-size",
+		slog.String("node-group", autoScalableNodeGroup.Name),
+	)
+}
+
+func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
+	// Validate labels and taints.
+	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
+}
+
+func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost) {
+	// Ensure, either public or private IP address is provided.
+	assert.Assert(ctx,
+		(host.PublicAddress != nil) || (host.PrivateAddress != nil),
+		"Neither public, nor private IP address provided for bare-metal host",
+	)
+
+	// If the private IP address is provided,
+	// then it should be an actual IP address, and not some hostname.
+	// Otherwise, KubeOne errors out.
+	if host.PrivateAddress != nil {
+		parsedPrivateIP := net.ParseIP(*host.PrivateAddress)
+		assert.Assert(ctx,
+			(parsedPrivateIP != nil),
+			"Invalid private IP provided for bare-metal host",
+			slog.String("ip", *host.PrivateAddress),
+		)
+	}
+}
+
 // A user defined NodeGroup label key should belong to one of these domains.
 // REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
 var validNodeGroupLabelDomains = []string{
@@ -229,8 +276,7 @@ var validNodeGroupLabelDomains = []string{
 }
 
 // Validates node-group labels and taints.
-func validateLabelsAndTaints(
-	ctx context.Context,
+func validateLabelsAndTaints(ctx context.Context,
 	nodeGroupName string,
 	labels map[string]string,
 	taints []*coreV1.Taint,

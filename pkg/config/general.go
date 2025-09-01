@@ -345,8 +345,8 @@ type (
 	}
 
 	BareMetalHost struct {
-		PublicAddress  string `yaml:"publicAddress"  validate:"notblank"`
-		PrivateAddress string `yaml:"privateAddress" validate:"notblank"`
+		PublicAddress  *string `yaml:"publicAddress"  validate:"notblank"`
+		PrivateAddress *string `yaml:"privateAddress" validate:"notblank"`
 
 		SSH *BareMetalSSHConfig `yaml:"ssh"`
 	}
