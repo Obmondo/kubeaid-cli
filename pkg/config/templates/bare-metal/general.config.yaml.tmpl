@@ -27,6 +27,15 @@ cluster:
 
 cloud:
   bare-metal:
+    # This SSH config will be used by default, for all the bare-metal hosts.
+    #
+    # FYI, regarding KubeOne :
+    #
+    #   (1) KubeOne works only when SSHed as the root user, so we have removed the ssh.user
+    #       configuration option.
+    #
+    #   (2) KubeOne doesn't read your local SSH configuration (present in ~/.ssh/config).
+    #
     # If you don't provide details about an SSH private key, then the SSH auth socket will be used
     # to authenticate to your Linux based bare-metal servers.
     # So, whenever Kubermatic KubeOne tries to authenticate to your bare-metal Linux servers,
@@ -46,6 +55,11 @@ cloud:
           # Or you can specify a private IP address.
           # privateAddress: ""
 
+          # Host level SSH config override.
+          # ssh:
+          #   port:
+          #   privateKeyFilePath:
+
     nodeGroups:
       - name: bootstrapper
         hosts:
@@ -53,6 +67,11 @@ cloud:
             #
             # Or you can specify a private IP address.
             # privateAddress: ""
+
+            # Host level SSH config override.
+            # ssh:
+            #   port:
+            #   privateKeyFilePath:
 
         # These labels and taints will be propagated to each node managed by this node-group.
         labels:

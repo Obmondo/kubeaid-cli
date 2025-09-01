@@ -43,6 +43,22 @@ func hydrateSSHKeyConfigs() {
 		if config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey != nil {
 			hydrateSSHPrivateKeyConfig(config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey)
 		}
+
+		// Handle host level SSH config overrides, if any.
+
+		for _, host := range config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Hosts {
+			if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
+				hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)
+			}
+		}
+
+		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.BareMetal.NodeGroups {
+			for _, host := range nodeGroup.Hosts {
+				if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
+					hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)
+				}
+			}
+		}
 	}
 }
 

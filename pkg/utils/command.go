@@ -58,10 +58,10 @@ func ExecuteCommand(command string) (string, error) {
 
 	// Command execution finished.
 	stdoutOutput := stdoutOutputBuilder.String()
-	stdErrOutput := stderrOutputBuilder.String()
+	stderrOutput := stderrOutputBuilder.String()
 
 	if commandExecutionStatus.Error != nil {
-		err := fmt.Errorf("%s: %w", stdErrOutput, commandExecutionStatus.Error)
+		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
 		return stdoutOutput, err
 	}
 

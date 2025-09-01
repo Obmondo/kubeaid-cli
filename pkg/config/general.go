@@ -324,14 +324,13 @@ type (
 	}
 
 	BareMetalSSHConfig struct {
+		Port       uint                 `yaml:"port"       validate:"required" default:"22"`
 		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
-
-		Port uint `yaml:"port" validate:"required" default:"22"`
 	}
 
 	BareMetalControlPlane struct {
 		Endpoint BareMetalControlPlaneEndpoint `yaml:"endpoint" validate:"required"`
-		Hosts    []BareMetalHost               `yaml:"hosts"    validate:"required"`
+		Hosts    []*BareMetalHost              `yaml:"hosts"    validate:"required"`
 	}
 
 	BareMetalControlPlaneEndpoint struct {
@@ -342,12 +341,14 @@ type (
 	BareMetalNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		Hosts []BareMetalHost `yaml:"hosts" validate:"required"`
+		Hosts []*BareMetalHost `yaml:"hosts" validate:"required"`
 	}
 
 	BareMetalHost struct {
 		PublicAddress  string `yaml:"publicAddress"  validate:"notblank"`
 		PrivateAddress string `yaml:"privateAddress" validate:"notblank"`
+
+		SSH *BareMetalSSHConfig `yaml:"ssh"`
 	}
 )
 

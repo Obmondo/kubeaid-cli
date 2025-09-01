@@ -14,8 +14,15 @@ apiEndpoint: {{ .BareMetalConfig.ControlPlane.Endpoint | toIndentYAML 2 | ninden
 controlPlane:
   hosts:
   {{- range $hostIndex, $host := .BareMetalConfig.ControlPlane.Hosts }}
-    - sshPort: {{ $.BareMetalConfig.SSH.Port }}
-      {{- if ($.BareMetalConfig.SSH).PrivateKey }}
+    - {{- if ($host.SSH).Port }}
+      sshPort: {{ $host.SSH.Port }}
+      {{- else }}
+      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+      {{- end }}
+
+      {{- if ($host.SSH).PrivateKey }}
+      sshPrivateKeyFile: {{ $host.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- else if ($.BareMetalConfig.SSH).PrivateKey }}
       sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
       {{- end }}
 
@@ -45,9 +52,15 @@ staticWorkers:
   hosts:
   {{- range $nodeGroupIndex, $nodeGroup := .BareMetalConfig.NodeGroups }}
   {{- range $hostIndex, $host := $nodeGroup.Hosts }}
-    - sshPort: {{ $.BareMetalConfig.SSH.Port }}
-      sshUsername: {{ $.BareMetalConfig.SSH.Username }}
-      {{- if ($.BareMetalConfig.SSH).PrivateKey }}
+    - {{- if ($host.SSH).Port }}
+      sshPort: {{ $host.SSH.Port }}
+      {{- else }}
+      sshPort: {{ $.BareMetalConfig.SSH.Port }}
+      {{- end }}
+
+      {{- if ($host.SSH).PrivateKey }}
+      sshPrivateKeyFile: {{ $host.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- else if ($.BareMetalConfig.SSH).PrivateKey }}
       sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
       {{- end }}
 
