@@ -225,6 +225,9 @@ func IsNodeGroupCountZero(ctx context.Context) bool {
 	case constants.CloudProviderHetzner:
 		nodeGroups := config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups
 		return (len(nodeGroups.HCloud) + len(nodeGroups.BareMetal)) == 0
+
+	case constants.CloudProviderBareMetal:
+		return len(config.ParsedGeneralConfig.Cloud.BareMetal.NodeGroups) == 0
 	}
 
 	return false
