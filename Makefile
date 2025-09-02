@@ -13,8 +13,9 @@ lint:
 addlicense:
 	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
 
-IMAGE_NAME=kubeaid-core:dev
-CONTAINER_NAME=kubeaid-core-dev
+VERSION := $(shell cat ./cmd/kubeaid-core/root/version/version.txt)
+IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
+CONTAINER_NAME=kubeaid-core
 
 MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
 NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)

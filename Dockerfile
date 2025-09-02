@@ -7,11 +7,11 @@ WORKDIR /app
 
 RUN --mount=type=bind,src=go.mod,target=go.mod \
   --mount=type=bind,src=go.sum,target=go.sum \
-  --mount=type=cache,target=/go/pkg/mod  \
+  --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
   go mod download
 
 RUN --mount=type=bind,src=.,target=. \
-  --mount=type=cache,target=/go/pkg/mod  \
+  --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
   CGO_ENABLED=0 go build -ldflags="-s -w" -v -o /usr/local/bin/kubeaid-core ./cmd/kubeaid-core
 
 #--- Dependencies layer ---
