@@ -1,14 +1,9 @@
 .direnv/
-*.swp
+.devenv/
 
-vendor/
+build
 
 node_modules/
 
 outputs/
-
 temp/
-robot-ssh
-*.pub
-
-build
