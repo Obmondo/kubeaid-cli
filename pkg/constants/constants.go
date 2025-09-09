@@ -120,6 +120,7 @@ const (
 	ArgoCDAppVelero            = "velero"
 	ArgoCDAppKubePrometheus    = "kube-prometheus"
 	ArgoCDExternalSnapshotter  = "external-snapshotter"
+	ArgoCDAppCilium            = "cilium"
 
 	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect
 	ArgoCDLabelKeyManagedBy    = "kubeaid.io/managed-by"

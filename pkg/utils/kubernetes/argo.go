@@ -235,7 +235,7 @@ func SyncAllArgoCDApps(ctx context.Context) {
 	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
 	SyncArgoCDApp(ctx, constants.ArgoCDAppRoot, []*argoCDV1Aplha1.SyncOperationResource{})
 
-	// Sync each ArgoCD App.
+	// Sync each of the remaining ArgoCD Apps, except Cilium.
 	{
 		response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
 		assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
