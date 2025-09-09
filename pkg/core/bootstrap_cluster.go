@@ -12,6 +12,7 @@ import (
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	kubeoneCmd "k8c.io/kubeone/pkg/cmd"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
@@ -270,14 +271,21 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 
 	slog.InfoContext(ctx, "Provisioning main cluster using Kubermatic KubeOne")
 
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"kubeone apply --manifest %s/kubeone-cluster.yaml --auto-approve",
-		kubeoneDir,
-	))
+	// Initialize the Kubernetes cluster, using 'kubeone apply'.
+	kubeoneCmd := kubeoneCmd.NewRoot()
+	kubeoneCmd.SetArgs([]string{
+		"apply",
+		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
+		"--auto-approve",
+	})
+	err := kubeoneCmd.ExecuteContext(ctx)
+	assert.AssertErrNil(ctx, err,
+		"Failed initializing Kubernetes cluster using KubeOne",
+	)
 
 	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.
 	// We don't need it.
-	err := os.Remove(fmt.Sprintf("%s/%s.tar.gz", kubeoneDir, mainClusterName))
+	err = os.Remove(fmt.Sprintf("%s/%s.tar.gz", kubeoneDir, mainClusterName))
 	assert.AssertErrNil(ctx, err,
 		"Failed deleting main cluster's PKI infrastructure backup",
 	)

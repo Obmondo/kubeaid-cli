@@ -331,8 +331,7 @@ func SyncArgoCDApp(
 // Returns whether the given ArgoCD App is synced or not.
 // If the resources array is empty, then checks whether the whole ArgoCD App is synced. Otherwise,
 // only checks for the specified resources.
-func isArgoCDAppSynced(
-	ctx context.Context,
+func isArgoCDAppSynced(ctx context.Context,
 	name string,
 	resources []*argoCDV1Aplha1.SyncOperationResource,
 ) bool {

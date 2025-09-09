@@ -20,8 +20,7 @@ func EnsureRuntimeDependenciesInstalled(ctx context.Context) {
 	// Determine required runtime dependencies, based on the cloud-provider being used.
 	dependencies := constants.CommonRuntimeDependencies
 	switch globals.CloudProviderName {
-	case constants.CloudProviderBareMetal:
-		dependencies = append(dependencies, constants.BareMetalSpecificRuntimeDependencies...)
+	default:
 	}
 
 	// Ensure that each of those runtime dependencies are installed.

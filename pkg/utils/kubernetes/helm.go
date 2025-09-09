@@ -22,8 +22,10 @@ import (
 
 type HelmInstallArgs struct {
 	ChartPath,
+
 	ReleaseName,
 	Namespace string
+
 	Values *values.Options
 }
 

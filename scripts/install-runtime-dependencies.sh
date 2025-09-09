@@ -6,17 +6,17 @@ set -o verbose
 set -o errexit
 set -o nounset # Causes the shell to treat unset variables as errors and exit immediately.
 
-if ! command -v wget &> /dev/null; then
+if ! command -v wget &>/dev/null; then
   echo "🚨 Error: wget is not installed."
   exit 1
 fi
 
-if ! command -v curl &> /dev/null; then
+if ! command -v curl &>/dev/null; then
   echo "🚨 Error: curl is not installed."
   exit 1
 fi
 
-if ! command -v unzip &> /dev/null; then
+if ! command -v unzip &>/dev/null; then
   echo "🚨 Error: unzip is not installed."
   exit 1
 fi
@@ -118,18 +118,6 @@ install_kubectl() {
   mv ./kubectl "${BINARY_DESTINATION}"
 }
 
-install_kubeone() {
-  local binary_name="kubeone"
-  if dep_exists "${binary_name}"; then
-    return
-  fi
-
-  KUBEONE_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/kubermatic/kubeone/releases/latest -o /dev/null | sed -e 's|.*/v||')
-  curl -LO "https://github.com/kubermatic/kubeone/releases/download/v${KUBEONE_VERSION}/kubeone_${KUBEONE_VERSION}_"${OS}"_"${CPU_ARCHITECTURE}".zip"
-  unzip kubeone_${KUBEONE_VERSION}_"${OS}"_"${CPU_ARCHITECTURE}".zip -d kubeone_${KUBEONE_VERSION}_"${OS}"_"${CPU_ARCHITECTURE}"
-  mv kubeone_${KUBEONE_VERSION}_"${OS}"_"${CPU_ARCHITECTURE}"/kubeone "${BINARY_DESTINATION}"
-}
-
 install_cilium() {
   local binary_name="cilium"
   if dep_exists "${binary_name}"; then
@@ -152,10 +140,6 @@ install_jb
 # --------------------------- Required solely by KubeAid Bootstrap Script -------------------------
 
 install_kubectl
-
-if [[ "$CLOUD_PROVIDER" == "bare-metal" || "$CLOUD_PROVIDER" == "all" ]]; then
-  install_kubeone
-fi
 
 install_cilium
 
