@@ -1,5 +1,3 @@
-# Development Guide
-
 ## Setup
 
 - Install [Nix](https://github.com/DeterminateSystems/nix-installer) and [Direnv](https://direnv.net/).
