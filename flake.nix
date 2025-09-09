@@ -64,6 +64,8 @@
                     go
                     golangci-lint
 
+                    clusterctl
+
                     bun
                     addlicense
                     pre-commit
@@ -77,9 +79,6 @@
                     jsonnet-bundler
                     jq
 
-                    kubectl
-                    kubeone
-                    clusterctl
                     cilium-cli
                   ];
               }

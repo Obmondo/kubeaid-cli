@@ -132,6 +132,8 @@ func proxyRun(command *cobra.Command, args []string) {
 
 	slog.InfoContext(ctx, "Spinning up KubeAid Core container")
 
+	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
+
 	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,
 		&container.Config{
 			Image: containerImageName,
@@ -146,6 +148,11 @@ func proxyRun(command *cobra.Command, args []string) {
 			AttachStdout: true,
 			AttachStderr: true,
 
+			Env: []string{
+				fmt.Sprintf("%s=%s",
+					constants.EnvNameSSHAuthSock, sshAuthSock),
+			},
+
 			Cmd: os.Args[1:],
 		},
 		&container.HostConfig{
@@ -154,9 +161,11 @@ func proxyRun(command *cobra.Command, args []string) {
 			Binds: []string{
 				"/var/run/docker.sock:/var/run/docker.sock",
 
+				fmt.Sprintf("%s:%s",
+					sshAuthSock, sshAuthSock),
+
 				fmt.Sprintf("%s:/%s",
-					MustAbs(ctx, globals.ConfigsDirectory),
-					filepath.Clean(globals.ConfigsDirectory)),
+					MustAbs(ctx, globals.ConfigsDirectory), filepath.Clean(globals.ConfigsDirectory)),
 
 				fmt.Sprintf("%s:/outputs",
 					path.Join(workingDirectory, "outputs")),

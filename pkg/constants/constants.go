@@ -17,6 +17,8 @@ var (
 
 // Environment variable names.
 const (
+	EnvNameSSHAuthSock = "SSH_AUTH_SOCK"
+
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
 	EnvNameAWSSecretKey            = "AWS_SECRET_ACCESS_KEY"
 	EnvNameAWSSessionToken         = "AWS_SESSION_TOKEN"
