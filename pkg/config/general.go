@@ -253,9 +253,10 @@ type (
 	}
 
 	HetznerBareMetalConfig struct {
-		WipeDisks  bool                       `yaml:"wipeDisks"  default:"false"`
-		ImagePath  string                     `yaml:"imagePath"  default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
-		SSHKeyPair HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                         validate:"required"`
+		WipeDisks               bool                       `yaml:"wipeDisks"               default:"false"`
+		ImagePath               string                     `yaml:"imagePath"               default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
+		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                                      validate:"required"`
+		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
@@ -277,8 +278,9 @@ type (
 	}
 
 	HetznerBareMetalControlPlane struct {
-		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
-		BareMetalHosts []HetznerBareMetalHost               `yaml:"bareMetalHosts" validate:"required,gt=0"`
+		Endpoint                HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"                validate:"required"`
+		BareMetalHosts          []HetznerBareMetalHost               `yaml:"bareMetalHosts"          validate:"required,gt=0"`
+		DiskLayoutSetupCommands string                               `yaml:"diskLayoutSetupCommands"`
 	}
 
 	HetznerBareMetalControlPlaneEndpoint struct {
@@ -306,7 +308,8 @@ type (
 	HetznerBareMetalNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		BareMetalHosts []HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
+		BareMetalHosts          []HetznerBareMetalHost `yaml:"bareMetalHosts"          validate:"required,gt=0"`
+		DiskLayoutSetupCommands string                 `yaml:"diskLayoutSetupCommands"`
 	}
 
 	HetznerBareMetalHost struct {
