@@ -96,6 +96,8 @@ hetzner:
       name: {{ .HetznerConfig.BareMetal.SSHKeyPair.Name }}
     installImage:
       imagePath: {{ .HetznerConfig.BareMetal.ImagePath }}
+    diskLayoutSetupCommands: |
+      {{ .HetznerConfig.BareMetal.DiskLayoutSetupCommands | nindent 6 }}
   {{- end }}
 
   controlPlane:

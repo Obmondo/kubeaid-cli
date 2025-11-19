@@ -229,28 +229,32 @@ func RecreateArgoCDApplicationClient(ctx context.Context, clusterClient client.C
 }
 
 // Lists and syncs all the ArgoCD Apps.
-func SyncAllArgoCDApps(ctx context.Context) {
+func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) {
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
 	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
 	SyncArgoCDApp(ctx, constants.ArgoCDAppRoot, []*argoCDV1Aplha1.SyncOperationResource{})
 
-	// Sync each of the remaining ArgoCD Apps, except Cilium.
-	{
-		response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
-		assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
+	// Sync the KubePrometheus ArgoCD App, if monitoring setup is enabled.
+	// Some ArgoCD Apps depend on the CRDs coming from the KubePrometheus ArgoCD App.
+	if !skipMonitoringSetup {
+		SyncArgoCDApp(ctx, constants.ArgoCDAppKubePrometheus, []*argoCDV1Aplha1.SyncOperationResource{})
+	}
 
-		for _, item := range response.Items {
-			SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
-		}
+	// Sync each of the remaining ArgoCD Apps.
+
+	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{})
+	assert.AssertErrNil(ctx, err, "Failed listing ArgoCD apps")
+
+	for _, item := range response.Items {
+		SyncArgoCDApp(ctx, item.Name, []*argoCDV1Aplha1.SyncOperationResource{})
 	}
 }
 
 // Syncs the ArgoCD App (if not synced already).
 // If the resources array is empty, then the whole ArgoCD App is synced. Otherwise, only the
 // specified resources.
-func SyncArgoCDApp(
-	ctx context.Context,
+func SyncArgoCDApp(ctx context.Context,
 	name string,
 	resources []*argoCDV1Aplha1.SyncOperationResource,
 ) {

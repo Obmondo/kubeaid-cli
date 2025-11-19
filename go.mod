@@ -42,7 +42,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
 	github.com/spf13/cobra v1.9.1
-	github.com/syself/cluster-api-provider-hetzner v1.0.5
+	github.com/syself/cluster-api-provider-hetzner v1.0.7
 	github.com/vmware-tanzu/velero v1.16.1
 	golang.org/x/crypto v0.40.0
 	google.golang.org/grpc v1.73.0

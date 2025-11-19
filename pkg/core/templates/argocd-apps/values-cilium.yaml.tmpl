@@ -5,9 +5,26 @@ cilium:
   k8sServiceHost: {{ .ProvisionedClusterEndpoint.Host }}
   k8sServicePort: {{ .ProvisionedClusterEndpoint.Port }}
 
-  {{/* I don't know why, when using HCloud, Cilium is not able to auto-detect the routing device. */}}
+  {{/*
+    (1) HCloud instances always have the eth0 network interface.
+
+      And, if they're part of an HCloud network, then they'll also have an enp+ network
+      interface. Which will cause Cilium erroring out, being confused on which network interface
+      to use as the routing device.
+
+      You might be thinking : why not set --devices=enp+? That way, HCloud instances can be part
+      of an HCloud network, and both the HCloud and Hetzner bare-metal servers can use the enp+
+      network interface as the routing device.
+
+      Well, we can go that way. But then, all the servers need to be part of a VSwitch. Becuase,
+      enp+ network interface on an HCloud server, corresponds to the server's private IP.
+
+      We'll add support for VSwitch later.
+
+    (2) Hetzner bare-metal servers have only the enp+ network interface.
+  */}}
   {{- if .HetznerConfig }}
   extraArgs:
-    - "--devices=eth0,enp9s0"
+    - "--devices=eth0,enp+"
   {{- end }}
 {{- end }}

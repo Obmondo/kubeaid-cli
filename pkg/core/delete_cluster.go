@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -45,8 +46,7 @@ func DeleteCluster(ctx context.Context) {
 	        management cluster.
 
 	    (2) clusterctl move wasn't executed while provisioning the cluster. In that case, how are
-	        we going to have those ClusterAPI resource manifests back in the cluster? Should we
-	        sync the whole capi-cluster ArgoCD App? I need to test this.
+	        we going to have those ClusterAPI resource manifests back in the cluster?
 	*/
 
 	// Detect whether the 'clusterctl move' command has already been executed or not.
@@ -122,6 +122,20 @@ func DeleteCluster(ctx context.Context) {
 		},
 	)
 	assert.AssertErrNil(ctx, err, "Failed waiting for the cluster infrastructure to be destroyed")
+
+	// In case of Hetzner bare-metal, the HetznerBareMetalHosts aren't deleted.
+	// So, we need to delete them explicitly.
+	// TODO : Limit the list scope to only those objects which have the following label :
+	//
+	//                    cluster.x-k8s.io/cluster-name: <cluster-name>
+	if config.ParsedGeneralConfig.Cloud.Hetzner != nil {
+		err = managementClusterClient.DeleteAllOf(ctx, &v1beta1.HetznerBareMetalHost{},
+			client.InNamespace(kubernetes.GetCapiClusterNamespace()),
+		)
+		assert.AssertErrNil(ctx, err, "Failed deleting HetznerBareMetalHosts")
+
+		slog.InfoContext(ctx, "Deleted HetznerBareMetalHosts")
+	}
 
 	slog.InfoContext(ctx, "Deleted cluster successuly")
 }

@@ -64,7 +64,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Sync all ArgoCD Apps.
-	kubernetes.SyncAllArgoCDApps(ctx)
+	kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
