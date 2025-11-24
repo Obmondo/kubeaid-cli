@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-resty/resty/v2"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -27,12 +26,6 @@ import (
 )
 
 func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) {
-	robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
-
-	httpClient := resty.New().
-		SetBaseURL(constants.HetznerRobotWebServiceAPI).
-		SetBasicAuth(robotWebServiceUserCredentials.User, robotWebServiceUserCredentials.Password)
-
 	/*
 		A Failover IP is an additional IP that you can switch from one server to another. You can order
 		it for any Hetzner dedicated root server, and you can switch it to any other Hetzner dedicated
@@ -49,7 +42,7 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) {
 	failoverIP := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.Host
 
 	// Get IP address of the server, to which the Failover IP is currently pointing.
-	activeServerIP := getActiveServerIP(ctx, httpClient, failoverIP)
+	activeServerIP := h.getActiveServerIP(ctx, failoverIP)
 	slog.InfoContext(ctx,
 		"Detected active server IP for failover IP",
 		slog.String("ip", activeServerIP),
@@ -67,7 +60,7 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) {
 	}
 
 	// Otherwise, make the Failover IP point to the 'init master node'.
-	pointFailoverIPTo(ctx, httpClient, failoverIP, initMasterNodeIP)
+	h.pointFailoverIPTo(ctx, failoverIP, initMasterNodeIP)
 }
 
 type (
@@ -81,10 +74,8 @@ type (
 )
 
 // Returns the IP address of the server, the given Failover IP is pointing to.
-func getActiveServerIP(ctx context.Context, httpClient *resty.Client, failoverIP string) string {
-	response, err := httpClient.NewRequest().
-		SetHeader("Accept", "application/json").
-		Get("/failover/" + failoverIP)
+func (h *Hetzner) getActiveServerIP(ctx context.Context, failoverIP string) string {
+	response, err := h.robotClient.NewRequest().Get("/failover/" + failoverIP)
 
 	assert.AssertErrNil(ctx, err, "Failed getting Failover IP details")
 	assert.Assert(ctx, response.StatusCode() == http.StatusOK, "Failed getting Failover IP details")
@@ -168,21 +159,15 @@ func getInitMasterNodeIP(ctx context.Context) string {
 }
 
 // Makes the Failover IP point to the given server.
-func pointFailoverIPTo(ctx context.Context,
-	httpClient *resty.Client,
-	failoverIP,
-	targetServerIP string,
-) {
+func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServerIP string) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-ip", targetServerIP),
 	})
 
-	response, err := httpClient.NewRequest().
-		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+	response, err := h.robotClient.NewRequest().
 		SetFormData(map[string]string{
 			"active_server_ip": targetServerIP,
 		}).
-		SetHeader("Accept", "application/json").
 		Post("/failover/" + failoverIP)
 
 	assert.AssertErrNil(ctx, err, "Failed pointing the Failover IP to the given server IP")

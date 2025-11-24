@@ -239,11 +239,18 @@ type (
 	HetznerConfig struct {
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
+		VSwitch VSwitchConfig `yaml:"vswitch"`
+
 		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"`
+	}
+
+	VSwitchConfig struct {
+		VLANID string `yaml:"vlanID" validate:"notblank"`
+		Name   string `yaml:"name"   validate:"notblank"`
 	}
 
 	HetznerHCloudConfig struct {

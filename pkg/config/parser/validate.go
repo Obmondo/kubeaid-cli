@@ -159,6 +159,12 @@ func validateHetznerConfig(ctx context.Context) {
 
 	if config.UsingHetznerBareMetal() {
 		validateHetznerBareMetalConfig(ctx)
+
+		// Ensure that VSwitch details are provided.
+		assert.AssertNotNil(ctx,
+			config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch,
+			"VSwitch details not provided, when using Hetzner Bare Metal",
+		)
 	}
 }
 

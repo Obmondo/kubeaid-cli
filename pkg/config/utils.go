@@ -46,28 +46,42 @@ func GetSecretsConfigFilePath() string {
 	return path.Join(globals.ConfigsDirectory, "secrets.yaml")
 }
 
-// Returns the Hetzner provider mode being used.
-// Panics, if the Hetzner provider isn't being used.
-func MustGetHetznerProviderMode() string {
-	return ParsedGeneralConfig.Cloud.Hetzner.Mode
-}
-
+// Returns whether we're using HCloud.
 func UsingHCloud() bool {
-	mode := MustGetHetznerProviderMode()
+	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+		return false
+	}
+
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
+// Returns whether the control-plane is in HCloud.
 func ControlPlaneInHCloud() bool {
-	mode := MustGetHetznerProviderMode()
+	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+		return false
+	}
+
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
+// Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
-	mode := MustGetHetznerProviderMode()
+	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+		return false
+	}
+
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid)
 }
 
+// Returns whether the control-plane is in Hetzner Bare Metal.
 func ControlPlaneInHetznerBareMetal() bool {
-	mode := MustGetHetznerProviderMode()
+	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+		return false
+	}
+
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return mode == constants.HetznerModeBareMetal
 }
