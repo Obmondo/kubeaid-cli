@@ -277,6 +277,7 @@ func SyncArgoCDApp(ctx context.Context,
 		SyncOptions: &application.SyncOptions{
 			Items: []string{
 				"CreateNamespace=true",
+				"ApplyOutOfSyncOnly=true",
 			},
 		},
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{
