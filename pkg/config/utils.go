@@ -48,7 +48,7 @@ func GetSecretsConfigFilePath() string {
 
 // Returns whether we're using HCloud.
 func UsingHCloud() bool {
-	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
@@ -58,7 +58,7 @@ func UsingHCloud() bool {
 
 // Returns whether the control-plane is in HCloud.
 func ControlPlaneInHCloud() bool {
-	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
@@ -68,7 +68,7 @@ func ControlPlaneInHCloud() bool {
 
 // Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
-	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
@@ -78,7 +78,7 @@ func UsingHetznerBareMetal() bool {
 
 // Returns whether the control-plane is in Hetzner Bare Metal.
 func ControlPlaneInHetznerBareMetal() bool {
-	if ParsedGeneralConfig.Cloud.Hetzner != nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 

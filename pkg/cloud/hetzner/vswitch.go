@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
@@ -29,7 +30,7 @@ type ListVSwitchResponseBody = []struct {
 	ID int `json:"id"`
 
 	Name   string `json:"name"`
-	VLANID string `json:"vlan"`
+	VLANID int    `json:"vlan"`
 
 	Cancelled bool `json:"cancelled"`
 }
@@ -38,7 +39,7 @@ type CreateVSwitchResponseBody struct {
 	ID int `json:"id"`
 
 	Name   string `json:"name"`
-	VLANID string `json:"vlan"`
+	VLANID int    `json:"vlan"`
 
 	Cancelled bool `json:"cancelled"`
 }
@@ -85,7 +86,7 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) {
 	response, err = h.robotClient.NewRequest().
 		SetFormData(map[string]string{
 			"name": vSwitchConfig.Name,
-			"vlan": vSwitchConfig.VLANID,
+			"vlan": strconv.Itoa(vSwitchConfig.VLANID),
 		}).
 		Post("/vswitch")
 

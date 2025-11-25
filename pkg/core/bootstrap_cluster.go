@@ -282,6 +282,7 @@ func pivotCluster(ctx context.Context) {
 		Namespace: capiClusterNamespace,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
+	slog.InfoContext(ctx, "Pivoted the cluster by executing 'clusterctl move'")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

@@ -239,7 +239,7 @@ type (
 	HetznerConfig struct {
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
-		VSwitch VSwitchConfig `yaml:"vswitch"`
+		VSwitch VSwitchConfig `yaml:"vswitch" validate:"required"`
 
 		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
@@ -249,7 +249,7 @@ type (
 	}
 
 	VSwitchConfig struct {
-		VLANID string `yaml:"vlanID" validate:"notblank"`
+		VLANID int    `yaml:"vlanID"`
 		Name   string `yaml:"name"   validate:"notblank"`
 	}
 
@@ -263,12 +263,18 @@ type (
 		WipeDisks               bool                       `yaml:"wipeDisks"               default:"false"`
 		ImagePath               string                     `yaml:"imagePath"               default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
 		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                                      validate:"required"`
+		VG0                     VG0Config                  `yaml:"vg0"`
 		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
 		Name             string `yaml:"name"    validate:"notblank"`
 		SSHKeyPairConfig `       yaml:",inline"`
+	}
+
+	VG0Config struct {
+		Size           string `yaml:"size"           validate:"notblank" default:"25G"`
+		RootVolumeSize string `yaml:"rootVolumeSize" validate:"notblank" default:"10G"`
 	}
 
 	HetznerControlPlane struct {
