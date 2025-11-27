@@ -21,10 +21,10 @@ cilium:
 
       We'll add support for VSwitch later.
 
-    (2) Hetzner bare-metal servers have only the enp+ network interface.
+    (2) Hetzner bare-metal servers have only the enp+ / eno+ network interface.
   */}}
   {{- if .HetznerConfig }}
   extraArgs:
-    - "--devices=eth0,enp+"
+    - "--devices=eth0,enp+,eno+"
   {{- end }}
 {{- end }}
