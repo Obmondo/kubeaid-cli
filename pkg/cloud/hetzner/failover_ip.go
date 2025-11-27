@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -109,6 +111,15 @@ func getInitMasterNodeIP(ctx context.Context) string {
 			if len(hetznerBareMetalMachines.Items) == 0 {
 				return false, nil
 			}
+
+			// Filter out the HetznerBareMetalMachines corresponding to worker nodes.
+			// They won't have the cluster.x-k8s.io/control-plane label.
+			hetznerBareMetalMachines.Items = slices.DeleteFunc(hetznerBareMetalMachines.Items,
+				func(hetznerBareMetalMachine caphV1Beta1.HetznerBareMetalMachine) bool {
+					_, exists := hetznerBareMetalMachine.Labels[clusterAPIV1Beta1.MachineControlPlaneLabel]
+					return !exists
+				},
+			)
 
 			// Sort the HetznerBareMetalMachines in ascending order, by the time of creation.
 			// The oldest HetznerBareMetalMachine corresponds to the 'init master node'.

@@ -297,7 +297,7 @@ type (
 	}
 
 	HetznerBareMetalControlPlaneEndpoint struct {
-		IsFailoverIP bool   `yaml:"isFailoverIP" validate:"required"`
+		IsFailoverIP bool   `yaml:"isFailoverIP"`
 		Host         string `yaml:"host"         validate:"ip"`
 	}
 
