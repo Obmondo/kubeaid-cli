@@ -91,11 +91,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
-	repo := git.CloneRepo(ctx,
-		config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
-		constants.KubeAidConfigDirectory,
-		gitAuthMethod,
-	)
+	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL, gitAuthMethod)
 
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")

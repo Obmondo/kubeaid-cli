@@ -25,22 +25,20 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Clones the given git repository into the given directory (only if the repo doesn't already exist
-// in there).
-// If the repo already exists, then it checks out to the default branch and fetches the latest
+// Clones the given git repository, if that isn't already done.
+// When the repo is already cloned, it checks out to the default branch and fetches the latest
 // changes.
-func CloneRepo(ctx context.Context,
-	url,
-	dirPath string,
-	authMethod transport.AuthMethod,
-) *goGit.Repository {
+func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod) *goGit.Repository {
+	// Determine the path, where this repository will be / is cloned.
+	path := GetRepoDir(url)
+
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("repo", url), slog.String("dir", dirPath),
+		slog.String("repo", url), slog.String("path", path),
 	})
 
 	// If the repo is already cloned.
-	if _, err := os.ReadDir(dirPath); err == nil {
-		repo, err := goGit.PlainOpen(dirPath)
+	if _, err := os.ReadDir(path); err == nil {
+		repo, err := goGit.PlainOpen(path)
 		if err != nil && errors.Is(err, goGit.ErrRepositoryNotExists) {
 			assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
 		}
@@ -70,7 +68,7 @@ func CloneRepo(ctx context.Context,
 		opts.Auth = authMethod
 	}
 
-	repo, err := goGit.PlainClone(dirPath, false, opts)
+	repo, err := goGit.PlainClone(path, false, opts)
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&
 		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL) {
 		// Remote KubeAid Config repository is empty.
@@ -78,7 +76,7 @@ func CloneRepo(ctx context.Context,
 		// add the remote repository as 'origin',
 		// and create and push an empty commit.
 		repo = initRepo(ctx,
-			dirPath,
+			path,
 			config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
 			authMethod,
 		)

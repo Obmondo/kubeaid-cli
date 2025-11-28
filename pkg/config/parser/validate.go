@@ -104,7 +104,7 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 
 // Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
 func getLatestStableK8sVersion(ctx context.Context) string {
-	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
+	const kubeadmAPIURL = "https://cdn.dl.k8s.io/release/stable.txt"
 
 	slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
 

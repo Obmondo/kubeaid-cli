@@ -50,12 +50,7 @@ Run [standard-version](https://github.com/conventional-changelog/standard-versio
 
 Merge the release commit into the main branch, and sync everything to GitHub.
 
-Create a new GitHub release.
-> We tried using goreleaser, which would automatically create the release, with changelogs and, build and publish the binaries as release artifacts.
-> But then, had to abandon it, due to the `no disk space available` error we were getting in the GitHub Actions release workflow. It was building binaries for all the targets parallelly, in the same GitHub Actions runner.
-> Hopefully, we can bridge this gap in the future, by migrating from standard-version to [release-please](https://github.com/googleapis/release-please).
-
-A triggered GitHub Actions release workflow will :
+A GitHub Actions release workflow will get triggered. It'll :
 
 - Scan the source-code, looking for vulnerabilities.
   > You can view the scan result in the GitHub Actions release workflow summary.

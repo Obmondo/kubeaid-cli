@@ -35,5 +35,6 @@ func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
 
 	slog.ErrorContext(ctx, "Failed getting VM specs", slog.String("vm-type", vmType))
 	os.Exit(1)
+
 	return nil
 }

@@ -40,6 +40,15 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
+	// When using Hetzner Bare Metal,
+	// we need to first ensure that the required VSwitch is created.
+	if config.UsingHetznerBareMetal() {
+		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+		assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+
+		hetznerCloudProvider.CreateVSwitch(ctx)
+	}
+
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
@@ -110,7 +119,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		provisionMainClusterUsingClusterAPI(ctx)
 	}
 
-	// Close ArgoCD application client (to the management cluster).
+	// Close management cluster's ArgoCD application client.
 	_ = globals.ArgoCDApplicationClientCloser.Close()
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
@@ -196,17 +205,28 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 		[]*argoCDV1Alpha1.SyncOperationResource{},
 	)
 
-	// If provisioning cluster in Hetzner bare-metal, and using a Failover IP,
-	// then we need to make the Failover IP point to the 'init master node'.
-	// 'init master node' is the very first master node, where 'kubeadm init' is executed.
-	if (globals.CloudProviderName == constants.CloudProviderHetzner) &&
-		config.ControlPlaneInHetznerBareMetal() &&
-		config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+	if config.UsingHetznerBareMetal() {
+		// When spinning up a Hetzner hybrid cluster,
+		// we need to establish private connectivity between the Hetzner Network in HCloud and Hetzner
+		// Bare Metal servers, using the VSwitch.
+		if config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHybrid {
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
 
-		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-		assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+			hetznerCloudProvider.ConnectVSwitchWithHCloudNetwork(ctx)
+		}
 
-		hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
+		// we need to make the Failover IP point to the 'init master node'.
+		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
+		if config.ControlPlaneInHetznerBareMetal() &&
+			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+
+			hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+		}
 	}
 
 	// Wait for the main cluster to be provisioned.
@@ -262,6 +282,7 @@ func pivotCluster(ctx context.Context) {
 		Namespace: capiClusterNamespace,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
+	slog.InfoContext(ctx, "Pivoted the cluster by executing 'clusterctl move'")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

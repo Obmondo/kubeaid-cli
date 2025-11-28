@@ -47,5 +47,5 @@ func GetGitAuthMethod(ctx context.Context) (authMethod transport.AuthMethod) {
 		assert.AssertErrNil(ctx, err, "SSH agent failed")
 		slog.InfoContext(ctx, "Using SSH agent")
 	}
-	return
+	return authMethod
 }

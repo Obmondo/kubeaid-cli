@@ -72,7 +72,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// Install the ArgoCD Helm chart.
 	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath: path.Join(constants.KubeAidDirectory, "argocd-helm-charts/argo-cd"),
+		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
@@ -277,6 +277,7 @@ func SyncArgoCDApp(ctx context.Context,
 		SyncOptions: &application.SyncOptions{
 			Items: []string{
 				"CreateNamespace=true",
+				"ApplyOutOfSyncOnly=true",
 			},
 		},
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{

@@ -43,7 +43,6 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Clone the KubeAid fork locally (if not already cloned).
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidForkURL,
-			constants.KubeAidDirectory,
 			args.GitAuthMethod,
 		)
 

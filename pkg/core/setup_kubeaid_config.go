@@ -46,7 +46,7 @@ It expects the KubeAid Config repository to be already cloned in the temp direct
 func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
-	repo, err := goGit.PlainOpen(constants.KubeAidConfigDirectory)
+	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
 	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
 
 	workTree, err := repo.Worktree()
@@ -252,8 +252,6 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 
 	// Run the KubePrometheus build script.
 	slog.InfoContext(ctx, "Running KubePrometheus build script...")
-	kubePrometheusBuildScriptPath := path.Join(
-		constants.KubeAidDirectory, "build/kube-prometheus/build.sh",
-	)
+	kubePrometheusBuildScriptPath := path.Join(utils.GetKubeAidDir(), "build/kube-prometheus/build.sh")
 	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
 }

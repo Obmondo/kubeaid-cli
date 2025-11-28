@@ -1,9 +1,10 @@
 name: Release
 
-# This Github Action workflow is triggered, when a new release is created.
+# This Github Action workflow is triggered, when a new tag is pushed.
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - "*"
 
 permissions:
   contents: write
@@ -72,7 +73,7 @@ jobs:
           # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
           # using QEMU).
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/obmondo/kubeaid-core:${{ github.event.release.tag_name }}
+          tags: ghcr.io/obmondo/kubeaid-core:${{ github.ref_name }}
           push: true
           # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
           # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
@@ -83,22 +84,20 @@ jobs:
   build_and_publish_kubeaid_cli_binaries:
     name: Build and publish KubeAid CLI binaries
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        goos: [linux, darwin]
-        goarch: [amd64, arm64]
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: wangyoucao577/go-release-action@v1
+      - name: Set up Go
+        uses: actions/setup-go@v5
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          project_path: ./cmd/kubeaid-cli
-          binary_name: kubeaid-cli
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          compress_assets: OFF
-          ldflags: -s -w
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean --parallelism 1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

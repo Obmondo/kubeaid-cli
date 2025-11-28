@@ -70,6 +70,7 @@
                     addlicense
                     pre-commit
                     nix-update
+                    goreleaser
                   ]
                   # Runtime dependencies.
                   ++ [
@@ -116,7 +117,7 @@
               ];
           };
 
-          vendorHash = "sha256-s7tVz0VPB6+uLWcQ3rHFcLbX05aiJkbP6ot6mSoR2VU=";
+          vendorHash = "sha256-0iQRiApQeso96gloZNpuxxEnk6AyknTU48UNxg25YcY=";
 
           src = self;
           subPackages = [ "cmd/kubeaid-cli" ];

@@ -8,12 +8,7 @@ import (
 	"time"
 )
 
-var (
-	TempDirectory = "/tmp/kubeaid-core"
-
-	KubeAidDirectory       = path.Join(TempDirectory, "KubeAid")
-	KubeAidConfigDirectory = path.Join(TempDirectory, "kubeaid-config")
-)
+var TempDirectory = "/tmp/kubeaid-core"
 
 // Environment variable names.
 const (
@@ -166,6 +161,9 @@ const (
 	HetznerModeHybrid    = "hybrid"
 
 	HetznerRobotWebServiceAPI = "https://robot-ws.your-server.de"
+
+	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
+	HetznerVSwitchGatewayIP  = "10.0.1.0"
 )
 
 const (
