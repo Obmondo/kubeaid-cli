@@ -70,6 +70,7 @@
                     addlicense
                     pre-commit
                     nix-update
+                    goreleaser
                   ]
                   # Runtime dependencies.
                   ++ [

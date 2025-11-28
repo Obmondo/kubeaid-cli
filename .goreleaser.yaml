@@ -1,0 +1,102 @@
+version: 2
+
+project_name: kubeaid-cli
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
+
+env:
+  - CGO_ENABLED=0
+  - GO111MODULE=on
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: ./cmd/kubeaid-cli
+    binary: kubeaid-cli
+    goos: ["darwin", "linux"]
+    goarch: ["amd64", "arm64"]
+    ldflags:
+      - -s -w
+      - -X main.Version={{ .Tag }}
+      - -X main.Commit={{ .ShortCommit }}
+      - -X main.Date={{ .Date }}
+
+upx:
+  - enabled: true
+
+dist: build/goreleaser
+
+archives:
+  - formats: [tar.gz]
+
+    # This name template makes the OS and Arch compatible with the results of uname.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+    builds_info:
+      group: root
+      owner: root
+      mode: 0755
+      mtime: "{{ .CommitDate }}"
+
+changelog:
+  use: github
+  sort: asc
+  format: "[{{ .SHA }}](https://github.com/Obmondo/kubeaid-cli/commit/{{ .SHA }}) {{ .Message }}{{ with .AuthorUsername }} (@{{ . }}){{ end }}"
+  filters:
+    exclude:
+      - init
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+
+  # Group commits messages by given regex and title.
+  groups:
+    - title: 💫 Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: 🐛 Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: 🥴 Others
+      order: 999
+
+release:
+  footer: >-
+
+    ---
+
+    Released by [GoReleaser](https://github.com/goreleaser/goreleaser).
+
+homebrew_casks:
+  - homepage: https://github.com/Obmondo/kubeaid-cli
+    description: |-
+      KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a
+      GitOps native way
+    repository:
+      owner: Obmondo
+      name: kubeaid-cli
+
+nfpms:
+  - file_name_template: >-
+      {{- .PackageName }}_
+      {{- .Tag }}_
+      {{- .Os }}_
+      {{- .Arch }}
+      {{- if .Arm }}v{{ .Arm }}{{ end -}}
+      {{- .ConventionalExtension }}
+    vendor: Obmondo
+    homepage: https://github.com/Obmondo/kubeaid-cli
+    maintainer: Obmondo <ops@obmondo.com>
+    description: |-
+      KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a
+      GitOps native way
+    license: AGPL3
+    formats: ["deb", "rpm", "apk", "archlinux"]
+    mtime: "{{ .CommitDate }}"
