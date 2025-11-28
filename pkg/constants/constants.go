@@ -8,12 +8,7 @@ import (
 	"time"
 )
 
-var (
-	TempDirectory = "/tmp/kubeaid-core"
-
-	KubeAidDirectory       = path.Join(TempDirectory, "KubeAid")
-	KubeAidConfigDirectory = path.Join(TempDirectory, "kubeaid-config")
-)
+var TempDirectory = "/tmp/kubeaid-core"
 
 // Environment variable names.
 const (

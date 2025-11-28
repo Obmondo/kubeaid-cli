@@ -7,14 +7,39 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
+	"path"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	gogiturl "github.com/kubescape/go-git-url"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
+
+// GetRepoDir( ) gets invoked pretty frequently by utils.GetKubeAidConfigDir( ). And everytime we
+// don't want to reparse the same repository URL.
+// So, let's cache the return values of GetRepoDir( ) in this Hashmap.
+var repoDirs = map[string]string{}
+
+// Returns path to the directory where the given repository will be cloned.
+func GetRepoDir(url string) string {
+	// Check whether the return value is cached.
+	// If yes, then return that. We don't want to parse the same repository URL again and again.
+	repoDir, ok := repoDirs[url]
+	if ok {
+		return repoDir
+	}
+
+	parsedURL, err := gogiturl.NewGitURL(url)
+	assert.AssertErrNil(context.Background(), err, "Failed parsing git URL", slog.String("url", url))
+
+	return path.Join(constants.TempDirectory,
+		parsedURL.GetHostName(), parsedURL.GetOwnerName(), parsedURL.GetRepoName(),
+	)
+}
 
 func GetDefaultBranchName(ctx context.Context,
 	authMethod transport.AuthMethod,

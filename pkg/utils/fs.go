@@ -16,6 +16,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -65,11 +66,19 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 	)
 }
 
+// Returns path to the directory where the KubeAid repository is cloned.
+func GetKubeAidDir() string {
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidForkURL)
+}
+
+// Returns path to the directory where the KubeAid Config repository is cloned.
+func GetKubeAidConfigDir() string {
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+}
+
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
 func GetClusterDir() string {
-	return path.Join(
-		constants.KubeAidConfigDirectory, "k8s", config.ParsedGeneralConfig.Cluster.Name,
-	)
+	return path.Join(GetKubeAidConfigDir(), "k8s", config.ParsedGeneralConfig.Cluster.Name)
 }
 
 // Returns the path to the local temp directory, where contents of the given blob storage bucket

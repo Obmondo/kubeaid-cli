@@ -36,6 +36,7 @@ require (
 	github.com/google/renameio v1.0.1
 	github.com/hetznercloud/hcloud-go v1.59.2
 	github.com/k3d-io/k3d/v5 v5.8.3
+	github.com/kubescape/go-git-url v0.0.30
 	github.com/mikefarah/yq/v4 v4.46.1
 	github.com/moby/term v0.5.2
 	github.com/opencontainers/image-spec v1.1.1
@@ -119,6 +120,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
+	github.com/chainguard-dev/git-urls v1.0.2 // indirect
 	github.com/cloudflare/cfssl v1.6.5 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect

@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -25,7 +26,7 @@ import (
 // Performs a minimal installation of Sealed Secrets in the underlying Kubernetes cluster.
 func InstallSealedSecrets(ctx context.Context) {
 	HelmInstall(ctx, &HelmInstallArgs{
-		ChartPath:   path.Join(constants.KubeAidDirectory, "argocd-helm-charts/sealed-secrets"),
+		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
 		Namespace:   constants.NamespaceSealedSecrets,
 		ReleaseName: constants.ReleaseNameSealedSecrets,
 		Values: &values.Options{
