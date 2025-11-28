@@ -35,7 +35,7 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 	default:
 		usingClusterAPI = true
 	}
-	return
+	return usingClusterAPI
 }
 
 // Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
