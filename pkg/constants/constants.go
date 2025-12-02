@@ -119,7 +119,6 @@ const (
 	ArgoCDAppAzureDiskCSIDriver = "azuredisk-csi-driver"
 	ArgoCDAppHCloudCSIDriver    = "hcloud-csi-driver"
 	ArgoCDAppRookCeph           = "rook-ceph"
-	ArgoCDAppZFSLocalPV         = "zfs-localpv"
 	ArgoCDAppLocalPVProvisioner = "localpv-provisioner"
 
 	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect

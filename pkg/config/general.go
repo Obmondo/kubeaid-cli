@@ -275,7 +275,6 @@ type (
 		VG0                     VG0Config                  `yaml:"vg0"`
 		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
 		CEPH                    *CEPHConfig                `yaml:"ceph"`
-		ZFS                     ZFSConfig                  `yaml:"zfs"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
@@ -290,10 +289,6 @@ type (
 
 	CEPHConfig struct {
 		DeviceFilter string `yaml:"deviceFilter" validate:"notblank"`
-	}
-
-	ZFSConfig struct {
-		Pool string `yaml:"pool" validate:"notblank"`
 	}
 
 	HetznerControlPlane struct {

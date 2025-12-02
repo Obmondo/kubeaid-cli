@@ -171,9 +171,7 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
-		// For OpenEBS ZFS LocalPV.
-		"argocd-apps/templates/zfs-localpv.yaml.tmpl",
-		"argocd-apps/values-zfs-localpv.yaml.tmpl",
+		// TODO : Include templates for OpenEBS ZFS LocalPV.
 
 		// For OpenEBS dynamic LocalPV provisioner.
 		"argocd-apps/templates/localpv-provisioner.yaml.tmpl",

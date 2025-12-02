@@ -251,9 +251,9 @@ func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) {
 		}
 
 		if config.UsingHetznerBareMetal() {
-			SyncArgoCDApp(ctx, constants.ArgoCDAppZFSLocalPV, []*argoCDV1Aplha1.SyncOperationResource{})
-			SyncArgoCDApp(ctx,
-				constants.ArgoCDAppLocalPVProvisioner,
+			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
+
+			SyncArgoCDApp(ctx, constants.ArgoCDAppLocalPVProvisioner,
 				[]*argoCDV1Aplha1.SyncOperationResource{},
 			)
 
@@ -318,7 +318,7 @@ func SyncArgoCDApp(ctx context.Context,
 	if len(resources) > 0 {
 		applicationSyncRequest.Resources = resources
 	}
-	if name == constants.ArgoCDAppKubePrometheus {
+	if (name == constants.ArgoCDAppKubePrometheus) || (name == constants.ArgoCDAppRookCeph) {
 		applicationSyncRequest.SyncOptions.Items = append(applicationSyncRequest.SyncOptions.Items,
 			"ServerSideApply=true",
 		)
