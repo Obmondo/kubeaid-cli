@@ -270,11 +270,15 @@ type (
 
 	HetznerBareMetalConfig struct {
 		WipeDisks               bool                       `yaml:"wipeDisks"               default:"false"`
-		ImagePath               string                     `yaml:"imagePath"               default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
-		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                                      validate:"required"`
-		VG0                     VG0Config                  `yaml:"vg0"`
+		InstallImage            InstallImageConfig         `yaml:"installImage"`
+		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                              validate:"required"`
 		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
 		CEPH                    *CEPHConfig                `yaml:"ceph"`
+	}
+
+	InstallImageConfig struct {
+		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
+		VG0       VG0Config `yaml:"vg0"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
