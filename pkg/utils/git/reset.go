@@ -41,9 +41,17 @@ func HardResetRepoToTag(ctx context.Context, repo *git.Repository, tag string) {
 		targetCommitHash = tagObject.Target
 	}
 
-	err = workTree.Reset(&git.ResetOptions{
-		Commit: targetCommitHash,
-		Mode:   git.HardReset,
+	/*
+		workTree.Reset errors out when we try to checkout to tag 20.1.1 for Obmondo's KubeAid, with
+		the following message :
+
+		  open /tmp/kubeaid-core/github.com/TheKilroyGroup/k8id/argocd-helm-charts/cert-manager/readme.md:
+		  no such file or directory repo=https://github.com/TheKilroyGroup/k8id
+	*/
+	err = workTree.Checkout(&git.CheckoutOptions{
+		Hash:  targetCommitHash,
+		Force: true,
+		Keep:  false,
 	})
-	assert.AssertErrNil(ctx, err, "Failed hard resetting repo to provided tag")
+	assert.AssertErrNil(ctx, err, "Failed hard resetting to tag")
 }
