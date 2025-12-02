@@ -30,7 +30,9 @@ func AddCommitAndPushChanges(ctx context.Context,
 	clusterName string,
 	commitMessage string,
 ) plumbing.Hash {
-	err := workTree.AddGlob(fmt.Sprintf("k8s/%s/*", config.ParsedGeneralConfig.Cluster.Name))
+	err := workTree.AddGlob(fmt.Sprintf(
+		"k8s/%s/*", config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory,
+	))
 	assert.AssertErrNil(ctx, err, "Failed adding changes to git")
 
 	status, err := workTree.Status()
@@ -80,14 +82,14 @@ func AddCommitAndPushChanges(ctx context.Context,
 
 func getCreatePRURL(fromBranch string) string {
 	var (
-		parts = strings.Split(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL, "/")
+		parts = strings.Split(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, "/")
 
 		repoOwner = parts[len(parts)-2]
 		repoName  = strings.Split(parts[len(parts)-1], ".git")[0]
 	)
 
 	createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-		config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL, repoOwner, repoName, fromBranch)
+		config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, repoOwner, repoName, fromBranch)
 
 	return createPRURL
 }

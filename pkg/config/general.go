@@ -34,14 +34,23 @@ type (
 	}
 
 	ForksConfig struct {
-		KubeaidForkURL       string `yaml:"kubeaid"       default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
-		KubeaidConfigForkURL string `yaml:"kubeaidConfig"                                              validate:"notblank"`
+		KubeaidFork       KubeAidForkConfig       `yaml:"kubeaid"       validate:"required"`
+		KubeaidConfigFork KubeaidConfigForkConfig `yaml:"kubeaidConfig" validate:"required"`
+	}
+
+	KubeAidForkConfig struct {
+		URL     string `yaml:"url"     default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
+		Version string `yaml:"version"                                              validate:"notblank"`
+	}
+
+	KubeaidConfigForkConfig struct {
+		URL       string `yaml:"url"       validate:"notblank"`
+		Directory string `yaml:"directory"`
 	}
 
 	ClusterConfig struct {
-		Name           string `yaml:"name"           validate:"notblank"`
-		K8sVersion     string `yaml:"k8sVersion"     validate:"notblank"`
-		KubeaidVersion string `yaml:"kubeaidVersion" validate:"notblank"`
+		Name       string `yaml:"name"       validate:"notblank"`
+		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 

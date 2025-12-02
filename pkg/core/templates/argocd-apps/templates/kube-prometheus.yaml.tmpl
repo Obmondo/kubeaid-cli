@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "50"
   name: kube-prometheus
@@ -15,8 +15,8 @@ spec:
     namespace: monitoring
   project: kubeaid
   source:
-    path: k8s/{{ .ClusterConfig.Name }}/kube-prometheus
-    repoURL: {{ .KubeaidConfigForkURL }}
+    path: k8s/{{ .KubeaidConfigFork.Directory }}/kube-prometheus
+    repoURL: {{ .KubeaidConfigFork.URL }}
     targetRevision: HEAD
     directory:
       recurse: true

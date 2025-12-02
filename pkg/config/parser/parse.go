@@ -48,8 +48,14 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		err = defaults.Set(config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
 
-		// If the user has provided a custom CA certificate path,
-		// then read and store the custom CA certificate in config.
+		// When the user has not set the KubeAid Config directory name, default it to the cluster name.
+		// The KubeAid config files for the cluster will be generated in that directory.
+		if len(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory) == 0 {
+			config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory = config.ParsedGeneralConfig.Cluster.Name
+		}
+
+		// When the user has provided a custom CA certificate path,
+		// read and store the custom CA certificate in config.
 		hydrateCABundle(ctx)
 
 		// Read SSH keys from provided file paths, validate them and store them in config.

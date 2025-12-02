@@ -42,14 +42,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	{
 		// Clone the KubeAid fork locally (if not already cloned).
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
-			config.ParsedGeneralConfig.Forks.KubeaidForkURL,
+			config.ParsedGeneralConfig.Forks.KubeaidFork.URL,
 			args.GitAuthMethod,
 		)
 
 		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script general config file.
 		gitUtils.HardResetRepoToTag(ctx,
 			kubeAidRepo,
-			config.ParsedGeneralConfig.Cluster.KubeaidVersion,
+			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
 		)
 	}
 

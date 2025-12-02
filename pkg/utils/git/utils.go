@@ -73,7 +73,7 @@ func GetDefaultBranchName(ctx context.Context,
 
 // Returns hostname of customer's git server.
 func GetCustomerGitServerHostName(ctx context.Context) string {
-	kubeaidConfigURL, err := url.Parse(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+	kubeaidConfigURL, err := url.Parse(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL)
 	assert.AssertErrNil(ctx, err, "Failed parsing KubeAid config URL")
 
 	return kubeaidConfigURL.Hostname()
