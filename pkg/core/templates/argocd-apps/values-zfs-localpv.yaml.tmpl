@@ -1,0 +1,24 @@
+zfs-localpv:
+  zfsNode:
+    # Currently, each node has NVMe attached.
+    nodeSelector:
+      kubernetes.io/os: linux
+    tolerations: []
+    securityContext: {}
+    labels: {}
+    priorityClass:
+      create: true
+      name: zfs-csi-node-critical
+  zfsController:
+    # Currently, each node has NVMe attached.
+    nodeSelector:
+      kubernetes.io/os: linux
+    tolerations: []
+    securityContext: {}
+    priorityClass:
+      create: true
+      name: zfs-csi-controller-critical
+
+storageClass:
+  enabled: true
+  poolName: {{ .HetznerConfig.BareMetal.ZFSPoolName }}

@@ -274,6 +274,8 @@ type (
 		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                                      validate:"required"`
 		VG0                     VG0Config                  `yaml:"vg0"`
 		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
+		CEPH                    *CEPHConfig                `yaml:"ceph"`
+		ZFS                     ZFSConfig                  `yaml:"zfs"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
@@ -284,6 +286,14 @@ type (
 	VG0Config struct {
 		Size           string `yaml:"size"           validate:"notblank" default:"25G"`
 		RootVolumeSize string `yaml:"rootVolumeSize" validate:"notblank" default:"10G"`
+	}
+
+	CEPHConfig struct {
+		DeviceFilter string `yaml:"deviceFilter" validate:"notblank"`
+	}
+
+	ZFSConfig struct {
+		Pool string `yaml:"pool" validate:"notblank"`
 	}
 
 	HetznerControlPlane struct {

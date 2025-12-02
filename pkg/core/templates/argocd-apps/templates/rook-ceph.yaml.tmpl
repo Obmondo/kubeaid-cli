@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "10"
+  name: rook-ceph
+  namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
+spec:
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: rook-ceph
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/rook-ceph
+      targetRevision: {{ .KubeaidFork.Version }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-rook-ceph.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true
