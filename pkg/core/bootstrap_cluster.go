@@ -209,12 +209,17 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 		// When spinning up a Hetzner hybrid cluster,
 		// we need to establish private connectivity between the Hetzner Network in HCloud and Hetzner
 		// Bare Metal servers, using the VSwitch.
-		if config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHybrid {
-			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
+		//
+		// TODO : Uncomment this, after https://gitea.obmondo.com/EnableIT/kubeaid-cli/issues/298 gets
+		//        resolved.
+		/*
+			if config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHybrid {
+			  hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			  assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
 
-			hetznerCloudProvider.ConnectVSwitchWithHCloudNetwork(ctx)
-		}
+			  hetznerCloudProvider.ConnectVSwitchWithHCloudNetwork(ctx)
+			}
+		*/
 
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 		// we need to make the Failover IP point to the 'init master node'.

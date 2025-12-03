@@ -127,12 +127,32 @@ func proxyRun(command *cobra.Command, args []string) {
 	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
 	_ = jsonmessage.DisplayJSONMessagesStream(pullProgressReader, os.Stdout, stdoutFD, isTerminal, nil)
 
-	// Spin up KubeAid Core container,
+	// Determine volume bind mounts, for the KubeAid Core container.
+
+	binds := []string{
+		"/var/run/docker.sock:/var/run/docker.sock",
+
+		fmt.Sprintf("%s:/%s",
+			MustAbs(ctx, globals.ConfigsDirectory), filepath.Clean(globals.ConfigsDirectory)),
+
+		fmt.Sprintf("%s:/outputs",
+			path.Join(workingDirectory, "outputs")),
+
+		fmt.Sprintf("%s:%s", constants.TempDirectory, constants.TempDirectory),
+	}
+
+	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
+	if len(sshAuthSock) == 0 {
+		slog.WarnContext(ctx, "SSH_AUTH_SOCK environment variable not set")
+	}
+	binds = append(binds,
+		fmt.Sprintf("%s:%s", sshAuthSock, sshAuthSock),
+	)
+
+	// Spin up the KubeAid Core container,
 	// proxying the command execution.
 
 	slog.InfoContext(ctx, "Spinning up KubeAid Core container")
-
-	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
 
 	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,
 		&container.Config{
@@ -149,32 +169,15 @@ func proxyRun(command *cobra.Command, args []string) {
 			AttachStderr: true,
 
 			Env: []string{
-				fmt.Sprintf("%s=%s",
-					constants.EnvNameSSHAuthSock, sshAuthSock),
+				fmt.Sprintf("%s=%s", constants.EnvNameSSHAuthSock, sshAuthSock),
 			},
 
 			Cmd: os.Args[1:],
 		},
 		&container.HostConfig{
 			NetworkMode: container.NetworkMode(networkName),
-
-			Binds: []string{
-				"/var/run/docker.sock:/var/run/docker.sock",
-
-				fmt.Sprintf("%s:%s",
-					sshAuthSock, sshAuthSock),
-
-				fmt.Sprintf("%s:/%s",
-					MustAbs(ctx, globals.ConfigsDirectory), filepath.Clean(globals.ConfigsDirectory)),
-
-				fmt.Sprintf("%s:/outputs",
-					path.Join(workingDirectory, "outputs")),
-
-				fmt.Sprintf("%s:%s",
-					constants.TempDirectory, constants.TempDirectory),
-			},
-
-			AutoRemove: true,
+			Binds:       binds,
+			AutoRemove:  true,
 		},
 		&network.NetworkingConfig{},
 		&v1.Platform{},

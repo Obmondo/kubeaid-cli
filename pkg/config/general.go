@@ -34,14 +34,23 @@ type (
 	}
 
 	ForksConfig struct {
-		KubeaidForkURL       string `yaml:"kubeaid"       default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
-		KubeaidConfigForkURL string `yaml:"kubeaidConfig"                                              validate:"notblank"`
+		KubeaidFork       KubeAidForkConfig       `yaml:"kubeaid"       validate:"required"`
+		KubeaidConfigFork KubeaidConfigForkConfig `yaml:"kubeaidConfig" validate:"required"`
+	}
+
+	KubeAidForkConfig struct {
+		URL     string `yaml:"url"     default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
+		Version string `yaml:"version"                                              validate:"notblank"`
+	}
+
+	KubeaidConfigForkConfig struct {
+		URL       string `yaml:"url"       validate:"notblank"`
+		Directory string `yaml:"directory"`
 	}
 
 	ClusterConfig struct {
-		Name           string `yaml:"name"           validate:"notblank"`
-		K8sVersion     string `yaml:"k8sVersion"     validate:"notblank"`
-		KubeaidVersion string `yaml:"kubeaidVersion" validate:"notblank"`
+		Name       string `yaml:"name"       validate:"notblank"`
+		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 
@@ -261,10 +270,15 @@ type (
 
 	HetznerBareMetalConfig struct {
 		WipeDisks               bool                       `yaml:"wipeDisks"               default:"false"`
-		ImagePath               string                     `yaml:"imagePath"               default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
-		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                                                                                      validate:"required"`
-		VG0                     VG0Config                  `yaml:"vg0"`
+		InstallImage            InstallImageConfig         `yaml:"installImage"`
+		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                              validate:"required"`
 		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
+		CEPH                    *CEPHConfig                `yaml:"ceph"`
+	}
+
+	InstallImageConfig struct {
+		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
+		VG0       VG0Config `yaml:"vg0"`
 	}
 
 	HetznerBareMetalSSHKeyPair struct {
@@ -275,6 +289,10 @@ type (
 	VG0Config struct {
 		Size           string `yaml:"size"           validate:"notblank" default:"25G"`
 		RootVolumeSize string `yaml:"rootVolumeSize" validate:"notblank" default:"10G"`
+	}
+
+	CEPHConfig struct {
+		DeviceFilter string `yaml:"deviceFilter" validate:"notblank"`
 	}
 
 	HetznerControlPlane struct {

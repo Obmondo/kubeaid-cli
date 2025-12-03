@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: "{{ .KubeaidVersion }}"
+    kubeaid.io/version: "{{ .KubeaidFork.Version }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
   name: crossplane-providers-and-functions
@@ -12,13 +12,13 @@ spec:
     namespace: crossplane
     server: https://kubernetes.default.svc
   sources:
-    - repoURL: {{ .KubeaidForkURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/crossplane-providers-and-functions
-      targetRevision: {{ .KubeaidVersion }}
+      targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-crossplane-providers-and-functions.yaml
-    - repoURL: {{ .KubeaidConfigForkURL }}
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-crossplane-providers-and-functions.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   project: kubeaid

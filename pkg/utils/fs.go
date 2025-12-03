@@ -68,17 +68,21 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 
 // Returns path to the directory where the KubeAid repository is cloned.
 func GetKubeAidDir() string {
-	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidForkURL)
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidFork.URL)
 }
 
 // Returns path to the directory where the KubeAid Config repository is cloned.
 func GetKubeAidConfigDir() string {
-	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL)
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL)
 }
 
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.
 func GetClusterDir() string {
-	return path.Join(GetKubeAidConfigDir(), "k8s", config.ParsedGeneralConfig.Cluster.Name)
+	return path.Join(
+		GetKubeAidConfigDir(),
+		"k8s",
+		config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory,
+	)
 }
 
 // Returns the path to the local temp directory, where contents of the given blob storage bucket

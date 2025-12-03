@@ -82,12 +82,14 @@
 
                     cilium-cli
                   ];
+
+                env = {
+                  CGO_ENABLED = 0;
+                };
               }
             )
           ];
         };
-
-        CGO_ENABLED = 0;
 
         packages.default = buildGoModule {
           pname = "kubeaid-cli";

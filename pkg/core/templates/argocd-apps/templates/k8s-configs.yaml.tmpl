@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "10"
   name: k8s-configs
@@ -13,8 +13,8 @@ spec:
     namespace: kube-system
   project: kubeaid
   source:
-    repoURL: {{ .KubeaidConfigForkURL }}
-    path: k8s/{{ .ClusterConfig.Name }}/k8s-configs
+    repoURL: {{ .KubeaidConfigFork.URL }}
+    path: k8s/{{ .KubeaidConfigFork.Directory }}/k8s-configs
     targetRevision: HEAD
     directory:
       recurse: true

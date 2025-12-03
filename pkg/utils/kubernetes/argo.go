@@ -235,6 +235,34 @@ func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) {
 	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
 	SyncArgoCDApp(ctx, constants.ArgoCDAppRoot, []*argoCDV1Aplha1.SyncOperationResource{})
 
+	// Sync ArgoCD Apps corresponding to the CSI driver(s).
+	// Otherwise, no StorageClasses might exist, making stateful workloads unhealthy.
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		// TODO : Sync the AWS EBS CSI Driver ArgoCD App.
+		//        We need to add the corresponding ArgoCD App and values file templates first.
+
+	case constants.CloudProviderAzure:
+		SyncArgoCDApp(ctx, constants.ArgoCDAppAzureDiskCSIDriver, []*argoCDV1Aplha1.SyncOperationResource{})
+
+	case constants.CloudProviderHetzner:
+		if config.UsingHCloud() {
+			SyncArgoCDApp(ctx, constants.ArgoCDAppHCloudCSIDriver, []*argoCDV1Aplha1.SyncOperationResource{})
+		}
+
+		if config.UsingHetznerBareMetal() {
+			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
+
+			SyncArgoCDApp(ctx, constants.ArgoCDAppLocalPVProvisioner,
+				[]*argoCDV1Aplha1.SyncOperationResource{},
+			)
+
+			if config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.CEPH != nil {
+				SyncArgoCDApp(ctx, constants.ArgoCDAppRookCeph, []*argoCDV1Aplha1.SyncOperationResource{})
+			}
+		}
+	}
+
 	// Sync the KubePrometheus ArgoCD App, if monitoring setup is enabled.
 	// Some ArgoCD Apps depend on the CRDs coming from the KubePrometheus ArgoCD App.
 	if !skipMonitoringSetup {
@@ -290,10 +318,21 @@ func SyncArgoCDApp(ctx context.Context,
 	if len(resources) > 0 {
 		applicationSyncRequest.Resources = resources
 	}
-	if name == constants.ArgoCDAppKubePrometheus {
+	if (name == constants.ArgoCDAppKubePrometheus) || (name == constants.ArgoCDAppRookCeph) {
 		applicationSyncRequest.SyncOptions.Items = append(applicationSyncRequest.SyncOptions.Items,
 			"ServerSideApply=true",
 		)
+	}
+
+	if name == constants.ArgoCDAppRookCeph {
+		slog.WarnContext(ctx, `
+      It takes a very good amount of time to sync the Rook CEPH ArgoCD App initially. So, be
+      patient!
+
+      And we suggest, you take a look at the Rook CEPH pods yourself, via K9S. When getting
+      deployed, the monitoring pods might land up on the wrong node and be stuck in Pending state.
+      For now, please restart them manually. Later, we'll make KubeAid CLI do it.
+    `)
 	}
 
 	for {
@@ -314,9 +353,7 @@ func SyncArgoCDApp(ctx context.Context,
 		switch name {
 		// Wait for the child ArgoCD Apps to be created.
 		case constants.ArgoCDAppRoot:
-			slog.InfoContext(ctx,
-				"Sleeping for 10 seconds, waiting for the child ArgoCD Apps to be created",
-			)
+			slog.InfoContext(ctx, "Sleeping for 10 seconds, waiting for the child ArgoCD Apps to be created")
 			time.Sleep(10 * time.Second)
 			return
 

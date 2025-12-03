@@ -44,7 +44,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
 
 	// Clone the KubeAid config fork locally (if not already cloned).
-	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL, gitAuthMethod)
+	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
 
 	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		managementClusterKubeconfigPath,

@@ -70,14 +70,14 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 
 	repo, err := goGit.PlainClone(path, false, opts)
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&
-		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL) {
+		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL) {
 		// Remote KubeAid Config repository is empty.
 		// So, we need to initialize the repository locally,
 		// add the remote repository as 'origin',
 		// and create and push an empty commit.
 		repo = initRepo(ctx,
 			path,
-			config.ParsedGeneralConfig.Forks.KubeaidConfigForkURL,
+			config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL,
 			authMethod,
 		)
 	} else {

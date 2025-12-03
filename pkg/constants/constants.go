@@ -107,15 +107,19 @@ const (
 	ArgoCDRoleKubeAidAgent = "kubeaid-agent"
 
 	// Apps.
-	ArgoCDAppArgoCD            = "argocd"
-	ArgoCDAppRoot              = "root"
-	ArgoCDAppCapiCluster       = "capi-cluster"
-	ArgoCDAppHetznerRobot      = "hetzner-robot"
-	ArgoCDAppClusterAutoscaler = "cluster-autoscaler"
-	ArgoCDAppVelero            = "velero"
-	ArgoCDAppKubePrometheus    = "kube-prometheus"
-	ArgoCDExternalSnapshotter  = "external-snapshotter"
-	ArgoCDAppCilium            = "cilium"
+	ArgoCDAppArgoCD             = "argocd"
+	ArgoCDAppRoot               = "root"
+	ArgoCDAppCapiCluster        = "capi-cluster"
+	ArgoCDAppHetznerRobot       = "hetzner-robot"
+	ArgoCDAppClusterAutoscaler  = "cluster-autoscaler"
+	ArgoCDAppVelero             = "velero"
+	ArgoCDAppKubePrometheus     = "kube-prometheus"
+	ArgoCDExternalSnapshotter   = "external-snapshotter"
+	ArgoCDAppCilium             = "cilium"
+	ArgoCDAppAzureDiskCSIDriver = "azuredisk-csi-driver"
+	ArgoCDAppHCloudCSIDriver    = "hcloud-csi-driver"
+	ArgoCDAppRookCeph           = "rook-ceph"
+	ArgoCDAppLocalPVProvisioner = "localpv-provisioner"
 
 	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect
 	ArgoCDLabelKeyManagedBy    = "kubeaid.io/managed-by"

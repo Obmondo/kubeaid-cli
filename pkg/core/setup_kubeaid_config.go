@@ -145,11 +145,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 // Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
 // repository.
-func createOrUpdateNonSecretFiles(
-	ctx context.Context,
-	clusterDir string,
-	skipMonitoringSetup bool,
-) {
+func createOrUpdateNonSecretFiles(ctx context.Context, clusterDir string, skipMonitoringSetup bool) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 	templateValues := getTemplateValues(ctx)

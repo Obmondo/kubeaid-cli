@@ -164,6 +164,16 @@ func getEmbeddedNonSecretTemplateNames() []string {
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
 
+			// When the user wants to use CEPH, include templates corresponding to that.
+			// For single node clusters, CEPH isn't required. But otherwise, it's a must.
+			// Especially, if the customer (like Kilroy) has bought NICs with higher network bandwidth.
+			if config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.CEPH != nil {
+				embeddedTemplateNames = append(embeddedTemplateNames,
+					"argocd-apps/templates/rook-ceph.yaml.tmpl",
+					"argocd-apps/values-rook-ceph.yaml.tmpl",
+				)
+			}
+
 			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
 			// to a healthy master node, in a failover scenario.

@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "10"
   name: cilium
@@ -13,13 +13,13 @@ spec:
     server: https://kubernetes.default.svc
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidForkURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/cilium
-      targetRevision: {{ .KubeaidVersion }}
+      targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cilium.yaml
-    - repoURL: {{ .KubeaidConfigForkURL }}
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-cilium.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:

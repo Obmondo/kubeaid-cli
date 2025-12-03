@@ -2,27 +2,29 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/version: 16.0.1
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "10"
   name: cluster-api-operator
   namespace: argocd
+  finalizers:
+    - argocd.argoproj.io/resources-finalizer
 spec:
   destination:
-    namespace: cluster-api-operator
     server: https://kubernetes.default.svc
+    namespace: cluster-api-operator
+  project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidForkURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/cluster-api-operator
-      targetRevision: {{ .KubeaidVersion }}
+      targetRevision: 16.0.1
       helm:
         valueFiles:
-          - $values/k8s/{{ .ClusterConfig.Name }}/argocd-apps/values-cluster-api-operator.yaml
-    - repoURL: {{ .KubeaidConfigForkURL }}
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-cluster-api-operator.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
-  project: kubeaid
   syncPolicy:
     syncOptions:
-      - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true

@@ -4,22 +4,26 @@ metadata:
   labels:
     kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
-    kubeaid.io/sync-order: "50"
-  name: kube-prometheus
+    kubeaid.io/sync-order: "10"
+  name: rook-ceph
   namespace: argocd
   finalizers:
     - argocd.argoproj.io/resources-finalizer
 spec:
   destination:
     server: https://kubernetes.default.svc
-    namespace: monitoring
+    namespace: rook-ceph
   project: kubeaid
-  source:
-    path: k8s/{{ .KubeaidConfigFork.Directory }}/kube-prometheus
-    repoURL: {{ .KubeaidConfigFork.URL }}
-    targetRevision: HEAD
-    directory:
-      recurse: true
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/rook-ceph
+      targetRevision: {{ .KubeaidFork.Version }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-rook-ceph.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
   syncPolicy:
     syncOptions:
       - ApplyOutOfSyncOnly=true

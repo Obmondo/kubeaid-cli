@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidVersion }}
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "1"
   name: root
@@ -15,8 +15,8 @@ spec:
     namespace: argocd
   project: kubeaid
   source:
-    path: k8s/{{ .ClusterConfig.Name }}/argocd-apps
-    repoURL: {{ .KubeaidConfigForkURL }}
+    path: k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps
+    repoURL: {{ .KubeaidConfigFork.URL }}
     targetRevision: HEAD
   syncPolicy:
     syncOptions:
