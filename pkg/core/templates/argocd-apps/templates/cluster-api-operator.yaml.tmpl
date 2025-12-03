@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   labels:
-    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/version: 16.0.1
     kubeaid.io/managed-by: kubeaid
     kubeaid.io/sync-order: "10"
   name: cluster-api-operator
@@ -17,7 +17,7 @@ spec:
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/cluster-api-operator
-      targetRevision: {{ .KubeaidFork.Version }}
+      targetRevision: 16.0.1
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-cluster-api-operator.yaml
