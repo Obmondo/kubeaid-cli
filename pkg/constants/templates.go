@@ -172,10 +172,6 @@ var (
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
 		// TODO : Include templates for OpenEBS ZFS LocalPV.
-
-		// For OpenEBS dynamic LocalPV provisioner.
-		"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
-		"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificSecretTemplateNames = []string{
@@ -193,7 +189,7 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 	"argocd-apps/templates/cilium.yaml.tmpl",
 	"argocd-apps/values-cilium.yaml.tmpl",
 
-	// For LocalPV provisioner.
+	// For OpenEBS dynamic LocalPV provisioner.
 	"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 }

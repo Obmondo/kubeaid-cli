@@ -253,14 +253,13 @@ func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) {
 		if config.UsingHetznerBareMetal() {
 			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
 
-			SyncArgoCDApp(ctx, constants.ArgoCDAppLocalPVProvisioner,
-				[]*argoCDV1Aplha1.SyncOperationResource{},
-			)
-
 			if config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.CEPH != nil {
 				SyncArgoCDApp(ctx, constants.ArgoCDAppRookCeph, []*argoCDV1Aplha1.SyncOperationResource{})
 			}
 		}
+
+	case constants.CloudProviderBareMetal:
+		SyncArgoCDApp(ctx, constants.ArgoCDAppLocalPVProvisioner, []*argoCDV1Aplha1.SyncOperationResource{})
 	}
 
 	// Sync the KubePrometheus ArgoCD App, if monitoring setup is enabled.
