@@ -326,12 +326,12 @@ func SyncArgoCDApp(ctx context.Context,
 
 	if name == constants.ArgoCDAppRookCeph {
 		slog.WarnContext(ctx, `
-      It takes a very good amount of time to sync the Rook CEPH ArgoCD App initially. So, be
-      patient!
+It takes a very good amount of time to sync the Rook CEPH ArgoCD App initially. So, be
+patient!
 
-      And we suggest, you take a look at the Rook CEPH pods yourself, via K9S. When getting
-      deployed, the monitoring pods might land up on the wrong node and be stuck in Pending state.
-      For now, please restart them manually. Later, we'll make KubeAid CLI do it.
+And we suggest, you take a look at the Rook CEPH pods yourself, via K9s. When getting
+deployed, the monitoring pods might land up on the wrong node and be stuck in Pending state.
+For now, please restart them manually. Later, we'll make KubeAid CLI do it.
     `)
 	}
 

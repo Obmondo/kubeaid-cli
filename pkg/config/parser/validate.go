@@ -12,11 +12,14 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
+	"unicode"
 
 	validatorV10 "github.com/go-playground/validator/v10"
 	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
+	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 
@@ -216,15 +219,17 @@ func validateHetznerBareMetalConfig(ctx context.Context) {
 func validateBareMetalConfig(ctx context.Context) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
+	connector := kubeonessh.NewConnector(ctx)
+
 	// Validate bare-metal hosts.
 
 	for _, host := range bareMetalConfig.ControlPlane.Hosts {
-		validateBareMetalHost(ctx, host)
+		validateBareMetalHost(ctx, host, connector)
 	}
 
 	for _, nodeGroup := range bareMetalConfig.NodeGroups {
 		for _, host := range nodeGroup.Hosts {
-			validateBareMetalHost(ctx, host)
+			validateBareMetalHost(ctx, host, connector)
 		}
 	}
 }
@@ -247,22 +252,140 @@ func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
-func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost) {
-	// Ensure, either public or private IP address is provided.
-	assert.Assert(ctx,
-		(host.PublicAddress != nil) || (host.PrivateAddress != nil),
-		"Neither public, nor private IP address provided for bare-metal host",
-	)
+func validateBareMetalHost(ctx context.Context,
+	host *config.BareMetalHost,
+	connector *kubeonessh.Connector,
+) {
+	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
-	// If the private IP address is provided,
-	// then it should be an actual IP address, and not some hostname.
-	// Otherwise, KubeOne errors out.
-	if host.PrivateAddress != nil {
+	// Either the public or private IP address must be provided.
+	// When both are provided, then we'll use the private address to SSH into the server, in the
+	// following section.
+	var address string
+	switch {
+	case host.PrivateAddress != nil:
+		// The private IP address must not be a hostname.
 		parsedPrivateIP := net.ParseIP(*host.PrivateAddress)
-		assert.Assert(ctx,
-			(parsedPrivateIP != nil),
-			"Invalid private IP provided for bare-metal host",
-			slog.String("ip", *host.PrivateAddress),
+		assert.AssertNotNil(ctx, parsedPrivateIP,
+			"Invalid private IP address provided for Bare Metal host",
+			slog.String("address", *host.PrivateAddress),
+		)
+
+		address = *host.PrivateAddress
+
+	case host.PublicAddress != nil:
+		address = *host.PublicAddress
+
+	default:
+		slog.ErrorContext(ctx, "Neither public, nor private IP address provided for a Bare Metal host")
+	}
+
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("address", address),
+	})
+
+	slog.InfoContext(ctx, "Ensuring that the server meets the pre-requisites")
+
+	/*
+		We need to SSH into the host, and ensure the following :
+
+		  (1) We can SSH into the server, as the root user.
+
+		  (2) The server's hostname (stored in /etc/hostname) doesn't contain any uppercase letters.
+		    We'll also look in the /etc/hosts file, ensuring that localhost and the server's public and
+		    private addresses are mapped to that same hostname.
+
+		  (3) Docker isn't installed there. Otherwise, KubeOne will error out.
+
+		  (4) conntrack and socat packages are installed there. Otherwise, KubeOne will fail during the
+		    pre-flight checks.
+
+		  (5) pigz package is installed there. Otherwise ContainerD will fail pulling the OpenEBS
+		    dynamic LocalPV Provisioner container image.
+	*/
+
+	// Determine the SSH private key to use.
+	privateKey := ""
+	switch {
+	// Use the server sepcific SSH private key.
+	case (host.SSH != nil) && (host.SSH.PrivateKey != nil):
+		privateKey = host.SSH.PrivateKey.PrivateKey
+
+	// Use the common SSH private key.
+	case bareMetalConfig.SSH.PrivateKey != nil:
+		privateKey = bareMetalConfig.SSH.PrivateKey.PrivateKey
+
+	// Otherwise, either the SSH_AUTH_SOCK environment variable is set,
+	// or no private key authentication is required (highly unlikely).
+	default:
+	}
+
+	// Open an SSH connection to the server.
+
+	opts := kubeonessh.Opts{
+		Context: ctx,
+
+		Hostname:   address,
+		Port:       22,
+		Username:   "root",
+		PrivateKey: privateKey,
+
+		Timeout: time.Second * 10,
+	}
+	if len(privateKey) == 0 {
+		opts.AgentSocket = os.Getenv(constants.EnvNameSSHAuthSock)
+	}
+
+	connection, err := kubeonessh.NewConnection(connector, opts)
+	assert.AssertErrNil(ctx, err, "Failed opening SSH connection to server")
+	defer connection.Close()
+
+	slog.DebugContext(ctx, "Opened an SSH connection to the server")
+
+	// Ensure that the server's hostname (stored in /etc/hostname) doesn't contain any uppercase
+	// letters.
+
+	command := "cat /etc/hostname"
+	slog.DebugContext(ctx, "Executing command", slog.String("command", command))
+
+	hostname, _, _, err := connection.Exec(command)
+	assert.AssertErrNil(ctx, err, "Failed determining the server's hostname")
+
+	for _, letter := range hostname {
+		assert.Assert(ctx, !unicode.IsUpper(letter),
+			"Server's hostname must not contain any uppercase letters",
+			slog.String("hostname", hostname),
+		)
+	}
+
+	// Ensure that Docker isn't installed.
+	{
+		command = "! which docker &> /dev/null"
+		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
+
+		_, _, _, err = connection.Exec(command)
+		assert.AssertErrNil(ctx, err, "Docker must not be installed in the server")
+
+		// It might be so that Docker was installed initially. And then, the user uninstalled it.
+		// We need to ensure that the APT source and keyring have been removed as well.
+		// Otherwise, KubeOne will error out.
+
+		command = "[ ! -f /etc/apt/sources.list.d/docker.sources ] && [ ! -f /etc/apt/keyrings/docker.asc ]"
+		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
+
+		_, _, _, err = connection.Exec(command)
+		assert.AssertErrNil(ctx, err, "Docker's APT source and keyring must not be added to the server")
+	}
+
+	// Ensure that socat, conntrack and pigz are installed.
+	packages := []string{"socat", "conntrack", "pigz"}
+	for _, p := range packages {
+		command := fmt.Sprintf("which %s &> /dev/null", p)
+		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
+
+		_, _, _, err := connection.Exec(command)
+		assert.AssertErrNil(ctx, err, "Required package must be installed in the server",
+			slog.String("package", p),
 		)
 	}
 }
