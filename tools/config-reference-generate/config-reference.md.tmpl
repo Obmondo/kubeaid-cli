@@ -1,0 +1,20 @@
+# Configuration Reference
+
+{{- range $i, $struct := .Structs }}
+- [{{ $struct.Name }}](#{{ $struct.Name | toLower }})
+{{- end }}
+
+{{- range $i, $struct := .Structs }}
+
+## {{ $struct.Name }}
+
+{{ $struct.Doc }}
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+{{- range $j, $field := $struct.Fields }}
+| {{ $field.Name }} | `{{ $field.Type }}` | {{ $field.DefaultValue }} | {{ $field.Doc }} |
+{{- end }}
+
+
+{{- end }}

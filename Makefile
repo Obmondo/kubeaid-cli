@@ -13,6 +13,12 @@ lint:
 addlicense:
 	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
 
+.PHONY: config-reference-generate
+config-reference-generate:
+	@go tool github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate \
+    ./pkg/config/general.go ./pkg/config/secrets.go \
+    ./docs/config-reference.md
+
 VERSION := $(shell cat ./cmd/kubeaid-core/root/version/version.txt)
 IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
 CONTAINER_NAME=kubeaid-core

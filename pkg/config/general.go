@@ -14,14 +14,29 @@ var (
 	ParsedSecretsConfig = &SecretsConfig{}
 )
 
+//go:generate go run github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate .
+
 type (
 	GeneralConfig struct {
-		Git            GitConfig            `yaml:"git"`
-		Cluster        ClusterConfig        `yaml:"cluster"        validate:"required"`
-		Forks          ForksConfig          `yaml:"forkURLs"       validate:"required"`
-		Cloud          CloudConfig          `yaml:"cloud"          validate:"required"`
+		// Git server spcific details.
+		Git GitConfig `yaml:"git"`
+
+		// KubeAid and KubeAid Config repository details.
+		// For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
+		// Git server.
+		Forks ForksConfig `yaml:"forkURLs" validate:"required"`
+
+		// Kubernetes specific details.
+		Cluster ClusterConfig `yaml:"cluster" validate:"required"`
+
+		// Cloud provider specific details.
+		Cloud CloudConfig `yaml:"cloud" validate:"required"`
+
+		// Kube Prometheus installation specific details.
 		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
-		Obmondo        *ObmondoConfig       `yaml:"obmondo"`
+
+		// Obmondo customer specific details.
+		Obmondo *ObmondoConfig `yaml:"obmondo"`
 	}
 
 	GitConfig struct {
@@ -39,17 +54,39 @@ type (
 	}
 
 	KubeAidForkConfig struct {
-		URL     string `yaml:"url"     default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
-		Version string `yaml:"version"                                              validate:"notblank"`
+		// KubeAid repository (HTTPS) URL.
+		URL string `yaml:"url" default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
+
+		// KubeAid tag.
+		Version string `yaml:"version" validate:"notblank"`
 	}
 
 	KubeaidConfigForkConfig struct {
-		URL       string `yaml:"url"       validate:"notblank"`
+		// KubeAid repository (HTTPS) URL.
+		URL string `yaml:"url" validate:"notblank"`
+
+		/*
+			Name of the directory inside your KubeAid Config repository's k8s folder, where the
+			KubeAid Config files for this cluster will be contained.
+
+			When not specified, the directory name will default to the cluster name.
+
+			So, suppose your cluster name is 'staging'. Then, the directory name will default to
+			'staging'. Or you can customize it to something like 'staging.qa'.
+		*/
 		Directory string `yaml:"directory"`
 	}
 
 	ClusterConfig struct {
-		Name       string `yaml:"name"       validate:"notblank"`
+		/*
+			Name of the Kubernetes cluster.
+
+			We don't allow using dots in the cluster name, since it can cause issues with tools like
+			ClusterAPI and Cilium : which use the cluster name to generate other configurations.
+		*/
+		Name string `yaml:"name" validate:"notblank"`
+
+		// Kubernetes version ( >= 1.30.0).
 		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`

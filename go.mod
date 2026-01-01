@@ -25,7 +25,7 @@ require (
 	github.com/bitnami-labs/sealed-secrets v0.30.0
 	github.com/containerd/containerd v1.7.27
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/docker v28.3.3+incompatible
+	github.com/docker/docker v28.0.2+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/go-cmd/cmd v1.4.3
 	github.com/go-git/go-git/v5 v5.16.2
@@ -66,6 +66,7 @@ require (
 	cel.dev/expr v0.23.1 // indirect
 	cloud.google.com/go/compute/metadata v0.6.0 // indirect
 	dario.cat/mergo v1.0.2 // indirect
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20240806141605-e8a1dd7889d6 // indirect
 	github.com/AlecAivazis/survey/v2 v2.3.7 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.18.1 // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/internal v1.11.1 // indirect
@@ -80,6 +81,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate v0.0.0-00010101000000-000000000000 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/a8m/envsubst v1.4.3 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
@@ -125,7 +127,6 @@ require (
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
-	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/go-cni v1.1.12 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
@@ -249,10 +250,8 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mkmik/multierror v0.4.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/go-archive v0.1.0 // indirect
 	github.com/moby/patternmatcher v0.6.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
-	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
@@ -359,6 +358,7 @@ require (
 	gopkg.in/square/go-jose.v2 v2.6.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	gotest.tools/v3 v3.5.2 // indirect
 	k8c.io/machine-controller/sdk v1.63.0 // indirect
 	k8s.io/apiextensions-apiserver v0.33.3 // indirect
 	k8s.io/apiserver v0.33.3 // indirect
@@ -414,3 +414,7 @@ replace (
 	// 'go build' fails, when we use controller-runtime v0.20.4.
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.4
 )
+
+tool github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate
+
+replace github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate => ./tools/config-reference-generate

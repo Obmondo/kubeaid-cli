@@ -8,3 +8,5 @@ node_modules/
 outputs/
 temp/
 *-kubeconfig
+
+.DS_Store

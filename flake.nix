@@ -63,6 +63,7 @@
                   [
                     go
                     golangci-lint
+                    richgo
 
                     clusterctl
 
