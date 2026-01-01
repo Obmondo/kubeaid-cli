@@ -14,16 +14,14 @@ var (
 	ParsedSecretsConfig = &SecretsConfig{}
 )
 
-//go:generate go run github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate .
-
 type (
+	// Non secret configuration options.
 	GeneralConfig struct {
 		// Git server spcific details.
 		Git GitConfig `yaml:"git"`
 
-		// KubeAid and KubeAid Config repository details.
-		// For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
-		// Git server.
+		// KubeAid and KubeAid Config repository specific details.
+		// The KubeAid and KubeAid Config repositories must be hosted in the same Git server.
 		Forks ForksConfig `yaml:"forkURLs" validate:"required"`
 
 		// Kubernetes specific details.
@@ -41,18 +39,25 @@ type (
 
 	GitConfig struct {
 		CABundlePath string `yaml:"caBundlePath"`
-		CABundle     []byte `yaml:"caBundle"`
+		CABundle     []byte
 
 		*SSHPrivateKeyConfig `yaml:",inline"`
 
 		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
 	}
 
+	// KubeAid and KubeAid Config repository speicific details.
+	// For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
+	// Git server.
 	ForksConfig struct {
-		KubeaidFork       KubeAidForkConfig       `yaml:"kubeaid"       validate:"required"`
+		// KubeAid repository specific details.
+		KubeaidFork KubeAidForkConfig `yaml:"kubeaid" validate:"required"`
+
+		// KubeAid Config repository specific details.
 		KubeaidConfigFork KubeaidConfigForkConfig `yaml:"kubeaidConfig" validate:"required"`
 	}
 
+	// KubeAid repository specific details.
 	KubeAidForkConfig struct {
 		// KubeAid repository (HTTPS) URL.
 		URL string `yaml:"url" default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
@@ -61,51 +66,52 @@ type (
 		Version string `yaml:"version" validate:"notblank"`
 	}
 
+	// KubeAid Config repository specific details.
 	KubeaidConfigForkConfig struct {
 		// KubeAid repository (HTTPS) URL.
 		URL string `yaml:"url" validate:"notblank"`
 
-		/*
-			Name of the directory inside your KubeAid Config repository's k8s folder, where the
-			KubeAid Config files for this cluster will be contained.
-
-			When not specified, the directory name will default to the cluster name.
-
-			So, suppose your cluster name is 'staging'. Then, the directory name will default to
-			'staging'. Or you can customize it to something like 'staging.qa'.
-		*/
+		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
+		// Config files for this cluster will be contained.
+		//
+		// When not specified, the directory name will default to the cluster name.
+		//
+		// So, suppose your cluster name is 'staging'. Then, the directory name will default to
+		// 'staging'. Or you can customize it to something like 'staging.qa'.
 		Directory string `yaml:"directory"`
 	}
 
 	ClusterConfig struct {
-		/*
-			Name of the Kubernetes cluster.
-
-			We don't allow using dots in the cluster name, since it can cause issues with tools like
-			ClusterAPI and Cilium : which use the cluster name to generate other configurations.
-		*/
+		// Name of the Kubernetes cluster.
+		//
+		// We don't allow using dots in the cluster name, since it can cause issues with tools like
+		// ClusterAPI and Cilium : which use the cluster name to generate other configurations.
 		Name string `yaml:"name" validate:"notblank"`
 
 		// Kubernetes version ( >= 1.30.0).
 		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
+		// Whether you would like to enable Kubernetes Audit Logging out of the box.
+		// Suitable Kubernetes API configurations will be done for you automatically. And they can be
+		// changed using the apiSever struct field.
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 
+		// Configuration options for the Kubernetes API server.
 		APIServer APIServerConfig `yaml:"apiServer"`
 
+		// Other than the root user, addtional users that you would like to be created in each node.
+		// NOTE : Currently, we can't register additional SSH key-pairs against the root user.
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
 	}
 
-	/*
-		REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
-
-		NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
-		       source types linked below.
-		       There are some configuration options which appear in the corresponding GoLang source
-		       type, but not in the CRD. If you set those fields, then they get removed by the Kubeadm
-		       control-plane provider. This causes the capi-cluster ArgoCD App to always be in an
-		       OutOfSync state, resulting to the KubeAid Bootstrap Script not making any progress!
-	*/
+	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
+	//
+	// NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
+	//        source types linked below. There are some configuration options which appear in the
+	//        corresponding GoLang source type, but not in the CRD. If you set those fields, then
+	//        they get removed by the Kubeadm control-plane provider. This causes the capi-cluster
+	//        ArgoCD App to always be in an OutOfSync state, resulting to KubeAid CLI not making any
+	//        progress!
 	APIServerConfig struct {
 		ExtraArgs    map[string]string     `yaml:"extraArgs"    default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
@@ -119,19 +125,11 @@ type (
 		MountPath string              `yaml:"mountPath" validate:"notblank"`
 		PathType  coreV1.HostPathType `yaml:"pathType"  validate:"required"`
 
-		/*
-			Whether the mount should be read-only or not.
-			Defaults to true.
-
-			NOTE : If you want the mount to be read-only, then set this true.
-			       Otherwise, omit setting this field. It gets removed by the Kubeadm control-plane
-			       provider component, which results to the capi-cluster ArgoCD App always being in
-			       OutOfSync state.
-		*/
-		ReadOnly bool `yaml:"readOnly,omitempty"`
+		// Whether the mount should be read-only.
+		ReadOnly bool `yaml:"readOnly" default:"true"`
 	}
 
-	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File
+	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File.
 	FileConfig struct {
 		Path    string `yaml:"path"    validate:"notblank"`
 		Content string `yaml:"content" validate:"notblank"`
@@ -143,10 +141,22 @@ type (
 	}
 
 	NodeGroup struct {
+		// Nodegroup name.
 		Name string `yaml:"name" validate:"notblank"`
 
+		// Labels that you want to be propagated to each node in the nodegroup.
+		//
+		// Each label should meet one of the following criterias to propagate to each of the nodes :
+		//
+		//   1. Has node-role.kubernetes.io as prefix.
+		//   2. Belongs to node-restriction.kubernetes.io domain.
+		//   3. Belongs to node.cluster.x-k8s.io domain.
+		//
+		// REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
 		Labels map[string]string `yaml:"labels" default:"[]"`
-		Taints []*coreV1.Taint   `yaml:"taints" default:"[]"`
+
+		// Taints that you want to be propagated to each node in the nodegroup.
+		Taints []*coreV1.Taint `yaml:"taints" default:"[]"`
 	}
 
 	AutoScalableNodeGroup struct {
@@ -155,7 +165,10 @@ type (
 		CPU    uint32 `validate:"required"`
 		Memory uint32 `validate:"required"`
 
+		// Minimum number of replicas in the nodegroup.
 		MinSize uint `yaml:"minSize" validate:"required"`
+
+		// Maximum number of replicas in the nodegroup.
 		Maxsize uint `yaml:"maxSize" validate:"required"`
 	}
 
@@ -192,8 +205,6 @@ type (
 	}
 
 	ObmondoConfig struct {
-		// nolint: godox
-		// TODO: regex validation
 		CustomerID string `yaml:"customerID" validate:"notblank"`
 		Monitoring bool   `yaml:"monitoring"`
 	}
@@ -283,15 +294,25 @@ type (
 // Hetzner specific.
 type (
 	HetznerConfig struct {
+		// The Hetzner mode to use :
+		//
+		//   1. hcloud : Both the control-plane and the nodegroups will be in HCloud.
+		//
+		//   2. bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.
+		//
+		//   3. hybrid : The control-plane will be in HCloud, and each node-group can be either in
+		//               HCloud or Hetzner Bare Metal.
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
-		VSwitch VSwitchConfig `yaml:"vswitch" validate:"required"`
+		VSwitch *VSwitchConfig `yaml:"vswitch"`
 
 		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
-		NodeGroups   HetznerNodeGroups   `yaml:"nodeGroups"`
+
+		// Details about node-groups in Hetzner.
+		NodeGroups HetznerNodeGroups `yaml:"nodeGroups"`
 	}
 
 	VSwitchConfig struct {
@@ -361,16 +382,25 @@ type (
 		Region  string `yaml:"region"  validate:"notblank"`
 	}
 
+	// Details about node-groups in Hetzner.
 	HetznerNodeGroups struct {
-		HCloud    []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
-		BareMetal []HetznerBareMetalNodeGroup   `yaml:"bareMetal"`
+		// Details about node-groups in HCloud.
+		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
+
+		// Details about node-groups in Hetzner Bare Metal.
+		BareMetal []HetznerBareMetalNodeGroup `yaml:"bareMetal"`
 	}
 
+	// Details about (autoscalable) node-groups in HCloud.
 	HCloudAutoScalableNodeGroup struct {
 		AutoScalableNodeGroup `yaml:",inline"`
 
-		MachineType    string `yaml:"machineType" validate:"notblank"`
-		RootVolumeSize uint32 `                   validate:"required"`
+		// HCloud machine type.
+		// You can browse all available HCloud machine types here : https://hetzner.com/cloud.
+		MachineType string `yaml:"machineType" validate:"notblank"`
+
+		// The root volume size for each HCloud machine.
+		RootVolumeSize uint32 `validate:"required"`
 	}
 
 	HetznerBareMetalNodeGroup struct {
@@ -386,6 +416,7 @@ type (
 	}
 )
 
+// Bare Metal specific.
 type (
 	BareMetalConfig struct {
 		SSH BareMetalSSHConfig `yaml:"ssh"`

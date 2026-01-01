@@ -89,7 +89,10 @@ func getCreatePRURL(fromBranch string) string {
 	)
 
 	createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-		config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, repoOwner, repoName, fromBranch)
+		strings.TrimSuffix(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, ".git"),
+		repoOwner, repoName,
+		fromBranch,
+	)
 
 	return createPRURL
 }
