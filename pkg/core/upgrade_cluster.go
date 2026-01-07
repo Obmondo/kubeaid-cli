@@ -54,6 +54,10 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 		utils.MustGetEnv(constants.EnvNameKubeconfig),
 	)
 
+	// Construct the clusterctl client.
+	clusterctlClient, err := clusterctlClientLib.New(ctx, "")
+	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
+
 	{
 		// Port-forward ArgoCD and create ArgoCD client.
 		argoCDClient := kubernetes.NewArgoCDClient(ctx, clusterClient)
@@ -64,33 +68,43 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	}
 
 	// (1) Upgrading the Control Plane.
-	upgradeControlPlane(ctx, args, clusterClient)
+	upgradeControlPlane(ctx, clusterClient, clusterctlClient, args)
 
 	// (2) Upgrading each node-group one by one.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
-			upgradeNodeGroup(ctx, args, clusterClient, nodeGroup.Name)
+			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
 		}
 
 	case constants.CloudProviderAzure:
 		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			upgradeNodeGroup(ctx, args, clusterClient, nodeGroup.Name)
+			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+		}
+
+	case constants.CloudProviderHetzner:
+		nodeGroups := config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups
+
+		for _, nodeGroup := range nodeGroups.HCloud {
+			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+		}
+
+		for _, nodeGroup := range nodeGroups.BareMetal {
+			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
 		}
 
 	default:
-		panic("unimplemented")
+		panic("unreachable")
 	}
 }
 
-// Update the values-capi-cluster.yaml file in the kubeaid-config repo.
-// Once the kubeaid-config changes get merged to the default merged,
-// only then we'll trigger the actual rollout process.
+// Update the values-capi-cluster.yaml file in the KubeAid Config repo.
+// Once the change get merged to the default branch, we'll trigger the actual rollout process.
 func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Clone the KubeAid config fork locally (if not already cloned).
+	// Clone the KubeAid Config repository locally, if it's not already there.
 	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
 
 	workTree, err := repo.Worktree()
@@ -122,10 +136,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 
 	// Update values-capi-cluster.yaml file (using yq).
 	{
-		capiClusterValuesFilePath := path.Join(
-			utils.GetClusterDir(),
-			"argocd-apps/values-capi-cluster.yaml",
-		)
+		capiClusterValuesFilePath := path.Join(utils.GetClusterDir(), "argocd-apps/values-capi-cluster.yaml")
 
 		// If the user wants Kubernetes version upgrade,
 		// then update the Kubernetes version.
@@ -143,9 +154,9 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 			)
 		}
 
-		// If the user wants OS upgrade,
-		// then make necessary cloud provider specific updates.
-		globals.CloudProvider.UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx,
+		// When the user wants to also upgrade the OS,
+		// make necessary cloud provider specific updates.
+		globals.CloudProvider.UpdateCapiClusterValuesFile(ctx,
 			capiClusterValuesFilePath,
 			args.CloudSpecificUpdates,
 		)
@@ -184,29 +195,31 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 	}
 }
 
-func upgradeControlPlane(
-	ctx context.Context,
-	args UpgradeClusterArgs,
+func upgradeControlPlane(ctx context.Context,
 	clusterClient client.Client,
+	clusterctlClient clusterctlClientLib.Client,
+	args UpgradeClusterArgs,
 ) {
 	slog.InfoContext(ctx, "Triggering control plane upgrade")
 
-	// If the user wants to do an OS upgrade, then make necessary cloud provider specific updates in
-	// the corresponding machine template, by deleting and recreating it.
-	// Since machine templates are immutable, we cannot update them directly.
-	//
-	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	globals.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
+	var (
+		kubeadmControlPlaneName = fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
+		machineTemplateName     = kubeadmControlPlaneName
+	)
 
-	// If the user wants a Kubernetes version upgrade, then
+	// When the user wants an OS upgrade,
+	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource
+	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
+	// immutable, we cannot update it in-place.
+	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
+	globals.CloudProvider.UpdateMachineTemplate(ctx,
+		clusterClient, machineTemplateName, args.CloudSpecificUpdates,
+	)
+
+	// When the user wants a Kubernetes version upgrade,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
 	// We'll do this, by syncing it specifically, in the capi-cluster ArgoCD App.
 	if len(args.NewKubernetesVersion) > 0 {
-		kubeadmControlPlaneName := fmt.Sprintf("%s-control-plane",
-			config.ParsedGeneralConfig.Cluster.Name,
-		)
-
-		// Sync capi-cluster ArgoCD App's KubeadmControlPlane resource.
 		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
@@ -216,63 +229,58 @@ func upgradeControlPlane(
 				},
 			},
 		)
-
-		// Rollout the control-plane, immediately
-
-		clusterctlClient, err := clusterctlClientLib.New(ctx, "")
-		assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
-
-		err = clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
-			Namespace: kubernetes.GetCapiClusterNamespace(),
-			Resources: []string{
-				fmt.Sprintf("kubeadmcontrolplane/%s", kubeadmControlPlaneName),
-			},
-		})
-		assert.AssertErrNil(ctx, err, "Failed rolling out KubeadmControlPlane")
 	}
+
+	// Rollout the control-plane, immediately
+
+	err := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+		Namespace: kubernetes.GetCapiClusterNamespace(),
+		Resources: []string{
+			fmt.Sprintf("kubeadmcontrolplane/%s", kubeadmControlPlaneName),
+		},
+	})
+	assert.AssertErrNil(ctx, err, "Failed rolling out KubeadmControlPlane")
 }
 
 func upgradeNodeGroup(ctx context.Context,
-	args UpgradeClusterArgs,
 	clusterClient client.Client,
-	nodeGroupName string,
+	clusterctlClient clusterctlClientLib.Client,
+	name string,
+	args UpgradeClusterArgs,
 ) {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("node-group", nodeGroupName),
+		slog.String("node-group", name),
 	})
 
 	slog.InfoContext(ctx, "Triggering node-group upgrade")
 
-	// If the user wants to do an OS upgrade, then make necessary cloud provider specific updates in
-	// the corresponding machine template, by deleting and recreating it.
-	// Since machine templates are immutable, we cannot update them directly.
-	//
+	var (
+		machineDeploymentName     = fmt.Sprintf("%s-%s", config.ParsedGeneralConfig.Cluster.Name, name)
+		kubeadmConfigTemplateName = machineDeploymentName
+		machineTemplateName       = machineDeploymentName
+	)
+
+	// When the user wants to do an OS upgrade,
+	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource
+	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
+	// immutable, we cannot update them directly.
 	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	globals.CloudProvider.UpdateMachineTemplate(ctx, clusterClient, args.CloudSpecificUpdates)
+	globals.CloudProvider.UpdateMachineTemplate(ctx,
+		clusterClient,
+		machineTemplateName,
+		args.CloudSpecificUpdates,
+	)
 
 	/*
-		If the user wants a Kubernetes version upgrade,
-		then update the Kubernetes version in the KubeadmConfigTemplate and MachineDeployment
-		resources corresponding to the node-group.
-		We'll do this, by syncing them specifically, in the capi-cluster ArgoCD App.
+		When the user wants a Kubernetes version upgrade,
+		update the Kubernetes version in the corresponding KubeadmConfigTemplate and MachineDeployment
+		resources, by syncing them specifically in the capi-cluster ArgoCD App.
 
 		NOTE : When calculating diff, we ignore the .spec.replicas field for the MachineDeployment
 		       resource. So, syncing it shouldn't create any difference in the node-group's current
 		       replica count.
 	*/
 	if len(args.NewKubernetesVersion) > 0 {
-		kubeadmConfigTemplateName := fmt.Sprintf("%s-%s",
-			config.ParsedGeneralConfig.Cluster.Name,
-			nodeGroupName,
-		)
-
-		machineDeploymentName := fmt.Sprintf("%s-%s",
-			config.ParsedGeneralConfig.Cluster.Name,
-			nodeGroupName,
-		)
-
-		// Sync capi-cluster ArgoCD App's KubeadmConfigTemplate and MachineDeployment resources
-		// corresponding to the node-group.
 		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
@@ -287,20 +295,14 @@ func upgradeNodeGroup(ctx context.Context,
 				},
 			},
 		)
-
-		// Rollout the node-group, immediately.
-
-		clusterctlClient, err := clusterctlClientLib.New(ctx, "")
-		assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
-
-		err = clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
-			Namespace: kubernetes.GetCapiClusterNamespace(),
-			Resources: []string{
-				fmt.Sprintf("machinedeployment/%s", machineDeploymentName),
-			},
-		})
-		assert.AssertErrNil(ctx, err, "Failed rolling out MachineDeployment",
-			slog.String("name", machineDeploymentName),
-		)
 	}
+
+	// Rollout the node-group, immediately.
+	err := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+		Namespace: kubernetes.GetCapiClusterNamespace(),
+		Resources: []string{
+			fmt.Sprintf("machinedeployment/%s", machineDeploymentName),
+		},
+	})
+	assert.AssertErrNil(ctx, err, "Failed rolling out MachineDeployment")
 }

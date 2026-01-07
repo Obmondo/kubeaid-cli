@@ -24,13 +24,14 @@ type AzureMachineTemplateUpdates struct {
 
 func (*Azure) UpdateMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
+	name string,
 	updates any,
 ) {
 	parsedUpdates, ok := updates.(AzureMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
-	// If the user doesn't want to do an OS upgrade,
-	// then we don't need to do anything.
+	// The user doesn't want to do an OS upgrade.
+	// So we don't need to do anything.
 	if len(parsedUpdates.NewImageOffer) == 0 {
 		return
 	}
@@ -56,8 +57,7 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 		err,
 		"Failed deleting the current AzureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
-	slog.InfoContext(
-		ctx,
+	slog.InfoContext(ctx,
 		"Deleted the current azureMachineTemplate resource being used by the KubeadmControlPlane resource",
 	)
 
@@ -70,15 +70,12 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed recreating the AzureMachineTemplate")
 }
 
-func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
-	capiClusterValuesFilePath string,
-	updates any,
-) {
+func (a *Azure) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) {
 	parsedUpdates, ok := updates.(AzureMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
-	// If the user doesn't want to do an OS upgrade,
-	// then we don't need to do anything.
+	// The user doesn't want to do an OS upgrade.
+	// So, we don't need to do anything.
 	if len(parsedUpdates.NewImageOffer) == 0 {
 		return
 	}
@@ -90,7 +87,7 @@ func (a *Azure) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.
 
 		fmt.Sprintf("(.azure.canonicalUbuntuImage.offer) = \"%s\"", parsedUpdates.NewImageOffer),
 
-		capiClusterValuesFilePath,
+		path,
 	})
 	err := yqCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err,

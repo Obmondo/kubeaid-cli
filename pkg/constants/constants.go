@@ -55,6 +55,8 @@ const (
 	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
+	FlagNameNewImageName         = "new-image-name"
+	FlagNameNewImagePath         = "new-image-path"
 
 	FlagNameNewK8sVersion = "new-k8s-version"
 )

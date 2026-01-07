@@ -19,6 +19,8 @@ type ReleaseDetails struct {
 }
 
 // Returns the latest KubeAid version, fetching it from GitHub.
+//
+//nolint:unused
 func getLatestKubeAidVersion(ctx context.Context) string {
 	response, err := http.DefaultClient.Get(
 		"https://api.github.com/repos/Obmondo/KubeAid/releases/latest",

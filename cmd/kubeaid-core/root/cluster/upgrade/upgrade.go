@@ -22,6 +22,7 @@ func init() {
 	// Subcommands.
 	UpgradeCmd.AddCommand(AWSCmd)
 	UpgradeCmd.AddCommand(AzureCmd)
+	UpgradeCmd.AddCommand(HetznerCmd)
 
 	// Flags.
 
