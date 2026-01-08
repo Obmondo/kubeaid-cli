@@ -43,6 +43,7 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
 	github.com/spf13/cobra v1.10.2
+	github.com/stretchr/testify v1.10.0
 	github.com/syself/cluster-api-provider-hetzner v1.0.7
 	github.com/vmware-tanzu/velero v1.16.1
 	golang.org/x/crypto v0.46.0
@@ -81,7 +82,6 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate v0.0.0-00010101000000-000000000000 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/a8m/envsubst v1.4.3 // indirect
 	github.com/adrg/xdg v0.5.3 // indirect
@@ -304,7 +304,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/theupdateframework/notary v0.7.0 // indirect
 	github.com/valyala/fastjson v1.6.4 // indirect
@@ -420,7 +419,3 @@ replace (
 	// 'go build' fails, when we use controller-runtime v0.20.4.
 	sigs.k8s.io/controller-runtime => sigs.k8s.io/controller-runtime v0.19.4
 )
-
-tool github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate
-
-replace github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate => ./tools/config-reference-generate

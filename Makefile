@@ -15,7 +15,7 @@ addlicense:
 
 .PHONY: config-reference-generate
 config-reference-generate:
-	@go tool github.com/Obmondo/kubeaid-bootstrap-script/tools/config-reference-generate \
+	@go run ./tools/config-reference-generate \
     ./pkg/config/general.go ./pkg/config/secrets.go \
     ./docs/config-reference.md
 
