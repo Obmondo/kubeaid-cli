@@ -153,7 +153,9 @@ func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 	}
 
 	mainCluster, ok := kubeConfig.Clusters[config.ParsedGeneralConfig.Cluster.Name]
-	assert.Assert(ctx, ok, "Failed getting details about the main cluster, from its kubeconfig file")
+	if !ok {
+		return nil
+	}
 
 	mainClusterEndpoint, err := url.Parse(mainCluster.Server)
 	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint")
