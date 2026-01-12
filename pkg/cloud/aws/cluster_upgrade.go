@@ -13,7 +13,6 @@ import (
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -22,36 +21,30 @@ type AWSMachineTemplateUpdates struct {
 	AMIID string
 }
 
-func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, updates any) {
+func (*AWS) UpdateMachineTemplate(ctx context.Context,
+	clusterClient client.Client,
+	name string,
+	updates any,
+) {
 	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
-	// Get the AWSMachineTemplate currently being referred by the KubeadmControlPlane.
+	// Get the AWSMachineTemplate.
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
+			Name:      name,
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate)
-	assert.AssertErrNil(
-		ctx,
-		err,
-		"Failed retrieving the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
-	)
+	assert.AssertErrNil(ctx, err, "Failed retrieving the current AWSMachineTemplate")
 
 	// Delete that AWSMachineTemplate.
 	err = clusterClient.Delete(ctx, awsMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(
-		ctx,
-		err,
-		"Failed deleting the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
-	)
-	slog.InfoContext(ctx,
-		"Deleted the current AWSMachineTemplate resource used by the KubeadmControlPlane resource",
-	)
+	assert.AssertErrNil(ctx, err, "Failed deleting the current AWSMachineTemplate")
+	slog.InfoContext(ctx, "Deleted the current AWSMachineTemplate")
 
-	// Recreate the updated AWSMachineTemplate.
+	// Recreate the AWSMachineTemplate, with desired updates.
 
 	awsMachineTemplate.Spec.Template.Spec.AMI.ID = &parsedUpdates.AMIID
 	awsMachineTemplate.ResourceVersion = ""
@@ -60,10 +53,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context, clusterClient client.Clie
 	assert.AssertErrNil(ctx, err, "Failed recreating the AWSMachineTemplate")
 }
 
-func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Context,
-	capiClusterValuesFilePath string,
-	updates any,
-) {
+func (*AWS) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) {
 	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
 	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
 
@@ -74,7 +64,7 @@ func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Cont
 
 		fmt.Sprintf("(.aws.controlPlane.ami.id) = \"%s\"", parsedUpdates.AMIID),
 
-		capiClusterValuesFilePath,
+		path,
 	})
 	err := yqCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err,
@@ -88,7 +78,7 @@ func (*AWS) UpdateCapiClusterValuesFileWithCloudSpecificDetails(ctx context.Cont
 
 		fmt.Sprintf("(.aws.nodeGroups[].ami.id) = \"%s\"", parsedUpdates.AMIID),
 
-		capiClusterValuesFilePath,
+		path,
 	})
 	err = yqCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err,

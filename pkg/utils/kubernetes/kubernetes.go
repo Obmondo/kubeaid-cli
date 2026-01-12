@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
@@ -135,6 +136,31 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 		)
 	}
 	return nil
+}
+
+// Returns the main cluster's API server endpoint, if provisioned.
+// Otherwise returns nil.
+func GetMainClusterEndpoint(ctx context.Context) *url.URL {
+	kubeConfig, err := clientcmd.LoadFromFile(constants.OutputPathMainClusterKubeconfig)
+	switch os.IsNotExist(err) {
+	// The kubeconfig file doesn't exist,
+	// which means the main cluster hasn't been provisioned yet.
+	case true:
+		return nil
+
+	default:
+		assert.AssertErrNil(ctx, err, "Failed reading main cluster's kubeconfig file")
+	}
+
+	mainCluster, ok := kubeConfig.Clusters[config.ParsedGeneralConfig.Cluster.Name]
+	if !ok {
+		return nil
+	}
+
+	mainClusterEndpoint, err := url.Parse(mainCluster.Server)
+	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint")
+
+	return mainClusterEndpoint
 }
 
 // Creates the given namespace (if it doesn't already exist).

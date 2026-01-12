@@ -96,8 +96,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 				"--in-place", "--yaml-output", "--yaml-roundtrip",
 
 				fmt.Sprintf(
-					"(.cilium.k8sServiceHost) = \"%s\" | (.cilium.k8sServicePort) = \"%d\"",
-					mainClusterEndpoint.Host, mainClusterEndpoint.Port,
+					"(.cilium.k8sServiceHost) = \"%s\" | (.cilium.k8sServicePort) = \"%s\"",
+					mainClusterEndpoint.Hostname(), mainClusterEndpoint.Port(),
 				),
 
 				ciliumValuesFilePath,

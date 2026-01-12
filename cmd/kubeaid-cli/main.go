@@ -144,10 +144,11 @@ func proxyRun(command *cobra.Command, args []string) {
 	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
 	if len(sshAuthSock) == 0 {
 		slog.WarnContext(ctx, "SSH_AUTH_SOCK environment variable not set")
+	} else {
+		binds = append(binds,
+			fmt.Sprintf("%s:%s", sshAuthSock, sshAuthSock),
+		)
 	}
-	binds = append(binds,
-		fmt.Sprintf("%s:%s", sshAuthSock, sshAuthSock),
-	)
 
 	// Spin up the KubeAid Core container,
 	// proxying the command execution.

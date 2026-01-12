@@ -385,14 +385,12 @@ func isArgoCDAppSynced(ctx context.Context,
 	// server and completely reconstruct the ArgoCD Application client.
 	for {
 		// Get the ArgoCD App.
-		argoCDApp, err = globals.ArgoCDApplicationClient.Get(
-			context.Background(),
-			&application.ApplicationQuery{
-				Name:         &name,
-				Project:      []string{constants.ArgoCDProjectKubeAid},
-				AppNamespace: aws.String(constants.NamespaceArgoCD),
-			},
-		)
+		argoCDApp, err = globals.ArgoCDApplicationClient.Get(ctx, &application.ApplicationQuery{
+			Name:         &name,
+			Project:      []string{constants.ArgoCDProjectKubeAid},
+			AppNamespace: aws.String(constants.NamespaceArgoCD),
+			Refresh:      aws.String(string(argoCDV1Aplha1.RefreshTypeHard)),
+		})
 		if err == nil {
 			break
 		}

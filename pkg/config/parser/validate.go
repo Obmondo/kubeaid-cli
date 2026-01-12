@@ -151,10 +151,16 @@ func validateAzureConfig(ctx context.Context) {
 
 func validateHetznerConfig(ctx context.Context) {
 	// Ensure that the user has provided Hetzner specific credentials.
-	assert.AssertNotNil(ctx,
-		config.ParsedSecretsConfig.Hetzner,
-		"Hetzner credentials not provided",
-	)
+	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
+
+	// When using the Hetzner provider in bare-metal or hybrid mode,
+	// ensure that the user has provided VSwitch details.
+	// The VSwitch will be used to get the Hetzner Bare Metal servers off the public internet.
+	if config.ParsedGeneralConfig.Cloud.Hetzner.Mode != constants.HetznerModeHCloud {
+		assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch,
+			"VSwitch details not provided",
+		)
+	}
 
 	if config.UsingHCloud() {
 		validateHCloudConfig(ctx)

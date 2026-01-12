@@ -1,23 +1,23 @@
 {
-	"scripts": {
-		"postbump": "nix-update --flake --version=skip default && git add flake.nix"
-	},
+  "scripts": {
+    "postbump": "nix-update --flake --version=skip default && git add flake.nix"
+  },
 
-	"packageFiles": [
-		{
-			"filename": "cmd/kubeaid-core/root/version/version.txt",
-			"type": "plain-text"
-		}
-	],
+  "packageFiles": [
+    {
+      "filename": "cmd/kubeaid-core/root/version/version.txt",
+      "type": "plain-text"
+    }
+  ],
 
-	"bumpFiles": [
-		{
-			"filename": "cmd/kubeaid-core/root/version/version.txt",
-			"type": "plain-text"
-		}
-	],
+  "bumpFiles": [
+    {
+      "filename": "cmd/kubeaid-core/root/version/version.txt",
+      "type": "plain-text"
+    }
+  ],
 
-	"skip": {
-		"changelog": true
-	}
+  "skip": {
+    "changelog": true
+  }
 }

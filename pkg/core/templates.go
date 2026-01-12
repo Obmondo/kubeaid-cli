@@ -6,9 +6,8 @@ package core
 import (
 	"context"
 	"embed"
+	"net/url"
 	"os"
-
-	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
@@ -51,7 +50,7 @@ type TemplateValues struct {
 
 	BareMetalConfig *config.BareMetalConfig
 
-	ProvisionedClusterEndpoint *clusterAPIV1Beta1.APIEndpoint
+	ProvisionedClusterEndpoint *url.URL
 
 	*config.DisasterRecoveryConfig
 
