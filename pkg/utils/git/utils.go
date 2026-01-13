@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path"
+	"strings"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -33,7 +34,7 @@ func GetRepoDir(url string) string {
 		return repoDir
 	}
 
-	parsedURL, err := gogiturl.NewGitURL(url)
+	parsedURL, err := gogiturl.NewGitURL(strings.TrimPrefix(url, "ssh://"))
 	assert.AssertErrNil(context.Background(), err, "Failed parsing git URL", slog.String("url", url))
 
 	return path.Join(constants.TempDirectory,

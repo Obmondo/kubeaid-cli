@@ -60,6 +60,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	namespacesToBeCreated := []string{
 		"crossplane",
 		"obmondo",
+		"traefik",
+		"system",
 	}
 	for _, namespace := range namespacesToBeCreated {
 		kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)

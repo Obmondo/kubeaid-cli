@@ -17,7 +17,7 @@ var (
 type (
 	// Non secret configuration options.
 	GeneralConfig struct {
-		// Git server spcific details.
+		// Git server specific details.
 		Git GitConfig `yaml:"git"`
 
 		// KubeAid and KubeAid Config repository specific details.
@@ -37,18 +37,26 @@ type (
 		Obmondo *ObmondoConfig `yaml:"obmondo"`
 	}
 
+	// Git specific details, used by KubeAid CLI,
+	// to clone repositories from and push changes to the Git server.
+	// We enforce the user to use SSH, for authenticating to the Git server.
 	GitConfig struct {
 		CABundlePath string `yaml:"caBundlePath"`
 		CABundle     []byte
 
+		// SSH username.
+		SSHUsername string `yaml:"sshUsername" validate:"notblank" default:"git"`
+
+		// Either make KubeAid CLI use the given SSH private key.
 		*SSHPrivateKeyConfig `yaml:",inline"`
 
-		UseSSHAgentAuth bool `yaml:"useSSHAgentAuth"`
+		// Or, make KubeAid CLI use the SSH Agent.
+		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
+		UseSSHAgent bool `yaml:"useSSHAgent"`
 	}
 
-	// KubeAid and KubeAid Config repository speicific details.
-	// For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
-	// Git server.
+	// KubeAid and KubeAid Config repository specific details.
+	// We require the KubeAid and KubeAid Config repositories to be hosted in the same Git server.
 	ForksConfig struct {
 		// KubeAid repository specific details.
 		KubeaidFork KubeAidForkConfig `yaml:"kubeaid" validate:"required"`
@@ -59,8 +67,8 @@ type (
 
 	// KubeAid repository specific details.
 	KubeAidForkConfig struct {
-		// KubeAid repository (HTTPS) URL.
-		URL string `yaml:"url" default:"https://github.com/Obmondo/KubeAid" validate:"notblank"`
+		// KubeAid repository SSH URL.
+		URL string `yaml:"url" validate:"required"`
 
 		// KubeAid tag.
 		Version string `yaml:"version" validate:"notblank"`
@@ -68,8 +76,8 @@ type (
 
 	// KubeAid Config repository specific details.
 	KubeaidConfigForkConfig struct {
-		// KubeAid repository (HTTPS) URL.
-		URL string `yaml:"url" validate:"notblank"`
+		// KubeAid Config repository SSH URL.
+		URL string `yaml:"url" validate:"required"`
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
 		// Config files for this cluster will be contained.
@@ -88,7 +96,7 @@ type (
 		// ClusterAPI and Cilium : which use the cluster name to generate other configurations.
 		Name string `yaml:"name" validate:"notblank"`
 
-		// Kubernetes version ( >= 1.30.0).
+		// Kubernetes version (>= 1.30.0).
 		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
 		// Whether you would like to enable Kubernetes Audit Logging out of the box.

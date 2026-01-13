@@ -26,10 +26,10 @@ type TemplateValues struct {
 
 	CustomerGitServerHostname string
 	config.GitConfig
-	config.GitCredentials
 	config.ForksConfig
 
 	config.ClusterConfig
+	config.ArgoCDCredentials
 	config.KubePrometheusConfig
 	CAPIClusterNamespace string
 
@@ -63,10 +63,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
 		GitConfig:                 config.ParsedGeneralConfig.Git,
-		GitCredentials:            config.ParsedSecretsConfig.Git,
 		ForksConfig:               config.ParsedGeneralConfig.Forks,
 
 		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
+		ArgoCDCredentials:    config.ParsedSecretsConfig.ArgoCD,
 		KubePrometheusConfig: config.ParsedGeneralConfig.KubePrometheus,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 

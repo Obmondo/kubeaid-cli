@@ -6,6 +6,8 @@
 - [AWSConfig](#awsconfig)
 - [AWSControlPlane](#awscontrolplane)
 - [AWSCredentials](#awscredentials)
+- [ArgoCDConfig](#argocdconfig)
+- [ArgoCDCredentials](#argocdcredentials)
 - [AutoScalableNodeGroup](#autoscalablenodegroup)
 - [AzureAutoScalableNodeGroup](#azureautoscalablenodegroup)
 - [AzureConfig](#azureconfig)
@@ -23,10 +25,11 @@
 - [ClusterConfig](#clusterconfig)
 - [DisasterRecoveryConfig](#disasterrecoveryconfig)
 - [FileConfig](#fileconfig)
-- [ForksConfig](#forksconfig)
+- [ForkURLsConfig](#forkurlsconfig)
 - [GeneralConfig](#generalconfig)
 - [GitConfig](#gitconfig)
 - [GitCredentials](#gitcredentials)
+- [GitRepositoryURL](#gitrepositoryurl)
 - [GitUsernameAndPassword](#gitusernameandpassword)
 - [HCloudAutoScalableNodeGroup](#hcloudautoscalablenodegroup)
 - [HCloudControlPlane](#hcloudcontrolplane)
@@ -141,6 +144,23 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | AWSAccessKeyID | `string` |  |  |
 | AWSSecretAccessKey | `string` |  |  |
 | AWSSessionToken | `string` |  |  |
+
+## ArgoCDConfig
+
+<p></p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| PrivateKeyFilePath | `string` |  |  |
+
+## ArgoCDCredentials
+
+<p></p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| Username | `string` |  |  |
+| Password | `string` |  |  |
 
 ## AutoScalableNodeGroup
 
@@ -304,6 +324,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | EnableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
 | APIServer | `APIServerConfig` |  | Configuration options for the Kubernetes API server.<br> |
 | AdditionalUsers | `[]UserConfig` |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
+| ArgoCD | `ArgoCDConfig` |  | ArgoCD specific details.<br> |
 
 ## DisasterRecoveryConfig
 
@@ -323,7 +344,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | Path | `string` |  |  |
 | Content | `string` |  |  |
 
-## ForksConfig
+## ForkURLsConfig
 
 <p>KubeAid and KubeAid Config repository speicific details.
 For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
@@ -331,6 +352,8 @@ Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| HTTPs | `HTTPsForkURLsConfig` |  |  |
+| SSH | `SSHForkURLsConfig` |  |  |
 | KubeaidFork | `KubeAidForkConfig` |  | KubeAid repository specific details.<br> |
 | KubeaidConfigFork | `KubeaidConfigForkConfig` |  | KubeAid Config repository specific details.<br> |
 
@@ -340,8 +363,8 @@ Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Git | `GitConfig` |  | Git server spcific details.<br> |
-| Forks | `ForksConfig` |  | KubeAid and KubeAid Config repository specific details.<br>The KubeAid and KubeAid Config repositories must be hosted in the same Git server.<br> |
+| Git | `GitConfig` |  | Git server specific details.<br> |
+| ForkURLs | `ForkURLsConfig` |  | KubeAid and KubeAid Config repository specific details.<br>The KubeAid and KubeAid Config repositories must be hosted in the same Git server.<br> |
 | Cluster | `ClusterConfig` |  | Kubernetes specific details.<br> |
 | Cloud | `CloudConfig` |  | Cloud provider specific details.<br> |
 | KubePrometheus | `KubePrometheusConfig` |  | Kube Prometheus installation specific details.<br> |
@@ -354,7 +377,7 @@ Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | CABundlePath | `string` |  |  |
-| UseSSHAgentAuth | `bool` |  |  |
+| UseSSHAgentAuth | `bool` |  | Use the SSH Agent, to clone repositories from and push changes to the Git<br>server.<br> |
 | PrivateKeyFilePath | `string` |  |  |
 
 ## GitCredentials
@@ -365,6 +388,17 @@ Git server.</p>
 |-------|------|---------|-------------|
 | Username | `string` |  |  |
 | Password | `string` |  |  |
+
+## GitRepositoryURL
+
+<p>Git repository URL, in different formats : like HTTPs and SSH.
+When multiple formats are specified, the following priority list is followed :
+SSH > HTTPs.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| HTTPs | `string` |  | Repository URL, in HTTPs format.<br> |
+| SSH | `string` |  | Repository URL, in SSH format.<br> |
 
 ## GitUsernameAndPassword
 
@@ -556,7 +590,7 @@ Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| URL | `string` | https://github.com/Obmondo/KubeAid | KubeAid repository (HTTPS) URL.<br> |
+| URL | `GitRepositoryURL` |  | KubeAid repository URL, in different formats : like HTTPs and SSH.<br> |
 | Version | `string` |  | KubeAid tag.<br> |
 
 ## KubePrometheusConfig
@@ -574,7 +608,7 @@ Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| URL | `string` |  | KubeAid repository (HTTPS) URL.<br> |
+| URL | `GitRepositoryURL` |  | KubeAid Config repository URL, in different formats : like HTTPs and SSH.<br> |
 | Directory | `string` |  | Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid<br>Config files for this cluster will be contained.<br><br>When not specified, the directory name will default to the cluster name.<br><br>So, suppose your cluster name is 'staging'. Then, the directory name will default to<br>'staging'. Or you can customize it to something like 'staging.qa'.<br> |
 
 ## LocalConfig
@@ -627,6 +661,7 @@ Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | Git | `GitCredentials` |  |  |
+| ArgoCD | `ArgoCDCredentials` |  |  |
 | AWS | `AWSCredentials` |  |  |
 | Azure | `AzureCredentials` |  |  |
 | Hetzner | `HetznerCredentials` |  |  |

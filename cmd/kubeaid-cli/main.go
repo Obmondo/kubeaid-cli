@@ -142,9 +142,11 @@ func proxyRun(command *cobra.Command, args []string) {
 	}
 
 	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
-	if len(sshAuthSock) == 0 {
+	switch len(sshAuthSock) == 0 {
+	case true:
 		slog.WarnContext(ctx, "SSH_AUTH_SOCK environment variable not set")
-	} else {
+
+	default:
 		binds = append(binds,
 			fmt.Sprintf("%s:%s", sshAuthSock, sshAuthSock),
 		)
