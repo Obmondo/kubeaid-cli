@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package main
+package structs
 
 import (
 	"context"
@@ -68,7 +68,8 @@ func NewStructFromAST(ctx context.Context,
 		// It doesn't make sense to have doc comments for structs like NodeGroup or
 		// AutoScalableNodeGroup.
 		// So, if doc comment isn't found for a struct, we just warn, and not error out.
-		slog.WarnContext(ctx, "No doc comment found")
+		// TODO : uncomment.
+		// slog.WarnContext(ctx, "No doc comment found")
 	}
 	doc = "<p>" + strings.TrimSpace(doc) + "</p>"
 

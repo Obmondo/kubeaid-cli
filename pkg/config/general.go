@@ -208,8 +208,8 @@ type (
 	}
 
 	KubePrometheusConfig struct {
-		Version    string `yaml:"version"              default:"v0.15.0"`
-		GrafanaURL string `yaml:"grafanaURL,omitempty"`
+		Version    string `yaml:"version"    default:"v0.15.0"`
+		GrafanaURL string `yaml:"grafanaURL"`
 	}
 
 	ObmondoConfig struct {

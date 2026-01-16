@@ -1,0 +1,299 @@
+# Git server specific details.
+# 
+git:
+
+  caBundlePath:
+
+  # SSH username.
+  # 
+  sshUsername:
+
+  # Or, make KubeAid CLI use the SSH Agent.
+  # So, you (the one who runs KubeAid CLI) can use your YubiKey.
+  # 
+  useSSHAgent:
+
+  privateKeyFilePath:
+
+# KubeAid and KubeAid Config repository specific details.
+# The KubeAid and KubeAid Config repositories must be hosted in the same Git server.
+# 
+forkURLs:
+
+  # KubeAid repository specific details.
+  # 
+  kubeaid:
+
+    # KubeAid repository SSH URL.
+    # 
+    url:
+
+    # KubeAid tag.
+    # 
+    version:
+
+  # KubeAid Config repository specific details.
+  # 
+  kubeaidConfig:
+
+    # KubeAid Config repository SSH URL.
+    # 
+    url:
+
+    # Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
+    # Config files for this cluster will be contained.
+    # 
+    # When not specified, the directory name will default to the cluster name.
+    # 
+    # So, suppose your cluster name is 'staging'. Then, the directory name will default to
+    # 'staging'. Or you can customize it to something like 'staging.qa'.
+    # 
+    directory:
+
+# Kubernetes specific details.
+# 
+cluster:
+
+  # Name of the Kubernetes cluster.
+  # 
+  # We don't allow using dots in the cluster name, since it can cause issues with tools like
+  # ClusterAPI and Cilium : which use the cluster name to generate other configurations.
+  # 
+  name:
+
+  # Kubernetes version (>= 1.30.0).
+  # 
+  k8sVersion:
+
+  # Whether you would like to enable Kubernetes Audit Logging out of the box.
+  # Suitable Kubernetes API configurations will be done for you automatically. And they can be
+  # changed using the apiSever struct field.
+  # 
+  enableAuditLogging:
+
+  # Configuration options for the Kubernetes API server.
+  # 
+  apiServer:
+
+    extraArgs:
+
+    extraVolumes:
+
+    files:
+
+  # Other than the root user, addtional users that you would like to be created in each node.
+  # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
+  # 
+  additionalUsers:
+
+# Cloud provider specific details.
+# 
+cloud:
+
+  aws:
+
+    region:
+
+    sshKeyName:
+
+    vpcID:
+
+    bastionEnabled:
+
+    controlPlane:
+
+      loadBalancerScheme:
+
+      replicas:
+
+      instanceType:
+
+      ami:
+
+        id:
+
+    nodeGroups:
+
+  azure:
+
+    tenantID:
+
+    subscriptionID:
+
+    aadApplication:
+
+      principalID:
+
+    location:
+
+    storageAccount:
+
+    workloadIdentity:
+
+      openIDProviderSSHKeyPair:
+
+        publicKeyFilePath:
+
+        privateKeyFilePath:
+
+    sshPublicKey:
+
+    canonicalUbuntuImage:
+
+      offer:
+
+      sku:
+
+    controlPlane:
+
+      loadBalancerType:
+
+      diskSizeGB:
+
+      vmSize:
+
+      replicas:
+
+    nodeGroups:
+
+  hetzner:
+
+    # The Hetzner mode to use :
+    # 
+    #   1. hcloud : Both the control-plane and the nodegroups will be in HCloud.
+    # 
+    #   2. bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.
+    # 
+    #   3. hybrid : The control-plane will be in HCloud, and each node-group can be either in
+    #               HCloud or Hetzner Bare Metal.
+    # 
+    mode:
+
+    vswitch:
+
+      vlanID:
+
+      name:
+
+    hcloud:
+
+      zone:
+
+      imageName:
+
+      sshKeyPairName:
+
+    bareMetal:
+
+      wipeDisks:
+
+      installImage:
+
+        imagePath:
+
+        vg0:
+
+          size:
+
+          rootVolumeSize:
+
+      sshKeyPair:
+
+        name:
+
+        privateKeyFilePath:
+
+        publicKeyFilePath:
+
+      diskLayoutSetupCommands:
+
+      ceph:
+
+        deviceFilter:
+
+    controlPlane:
+
+      hcloud:
+
+        machineType:
+
+        replicas:
+
+        loadBalancer:
+
+          enabled:
+
+          region:
+
+      bareMetal:
+
+        endpoint:
+
+          isFailoverIP:
+
+          host:
+
+        bareMetalHosts:
+
+        diskLayoutSetupCommands:
+
+      regions:
+
+    # Details about node-groups in Hetzner.
+    # 
+    nodeGroups:
+
+      # Details about node-groups in HCloud.
+      # 
+      hcloud:
+
+      # Details about node-groups in Hetzner Bare Metal.
+      # 
+      bareMetal:
+
+  bare-metal:
+
+    ssh:
+
+      port:
+
+      privateKey:
+
+        privateKeyFilePath:
+
+    controlPlane:
+
+      endpoint:
+
+        host:
+
+        port:
+
+      hosts:
+
+    nodeGroups:
+
+  local:
+
+  disasterRecovery:
+
+    veleroBackupsBucketName:
+
+    sealedSecretsBackupsBucketName:
+
+# Kube Prometheus installation specific details.
+# 
+kubePrometheus:
+
+  version:
+
+  grafanaURL:
+
+# Obmondo customer specific details.
+# 
+obmondo:
+
+  customerID:
+
+  monitoring:
+

@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package main
+package structs
 
 import (
 	"context"
@@ -50,16 +50,14 @@ func NewFieldFromAST(ctx context.Context, imports map[string]string, node *ast.F
 		}
 
 	default:
-		name := node.Names[0].Name
-
 		// We require every field to have a doc comment.
 		// assert.AssertNotNil(ctx, node.Doc, "No doc comment found", slog.String("field", name))
-		doc := strings.ReplaceAll(node.Doc.Text(), "\n", "<br>")
+		// doc := strings.ReplaceAll(node.Doc.Text(), "\n", "<br>")
 
 		return Field{
-			Name:         name,
+			Name:         yamlStructTag,
 			Type:         t,
-			Doc:          doc,
+			Doc:          node.Doc.Text(),
 			DefaultValue: defaultStructTag,
 		}
 	}

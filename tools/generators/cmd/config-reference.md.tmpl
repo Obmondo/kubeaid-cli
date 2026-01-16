@@ -1,10 +1,10 @@
 # Configuration Reference
 
-{{- range $i, $struct := .Structs }}
+{{- range $i, $struct := .Structs.All }}
 - [{{ $struct.Name }}](#{{ $struct.Name | toLower }})
 {{- end }}
 
-{{- range $i, $struct := .Structs }}
+{{- range $i, $struct := .Structs.All }}
 
 ## {{ $struct.Name }}
 

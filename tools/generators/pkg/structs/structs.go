@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package main
+package structs
 
 import (
 	"context"
@@ -10,11 +10,26 @@ import (
 	"slices"
 )
 
-type Structs []*Struct
+const (
+	RootStructNameGeneralConfig = "GeneralConfig"
+	RootStructNameSecretsConfig = "SecretsConfig"
+)
+
+type Structs struct {
+	// GeneralConfig and SecretsConfig are called the root structs,
+	// corresponding to the general.yaml and secrets.yaml files respectively.
+	Roots []*Struct
+
+	All map[string]*Struct
+}
 
 func NewStructsFromAST(ctx context.Context, imports map[string]string, node ast.Node) *Structs {
-	structs := new(Structs)
+	structs := &Structs{
+		Roots: []*Struct{},
+		All:   map[string]*Struct{},
+	}
 
+	// Walk through the AST (Abstract Syntax Tree), visiting each node.
 	ast.Inspect(node, func(node ast.Node) bool {
 		if _, ok := node.(*ast.File); ok {
 			return true
@@ -36,8 +51,15 @@ func NewStructsFromAST(ctx context.Context, imports map[string]string, node ast.
 				return false
 			}
 
+			// We have found a struct type declaration.
+
 			s := NewStructFromAST(ctx, imports, declarationsNode, typeDeclarationNode, structDeclarationNode)
-			*structs = append(*structs, s)
+			structs.All[s.Name] = s
+
+			// Check whether it's a root struct or not.
+			if (s.Name == RootStructNameGeneralConfig) || (s.Name == RootStructNameSecretsConfig) {
+				structs.Roots = append(structs.Roots, s)
+			}
 		}
 
 		return false
@@ -48,7 +70,7 @@ func NewStructsFromAST(ctx context.Context, imports map[string]string, node ast.
 
 // For each struct, we remove the embedded struct fields, and add the corresponding promoted fields.
 func (structs *Structs) ResolveEmbeddedStructFields() {
-	for _, s := range *structs {
+	for _, s := range structs.All {
 		for j, f := range s.Fields {
 			if f.Embedded {
 				promotedFields := structs.getFields(f.Name)
@@ -65,7 +87,7 @@ func (structs *Structs) ResolveEmbeddedStructFields() {
 func (structs *Structs) getFields(name string) []Field {
 	fields := []Field{}
 
-	for _, s := range *structs {
+	for _, s := range structs.All {
 		/*
 			We've found the struct we were looking for.
 			Let's start collecting its fields.

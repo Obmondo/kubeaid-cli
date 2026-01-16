@@ -6,7 +6,6 @@
 - [AWSConfig](#awsconfig)
 - [AWSControlPlane](#awscontrolplane)
 - [AWSCredentials](#awscredentials)
-- [ArgoCDConfig](#argocdconfig)
 - [ArgoCDCredentials](#argocdcredentials)
 - [AutoScalableNodeGroup](#autoscalablenodegroup)
 - [AzureAutoScalableNodeGroup](#azureautoscalablenodegroup)
@@ -25,12 +24,10 @@
 - [ClusterConfig](#clusterconfig)
 - [DisasterRecoveryConfig](#disasterrecoveryconfig)
 - [FileConfig](#fileconfig)
-- [ForkURLsConfig](#forkurlsconfig)
+- [ForksConfig](#forksconfig)
 - [GeneralConfig](#generalconfig)
 - [GitConfig](#gitconfig)
 - [GitCredentials](#gitcredentials)
-- [GitRepositoryURL](#gitrepositoryurl)
-- [GitUsernameAndPassword](#gitusernameandpassword)
 - [HCloudAutoScalableNodeGroup](#hcloudautoscalablenodegroup)
 - [HCloudControlPlane](#hcloudcontrolplane)
 - [HCloudControlPlaneLoadBalancer](#hcloudcontrolplaneloadbalancer)
@@ -64,639 +61,744 @@
 
 ## AADApplication
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| PrincipalID | `string` |  |  |
+| principalID | `string` |  |  |
 
 ## AMIConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ID | `string` |  |  |
+| id | `string` |  |  |
 
 ## APIServerConfig
 
-<p>REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
+&lt;p&gt;REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
 
 NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the corresponding GoLang
        source types linked below. There are some configuration options which appear in the
        corresponding GoLang source type, but not in the CRD. If you set those fields, then
        they get removed by the Kubeadm control-plane provider. This causes the capi-cluster
        ArgoCD App to always be in an OutOfSync state, resulting to KubeAid CLI not making any
-       progress!</p>
+       progress!&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ExtraArgs | `map[string]string` | {} |  |
-| ExtraVolumes | `[]HostPathMountConfig` | [] |  |
-| Files | `[]FileConfig` | [] |  |
+| extraArgs | `map[string]string` | {} |  |
+| extraVolumes | `[]HostPathMountConfig` | [] |  |
+| files | `[]FileConfig` | [] |  |
 
 ## AWSAutoScalableNodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| AMI | `AMIConfig` |  |  |
-| InstanceType | `string` |  |  |
-| RootVolumeSize | `uint32` |  |  |
-| SSHKeyName | `string` |  |  |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| MinSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| Maxsize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
+| ami | `AMIConfig` |  |  |
+| instanceType | `string` |  |  |
+| rootVolumeSize | `uint32` |  |  |
+| sshKeyName | `string` |  |  |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
+ |
 
 ## AWSConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Region | `string` |  |  |
-| SSHKeyName | `string` |  |  |
-| VPCID | `string` |  |  |
-| BastionEnabled | `bool` | True |  |
-| ControlPlane | `AWSControlPlane` |  |  |
-| NodeGroups | `[]AWSAutoScalableNodeGroup` |  |  |
+| region | `string` |  |  |
+| sshKeyName | `string` |  |  |
+| vpcID | `string` |  |  |
+| bastionEnabled | `bool` | True |  |
+| controlPlane | `AWSControlPlane` |  |  |
+| nodeGroups | `[]AWSAutoScalableNodeGroup` |  |  |
 
 ## AWSControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| LoadBalancerScheme | `string` | internet-facing |  |
-| Replicas | `uint32` |  |  |
-| InstanceType | `string` |  |  |
-| AMI | `AMIConfig` |  |  |
+| loadBalancerScheme | `string` | internet-facing |  |
+| replicas | `uint32` |  |  |
+| instanceType | `string` |  |  |
+| ami | `AMIConfig` |  |  |
 
 ## AWSCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| AWSAccessKeyID | `string` |  |  |
-| AWSSecretAccessKey | `string` |  |  |
-| AWSSessionToken | `string` |  |  |
-
-## ArgoCDConfig
-
-<p></p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| PrivateKeyFilePath | `string` |  |  |
+| accessKeyID | `string` |  |  |
+| secretAccessKey | `string` |  |  |
+| sessionToken | `string` |  |  |
 
 ## ArgoCDCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Username | `string` |  |  |
-| Password | `string` |  |  |
+| git | `GitCredentials` |  | Git specific credentials, used by ArgoCD to watch the KubeAid and KubeAid Config repositories.
+
+NOTE : We enforce the user, not to make ArgoCD use SSH authentication against the Git server,
+       since : that way, ArgoCD gets both read and write permissions.
+ |
 
 ## AutoScalableNodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| MinSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| Maxsize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
+ |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## AzureAutoScalableNodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| VMSize | `string` |  |  |
-| DiskSizeGB | `uint32` |  |  |
-| MinSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| Maxsize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| vmSize | `string` |  |  |
+| diskSizeGB | `uint32` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
+ |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## AzureConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| TenantID | `string` |  |  |
-| SubscriptionID | `string` |  |  |
-| AADApplication | `AADApplication` |  |  |
-| Location | `string` |  |  |
-| StorageAccount | `string` |  |  |
-| WorkloadIdentity | `WorkloadIdentity` |  |  |
-| SSHPublicKey | `string` |  |  |
-| CanonicalUbuntuImage | `CanonicalUbuntuImage` |  |  |
-| ControlPlane | `AzureControlPlane` |  |  |
-| NodeGroups | `[]AzureAutoScalableNodeGroup` |  |  |
+| tenantID | `string` |  |  |
+| subscriptionID | `string` |  |  |
+| aadApplication | `AADApplication` |  |  |
+| location | `string` |  |  |
+| storageAccount | `string` |  |  |
+| workloadIdentity | `WorkloadIdentity` |  |  |
+| sshPublicKey | `string` |  |  |
+| canonicalUbuntuImage | `CanonicalUbuntuImage` |  |  |
+| controlPlane | `AzureControlPlane` |  |  |
+| nodeGroups | `[]AzureAutoScalableNodeGroup` |  |  |
 
 ## AzureControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| LoadBalancerType | `string` | Public |  |
-| DiskSizeGB | `uint32` |  |  |
-| VMSize | `string` |  |  |
-| Replicas | `uint32` |  |  |
+| loadBalancerType | `string` | Public |  |
+| diskSizeGB | `uint32` |  |  |
+| vmSize | `string` |  |  |
+| replicas | `uint32` |  |  |
 
 ## AzureCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ClientID | `string` |  |  |
-| ClientSecret | `string` |  |  |
+| clientID | `string` |  |  |
+| clientSecret | `string` |  |  |
 
 ## BareMetalConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| SSH | `BareMetalSSHConfig` |  |  |
-| ControlPlane | `BareMetalControlPlane` |  |  |
-| NodeGroups | `[]BareMetalNodeGroup` |  |  |
+| ssh | `BareMetalSSHConfig` |  |  |
+| controlPlane | `BareMetalControlPlane` |  |  |
+| nodeGroups | `[]BareMetalNodeGroup` |  |  |
 
 ## BareMetalControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Endpoint | `BareMetalControlPlaneEndpoint` |  |  |
-| Hosts | `[]BareMetalHost` |  |  |
+| endpoint | `BareMetalControlPlaneEndpoint` |  |  |
+| hosts | `[]BareMetalHost` |  |  |
 
 ## BareMetalControlPlaneEndpoint
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Host | `string` |  |  |
-| Port | `uint` | 6443 |  |
+| host | `string` |  |  |
+| port | `uint` | 6443 |  |
 
 ## BareMetalHost
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| PublicAddress | `string` |  |  |
-| PrivateAddress | `string` |  |  |
-| SSH | `BareMetalSSHConfig` |  |  |
+| publicAddress | `string` |  |  |
+| privateAddress | `string` |  |  |
+| ssh | `BareMetalSSHConfig` |  |  |
 
 ## BareMetalNodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Hosts | `[]BareMetalHost` |  |  |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| hosts | `[]BareMetalHost` |  |  |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## BareMetalSSHConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Port | `uint` | 22 |  |
-| PrivateKey | `SSHPrivateKeyConfig` |  |  |
+| port | `uint` | 22 |  |
+| privateKey | `SSHPrivateKeyConfig` |  |  |
 
 ## CEPHConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| DeviceFilter | `string` |  |  |
+| deviceFilter | `string` |  |  |
 
 ## CanonicalUbuntuImage
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Offer | `string` |  |  |
-| SKU | `string` |  |  |
+| offer | `string` |  |  |
+| sku | `string` |  |  |
 
 ## CloudConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| AWS | `AWSConfig` |  |  |
-| Azure | `AzureConfig` |  |  |
-| Hetzner | `HetznerConfig` |  |  |
-| BareMetal | `BareMetalConfig` |  |  |
-| Local | `LocalConfig` |  |  |
-| DisasterRecovery | `DisasterRecoveryConfig` |  |  |
+| aws | `AWSConfig` |  |  |
+| azure | `AzureConfig` |  |  |
+| hetzner | `HetznerConfig` |  |  |
+| bare-metal | `BareMetalConfig` |  |  |
+| local | `LocalConfig` |  |  |
+| disasterRecovery | `DisasterRecoveryConfig` |  |  |
 
 ## ClusterConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Name | `string` |  | Name of the Kubernetes cluster.<br><br>We don't allow using dots in the cluster name, since it can cause issues with tools like<br>ClusterAPI and Cilium : which use the cluster name to generate other configurations.<br> |
-| K8sVersion | `string` |  | Kubernetes version ( >= 1.30.0).<br> |
-| EnableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
-| APIServer | `APIServerConfig` |  | Configuration options for the Kubernetes API server.<br> |
-| AdditionalUsers | `[]UserConfig` |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
-| ArgoCD | `ArgoCDConfig` |  | ArgoCD specific details.<br> |
+| name | `string` |  | Name of the Kubernetes cluster.
+
+We don&#39;t allow using dots in the cluster name, since it can cause issues with tools like
+ClusterAPI and Cilium : which use the cluster name to generate other configurations.
+ |
+| k8sVersion | `string` |  | Kubernetes version (&gt;= 1.30.0).
+ |
+| enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.
+Suitable Kubernetes API configurations will be done for you automatically. And they can be
+changed using the apiSever struct field.
+ |
+| apiServer | `APIServerConfig` |  | Configuration options for the Kubernetes API server.
+ |
+| additionalUsers | `[]UserConfig` |  | Other than the root user, addtional users that you would like to be created in each node.
+NOTE : Currently, we can&#39;t register additional SSH key-pairs against the root user.
+ |
 
 ## DisasterRecoveryConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| VeleroBackupsBucketName | `string` |  |  |
-| SealedSecretsBackupsBucketName | `string` |  |  |
+| veleroBackupsBucketName | `string` |  |  |
+| sealedSecretsBackupsBucketName | `string` |  |  |
 
 ## FileConfig
 
-<p>REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".File.</p>
+&lt;p&gt;REFER : &#34;sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1&#34;.File.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Path | `string` |  |  |
-| Content | `string` |  |  |
+| path | `string` |  |  |
+| content | `string` |  |  |
 
-## ForkURLsConfig
+## ForksConfig
 
-<p>KubeAid and KubeAid Config repository speicific details.
-For now, we require the KubeAid and KubeAid Config repositories to be hosted in the same
-Git server.</p>
+&lt;p&gt;KubeAid and KubeAid Config repository specific details.
+We require the KubeAid and KubeAid Config repositories to be hosted in the same Git server.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| HTTPs | `HTTPsForkURLsConfig` |  |  |
-| SSH | `SSHForkURLsConfig` |  |  |
-| KubeaidFork | `KubeAidForkConfig` |  | KubeAid repository specific details.<br> |
-| KubeaidConfigFork | `KubeaidConfigForkConfig` |  | KubeAid Config repository specific details.<br> |
+| kubeaid | `KubeAidForkConfig` |  | KubeAid repository specific details.
+ |
+| kubeaidConfig | `KubeaidConfigForkConfig` |  | KubeAid Config repository specific details.
+ |
 
 ## GeneralConfig
 
-<p>Non secret configuration options.</p>
+&lt;p&gt;Non secret configuration options.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Git | `GitConfig` |  | Git server specific details.<br> |
-| ForkURLs | `ForkURLsConfig` |  | KubeAid and KubeAid Config repository specific details.<br>The KubeAid and KubeAid Config repositories must be hosted in the same Git server.<br> |
-| Cluster | `ClusterConfig` |  | Kubernetes specific details.<br> |
-| Cloud | `CloudConfig` |  | Cloud provider specific details.<br> |
-| KubePrometheus | `KubePrometheusConfig` |  | Kube Prometheus installation specific details.<br> |
-| Obmondo | `ObmondoConfig` |  | Obmondo customer specific details.<br> |
+| git | `GitConfig` |  | Git server specific details.
+ |
+| forkURLs | `ForksConfig` |  | KubeAid and KubeAid Config repository specific details.
+The KubeAid and KubeAid Config repositories must be hosted in the same Git server.
+ |
+| cluster | `ClusterConfig` |  | Kubernetes specific details.
+ |
+| cloud | `CloudConfig` |  | Cloud provider specific details.
+ |
+| kubePrometheus | `KubePrometheusConfig` |  | Kube Prometheus installation specific details.
+ |
+| obmondo | `ObmondoConfig` |  | Obmondo customer specific details.
+ |
 
 ## GitConfig
 
-<p></p>
+&lt;p&gt;Git specific details, used by KubeAid CLI,
+to clone repositories from and push changes to the Git server.
+We enforce the user to use SSH, for authenticating to the Git server.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| CABundlePath | `string` |  |  |
-| UseSSHAgentAuth | `bool` |  | Use the SSH Agent, to clone repositories from and push changes to the Git<br>server.<br> |
-| PrivateKeyFilePath | `string` |  |  |
+| caBundlePath | `string` |  |  |
+| sshUsername | `string` | git | SSH username.
+ |
+| useSSHAgent | `bool` |  | Or, make KubeAid CLI use the SSH Agent.
+So, you (the one who runs KubeAid CLI) can use your YubiKey.
+ |
+| privateKeyFilePath | `string` |  |  |
 
 ## GitCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Username | `string` |  |  |
-| Password | `string` |  |  |
-
-## GitRepositoryURL
-
-<p>Git repository URL, in different formats : like HTTPs and SSH.
-When multiple formats are specified, the following priority list is followed :
-SSH > HTTPs.</p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| HTTPs | `string` |  | Repository URL, in HTTPs format.<br> |
-| SSH | `string` |  | Repository URL, in SSH format.<br> |
-
-## GitUsernameAndPassword
-
-<p></p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| Username | `string` |  |  |
-| Password | `string` |  |  |
+| username | `string` |  |  |
+| password | `string` |  |  |
 
 ## HCloudAutoScalableNodeGroup
 
-<p>Details about (autoscalable) node-groups in HCloud.</p>
+&lt;p&gt;Details about (autoscalable) node-groups in HCloud.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| MachineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| MinSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| Maxsize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| machineType | `string` |  | HCloud machine type.
+You can browse all available HCloud machine types here : https://hetzner.com/cloud.
+ |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
+ |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## HCloudControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| MachineType | `string` |  |  |
-| Replicas | `uint` |  |  |
-| LoadBalancer | `HCloudControlPlaneLoadBalancer` |  |  |
+| machineType | `string` |  |  |
+| replicas | `uint` |  |  |
+| loadBalancer | `HCloudControlPlaneLoadBalancer` |  |  |
 
 ## HCloudControlPlaneLoadBalancer
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Enabled | `bool` |  |  |
-| Region | `string` |  |  |
+| enabled | `bool` |  |  |
+| region | `string` |  |  |
 
 ## HetznerBareMetalConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| WipeDisks | `bool` | false |  |
-| InstallImage | `InstallImageConfig` |  |  |
-| SSHKeyPair | `HetznerBareMetalSSHKeyPair` |  |  |
-| DiskLayoutSetupCommands | `string` |  |  |
-| CEPH | `CEPHConfig` |  |  |
+| wipeDisks | `bool` | false |  |
+| installImage | `InstallImageConfig` |  |  |
+| sshKeyPair | `HetznerBareMetalSSHKeyPair` |  |  |
+| diskLayoutSetupCommands | `string` |  |  |
+| ceph | `CEPHConfig` |  |  |
 
 ## HetznerBareMetalControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Endpoint | `HetznerBareMetalControlPlaneEndpoint` |  |  |
-| BareMetalHosts | `[]HetznerBareMetalHost` |  |  |
-| DiskLayoutSetupCommands | `string` |  |  |
+| endpoint | `HetznerBareMetalControlPlaneEndpoint` |  |  |
+| bareMetalHosts | `[]HetznerBareMetalHost` |  |  |
+| diskLayoutSetupCommands | `string` |  |  |
 
 ## HetznerBareMetalControlPlaneEndpoint
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| IsFailoverIP | `bool` |  |  |
-| Host | `string` |  |  |
+| isFailoverIP | `bool` |  |  |
+| host | `string` |  |  |
 
 ## HetznerBareMetalHost
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ServerID | `string` |  |  |
-| WWNs | `[]string` |  |  |
+| serverID | `string` |  |  |
+| wwns | `[]string` |  |  |
 
 ## HetznerBareMetalNodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| BareMetalHosts | `[]HetznerBareMetalHost` |  |  |
-| DiskLayoutSetupCommands | `string` |  |  |
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| bareMetalHosts | `[]HetznerBareMetalHost` |  |  |
+| diskLayoutSetupCommands | `string` |  |  |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## HetznerBareMetalSSHKeyPair
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Name | `string` |  |  |
-| PrivateKeyFilePath | `string` |  |  |
-| PublicKeyFilePath | `string` |  |  |
+| name | `string` |  |  |
+| privateKeyFilePath | `string` |  |  |
+| publicKeyFilePath | `string` |  |  |
 
 ## HetznerConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Mode | `string` | hcloud | The Hetzner mode to use :<br><br>  1. hcloud : Both the control-plane and the nodegroups will be in HCloud.<br><br>  2. bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.<br><br>  3. hybrid : The control-plane will be in HCloud, and each node-group can be either in<br>              HCloud or Hetzner Bare Metal.<br> |
-| VSwitch | `VSwitchConfig` |  |  |
-| HCloud | `HetznerHCloudConfig` |  |  |
-| BareMetal | `HetznerBareMetalConfig` |  |  |
-| ControlPlane | `HetznerControlPlane` |  |  |
-| NodeGroups | `HetznerNodeGroups` |  | Details about node-groups in Hetzner.<br> |
+| mode | `string` | hcloud | The Hetzner mode to use :
+
+  1. hcloud : Both the control-plane and the nodegroups will be in HCloud.
+
+  2. bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.
+
+  3. hybrid : The control-plane will be in HCloud, and each node-group can be either in
+              HCloud or Hetzner Bare Metal.
+ |
+| vswitch | `VSwitchConfig` |  |  |
+| hcloud | `HetznerHCloudConfig` |  |  |
+| bareMetal | `HetznerBareMetalConfig` |  |  |
+| controlPlane | `HetznerControlPlane` |  |  |
+| nodeGroups | `HetznerNodeGroups` |  | Details about node-groups in Hetzner.
+ |
 
 ## HetznerControlPlane
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| HCloud | `HCloudControlPlane` |  |  |
-| BareMetal | `HetznerBareMetalControlPlane` |  |  |
-| Regions | `[]string` |  |  |
+| hcloud | `HCloudControlPlane` |  |  |
+| bareMetal | `HetznerBareMetalControlPlane` |  |  |
+| regions | `[]string` |  |  |
 
 ## HetznerCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| APIToken | `string` |  |  |
-| Robot | `HetznerRobotCredentials` |  |  |
+| apiToken | `string` |  |  |
+| robot | `HetznerRobotCredentials` |  |  |
 
 ## HetznerHCloudConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Zone | `string` |  |  |
-| ImageName | `string` | ubuntu-24.04 |  |
-| SSHKeyPairName | `string` |  |  |
+| zone | `string` |  |  |
+| imageName | `string` | ubuntu-24.04 |  |
+| sshKeyPairName | `string` |  |  |
 
 ## HetznerNodeGroups
 
-<p>Details about node-groups in Hetzner.</p>
+&lt;p&gt;Details about node-groups in Hetzner.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| HCloud | `[]HCloudAutoScalableNodeGroup` |  | Details about node-groups in HCloud.<br> |
-| BareMetal | `[]HetznerBareMetalNodeGroup` |  | Details about node-groups in Hetzner Bare Metal.<br> |
+| hcloud | `[]HCloudAutoScalableNodeGroup` |  | Details about node-groups in HCloud.
+ |
+| bareMetal | `[]HetznerBareMetalNodeGroup` |  | Details about node-groups in Hetzner Bare Metal.
+ |
 
 ## HetznerRobotCredentials
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| User | `string` |  |  |
-| Password | `string` |  |  |
+| user | `string` |  |  |
+| password | `string` |  |  |
 
 ## HostPathMountConfig
 
-<p>REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount</p>
+&lt;p&gt;REFER : &#34;sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1&#34;.HostPathMount&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Name | `string` |  |  |
-| HostPath | `string` |  |  |
-| MountPath | `string` |  |  |
-| PathType | `k8s.io/api/core/v1.HostPathType` |  |  |
-| ReadOnly | `bool` | true | Whether the mount should be read-only.<br> |
+| name | `string` |  |  |
+| hostPath | `string` |  |  |
+| mountPath | `string` |  |  |
+| pathType | `k8s.io/api/core/v1.HostPathType` |  |  |
+| readOnly | `bool` | true | Whether the mount should be read-only.
+ |
 
 ## InstallImageConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ImagePath | `string` | /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz |  |
-| VG0 | `VG0Config` |  |  |
+| imagePath | `string` | /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz |  |
+| vg0 | `VG0Config` |  |  |
 
 ## KubeAidForkConfig
 
-<p>KubeAid repository specific details.</p>
+&lt;p&gt;KubeAid repository specific details.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| URL | `GitRepositoryURL` |  | KubeAid repository URL, in different formats : like HTTPs and SSH.<br> |
-| Version | `string` |  | KubeAid tag.<br> |
+| url | `string` |  | KubeAid repository SSH URL.
+ |
+| version | `string` |  | KubeAid tag.
+ |
 
 ## KubePrometheusConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Version | `string` | v0.15.0 |  |
-| GrafanaURL | `string` |  |  |
+| version | `string` | v0.15.0 |  |
+| grafanaURL | `string` |  |  |
 
 ## KubeaidConfigForkConfig
 
-<p>KubeAid Config repository specific details.</p>
+&lt;p&gt;KubeAid Config repository specific details.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| URL | `GitRepositoryURL` |  | KubeAid Config repository URL, in different formats : like HTTPs and SSH.<br> |
-| Directory | `string` |  | Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid<br>Config files for this cluster will be contained.<br><br>When not specified, the directory name will default to the cluster name.<br><br>So, suppose your cluster name is 'staging'. Then, the directory name will default to<br>'staging'. Or you can customize it to something like 'staging.qa'.<br> |
+| url | `string` |  | KubeAid Config repository SSH URL.
+ |
+| directory | `string` |  | Name of the directory inside your KubeAid Config repository&#39;s k8s folder, where the KubeAid
+Config files for this cluster will be contained.
+
+When not specified, the directory name will default to the cluster name.
+
+So, suppose your cluster name is &#39;staging&#39;. Then, the directory name will default to
+&#39;staging&#39;. Or you can customize it to something like &#39;staging.qa&#39;.
+ |
 
 ## LocalConfig
 
-<p>Local specific.</p>
+&lt;p&gt;Local specific.&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 
 ## NodeGroup
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Name | `string` |  | Nodegroup name.<br> |
-| Labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| Taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| name | `string` |  | Nodegroup name.
+ |
+| labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
+
+Each label should meet one of the following criterias to propagate to each of the nodes :
+
+  1. Has node-role.kubernetes.io as prefix.
+  2. Belongs to node-restriction.kubernetes.io domain.
+  3. Belongs to node.cluster.x-k8s.io domain.
+
+REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
+ |
+| taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
 
 ## ObmondoConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| CustomerID | `string` |  |  |
-| Monitoring | `bool` |  |  |
+| customerID | `string` |  |  |
+| monitoring | `bool` |  |  |
 
 ## SSHKeyPairConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| PublicKeyFilePath | `string` |  |  |
-| PrivateKeyFilePath | `string` |  |  |
+| publicKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  |  |
 
 ## SSHPrivateKeyConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| PrivateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  |  |
 
 ## SecretsConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Git | `GitCredentials` |  |  |
-| ArgoCD | `ArgoCDCredentials` |  |  |
-| AWS | `AWSCredentials` |  |  |
-| Azure | `AzureCredentials` |  |  |
-| Hetzner | `HetznerCredentials` |  |  |
+| argoCD | `ArgoCDCredentials` |  |  |
+| aws | `AWSCredentials` |  |  |
+| azure | `AzureCredentials` |  |  |
+| hetzner | `HetznerCredentials` |  |  |
 
 ## UserConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Name | `string` |  |  |
-| SSHPublicKey | `string` |  |  |
+| name | `string` |  |  |
+| sshPublicKey | `string` |  |  |
 
 ## VG0Config
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| Size | `string` | 25G |  |
-| RootVolumeSize | `string` | 10G |  |
+| size | `string` | 25G |  |
+| rootVolumeSize | `string` | 10G |  |
 
 ## VSwitchConfig
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| VLANID | `int` |  |  |
-| Name | `string` |  |  |
+| vlanID | `int` |  |  |
+| name | `string` |  |  |
 
 ## WorkloadIdentity
 
-<p></p>
+&lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| OpenIDProviderSSHKeyPair | `SSHKeyPairConfig` |  |  |
+| openIDProviderSSHKeyPair | `SSHKeyPairConfig` |  |  |
