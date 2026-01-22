@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package generate
+package config
 
 import (
 	_ "embed"
@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	//go:embed general.yaml
+	//go:embed templates/general.yaml
 	SampleConfigFileGeneral string
 
-	//go:embed secrets.yaml
+	//go:embed templates/secrets.yaml
 	SampleConfigFileSecrets string
 )
 

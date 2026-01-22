@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	SampleGeneralConfigFilePath = "./cmd/kubeaid-core/root/config/generate/general.yaml"
-	SampleSecretsConfigFilePath = "./cmd/kubeaid-core/root/config/generate/secrets.yaml"
+	SampleGeneralConfigFilePath = "./cmd/kubeaid-core/root/config/templates/general.yaml"
+	SampleSecretsConfigFilePath = "./cmd/kubeaid-core/root/config/templates/secrets.yaml"
 )
 
 type SampleConfigGenerator struct {
@@ -40,7 +40,7 @@ func (s *SampleConfigGenerator) generate(ctx context.Context) {
 			sampleConfigFilePath = SampleSecretsConfigFilePath
 
 		default:
-			slog.Error("Unknown root struct", slog.String("name", rootStruct.Name))
+			slog.ErrorContext(ctx, "Unknown root struct", slog.String("name", rootStruct.Name))
 			os.Exit(1)
 		}
 
@@ -56,18 +56,18 @@ func (s *SampleConfigGenerator) generate(ctx context.Context) {
 		assert.AssertErrNil(scopedCtx, err, "Failed opening sample config file")
 		defer sampleConfigFile.Close()
 
-		// Starting from the root struct, we keep going down,
-		// until we hit fields with primitive types.
+		// Starting from the root struct, we keep going down the ant colony (constructing the sample
+		// config file), until we hit fields with primitive types.
 		s.visitStruct(scopedCtx, sampleConfigFile, rootStruct, "")
 	}
 }
 
-func (s *SampleConfigGenerator) visitStruct(ctx context.Context,
+func (scg *SampleConfigGenerator) visitStruct(ctx context.Context,
 	w io.Writer,
-	_struct *structs.Struct,
+	s *structs.Struct,
 	indentation string,
 ) {
-	for _, field := range _struct.Fields {
+	for _, field := range s.Fields {
 		if len(field.Doc) > 0 {
 			for line := range strings.SplitSeq(field.Doc, "\n") {
 				_, err := fmt.Fprintf(w, "%s# %s\n", indentation, line)
@@ -78,11 +78,11 @@ func (s *SampleConfigGenerator) visitStruct(ctx context.Context,
 		_, err := fmt.Fprintf(w, "%s%s:\n\n", indentation, field.Name)
 		assert.AssertErrNil(ctx, err, "Failed writing to file")
 
-		childStruct, ok := s.structs.All[field.Type]
+		childStruct, ok := scg.structs.All[field.Type]
 		if !ok {
 			continue
 		}
 
-		s.visitStruct(ctx, w, childStruct, indentation+"  ")
+		scg.visitStruct(ctx, w, childStruct, indentation+"  ")
 	}
 }

@@ -38,8 +38,8 @@ func main() {
 		sourceFile := sourcefile.NewSourceFile(ctx, sourceFilePath)
 		sourceFiles[i] = sourceFile
 
-		maps.Copy(gatheredStructs.All, sourceFile.Structs.All)
-		gatheredStructs.Roots = append(gatheredStructs.Roots, sourceFile.Structs.Roots...)
+		maps.Copy(gatheredStructs.All, sourceFile.GetStructs().All)
+		gatheredStructs.Roots = append(gatheredStructs.Roots, sourceFile.GetStructs().Roots...)
 	}
 
 	// Resolve embedded struct fields.

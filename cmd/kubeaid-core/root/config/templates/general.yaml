@@ -201,9 +201,9 @@ cloud:
 
         name:
 
-        privateKeyFilePath:
-
         publicKeyFilePath:
+
+        privateKeyFilePath:
 
       diskLayoutSetupCommands:
 

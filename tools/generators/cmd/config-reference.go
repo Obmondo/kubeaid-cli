@@ -23,7 +23,7 @@ const (
 	ConfigReferenceFilePath = "./docs/config-reference.md"
 )
 
-//go:embed config-reference.md.tmpl
+//go:embed templates/config-reference.md.tmpl
 var configReferenceTemplate string
 
 type ConfigReferenceTemplateValues struct {

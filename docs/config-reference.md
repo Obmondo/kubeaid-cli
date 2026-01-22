@@ -462,10 +462,6 @@ So, you (the one who runs KubeAid CLI) can use your YubiKey.
 | machineType | `string` |  | HCloud machine type.
 You can browse all available HCloud machine types here : https://hetzner.com/cloud.
  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
- |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
- |
 | name | `string` |  | Nodegroup name.
  |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
@@ -479,6 +475,10 @@ Each label should meet one of the following criterias to propagate to each of th
 REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
  |
 | taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
  |
 
 ## HCloudControlPlane
@@ -570,8 +570,8 @@ REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metad
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | name | `string` |  |  |
-| privateKeyFilePath | `string` |  |  |
 | publicKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  |  |
 
 ## HetznerConfig
 

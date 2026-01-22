@@ -20,7 +20,7 @@ type SourceFile struct {
 	// For each package import, we map the import name to the import path.
 	imports map[string]string
 
-	Structs *structs.Structs
+	structs *structs.Structs
 }
 
 func NewSourceFile(ctx context.Context, path string) SourceFile {
@@ -57,7 +57,11 @@ func NewSourceFile(ctx context.Context, path string) SourceFile {
 	structs := structs.NewStructsFromAST(ctx, imports, node)
 
 	return SourceFile{
-		imports: imports,
-		Structs: structs,
+		imports,
+		structs,
 	}
+}
+
+func (s *SourceFile) GetStructs() *structs.Structs {
+	return s.structs
 }
