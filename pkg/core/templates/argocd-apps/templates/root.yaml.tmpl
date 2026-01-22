@@ -16,7 +16,7 @@ spec:
   project: kubeaid
   source:
     path: k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps
-    repoURL: {{ .KubeaidConfigFork.URL }}
+    repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
     targetRevision: HEAD
   syncPolicy:
     syncOptions:

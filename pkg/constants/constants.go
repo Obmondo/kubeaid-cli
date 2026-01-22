@@ -12,7 +12,8 @@ var TempDirectory = "/tmp/kubeaid-core"
 
 // Environment variable names.
 const (
-	EnvNameSSHAuthSock = "SSH_AUTH_SOCK"
+	EnvNameSSHAuthSock   = "SSH_AUTH_SOCK"
+	EnvNameSSHKnownHosts = "SSH_KNOWN_HOSTS"
 
 	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
 	EnvNameAWSSecretKey            = "AWS_SECRET_ACCESS_KEY"
@@ -84,19 +85,16 @@ var (
 
 	OutputPathManagementClusterK3DConfig = path.Join(OutputsDirectory, "k3d.config.yaml")
 
-	OutputPathManagementClusterHostKubeconfig = path.Join(
-		OutputsDirectory,
+	OutputPathManagementClusterHostKubeconfig = path.Join(OutputsDirectory,
 		"kubeconfigs/clusters/management/host.yaml",
 	)
-	OutputPathManagementClusterContainerKubeconfig = path.Join(
-		OutputsDirectory,
+	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputsDirectory,
 		"kubeconfigs/clusters/management/container.yaml",
 	)
 
 	OutputPathMainClusterKubeconfig = path.Join(OutputsDirectory, "kubeconfigs/clusters/main.yaml")
 
-	OutputPathJWKSDocument = path.Join(
-		OutputsDirectory,
+	OutputPathJWKSDocument = path.Join(OutputsDirectory,
 		"workload-identity/openid-provider/jwks.json",
 	)
 )

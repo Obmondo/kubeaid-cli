@@ -6,9 +6,7 @@ package git
 import (
 	"context"
 	"log/slog"
-	"net/url"
 	"path"
-	"strings"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -20,26 +18,18 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-// GetRepoDir( ) gets invoked pretty frequently by utils.GetKubeAidConfigDir( ). And everytime we
-// don't want to reparse the same repository URL.
-// So, let's cache the return values of GetRepoDir( ) in this Hashmap.
-var repoDirs = map[string]string{}
-
 // Returns path to the directory where the given repository will be cloned.
-func GetRepoDir(url string) string {
-	// Check whether the return value is cached.
-	// If yes, then return that. We don't want to parse the same repository URL again and again.
-	repoDir, ok := repoDirs[url]
-	if ok {
-		return repoDir
-	}
-
-	parsedURL, err := gogiturl.NewGitURL(strings.TrimPrefix(url, "ssh://"))
-	assert.AssertErrNil(context.Background(), err, "Failed parsing git URL", slog.String("url", url))
-
+func GetRepoDir(parsedURL gogiturl.IGitURL) string {
 	return path.Join(constants.TempDirectory,
 		parsedURL.GetHostName(), parsedURL.GetOwnerName(), parsedURL.GetRepoName(),
 	)
+}
+
+func MustParseURL(ctx context.Context, sshURL string) gogiturl.IGitURL {
+	parsedURL, err := gogiturl.NewGitURL(sshURL)
+	assert.AssertErrNil(ctx, err, "Failed parsing SSH URL of Git repository")
+
+	return parsedURL
 }
 
 func GetDefaultBranchName(ctx context.Context,
@@ -70,12 +60,4 @@ func GetDefaultBranchName(ctx context.Context,
 	}
 
 	panic("Failed detecting default branch name")
-}
-
-// Returns hostname of customer's git server.
-func GetCustomerGitServerHostName(ctx context.Context) string {
-	kubeaidConfigURL, err := url.Parse(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL)
-	assert.AssertErrNil(ctx, err, "Failed parsing KubeAid config URL")
-
-	return kubeaidConfigURL.Hostname()
 }

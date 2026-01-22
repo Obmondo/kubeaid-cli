@@ -13,7 +13,7 @@ metadata:
 
 stringData:
   name: {{ $kubeaidConfigRepositoryName }}
-  url: {{ .KubeaidConfigFork.URL }}
+  url: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
   type: git
 
   username: {{ .ArgoCDCredentials.Git.Username }}

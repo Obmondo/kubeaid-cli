@@ -21,6 +21,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 )
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
@@ -48,11 +49,18 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		err = defaults.Set(config.ParsedGeneralConfig)
 		assert.AssertErrNil(ctx, err, "Failed setting defaults for parsed general config")
 
+		forks := &config.ParsedGeneralConfig.Forks
+
 		// When the user has not set the KubeAid Config directory name, default it to the cluster name.
 		// The KubeAid config files for the cluster will be generated in that directory.
-		if len(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory) == 0 {
-			config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory = config.ParsedGeneralConfig.Cluster.Name
+		if len(forks.KubeaidConfigFork.Directory) == 0 {
+			forks.KubeaidConfigFork.Directory = config.ParsedGeneralConfig.Cluster.Name
 		}
+
+		// Parse Git repository URLs, and store the result in the config.
+		// This will later come handy in a lot of places.
+		forks.KubeaidFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidFork.URL)
+		forks.KubeaidConfigFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidConfigFork.URL)
 
 		// When the user has provided a custom CA certificate path,
 		// read and store the custom CA certificate in config.

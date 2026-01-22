@@ -92,10 +92,6 @@ recover-cluster-aws:
     --configs-directory ./outputs/configs/aws/ \
     --skip-pr-workflow
 
-.PHONY: sample-config-generate-azure
-sample-config-generate-azure:
-	@go run ./cmd/kubeaid-core config generate azure
-
 .PHONY: devenv-create-azure
 devenv-create-azure:
 	@go run ./cmd/kubeaid-core devenv create \
@@ -130,11 +126,6 @@ recover-cluster-azure:
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-workflow
 
-.PHONY: sample-config-generate-hcloud
-sample-config-generate-hcloud:
-	@go run ./cmd/kubeaid-core config generate hetzner hcloud \
-    --configs-directory ./outputs/configs/hetzner/hcloud
-
 .PHONY: devenv-create-hcloud
 devenv-create-hcloud:
 	@go run ./cmd/kubeaid-core devenv create \
@@ -155,10 +146,6 @@ bootstrap-cluster-hcloud:
 delete-provisioned-cluster-hcloud:
 	@go run ./cmd/kubeaid-core cluster delete \
     --configs-directory ./outputs/configs/hetzner/hcloud/
-
-.PHONY: sample-config-generate-hcloud
-sample-config-generate-hetzner-bare-metal:
-	@go run ./cmd/kubeaid-core config generate hetzner bare-metal
 
 .PHONY: devenv-create-hetzner-bare-metal
 devenv-create-hetzner-bare-metal:
@@ -181,10 +168,6 @@ delete-provisioned-cluster-hetzner-bare-metal:
     --debug \
     --configs-directory ./outputs/configs/hetzner/bare-metal/
 
-.PHONY: sample-config-generate-hetzner-hybrid
-sample-config-generate-hetzner-hybrid:
-	@go run ./cmd/kubeaid-core config generate hetzner hybrid
-
 .PHONY: devenv-create-hetzner-hybrid
 devenv-create-hetzner-hybrid:
 	@go run ./cmd/kubeaid-core devenv create \
@@ -206,10 +189,6 @@ delete-provisioned-cluster-hetzner-hybrid:
 	@go run ./cmd/kubeaid-core cluster delete \
     --debug \
     --configs-directory ./outputs/configs/hetzner/hybrid/
-
-.PHONY: sample-config-generate-bare-metal
-sample-config-generate-bare-metal:
-	@go run ./cmd/kubeaid-core config generate bare-metal
 
 .PHONY: devenv-create-bare-metal
 devenv-create-bare-metal:
@@ -238,10 +217,6 @@ delete-provisioned-cluster-bare-metal:
 	@go run ./cmd/kubeaid-core cluster delete \
     --debug \
     --configs-directory ./outputs/configs/bare-metal/
-
-.PHONY: sample-config-generate-local
-sample-config-generate-local:
-	@go run ./cmd/kubeaid-core config generate local
 
 .PHONY: bootstrap-cluster-local
 bootstrap-cluster-local:

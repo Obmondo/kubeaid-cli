@@ -5,11 +5,8 @@ package git
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"errors"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
@@ -20,7 +17,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
@@ -30,13 +26,13 @@ import (
 // changes.
 func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod) *goGit.Repository {
 	// Determine the path, where this repository will be / is cloned.
-	path := GetRepoDir(url)
+	path := GetRepoDir(MustParseURL(ctx, url))
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("repo", url), slog.String("path", path),
 	})
 
-	// If the repo is already cloned.
+	// When the repo is already cloned.
 	if _, err := os.ReadDir(path); err == nil {
 		repo, err := goGit.PlainOpen(path)
 		if err != nil && errors.Is(err, goGit.ErrRepositoryNotExists) {
@@ -58,14 +54,8 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 
 	opts := &goGit.CloneOptions{
 		URL:      url,
-		Auth:     nil,
+		Auth:     authMethod,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
-	}
-
-	isPrivate, err := isRepoPrivate(ctx, url)
-	assert.AssertErrNil(ctx, err, "Failed to determine repo visibility")
-	if isPrivate {
-		opts.Auth = authMethod
 	}
 
 	repo, err := goGit.PlainClone(path, false, opts)
@@ -134,46 +124,4 @@ func initRepo(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
 	return repo
-}
-
-// Returns whether the given git repository is private or not.
-func isRepoPrivate(ctx context.Context, repoURL string) (bool, error) {
-	// User is using SSH private key to authenticate against the git server.
-	// The repository is then definitely private.
-	if config.ParsedGeneralConfig.Git.SSHPrivateKeyConfig != nil {
-		return true, nil
-	}
-
-	// We'll send an HTTP GET request to the repository URL.
-	// If the request succeeds with a statuscode of 200, that means the repository is public.
-	// Otherwise, it's private.
-
-	client := &http.Client{}
-
-	// Use CA bundle, provided by the user, when dealing with his / her git server.
-	caBundle := config.ParsedGeneralConfig.Git.CABundle
-	if (repoURL != constants.RepoURLObmondoKubeAid) && (len(caBundle) > 0) {
-		certPool := x509.NewCertPool()
-
-		ok := certPool.AppendCertsFromPEM(caBundle)
-		assert.Assert(ctx, ok, "Failed to add custom CA bundle to cert pool")
-
-		client.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{
-				RootCAs: certPool,
-			},
-		}
-	}
-
-	request, err := http.NewRequest(http.MethodGet, repoURL, nil)
-	assert.AssertErrNil(ctx, err, "Failed constructing HTTP request")
-
-	response, err := client.Do(request)
-	if err != nil {
-		return false, err
-	}
-	defer response.Body.Close()
-
-	isRepoPrivate := (response.StatusCode != http.StatusOK)
-	return isRepoPrivate, nil
 }

@@ -30,9 +30,9 @@ func AddCommitAndPushChanges(ctx context.Context,
 	clusterName string,
 	commitMessage string,
 ) plumbing.Hash {
-	err := workTree.AddGlob(fmt.Sprintf(
-		"k8s/%s/*", config.ParsedGeneralConfig.Forks.KubeaidConfigFork.Directory,
-	))
+	kubeaidConfigFork := config.ParsedGeneralConfig.Forks.KubeaidConfigFork
+
+	err := workTree.AddGlob(fmt.Sprintf("k8s/%s/*", kubeaidConfigFork.Directory))
 	assert.AssertErrNil(ctx, err, "Failed adding changes to git")
 
 	status, err := workTree.Status()
@@ -62,39 +62,24 @@ func AddCommitAndPushChanges(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
-	slog.InfoContext(ctx,
-		"Added, committed and pushed changes",
+	slog.InfoContext(ctx, "Added, committed and pushed changes",
 		slog.String("commit-hash", commitObject.Hash.String()),
 	)
 
-	// If we didn't push the changes to the default branch, and rather to a feature branch,
-	// then prompt the user to create a PR against and merge those changes into the default branch.
+	// When we didn't push the changes to the default branch, and rather to a feature branch,
+	// prompt the user to create a PR against, and merge those changes into the default branch.
 	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
 	if branch != defaultBranchName {
-		slog.InfoContext(ctx,
-			"Create and merge PR please",
-			slog.String("URL", getCreatePRURL(branch)),
+		createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
+			strings.TrimSuffix(kubeaidConfigFork.ParsedURL.GetHttpCloneURL(), ".git"),
+			kubeaidConfigFork.ParsedURL.GetOwnerName(), kubeaidConfigFork.ParsedURL.GetRepoName(),
+			branch,
 		)
+
+		slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", createPRURL))
 	}
 
 	return commitObject.Hash
-}
-
-func getCreatePRURL(fromBranch string) string {
-	var (
-		parts = strings.Split(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, "/")
-
-		repoOwner = parts[len(parts)-2]
-		repoName  = strings.Split(parts[len(parts)-1], ".git")[0]
-	)
-
-	createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-		strings.TrimSuffix(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, ".git"),
-		repoOwner, repoName,
-		fromBranch,
-	)
-
-	return createPRURL
 }
 
 // TODO : Sometimes we get this error while trying to detect whether the branch has been merged

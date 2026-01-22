@@ -4,6 +4,7 @@
 package config
 
 import (
+	gogiturl "github.com/kubescape/go-git-url"
 	coreV1 "k8s.io/api/core/v1"
 )
 
@@ -68,7 +69,8 @@ type (
 	// KubeAid repository specific details.
 	KubeAidForkConfig struct {
 		// KubeAid repository SSH URL.
-		URL string `yaml:"url" validate:"required"`
+		URL       string `yaml:"url" validate:"required"`
+		ParsedURL gogiturl.IGitURL
 
 		// KubeAid tag.
 		Version string `yaml:"version" validate:"notblank"`
@@ -77,7 +79,8 @@ type (
 	// KubeAid Config repository specific details.
 	KubeaidConfigForkConfig struct {
 		// KubeAid Config repository SSH URL.
-		URL string `yaml:"url" validate:"required"`
+		URL       string `yaml:"url" validate:"required"`
+		ParsedURL gogiturl.IGitURL
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
 		// Config files for this cluster will be contained.

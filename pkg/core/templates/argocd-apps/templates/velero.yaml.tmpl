@@ -15,13 +15,13 @@ spec:
     namespace: velero
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.URL }}
+    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
       path: argocd-helm-charts/velero
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-velero.yaml
-    - repoURL: {{ .KubeaidConfigFork.URL }}
+    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:
