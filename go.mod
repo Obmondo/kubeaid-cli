@@ -43,7 +43,6 @@ require (
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
 	github.com/spf13/cobra v1.10.2
-	github.com/stretchr/testify v1.10.0
 	github.com/syself/cluster-api-provider-hetzner v1.0.7
 	github.com/vmware-tanzu/velero v1.16.1
 	golang.org/x/crypto v0.46.0
@@ -304,6 +303,7 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spf13/viper v1.20.1 // indirect
 	github.com/stoewer/go-strcase v1.3.0 // indirect
+	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/theupdateframework/notary v0.7.0 // indirect
 	github.com/valyala/fastjson v1.6.4 // indirect

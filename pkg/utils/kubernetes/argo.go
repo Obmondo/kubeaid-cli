@@ -34,7 +34,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -94,7 +93,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 			Upsert: true,
 			Certificates: &argoCDV1Aplha1.RepositoryCertificateList{
 				Items: []argoCDV1Aplha1.RepositoryCertificate{{
-					ServerName: git.GetCustomerGitServerHostName(ctx),
+					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.GetURL().Host,
 					CertType:   "https",
 					CertData:   config.ParsedGeneralConfig.Git.CABundle,
 				}},

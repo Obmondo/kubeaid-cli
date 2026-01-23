@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/cluster"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/devenv"
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -36,6 +37,7 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
+	RootCmd.AddCommand(config.ConfigCmd)
 	RootCmd.AddCommand(devenv.DevenvCmd)
 	RootCmd.AddCommand(cluster.ClusterCmd)
 	RootCmd.AddCommand(version.VersionCommand)

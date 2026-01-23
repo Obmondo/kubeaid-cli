@@ -68,12 +68,12 @@ func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
 
 // Returns path to the directory where the KubeAid repository is cloned.
 func GetKubeAidDir() string {
-	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidFork.URL)
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL)
 }
 
 // Returns path to the directory where the KubeAid Config repository is cloned.
 func GetKubeAidConfigDir() string {
-	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL)
+	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL)
 }
 
 // Returns path to the directory containing cluster specific config, in the KubeAid Config dir.

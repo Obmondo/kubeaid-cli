@@ -13,20 +13,8 @@ metadata:
 
 stringData:
   name: {{ $kubeaidConfigRepositoryName }}
-  url: {{ .KubeaidConfigFork.URL }}
+  url: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
   type: git
 
-  {{/* When git authentication method is 'using SSH private key'. */}}
-  {{- if .GitConfig.SSHPrivateKeyConfig }}
-  sshPrivateKey: |
-    {{- $sshKey := .GitConfig.PrivateKey }}
-    {{- $lines := split $sshKey "\n" }}
-    {{- range $index, $line := $lines }}
-        {{ $line }}
-    {{- end }}
-
-  {{/* When git authentication method is 'username + password'. */}}
-  {{- else }}
-  username: {{ .GitCredentials.Username }}
-  password: {{ .GitCredentials.Password }}
-  {{- end }}
+  username: {{ .ArgoCDCredentials.Git.Username }}
+  password: {{ .ArgoCDCredentials.Git.Password }}

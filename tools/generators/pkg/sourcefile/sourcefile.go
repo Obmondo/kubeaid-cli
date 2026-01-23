@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package main
+package sourcefile
 
 import (
 	"context"
@@ -13,13 +13,14 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/tools/generators/pkg/structs"
 )
 
 type SourceFile struct {
 	// For each package import, we map the import name to the import path.
-	Imports map[string]string
+	imports map[string]string
 
-	Structs *Structs
+	structs *structs.Structs
 }
 
 func NewSourceFile(ctx context.Context, path string) SourceFile {
@@ -27,7 +28,7 @@ func NewSourceFile(ctx context.Context, path string) SourceFile {
 		slog.String("path", path),
 	})
 
-	// Determine the absolute path.
+	// Determine the absolute file path.
 	path, err := filepath.Abs(path)
 	assert.AssertErrNil(ctx, err, "Failed determining absolute path")
 
@@ -53,10 +54,14 @@ func NewSourceFile(ctx context.Context, path string) SourceFile {
 	}
 
 	// Collect structs.
-	structs := NewStructsFromAST(ctx, imports, node)
+	structs := structs.NewStructsFromAST(ctx, imports, node)
 
 	return SourceFile{
-		Imports: imports,
-		Structs: structs,
+		imports,
+		structs,
 	}
+}
+
+func (s *SourceFile) GetStructs() *structs.Structs {
+	return s.structs
 }

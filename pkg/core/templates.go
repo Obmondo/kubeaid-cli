@@ -14,7 +14,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -24,12 +23,11 @@ var KubeaidConfigFileTemplates embed.FS
 type TemplateValues struct {
 	GeneralConfigFileContents string
 
-	CustomerGitServerHostname string
 	config.GitConfig
-	config.GitCredentials
 	config.ForksConfig
 
 	config.ClusterConfig
+	config.ArgoCDCredentials
 	config.KubePrometheusConfig
 	CAPIClusterNamespace string
 
@@ -61,12 +59,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	templateValues := &TemplateValues{
 		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
 
-		CustomerGitServerHostname: git.GetCustomerGitServerHostName(ctx),
-		GitConfig:                 config.ParsedGeneralConfig.Git,
-		GitCredentials:            config.ParsedSecretsConfig.Git,
-		ForksConfig:               config.ParsedGeneralConfig.Forks,
+		GitConfig:   config.ParsedGeneralConfig.Git,
+		ForksConfig: config.ParsedGeneralConfig.Forks,
 
 		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
+		ArgoCDCredentials:    config.ParsedSecretsConfig.ArgoCD,
 		KubePrometheusConfig: config.ParsedGeneralConfig.KubePrometheus,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 

@@ -13,13 +13,13 @@ spec:
     server: https://kubernetes.default.svc
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.URL }}
+    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
       path: argocd-helm-charts/cilium
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-cilium.yaml
-    - repoURL: {{ .KubeaidConfigFork.URL }}
+    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:

@@ -15,13 +15,13 @@ spec:
     namespace: cluster-api-operator
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.URL }}
+    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
       path: argocd-helm-charts/cluster-api-operator
       targetRevision: 16.0.1
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-cluster-api-operator.yaml
-    - repoURL: {{ .KubeaidConfigFork.URL }}
+    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:
