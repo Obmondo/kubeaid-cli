@@ -102,6 +102,10 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
+ |
 | name | `string` |  | Nodegroup name.
  |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
@@ -115,10 +119,6 @@ Each label should meet one of the following criterias to propagate to each of th
 REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
  |
 | taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
- |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
- |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
  |
 
 ## AWSConfig
@@ -200,10 +200,6 @@ REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metad
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
- |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
- |
 | name | `string` |  | Nodegroup name.
  |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
@@ -217,6 +213,10 @@ Each label should meet one of the following criterias to propagate to each of th
 REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
  |
 | taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
  |
 
 ## AzureConfig
