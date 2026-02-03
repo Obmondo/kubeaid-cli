@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-kubeaid
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+
+stringData:
+  name: kubeaid
+  url: {{ .KubeaidFork.URL }}
+  type: git
+  sshPrivateKey: |-
+{{- .ClusterConfig.ArgoCD.DeployKeys.Kubeaid.PrivateKey | nindent 4 }}

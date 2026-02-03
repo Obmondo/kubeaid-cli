@@ -4,7 +4,7 @@ cask "kubeaid-cli" do
   desc "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a
 GitOps native way"
   homepage "https://github.com/Obmondo/kubeaid-cli"
-  version "0.17.1"
+  version "0.18.0"
 
   livecheck do
     skip "Auto-generated on release."
@@ -15,22 +15,22 @@ GitOps native way"
   on_macos do
     on_intel do
       url "https://github.com/Obmondo/kubeaid-cli/releases/download/v#{version}/kubeaid-cli_Darwin_x86_64.tar.gz"
-      sha256 "e573cb0e6eab16ed45414a3ffb7d2bd97354e547791e4dd8ebca80d7f958dcfd"
+      sha256 "12a2254292537648bb92384ca15425323408f402a32d45f3cf23cd3dab1c2d4f"
     end
     on_arm do
       url "https://github.com/Obmondo/kubeaid-cli/releases/download/v#{version}/kubeaid-cli_Darwin_arm64.tar.gz"
-      sha256 "655f6156387b445b5b314010e04a86137f9364d103c380fcb93c0eab84f9df3a"
+      sha256 "81a8a0f247a4e2a72862df2dc262ee342be59c9402dd2ea00839d10fce592ec0"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/Obmondo/kubeaid-cli/releases/download/v#{version}/kubeaid-cli_Linux_x86_64.tar.gz"
-      sha256 "40bb2964fbd43c392c93401d096ef90e785ecf77c734634477a645fdadcbc9a8"
+      sha256 "a20b4511b82ea08e8950ea8b2ed14183ef634a45b57ca4ae31059030ba5f4f40"
     end
     on_arm do
       url "https://github.com/Obmondo/kubeaid-cli/releases/download/v#{version}/kubeaid-cli_Linux_arm64.tar.gz"
-      sha256 "da4420a3af2816702e919db5e79917690d7c9bb8860f9d6dec37921cae4305b8"
+      sha256 "4bfb237f8b1355dfb9db4359ff9b955662a78a098b475eccd884dc6156e7d988"
     end
   end
 

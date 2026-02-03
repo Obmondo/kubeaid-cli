@@ -18,41 +18,47 @@ import (
 )
 
 func hydrateSSHKeyConfigs() {
+	generalConfig := config.ParsedGeneralConfig
+
+	// Deploy keys used by ArgoCD to access the KubeAid and KubeAid Config repositories.
+	hydrateSSHPrivateKeyConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid)
+	hydrateSSHPrivateKeyConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig)
+
 	// When using SSH private key to authenticate against git.
-	if config.ParsedGeneralConfig.Git.SSHPrivateKeyConfig != nil {
-		hydrateSSHPrivateKeyConfig(config.ParsedGeneralConfig.Git.SSHPrivateKeyConfig)
+	if generalConfig.Git.SSHPrivateKeyConfig != nil {
+		hydrateSSHPrivateKeyConfig(generalConfig.Git.SSHPrivateKeyConfig)
 	}
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
 		hydrateSSHKeyPairConfig(
-			&config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
+			&generalConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
 		)
 
 	case constants.CloudProviderHetzner:
-		mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+		mode := generalConfig.Cloud.Hetzner.Mode
 
 		// When using Hetzner bare-metal.
 		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
 			hydrateSSHKeyPairConfig(
-				&config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.SSHKeyPair.SSHKeyPairConfig,
+				&generalConfig.Cloud.Hetzner.BareMetal.SSHKeyPair.SSHKeyPairConfig,
 			)
 		}
 
 	case constants.CloudProviderBareMetal:
-		if config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey != nil {
-			hydrateSSHPrivateKeyConfig(config.ParsedGeneralConfig.Cloud.BareMetal.SSH.PrivateKey)
+		if generalConfig.Cloud.BareMetal.SSH.PrivateKey != nil {
+			hydrateSSHPrivateKeyConfig(generalConfig.Cloud.BareMetal.SSH.PrivateKey)
 		}
 
 		// Handle host level SSH config overrides, if any.
 
-		for _, host := range config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Hosts {
+		for _, host := range generalConfig.Cloud.BareMetal.ControlPlane.Hosts {
 			if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
 				hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)
 			}
 		}
 
-		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.BareMetal.NodeGroups {
+		for _, nodeGroup := range generalConfig.Cloud.BareMetal.NodeGroups {
 			for _, host := range nodeGroup.Hosts {
 				if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
 					hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)

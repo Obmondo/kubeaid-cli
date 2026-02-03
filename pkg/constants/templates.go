@@ -29,7 +29,8 @@ var (
 
 	CommonSecretTemplateNames = []string{
 		// For ArgoCD.
-		"sealed-secrets/argocd/kubeaid-config.yaml.tmpl",
+		"sealed-secrets/argocd/repo-kubeaid-config.yaml.tmpl",
+		"sealed-secrets/argocd/repo-kubeaid.yaml.tmpl",
 	}
 )
 

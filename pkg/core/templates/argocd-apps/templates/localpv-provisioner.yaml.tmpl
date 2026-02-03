@@ -15,13 +15,13 @@ spec:
     namespace: localpv-provisioner
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/localpv-provisioner
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-localpv-provisioner.yaml
-    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:

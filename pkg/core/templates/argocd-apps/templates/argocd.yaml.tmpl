@@ -15,13 +15,13 @@ spec:
     namespace: argocd
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/argo-cd
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-argocd.yaml
-    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:

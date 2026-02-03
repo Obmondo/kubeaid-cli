@@ -80,9 +80,14 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// Port-forward ArgoCD and create ArgoCD client.
 	argoCDClient := NewArgoCDClient(ctx, clusterClient)
 
-	// Create the Kubernetes Secret, which ArgoCD will use to access the KubeAid config repository.
-	argoCDRepoSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/kubeaid-config.yaml")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", argoCDRepoSecretPath))
+	// Create the Kubernetes Secrets containing deploy keys,
+	// which ArgoCD will use to access the KubeAid and KubeAid Config Git repositories.
+
+	repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
+
+	repoKubeaidConfigSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid-config.yaml")
+	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", repoKubeaidConfigSecretPath))
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
 	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {

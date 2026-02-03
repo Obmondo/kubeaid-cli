@@ -27,7 +27,6 @@ type TemplateValues struct {
 	config.ForksConfig
 
 	config.ClusterConfig
-	config.ArgoCDCredentials
 	config.KubePrometheusConfig
 	CAPIClusterNamespace string
 
@@ -63,7 +62,6 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		ForksConfig: config.ParsedGeneralConfig.Forks,
 
 		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
-		ArgoCDCredentials:    config.ParsedSecretsConfig.ArgoCD,
 		KubePrometheusConfig: config.ParsedGeneralConfig.KubePrometheus,
 		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
 

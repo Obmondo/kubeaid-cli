@@ -16,7 +16,7 @@ spec:
   project: kubeaid
   source:
     path: k8s/{{ .KubeaidConfigFork.Directory }}/kube-prometheus
-    repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    repoURL: {{ .KubeaidConfigFork.URL }}
     targetRevision: HEAD
     directory:
       recurse: true

@@ -113,6 +113,17 @@ type (
 		// Other than the root user, addtional users that you would like to be created in each node.
 		// NOTE : Currently, we can't register additional SSH key-pairs against the root user.
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
+
+		ArgoCD ArgoCDConfig `yaml:"argoCD" validate:"required"`
+	}
+
+	ArgoCDConfig struct {
+		DeployKeys DeployKeysConfig `yaml:"deployKeys" validate:"required"`
+	}
+
+	DeployKeysConfig struct {
+		KubeaidConfig SSHPrivateKeyConfig `yaml:"kubeaidConfig" validate:"required"`
+		Kubeaid       SSHPrivateKeyConfig `yaml:"kubeaid"       validate:"required"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.

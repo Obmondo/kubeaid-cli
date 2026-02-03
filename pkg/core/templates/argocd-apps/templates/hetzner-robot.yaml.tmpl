@@ -13,13 +13,13 @@ spec:
     server: https://kubernetes.default.svc
   project: kubeaid
   sources:
-    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/hetzner-robot
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-hetzner-robot.yaml
-    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   syncPolicy:
