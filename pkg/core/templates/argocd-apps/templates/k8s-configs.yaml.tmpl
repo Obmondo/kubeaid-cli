@@ -13,7 +13,7 @@ spec:
     namespace: kube-system
   project: kubeaid
   source:
-    repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    repoURL: {{ .KubeaidConfigFork.URL }}
     path: k8s/{{ .KubeaidConfigFork.Directory }}/k8s-configs
     targetRevision: HEAD
     directory:

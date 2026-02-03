@@ -12,13 +12,13 @@ spec:
     namespace: crossplane
     server: https://kubernetes.default.svc
   sources:
-    - repoURL: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/crossplane-providers-and-functions
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-crossplane-providers-and-functions.yaml
-    - repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   project: kubeaid

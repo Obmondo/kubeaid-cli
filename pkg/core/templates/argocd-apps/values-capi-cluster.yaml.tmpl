@@ -6,9 +6,9 @@ global:
   kubernetes:
     version: {{ .K8sVersion }}
   kubeaid:
-    repo: {{ .KubeaidFork.ParsedURL.GetHttpCloneURL }}
+    repo: {{ .KubeaidFork.URL }}
   kubeaidConfig:
-    repo: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    repo: {{ .KubeaidConfigFork.URL }}
   additionalUsers: {{ .AdditionalUsers | toYAML | nindent 4 }}
 
 {{- if .AWSConfig }}

@@ -5,23 +5,9 @@ package config
 
 type (
 	SecretsConfig struct {
-		ArgoCD  ArgoCDCredentials   `yaml:"argoCD"`
 		AWS     *AWSCredentials     `yaml:"aws"`
 		Azure   *AzureCredentials   `yaml:"azure"`
 		Hetzner *HetznerCredentials `yaml:"hetzner"`
-	}
-
-	ArgoCDCredentials struct {
-		// Git specific credentials, used by ArgoCD to watch the KubeAid and KubeAid Config repositories.
-		//
-		// NOTE : We enforce the user, not to make ArgoCD use SSH authentication against the Git server,
-		//        since : that way, ArgoCD gets both read and write permissions.
-		Git GitCredentials `yaml:"git"`
-	}
-
-	GitCredentials struct {
-		Username string `yaml:"username" validate:"notblank"`
-		Password string `yaml:"password" validate:"notblank"`
 	}
 
 	AWSCredentials struct {

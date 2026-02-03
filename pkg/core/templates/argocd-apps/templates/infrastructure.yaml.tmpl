@@ -13,7 +13,7 @@ spec:
     namespace: crossplane
   project: kubeaid
   source:
-    repoURL: {{ .KubeaidConfigFork.ParsedURL.GetHttpCloneURL }}
+    repoURL: {{ .KubeaidConfigFork.URL }}
     path: k8s/{{ .KubeaidConfigFork.Directory }}/infrastructure
     targetRevision: HEAD
     directory:
