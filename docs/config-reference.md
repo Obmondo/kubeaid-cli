@@ -6,7 +6,7 @@
 - [AWSConfig](#awsconfig)
 - [AWSControlPlane](#awscontrolplane)
 - [AWSCredentials](#awscredentials)
-- [ArgoCDCredentials](#argocdcredentials)
+- [ArgoCDConfig](#argocdconfig)
 - [AutoScalableNodeGroup](#autoscalablenodegroup)
 - [AzureAutoScalableNodeGroup](#azureautoscalablenodegroup)
 - [AzureConfig](#azureconfig)
@@ -22,12 +22,12 @@
 - [CanonicalUbuntuImage](#canonicalubuntuimage)
 - [CloudConfig](#cloudconfig)
 - [ClusterConfig](#clusterconfig)
+- [DeployKeysConfig](#deploykeysconfig)
 - [DisasterRecoveryConfig](#disasterrecoveryconfig)
 - [FileConfig](#fileconfig)
 - [ForksConfig](#forksconfig)
 - [GeneralConfig](#generalconfig)
 - [GitConfig](#gitconfig)
-- [GitCredentials](#gitcredentials)
 - [HCloudAutoScalableNodeGroup](#hcloudautoscalablenodegroup)
 - [HCloudControlPlane](#hcloudcontrolplane)
 - [HCloudControlPlaneLoadBalancer](#hcloudcontrolplaneloadbalancer)
@@ -102,10 +102,6 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
- |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
- |
 | name | `string` |  | Nodegroup name.
  |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.
@@ -119,6 +115,10 @@ Each label should meet one of the following criterias to propagate to each of th
 REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
  |
 | taints | `[]k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.
+ |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.
+ |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.
  |
 
 ## AWSConfig
@@ -155,17 +155,13 @@ REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metad
 | secretAccessKey | `string` |  |  |
 | sessionToken | `string` |  |  |
 
-## ArgoCDCredentials
+## ArgoCDConfig
 
 &lt;p&gt;&lt;/p&gt;
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| git | `GitCredentials` |  | Git specific credentials, used by ArgoCD to watch the KubeAid and KubeAid Config repositories.
-
-NOTE : We enforce the user, not to make ArgoCD use SSH authentication against the Git server,
-       since : that way, ArgoCD gets both read and write permissions.
- |
+| deployKeys | `DeployKeysConfig` |  |  |
 
 ## AutoScalableNodeGroup
 
@@ -377,6 +373,16 @@ changed using the apiSever struct field.
 | additionalUsers | `[]UserConfig` |  | Other than the root user, addtional users that you would like to be created in each node.
 NOTE : Currently, we can&#39;t register additional SSH key-pairs against the root user.
  |
+| argoCD | `ArgoCDConfig` |  |  |
+
+## DeployKeysConfig
+
+&lt;p&gt;&lt;/p&gt;
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| kubeaidConfig | `SSHPrivateKeyConfig` |  |  |
+| kubeaid | `SSHPrivateKeyConfig` |  |  |
 
 ## DisasterRecoveryConfig
 
@@ -443,15 +449,6 @@ We enforce the user to use SSH, for authenticating to the Git server.&lt;/p&gt;
 So, you (the one who runs KubeAid CLI) can use your YubiKey.
  |
 | privateKeyFilePath | `string` |  |  |
-
-## GitCredentials
-
-&lt;p&gt;&lt;/p&gt;
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| username | `string` |  |  |
-| password | `string` |  |  |
 
 ## HCloudAutoScalableNodeGroup
 
@@ -763,7 +760,6 @@ REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metad
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| argoCD | `ArgoCDCredentials` |  |  |
 | aws | `AWSCredentials` |  |  |
 | azure | `AzureCredentials` |  |  |
 | hetzner | `HetznerCredentials` |  |  |
