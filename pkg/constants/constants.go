@@ -77,6 +77,26 @@ const (
 	CloudProviderLocal     = "local"
 )
 
+// Disk types.
+const (
+	DiskTypeHDD  = "HDD"
+	DiskTypeSSD  = "SSD"
+	DiskTypeNVMe = "NVMe"
+
+	DiskTypeUnknown = "Unknown"
+)
+
+const HighSpeedNICThreshold = 5000 // GBPS.
+
+const CEPHNodeMinSize = 50 // GB.
+
+// ZFS.
+const (
+	ZFSVolumeSizeContainerImages     = 100
+	ZFSVolumeSizePodLogs             = 50
+	ZFSVolumeSizePodEphemeralVolumes = 50
+)
+
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
