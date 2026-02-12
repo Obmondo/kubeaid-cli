@@ -6,6 +6,8 @@ package config
 import (
 	gogiturl "github.com/kubescape/go-git-url"
 	coreV1 "k8s.io/api/core/v1"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner/storageplan"
 )
 
 var (
@@ -316,14 +318,16 @@ type (
 // Hetzner specific.
 type (
 	HetznerConfig struct {
-		// The Hetzner mode to use :
-		//
-		//   1. hcloud : Both the control-plane and the nodegroups will be in HCloud.
-		//
-		//   2. bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.
-		//
-		//   3. hybrid : The control-plane will be in HCloud, and each node-group can be either in
-		//               HCloud or Hetzner Bare Metal.
+		/*
+			The Hetzner mode to use :
+
+			  (1) hcloud : Both the control-plane and the nodegroups will be in HCloud.
+
+			  (2) bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.
+
+			  (3) hybrid : The control-plane will be in HCloud, and each node-group can be either in
+			               HCloud or Hetzner Bare Metal.
+		*/
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
 		VSwitch *VSwitchConfig `yaml:"vswitch"`
@@ -349,11 +353,9 @@ type (
 	}
 
 	HetznerBareMetalConfig struct {
-		WipeDisks               bool                       `yaml:"wipeDisks"               default:"false"`
-		InstallImage            InstallImageConfig         `yaml:"installImage"`
-		SSHKeyPair              HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                              validate:"required"`
-		DiskLayoutSetupCommands string                     `yaml:"diskLayoutSetupCommands"`
-		CEPH                    *CEPHConfig                `yaml:"ceph"`
+		WipeDisks    bool                       `yaml:"wipeDisks"    default:"false"`
+		InstallImage InstallImageConfig         `yaml:"installImage"`
+		SSHKeyPair   HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                   validate:"required"`
 	}
 
 	InstallImageConfig struct {
@@ -367,12 +369,8 @@ type (
 	}
 
 	VG0Config struct {
-		Size           string `yaml:"size"           validate:"notblank" default:"25G"`
-		RootVolumeSize string `yaml:"rootVolumeSize" validate:"notblank" default:"10G"`
-	}
-
-	CEPHConfig struct {
-		DeviceFilter string `yaml:"deviceFilter" validate:"notblank"`
+		Size           int `yaml:"size"           validate:"notblank" default:"80"`
+		RootVolumeSize int `yaml:"rootVolumeSize" validate:"notblank" default:"50"`
 	}
 
 	HetznerControlPlane struct {
@@ -389,9 +387,16 @@ type (
 	}
 
 	HetznerBareMetalControlPlane struct {
-		Endpoint                HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"                validate:"required"`
-		BareMetalHosts          []HetznerBareMetalHost               `yaml:"bareMetalHosts"          validate:"required,gt=0"`
-		DiskLayoutSetupCommands string                               `yaml:"diskLayoutSetupCommands"`
+		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
+		BareMetalHosts []HetznerBareMetalHost               `yaml:"bareMetalHosts" validate:"required,gt=0"`
+
+		// ZFS specific configuration.
+		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
+		// logs and pod ephemeral volumes from that ZFS pool, as required.
+		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+
+		StoragePlan storageplan.StoragePlan
 	}
 
 	HetznerBareMetalControlPlaneEndpoint struct {
@@ -410,7 +415,7 @@ type (
 		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
 
 		// Details about node-groups in Hetzner Bare Metal.
-		BareMetal []HetznerBareMetalNodeGroup `yaml:"bareMetal"`
+		BareMetal []*HetznerBareMetalNodeGroup `yaml:"bareMetal"`
 	}
 
 	// Details about (autoscalable) node-groups in HCloud.
@@ -428,13 +433,28 @@ type (
 	HetznerBareMetalNodeGroup struct {
 		NodeGroup `yaml:",inline"`
 
-		BareMetalHosts          []HetznerBareMetalHost `yaml:"bareMetalHosts"          validate:"required,gt=0"`
-		DiskLayoutSetupCommands string                 `yaml:"diskLayoutSetupCommands"`
+		BareMetalHosts []*HetznerBareMetalHost `yaml:"bareMetalHosts" validate:"required,gt=0"`
+
+		// ZFS specific configuration.
+		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
+		// logs and pod ephemeral volumes from that ZFS pool, as required.
+		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+
+		StoragePlan storageplan.StoragePlan
 	}
 
 	HetznerBareMetalHost struct {
-		ServerID string   `yaml:"serverID" validate:"notblank"`
-		WWNs     []string `yaml:"wwns"     validate:"required,gt=0"`
+		ServerID string `yaml:"serverID" validate:"notblank"`
+	}
+
+	ZFSConfig struct {
+		// ZFS pool size (in GB), on each node in the corresponding node-group.
+		// Must be >= 200 GB : reserving 100 GB for container images, 50 GB for pod logs and 50 GB for
+		// pod ephemeral volumes.
+		// On top of that, if you want x GB of node-local storage for your workloads (like Redis),
+		// the ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled.
+		Size int `yaml:"size" validate:"required,gt=200"`
 	}
 )
 

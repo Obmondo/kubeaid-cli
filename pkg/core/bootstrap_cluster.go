@@ -34,6 +34,17 @@ type BootstrapClusterArgs struct {
 }
 
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
+	// When using Hetzner bare-metal, generate storage plan for the control-plane and each
+	// node-group.
+	if config.UsingHetznerBareMetal() {
+		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+
+		hetznerCloudProvider.GenerateStoragePlans(ctx, config.ParsedGeneralConfig.Cloud.Hetzner)
+	}
+
+	panic("checkpoint")
+
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 

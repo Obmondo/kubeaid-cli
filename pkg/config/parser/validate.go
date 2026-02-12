@@ -183,7 +183,6 @@ func validateAzureConfig(ctx context.Context) {
 func validateHetznerConfig(ctx context.Context) {
 	// Ensure that the user has provided Hetzner specific credentials.
 	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
-
 	// When using the Hetzner provider in bare-metal or hybrid mode,
 	// ensure that the user has provided VSwitch details.
 	// The VSwitch will be used to get the Hetzner Bare Metal servers off the public internet.
@@ -230,11 +229,11 @@ func validateHetznerBareMetalConfig(ctx context.Context) {
 		"HCloud robot user and password not provided",
 	)
 
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerBareMetalConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
 	// Hetzner bare-metal specific options must be provided.
 	assert.AssertNotNil(ctx,
-		hetznerConfig.BareMetal,
+		hetznerBareMetalConfig.BareMetal,
 		"Hetzner bare metal specific details not provided",
 	)
 
@@ -242,13 +241,13 @@ func validateHetznerBareMetalConfig(ctx context.Context) {
 	if config.ControlPlaneInHetznerBareMetal() {
 		// Then Hetzner bare-metal specific control-plane options must be provided.
 		assert.AssertNotNil(ctx,
-			hetznerConfig.ControlPlane.BareMetal,
+			hetznerBareMetalConfig.ControlPlane.BareMetal,
 			"Hetzner bare metal specific control-plane details not provided",
 		)
 	}
 
 	// Validate node-groups in Hetzner bare-metal.
-	for _, hetznerBaremetalNodeGroup := range hetznerConfig.NodeGroups.BareMetal {
+	for _, hetznerBaremetalNodeGroup := range hetznerBareMetalConfig.NodeGroups.BareMetal {
 		validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
 	}
 }
