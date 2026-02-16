@@ -11,9 +11,9 @@ fail() {
 }
 
 if command -v curl >/dev/null 2>&1; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | awk -F '"' '/"tag_name":/ { print $4; exit }')"
+  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | awk -F '"' '/"tag_name":/ { print $4 }')"
 elif command -v wget >/dev/null 2>&1; then
-  VERSION="$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | awk -F '"' '/"tag_name":/ { print $4; exit }')"
+  VERSION="$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" | awk -F '"' '/"tag_name":/ { print $4 }')"
 else
   fail "curl or wget is required to fetch the latest version"
 fi
