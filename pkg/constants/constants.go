@@ -188,12 +188,11 @@ const (
 
 // SSH keys.
 const (
-	SSHPrivateKeyPrefixOpenSSH = "-----BEGIN OPENSSH PRIVATE KEY-----"
-	SSHPublicKeyPrefixOpenSSHRSA      = "ssh-rsa "
-	SSHPublicKeyPrefixOpenSSHEd25519  = "ssh-ed25519 "
-
-	SSHPrivateKeyPrefixPEM = "-----BEGIN PRIVATE KEY-----"
-	SSHPublicKeyPrefixPEM  = "-----BEGIN PUBLIC KEY-----"
+	SSHPrivateKeyPrefixOpenSSH       = "-----BEGIN OPENSSH PRIVATE KEY-----"
+	SSHPublicKeyPrefixOpenSSHRSA     = "ssh-rsa "
+	SSHPublicKeyPrefixOpenSSHEd25519 = "ssh-ed25519 "
+	SSHPrivateKeyPrefixPEM           = "-----BEGIN PRIVATE KEY-----"
+	SSHPublicKeyPrefixPEM            = "-----BEGIN PUBLIC KEY-----"
 )
 
 // Cluster types.
