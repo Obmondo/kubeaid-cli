@@ -105,24 +105,55 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 	}
 }
 
-// Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
+// Fetches and returns the latest stable Kubernetes version from the kubeadm API.
+// It will try multiple kubeadm API endpoints, and return the version fetched from the first successful response.
+// The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
 func getLatestStableK8sVersion(ctx context.Context) string {
-	const kubeadmAPIURL = "https://cdn.dl.k8s.io/release/stable.txt"
+	kubeadmAPIURLs := []string{
+		"https://cdn.dl.k8s.io/release/stable.txt",
+		"https://dl.k8s.io/release/stable.txt",
+	}
 
-	slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
+	var lastErr error
 
+	for _, kubeadmAPIURL := range kubeadmAPIURLs {
+		slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
+
+		latestStableK8sVersion, err := fetchLatestStableK8sVersion(kubeadmAPIURL)
+		if err == nil {
+			return latestStableK8sVersion
+		}
+
+		lastErr = fmt.Errorf("failed fetching from %s: %w", kubeadmAPIURL, err)
+
+		slog.WarnContext(ctx,
+			"Failed fetching latest stable K8s version, trying next URL",
+			logger.Error(lastErr),
+		)
+	}
+
+	assert.AssertErrNil(ctx, lastErr, "Failed fetching latest stable K8s version")
+
+	return ""
+}
+
+func fetchLatestStableK8sVersion(kubeadmAPIURL string) (string, error) {
 	response, err := http.Get(kubeadmAPIURL)
-	assert.AssertErrNil(ctx, err, "Failed fetching latest stable K8s version")
-	if response.StatusCode != http.StatusOK {
-		slog.ErrorContext(ctx, "Failed fetching latest stable Kubernetes version")
-		os.Exit(1)
+	if err != nil {
+		return "", err
 	}
 	defer response.Body.Close()
 
-	latestStableK8sVersion, err := io.ReadAll(response.Body)
-	assert.AssertErrNil(ctx, err, "Failed reading latest stable K8s version from response body")
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
 
-	return string(latestStableK8sVersion)
+	latestStableK8sVersion, err := io.ReadAll(response.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(latestStableK8sVersion), nil
 }
 
 func validateAWSConfig(ctx context.Context) {
