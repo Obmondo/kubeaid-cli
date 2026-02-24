@@ -18,6 +18,10 @@ run-generators:
 	@go run ./tools/generators/cmd \
     ./pkg/config/general.go ./pkg/config/secrets.go
 
+.PHONY: build-cli
+build-cli:
+	@go build -o ./kubeaid-cli ./cmd/kubeaid-core
+
 VERSION := $(shell cat ./cmd/kubeaid-core/root/version/version.txt)
 IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
 CONTAINER_NAME=kubeaid-core
@@ -98,7 +102,7 @@ devenv-create-azure:
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-workflow
-    
+
 .PHONY: bootstrap-cluster-azure
 bootstrap-cluster-azure:
 	@go run ./cmd/kubeaid-core cluster bootstrap \

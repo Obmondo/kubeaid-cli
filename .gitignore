@@ -10,3 +10,4 @@ temp/
 *-kubeconfig
 
 .DS_Store
+kubeaid-cli
