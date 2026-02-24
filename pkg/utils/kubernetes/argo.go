@@ -553,8 +553,7 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		switch name {
 		// Wait for the child ArgoCD Apps to be created.
 		case constants.ArgoCDAppRoot:
-			slog.InfoContext(ctx, "Sleeping for 10 seconds, waiting for the child ArgoCD Apps to be created")
-			time.Sleep(10 * time.Second)
+			waitForRootArgoCDChildren(ctx)
 			return nil
 
 		// Wait for the ArgoCD App to be synced.
@@ -568,6 +567,79 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 			}
 		}
 	}
+}
+
+func waitForRootArgoCDChildren(ctx context.Context) {
+	requiredApps := []string{
+		"cert-manager",
+		"secrets",
+	}
+	timeout := 3 * time.Minute
+	deadline := time.Now().Add(timeout)
+
+	for {
+		repoServerReady := isArgoCDRepoServerReady()
+		appsReady := areArgoCDAppsPresent(ctx, requiredApps)
+		if repoServerReady && appsReady {
+			slog.InfoContext(ctx, "ArgoCD repo-server and required child apps are ready")
+			return
+		}
+
+		if time.Now().After(deadline) {
+			assert.Assert(ctx, false,
+				"Timed out waiting for ArgoCD child apps to be created and repo-server to be ready",
+			)
+		}
+
+		slog.InfoContext(ctx,
+			"Waiting for ArgoCD repo-server and child apps",
+			slog.Bool("repo-server-ready", repoServerReady),
+			slog.Any("required-apps", requiredApps),
+		)
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func isArgoCDRepoServerReady() bool {
+	output, err := utils.ExecuteCommand(
+		fmt.Sprintf(
+			"kubectl get deployment argocd-repo-server -n %s -o jsonpath='{.status.readyReplicas}'",
+			constants.NamespaceArgoCD,
+		),
+	)
+	if err != nil {
+		return false
+	}
+
+	readyReplicas := strings.TrimSpace(output)
+	return readyReplicas != "0"
+}
+
+func areArgoCDAppsPresent(ctx context.Context, names []string) bool {
+	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
+		AppNamespace: aws.String(constants.NamespaceArgoCD),
+	})
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Failed listing ArgoCD apps while waiting for root app children",
+			logger.Error(err),
+		)
+		RecreateArgoCDApplicationClient(ctx, nil)
+		return false
+	}
+
+	existingApps := map[string]bool{}
+	for _, app := range response.Items {
+		existingApps[app.Name] = true
+	}
+
+	for _, name := range names {
+		if !existingApps[name] {
+			return false
+		}
+	}
+
+	return true
 }
 
 // isArgoCDAppSynced returns whether the given ArgoCD App is synced or not.
