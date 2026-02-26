@@ -499,9 +499,10 @@ func (m *ArgoCDAppManager) syncArgoCDApp(ctx context.Context, name string, resou
 	// Sync the ArgoCD app.
 	slog.InfoContext(ctx, "Syncing ArgoCD application")
 
+	appNamespace := constants.NamespaceArgoCD
 	applicationSyncRequest := &application.ApplicationSyncRequest{
 		Name:         &name,
-		AppNamespace: aws.String(constants.NamespaceArgoCD),
+		AppNamespace: &appNamespace,
 		SyncOptions: &application.SyncOptions{
 			Items: []string{
 				"CreateNamespace=true",
@@ -616,8 +617,9 @@ func isArgoCDRepoServerReady() bool {
 }
 
 func areArgoCDAppsPresent(ctx context.Context, names []string) bool {
+	appNamespace := constants.NamespaceArgoCD
 	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
-		AppNamespace: aws.String(constants.NamespaceArgoCD),
+		AppNamespace: &appNamespace,
 	})
 	if err != nil {
 		slog.WarnContext(ctx,
