@@ -34,11 +34,25 @@ import (
 func validateConfigs() {
 	ctx := context.Background()
 
+	// Cluster name can't contain any dots.
+	clusterNameContainsDots := strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".")
+	assert.Assert(ctx, !clusterNameContainsDots,
+		"Cluster name connot contain dots. Maybe use hyphens instead",
+	)
+
+	// VPN cluster type is supported only for the Hetzner provider as of now.
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
+		assert.Assert(ctx,
+			(globals.CloudProviderName == constants.CloudProviderHetzner),
+			"VPN cluster is supported only for the Hetzner provider as of now",
+		)
+	}
+
+	// Validate based on struct tags.
+
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
 	err := validator.RegisterValidation("notblank", goNonStandardValidtors.NotBlank)
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
-
-	// Validate based on struct tags.
 
 	err = validator.Struct(config.ParsedGeneralConfig)
 	assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
@@ -183,10 +197,12 @@ func validateAzureConfig(ctx context.Context) {
 func validateHetznerConfig(ctx context.Context) {
 	// Ensure that the user has provided Hetzner specific credentials.
 	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
-	// When using the Hetzner provider in bare-metal or hybrid mode,
-	// ensure that the user has provided VSwitch details.
-	// The VSwitch will be used to get the Hetzner Bare Metal servers off the public internet.
-	if config.ParsedGeneralConfig.Cloud.Hetzner.Mode != constants.HetznerModeHCloud {
+
+	// When provisioning a workload cluster, with a VPN cluster hooked up, the user must provide
+	// VSwitch details.
+	if (config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeWorkload) &&
+		(config.ParsedGeneralConfig.Cloud.Hetzner.VPNCluster != nil) {
+
 		assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch,
 			"VSwitch details not provided",
 		)

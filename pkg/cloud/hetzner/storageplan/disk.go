@@ -9,7 +9,8 @@ type (
 	Disk struct {
 		Name,
 		WWN,
-		Type string
+		Type,
+		PartitionTableType string
 
 		Size int // GB.
 
@@ -27,9 +28,6 @@ type (
 			ZFS,
 			CEPH int // GB.
 		}
-		// Whether the disk is getting partitioned or not.
-		// There can be scenarios, where the whole disk is allocated to only CEPH / ZFS.
-		Partitioned bool
 	}
 
 	PriorityScores struct {

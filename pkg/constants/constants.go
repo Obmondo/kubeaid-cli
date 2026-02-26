@@ -186,6 +186,8 @@ const (
 
 	HetznerRobotWebServiceAPI = "https://robot-ws.your-server.de"
 
+	HetznerNetworkCIDR       = "10.0.0.0/16"
+	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 	HetznerVSwitchGatewayIP  = "10.0.1.0"
 )
@@ -219,6 +221,9 @@ const (
 const (
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
+
+	ClusterTypeVPN      = "vpn"
+	ClusterTypeWorkload = "workload"
 )
 
 // Miscellaneous.

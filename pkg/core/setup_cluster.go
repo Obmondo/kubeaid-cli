@@ -106,7 +106,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
-	// Kubernetes Secret will exist.
+	// Kubernetes Secret will get created.
 	kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
 
 	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.

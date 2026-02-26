@@ -6,7 +6,7 @@ hcloud-csi:
         key: hcloud
 
     nodeSelector:
-      node.cluster.x-k8s.io/cloud-provider: hcloud
+      instance.hetzner.cloud/provided-by: cloud
 
     # There might be Hetzner hybrid clusters with control-plane only nodes in HCloud, and all
     # worker nodes in Hetzner bare-metal.
@@ -18,4 +18,4 @@ hcloud-csi:
 
   node:
     nodeSelector:
-      node.cluster.x-k8s.io/cloud-provider: hcloud
+      instance.hetzner.cloud/provided-by: cloud

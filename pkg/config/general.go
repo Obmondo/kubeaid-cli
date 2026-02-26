@@ -95,6 +95,8 @@ type (
 	}
 
 	ClusterConfig struct {
+		Type string `yaml:"type" validate:"notblank,oneof=vpn workload" default:"workload"`
+
 		// Name of the Kubernetes cluster.
 		//
 		// We don't allow using dots in the cluster name, since it can cause issues with tools like
@@ -116,6 +118,7 @@ type (
 		// NOTE : Currently, we can't register additional SSH key-pairs against the root user.
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
 
+		// ArgoCD specific details.
 		ArgoCD ArgoCDConfig `yaml:"argoCD" validate:"required"`
 	}
 
@@ -339,6 +342,12 @@ type (
 
 		// Details about node-groups in Hetzner.
 		NodeGroups HetznerNodeGroups `yaml:"nodeGroups"`
+
+		VPNCluster *HCloudVPNClusterConfig `yaml:"vpnCluster"`
+	}
+
+	HCloudVPNClusterConfig struct {
+		Name string `yaml:"name" validate:"notblank"`
 	}
 
 	VSwitchConfig struct {
@@ -388,13 +397,13 @@ type (
 
 	HetznerBareMetalControlPlane struct {
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
-		BareMetalHosts []HetznerBareMetalHost               `yaml:"bareMetalHosts" validate:"required,gt=0"`
+		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
 
 		// ZFS specific configuration.
 		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
 		// logs and pod ephemeral volumes from that ZFS pool, as required.
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+		ZFS ZFSConfig `yaml:"zfs" validate:"required`
 
 		StoragePlan storageplan.StoragePlan
 	}
@@ -446,6 +455,7 @@ type (
 
 	HetznerBareMetalHost struct {
 		ServerID string `yaml:"serverID" validate:"notblank"`
+		WWNs     []string
 	}
 
 	ZFSConfig struct {
@@ -454,7 +464,7 @@ type (
 		// pod ephemeral volumes.
 		// On top of that, if you want x GB of node-local storage for your workloads (like Redis),
 		// the ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled.
-		Size int `yaml:"size" validate:"required,gt=200"`
+		Size int `yaml:"size" validate:"required,gt=200" default:"220"`
 	}
 )
 
