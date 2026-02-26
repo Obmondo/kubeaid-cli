@@ -119,7 +119,6 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 // Generates the K3D cluster config file.
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
-
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
