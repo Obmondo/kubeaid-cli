@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/k3d-io/k3d/v5/cmd/cluster"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
@@ -120,14 +119,10 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 // Generates the K3D cluster config file.
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
-	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
-	if !strings.HasPrefix(k8sVersion, "v") {
-		k8sVersion = fmt.Sprintf("v%s", k8sVersion)
-	}
 
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
-		K8sVersion: k8sVersion,
+		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

@@ -20,7 +20,7 @@ run-generators:
 
 .PHONY: build-cli
 build-cli:
-	@go build -o ./kubeaid-cli ./cmd/kubeaid-core
+	@go build -o ./build/kubeaid-cli ./cmd/kubeaid-core
 
 VERSION := $(shell cat ./cmd/kubeaid-core/root/version/version.txt)
 IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
