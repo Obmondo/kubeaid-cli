@@ -403,7 +403,7 @@ type (
 		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
 		// logs and pod ephemeral volumes from that ZFS pool, as required.
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required`
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
 		StoragePlan storageplan.StoragePlan
 	}
