@@ -20,11 +20,11 @@ type Hetzner struct {
 }
 
 func NewHetznerCloudProvider() cloud.CloudProvider {
-	h := &Hetzner{}
+	hetznerClient := &Hetzner{}
 
 	// Construct HCloud client, if we're using HCloud.
 	if config.UsingHCloud() {
-		h.hcloudClient = hcloud.NewClient(
+		hetznerClient.hcloudClient = hcloud.NewClient(
 			hcloud.WithToken(config.ParsedSecretsConfig.Hetzner.APIToken),
 		)
 	}
@@ -33,14 +33,14 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	if config.UsingHetznerBareMetal() {
 		robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
 
-		h.robotClient = resty.New().
+		hetznerClient.robotClient = resty.New().
 			SetBaseURL(constants.HetznerRobotWebServiceAPI).
 			SetBasicAuth(robotWebServiceUserCredentials.User, robotWebServiceUserCredentials.Password).
 			SetHeader("Content-Type", "application/x-www-form-urlencoded").
 			SetHeader("Accept", "application/json")
 	}
 
-	return h
+	return hetznerClient
 }
 
 func (*Hetzner) SetupDisasterRecovery(ctx context.Context) {

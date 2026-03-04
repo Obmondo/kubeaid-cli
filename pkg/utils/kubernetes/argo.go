@@ -257,9 +257,7 @@ func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) {
 		if config.UsingHetznerBareMetal() {
 			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
 
-			if config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.CEPH != nil {
-				SyncArgoCDApp(ctx, constants.ArgoCDAppRookCeph, []*argoCDV1Aplha1.SyncOperationResource{})
-			}
+			SyncArgoCDApp(ctx, constants.ArgoCDAppRookCeph, []*argoCDV1Aplha1.SyncOperationResource{})
 		}
 
 	case constants.CloudProviderBareMetal:

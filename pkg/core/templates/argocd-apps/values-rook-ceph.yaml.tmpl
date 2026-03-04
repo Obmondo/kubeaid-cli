@@ -23,7 +23,7 @@ rook-ceph-cluster:
 
   cephClusterSpec:
     storage:
-      deviceFilter: {{ .HetznerConfig.BareMetal.CEPH.DeviceFilter }}
+      deviceFilter: "^(sd[ab]6|nvme[01]n1p6)$"
     placement:
       all:
         nodeAffinity:

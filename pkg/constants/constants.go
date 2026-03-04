@@ -77,6 +77,26 @@ const (
 	CloudProviderLocal     = "local"
 )
 
+// Disk types.
+const (
+	DiskTypeHDD  = "HDD"
+	DiskTypeSSD  = "SSD"
+	DiskTypeNVMe = "NVMe"
+
+	DiskTypeUnknown = "Unknown"
+)
+
+const HighSpeedNICThreshold = 5000 // GBPS.
+
+const CEPHNodeMinSize = 50 // GB.
+
+// ZFS.
+const (
+	ZFSVolumeSizeContainerImages     = 100
+	ZFSVolumeSizePodLogs             = 50
+	ZFSVolumeSizePodEphemeralVolumes = 50
+)
+
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
@@ -166,6 +186,8 @@ const (
 
 	HetznerRobotWebServiceAPI = "https://robot-ws.your-server.de"
 
+	HetznerNetworkCIDR       = "10.0.0.0/16"
+	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 	HetznerVSwitchGatewayIP  = "10.0.1.0"
 )
@@ -199,6 +221,9 @@ const (
 const (
 	ClusterTypeManagement = "management"
 	ClusterTypeMain       = "main"
+
+	ClusterTypeVPN      = "vpn"
+	ClusterTypeWorkload = "workload"
 )
 
 // Miscellaneous.

@@ -172,7 +172,9 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
-		// TODO : Include templates for OpenEBS ZFS LocalPV.
+		// For Rook CEPH.
+		"argocd-apps/templates/rook-ceph.yaml.tmpl",
+		"argocd-apps/values-rook-ceph.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificSecretTemplateNames = []string{

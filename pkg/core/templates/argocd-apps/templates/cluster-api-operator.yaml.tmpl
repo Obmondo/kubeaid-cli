@@ -12,7 +12,7 @@ metadata:
 spec:
   destination:
     server: https://kubernetes.default.svc
-    namespace: cluster-api-operator
+    namespace: {{ .CAPIClusterNamespace }}
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
