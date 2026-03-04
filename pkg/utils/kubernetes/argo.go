@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	valuesPkg "helm.sh/helm/v3/pkg/cli/values"
+	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -575,11 +576,13 @@ func waitForRootArgoCDChildren(ctx context.Context) {
 		"cert-manager",
 		"secrets",
 	}
+	kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
+	clusterClient := MustCreateClusterClient(ctx, kubeconfigPath)
 	timeout := 3 * time.Minute
 	deadline := time.Now().Add(timeout)
 
 	for {
-		repoServerReady := isArgoCDRepoServerReady()
+		repoServerReady := isArgoCDRepoServerReady(ctx, clusterClient)
 		appsReady := areArgoCDAppsPresent(ctx, requiredApps)
 		if repoServerReady && appsReady {
 			slog.InfoContext(ctx, "ArgoCD repo-server and required child apps are ready")
@@ -601,19 +604,29 @@ func waitForRootArgoCDChildren(ctx context.Context) {
 	}
 }
 
-func isArgoCDRepoServerReady() bool {
-	output, err := utils.ExecuteCommand(
-		fmt.Sprintf(
-			"kubectl get deployment argocd-repo-server -n %s -o jsonpath='{.status.readyReplicas}'",
-			constants.NamespaceArgoCD,
-		),
+func isArgoCDRepoServerReady(ctx context.Context, clusterClient client.Client) bool {
+	deployment := &appsV1.Deployment{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      "argocd-repo-server",
+			Namespace: constants.NamespaceArgoCD,
+		},
+	}
+	err := clusterClient.Get(ctx,
+		types.NamespacedName{
+			Name:      deployment.Name,
+			Namespace: deployment.Namespace,
+		},
+		deployment,
 	)
 	if err != nil {
+		slog.DebugContext(ctx,
+			"Failed getting ArgoCD repo-server deployment while checking readiness",
+			logger.Error(err),
+		)
 		return false
 	}
 
-	readyReplicas := strings.TrimSpace(output)
-	return readyReplicas != "0"
+	return deployment.Status.ReadyReplicas > 0
 }
 
 func areArgoCDAppsPresent(ctx context.Context, names []string) bool {
