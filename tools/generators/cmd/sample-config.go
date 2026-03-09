@@ -75,7 +75,8 @@ func (scg *SampleConfigGenerator) visitStruct(ctx context.Context,
 			}
 		}
 
-		_, err := fmt.Fprintf(w, "%s%s:\n\n", indentation, field.Name)
+		_, err := fmt.Fprintf(w, "%s%s: %s\n", indentation, field.Name, field.DefaultValue)
+
 		assert.AssertErrNil(ctx, err, "Failed writing to file")
 
 		childStruct, ok := scg.structs.All[field.Type]

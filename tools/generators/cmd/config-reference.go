@@ -7,8 +7,8 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
-	"html/template"
 	"os"
+	"text/template"
 
 	"github.com/go-sprout/sprout"
 	"github.com/go-sprout/sprout/registry/strings"
