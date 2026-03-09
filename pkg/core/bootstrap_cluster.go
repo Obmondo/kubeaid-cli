@@ -91,6 +91,9 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			// Ensure that the required VSwitch is created.
 			vswitchID := hetznerCloudProvider.CreateVSwitch(ctx)
 
+			// Validate SSH keys
+			hetznerCloudProvider.ValidateHetznerSSHKeyPair(ctx, config.ParsedGeneralConfig.Cloud.Hetzner)
+
 			// Ensure that the VSwitch is connected to that Hetzner Network.
 			hetznerCloudProvider.ConnectVSwitchWithHetznerNetwork(ctx, network)
 
