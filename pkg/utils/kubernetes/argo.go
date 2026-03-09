@@ -576,8 +576,8 @@ func waitForRootArgoCDChildren(ctx context.Context) {
 		"cert-manager",
 		"secrets",
 	}
-	kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
-	clusterClient := MustCreateClusterClient(ctx, kubeconfigPath)
+	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
+	clusterClient := MustCreateClusterClient(ctx, kubeconfig)
 	timeout := 3 * time.Minute
 	deadline := time.Now().Add(timeout)
 
