@@ -33,7 +33,8 @@ type (
 		// Cloud provider specific details.
 		Cloud CloudConfig `yaml:"cloud" validate:"required"`
 
-		// Kube Prometheus installation specific details.
+		// Kube Prometheus installation specific details. Defaults to Latest
+		// Fill this only if you want a specific version
 		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
 
 		// Obmondo customer specific details.
@@ -227,7 +228,7 @@ type (
 	}
 
 	KubePrometheusConfig struct {
-		Version    string `yaml:"version"    default:"v0.15.0"`
+		Version    string `yaml:"version"`
 		GrafanaURL string `yaml:"grafanaURL"`
 	}
 

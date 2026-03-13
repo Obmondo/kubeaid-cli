@@ -13,7 +13,7 @@
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 {{- range $j, $field := $struct.Fields }}
-| {{ $field.Name }} | `{{ $field.Type }}` | {{ $field.DefaultValue }} | {{ $field.Doc }} |
+| {{ $field.Name }} | `{{ $field.Type }}` | {{ $field.DefaultValue }} | {{ $field.Doc | replace "\n" "<br>" }} |
 {{- end }}
 
 
