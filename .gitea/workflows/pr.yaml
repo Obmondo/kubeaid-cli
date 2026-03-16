@@ -20,3 +20,21 @@ jobs:
         with:
           version: v2.5.0
           args: --timeout=5m --config=.golangci.yaml
+
+  unit-tests:
+    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v4.2.2
+
+      - name: Setup Go
+        uses: https://gitea.obmondo.com/Obmondo/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Run unit tests
+        run: go test -v -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+
+      - name: Show total coverage
+        run: go tool cover -func=coverage.out
