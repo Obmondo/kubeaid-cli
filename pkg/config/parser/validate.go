@@ -106,6 +106,10 @@ func validateConfigs() {
 // Checks whether the given string represents a valid  and supported Kubernetes version or not.
 // If not, then panics.
 func validateK8sVersion(ctx context.Context, k8sVersion string) {
+	assert.Assert(ctx, strings.HasPrefix(k8sVersion, "v"),
+		"K8s version must start with 'v' (for example: v1.35.0)",
+	)
+
 	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
