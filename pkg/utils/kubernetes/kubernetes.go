@@ -138,7 +138,7 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 	return nil
 }
 
-// Returns the main cluster's API server endpoint, if provisioned.
+// Returns the main cluster's control-plane endpoint, if provisioned.
 // Otherwise returns nil.
 func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 	kubeConfig, err := clientcmd.LoadFromFile(constants.OutputPathMainClusterKubeconfig)
@@ -157,10 +157,13 @@ func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 		return nil
 	}
 
-	mainClusterEndpoint, err := url.Parse(mainCluster.Server)
-	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint")
+	endpoint, err := url.Parse(mainCluster.Server)
+	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint",
+		slog.String("endpoint", mainCluster.Server))
 
-	return mainClusterEndpoint
+	// TODO : Ping the control-plane once.
+
+	return endpoint
 }
 
 // Creates the given namespace (if it doesn't already exist).

@@ -34,31 +34,22 @@ type BootstrapClusterArgs struct {
 }
 
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
-	// When using Hetzner bare-metal, generate storage plan for the control-plane and each
-	// node-group.
-	if config.UsingHetznerBareMetal() {
+	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
+	// NOTE : Though HCloud has an official Terraform provider which can be imported into a
+	//        CrossPlane provider, Hetzner Bare Metal doesn't have any. So, we can't use CrossPlane
+	//        as of now.
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		hetznerCloudProvider.GenerateStoragePlans(ctx, config.ParsedGeneralConfig.Cloud.Hetzner)
+		hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx)
 	}
-
-	panic("checkpoint")
 
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
-
-	// When using Hetzner Bare Metal,
-	// we need to first ensure that the required VSwitch is created.
-	if config.UsingHetznerBareMetal() {
-		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-		assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
-
-		hetznerCloudProvider.CreateVSwitch(ctx)
-	}
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.

@@ -82,34 +82,188 @@ provider:
 hetzner:
   mode: {{ .HetznerConfig.Mode }}
 
+  sshKeyPair:
+    name: {{ .HetznerConfig.SSHKeyPair.Name }}
+
   {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-  hcloud:
-    zone: {{ .HetznerConfig.HCloud.Zone }}
-    imageName: {{ .HetznerConfig.HCloud.ImageName }}
-    sshKeyPairName: {{ .HetznerConfig.HCloud.SSHKeyPairName }}
+  hcloud: {{ .HetznerConfig.HCloud | toIndentYAML 2 | nindent 4 }}
   {{- end }}
 
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
   bareMetal:
     wipeDisks: {{ .HetznerConfig.BareMetal.WipeDisks }}
-    sshKeyPair:
-      name: {{ .HetznerConfig.BareMetal.SSHKeyPair.Name }}
-    installImage: {{ .HetznerConfig.BareMetal.InstallImage | toIndentYAML 2 | nindent 6 }}
-    diskLayoutSetupCommands: |
-      {{ .HetznerConfig.BareMetal.DiskLayoutSetupCommands | nindent 6 }}
+    installImage:
+      imagePath: {{ .HetznerConfig.BareMetal.InstallImage.ImagePath }}
+      vg0:
+        size: {{ .HetznerConfig.BareMetal.InstallImage.VG0.Size }}G
+        rootVolumeSize: {{ .HetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize }}G
+    vSwitch:
+      vlanID: {{ .HetznerConfig.BareMetal.VSwitch.VLANID }}
   {{- end }}
 
   controlPlane:
     regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
+    {{/* When provisioning an HCloud / Hetzner hybrid cluster, and we have a VPN cluster,
+         we create the control-plane LB before spinning up the main cluster.
+         So, let's specify that prescient control-plane endpoint to CAPI. */}}
+    {{- if (and (and (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) (eq .ClusterConfig.Type "workload")) .HetznerConfig.HCloudVPNCluster) }}
+    endpoint:
+      host: {{ .ControlPlaneEndpoint }}
+    {{- end }}
+
     {{/* Handling control-plane in Hetzner bare-metal. */}}
     {{- if eq .HetznerConfig.Mode "bare-metal" }}
-    bareMetal: {{ .HetznerConfig.ControlPlane.BareMetal | toIndentYAML 2 | nindent 6 }}
+    {{ $bareMetal := .HetznerConfig.ControlPlane.BareMetal }}
+    bareMetal:
+      bareMetalHosts: {{ $bareMetal.BareMetalHosts | toIndentYAML 2 | nindent 8 }}
+      diskLayoutSetupCommands: |
+        set -e
+
+        apt-get update -y
+        apt install zfsutils-linux -y
+
+        # Create necessary partitions.
+        {{- range $i, $disk := $bareMetal.StoragePlan.Disks }}
+
+        {{- if eq $disk.Allocations.OS 0 }}
+        echo ",1K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
+        echo ",1K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
+        echo ",1K,L" | sfdisk -N 3 /dev/{{ $disk.Name }} --force --no-reread
+        {{- end }}
+
+        printf "d\n4\nw\n" | fdisk /dev/{{ $disk.Name }}
+
+        {{- if eq $disk.PartitionTableType "dos" }}
+        echo ",,E" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+        {{- else }}
+        echo ",1K,L" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+        {{- end }}
+
+        {{- $partitionSize := "1K" }}
+        {{- if gt $disk.Allocations.ZFS 0 }}
+        {{- $partitionSize = printf "%dG" $disk.Allocations.ZFS }}
+        {{- end }}
+        echo ",{{ $partitionSize }},L" | sfdisk -N 5 /dev/{{ $disk.Name }} --force --no-reread
+
+        echo ",,L" | sfdisk -N 6 /dev/{{ $disk.Name }} --force --no-reread
+
+        partprobe /dev/{{ $disk.Name }}
+        udevadm settle
+
+        {{- end }}
+
+        if zpool import -f primary >/dev/null 2>&1; then
+          echo "Imported existing primary ZFS pool"
+        else
+          # Create the ZFS pool with mirroring enabled.
+          zpool create primary mirror \
+            {{- range $i, $disk := $bareMetal.StoragePlan.ZFS }}
+              {{- if eq $disk.Type "NVMe" }}
+                /dev/{{ $disk.Name }}p5 {{ if eq $i 0 }}\{{ end }}
+              {{- else }}
+                /dev/{{ $disk.Name }}5 {{ if eq $i 0 }}\{{ end }}
+              {{- end -}}
+            {{ end }}
+
+          # Create the filesystem for ContainerD, to store container images.
+          zfs create primary/containerd
+          zfs set mountpoint=/var/lib/containerd primary/containerd
+
+          # Create the filesystem where pod logs will be stored.
+          zfs create primary/pod-logs
+          zfs set mountpoint=/var/log/pods primary/pod-logs
+
+          # Create the filesystem where pod ephemeral volumes will be stored.
+          zfs create primary/pod-ephemeral-volumes
+          zfs set mountpoint=/var/lib/kubelet/pods primary/pod-ephemeral-volumes
+
+          # Enable weekly ZPool trimming for the ZPool.
+          # So unused storage space will be reclaimed back, into the ZFS pool.
+          # REFER : https://openzfs.github.io/openzfs-docs/man/master/8/zpool-trim.8.html.
+          systemctl enable zfs-trim-weekly@rpool.timer --now
+        fi
 
     {{/* Handling control-plane in HCloud. */}}
     {{- else }}
     hcloud: {{ .HetznerConfig.ControlPlane.HCloud | toIndentYAML 2 | nindent 6 }}
     {{- end }}
 
-  nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+  nodeGroups:
+    hcloud: {{ .HetznerConfig.NodeGroups.HCloud | toIndentYAML 2 | nindent 6 }}
+
+    bareMetal:
+      {{- range $i, $nodeGroup := .HetznerConfig.NodeGroups.BareMetal }}
+      - name: {{ $nodeGroup.Name }}
+        bareMetalHosts: {{ $nodeGroup.BareMetalHosts | toIndentYAML 2 | nindent 10 }}
+        diskLayoutSetupCommands: |
+          set -e
+
+          apt-get update -y
+          apt install zfsutils-linux -y
+
+          # Create necessary partitions.
+
+          {{- range $i, $disk := $nodeGroup.StoragePlan.Disks }}
+
+          {{- if eq $disk.Allocations.OS 0 }}
+          echo ",1K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
+          echo ",1K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
+          echo ",1K,L" | sfdisk -N 3 /dev/{{ $disk.Name }} --force --no-reread
+          {{- end }}
+
+          printf "d\n4\nw\n" | fdisk /dev/{{ $disk.Name }}
+
+          {{- if eq $disk.PartitionTableType "dos" }}
+          echo ",,E" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+          {{- else }}
+          echo ",1K,L" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+          {{- end }}
+
+          {{- $partitionSize := "1K" }}
+          {{- if gt $disk.Allocations.ZFS 0 }}
+          {{- $partitionSize = printf "%dG" $disk.Allocations.ZFS }}
+          {{- end }}
+          echo ",{{ $partitionSize }},L" | sfdisk -N 5 /dev/{{ $disk.Name }} --force --no-reread
+
+          echo ",,L" | sfdisk -N 6 /dev/{{ $disk.Name }} --force --no-reread
+
+          partprobe /dev/{{ $disk.Name }}
+          udevadm settle
+
+          {{- end }}
+
+          if zpool import -f primary >/dev/null 2>&1; then
+            echo "Imported existing primary ZFS pool"
+          else
+            # Create the ZFS pool with mirroring enabled.
+            zpool create primary mirror \
+              {{- range $i, $disk := $nodeGroup.StoragePlan.ZFS }}
+                {{- if eq $disk.Type "NVMe" }}
+                  /dev/{{ $disk.Name }}p5 {{ if eq $i 0 }}\{{ end }}
+                {{- else }}
+                  /dev/{{ $disk.Name }}5 {{ if eq $i 0 }}\{{ end }}
+                {{- end -}}
+              {{ end }}
+
+            # Create the filesystem for ContainerD, to store container images.
+            zfs create primary/containerd
+            zfs set mountpoint=/var/lib/containerd primary/containerd
+
+            # Create the filesystem where pod logs will be stored.
+            zfs create primary/pod-logs
+            zfs set mountpoint=/var/log/pods primary/pod-logs
+
+            # Create the filesystem where pod ephemeral volumes will be stored.
+            zfs create primary/pod-ephemeral-volumes
+            zfs set mountpoint=/var/lib/kubelet/pods primary/pod-ephemeral-volumes
+
+            # Enable weekly ZPool trimming for the ZPool.
+            # So unused storage space will be reclaimed back, into the ZFS pool.
+            # REFER : https://openzfs.github.io/openzfs-docs/man/master/8/zpool-trim.8.html.
+            systemctl enable zfs-trim-weekly@rpool.timer --now
+          fi
+        labels: {{ $nodeGroup.Labels | toIndentYAML 2 | nindent 10 }}
+        taints: {{ $nodeGroup.Taints | toIndentYAML 2 | nindent 10 }}
+      {{- end }}
 {{- end }}

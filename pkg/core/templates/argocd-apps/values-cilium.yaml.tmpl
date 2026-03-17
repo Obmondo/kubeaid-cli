@@ -1,9 +1,12 @@
 ---
-{{- if .ProvisionedClusterEndpoint }}
+{{- if .ControlPlaneEndpoint }}
 cilium:
   kubeProxyReplacement: "true"
-  k8sServiceHost: {{ .ProvisionedClusterEndpoint.Hostname }}
-  k8sServicePort: {{ .ProvisionedClusterEndpoint.Port }}
+  k8sServiceHost: {{ .ControlPlaneEndpoint }}
+  k8sServicePort: 6443
+
+  hostFirewall:
+    enabled: true
 
   {{/*
     (1) HCloud instances always have the eth0 network interface.

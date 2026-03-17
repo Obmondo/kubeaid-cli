@@ -95,6 +95,8 @@ type (
 	}
 
 	ClusterConfig struct {
+		Type string `yaml:"type" validate:"notblank,oneof=vpn workload" default:"workload"`
+
 		// Name of the Kubernetes cluster.
 		//
 		// We don't allow using dots in the cluster name, since it can cause issues with tools like
@@ -116,6 +118,7 @@ type (
 		// NOTE : Currently, we can't register additional SSH key-pairs against the root user.
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
 
+		// ArgoCD specific details.
 		ArgoCD ArgoCDConfig `yaml:"argoCD" validate:"required"`
 	}
 
@@ -330,32 +333,57 @@ type (
 		*/
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
-		VSwitch *VSwitchConfig `yaml:"vswitch"`
+		// Details about the VPN cluster you have in HCloud.
+		HCloudVPNCluster *HCloudVPNClusterConfig `yaml:"hcloudVPNCluster"`
 
-		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
+		// Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner
+		// Bare Metal server.
+		// KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,
+		// if it / they doesn't already exist.
+		SSHKeyPair HetznerSSHKeyPair `yaml:"sshKeyPair" validate:"required"`
+
+		// HCloud specific details.
+		HCloud *HCloudConfig `yaml:"hcloud"`
+
+		// Hetzner bare-metal specific details.
 		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
+		// Control-plane specific details.
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
 
-		// Details about node-groups in Hetzner.
+		// Details about the node-groups.
 		NodeGroups HetznerNodeGroups `yaml:"nodeGroups"`
 	}
 
-	VSwitchConfig struct {
-		VLANID int    `yaml:"vlanID"`
-		Name   string `yaml:"name"   validate:"notblank"`
+	HCloudVPNClusterConfig struct {
+		Name string `yaml:"name" validate:"notblank"`
 	}
 
-	HetznerHCloudConfig struct {
-		Zone           string `yaml:"zone"           validate:"notblank"`
-		ImageName      string `yaml:"imageName"      validate:"notblank" default:"ubuntu-24.04"`
-		SSHKeyPairName string `yaml:"sshKeyPairName" validate:"notblank"`
+	HetznerSSHKeyPair struct {
+		Name             string `yaml:"name"    validate:"notblank"`
+		SSHKeyPairConfig `       yaml:",inline"`
+	}
+
+	HCloudConfig struct {
+		Zone      string `yaml:"zone"      validate:"notblank"`
+		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-24.04"`
+
+		// Hetzner Network specific details.
+		HetznerNetwork HetznerNetworkConfig `yaml:"hetznerNetwork" validate:"required"`
+	}
+
+	HetznerNetworkConfig struct {
+		CIDR                    string `yaml:"cidr"                    validate:"cidrv4"`
+		HCloudServersSubnetCIDR string `yaml:"hcloudServersSubnetCIDR" validate:"cidrv4"`
 	}
 
 	HetznerBareMetalConfig struct {
-		WipeDisks    bool                       `yaml:"wipeDisks"    default:"false"`
-		InstallImage InstallImageConfig         `yaml:"installImage"`
-		SSHKeyPair   HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                   validate:"required"`
+		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
+		InstallImage InstallImageConfig `yaml:"installImage"`
+
+		// Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
+		// the Hetzner Network.
+		VSwitch *VSwitchConfig `yaml:"vSwitch"`
 	}
 
 	InstallImageConfig struct {
@@ -363,14 +391,16 @@ type (
 		VG0       VG0Config `yaml:"vg0"`
 	}
 
-	HetznerBareMetalSSHKeyPair struct {
-		Name             string `yaml:"name"    validate:"notblank"`
-		SSHKeyPairConfig `       yaml:",inline"`
-	}
-
 	VG0Config struct {
 		Size           int `yaml:"size"           validate:"notblank" default:"80"`
 		RootVolumeSize int `yaml:"rootVolumeSize" validate:"notblank" default:"50"`
+	}
+
+	VSwitchConfig struct {
+		VLANID int    `yaml:"vlanID"`
+		Name   string `yaml:"name"   validate:"notblank"`
+
+		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
 	}
 
 	HetznerControlPlane struct {
@@ -388,13 +418,13 @@ type (
 
 	HetznerBareMetalControlPlane struct {
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
-		BareMetalHosts []HetznerBareMetalHost               `yaml:"bareMetalHosts" validate:"required,gt=0"`
+		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
 
 		// ZFS specific configuration.
 		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
 		// logs and pod ephemeral volumes from that ZFS pool, as required.
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+		ZFS ZFSConfig `yaml:"zfs"`
 
 		StoragePlan storageplan.StoragePlan
 	}
@@ -439,13 +469,15 @@ type (
 		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
 		// logs and pod ephemeral volumes from that ZFS pool, as required.
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+		ZFS ZFSConfig `yaml:"zfs"`
 
 		StoragePlan storageplan.StoragePlan
 	}
 
 	HetznerBareMetalHost struct {
-		ServerID string `yaml:"serverID" validate:"notblank"`
+		ServerID  string `yaml:"serverID"  validate:"notblank"`
+		PrivateIP string `yaml:"privateIP" validate:"ipv4"`
+		WWNs      []string
 	}
 
 	ZFSConfig struct {
@@ -454,7 +486,7 @@ type (
 		// pod ephemeral volumes.
 		// On top of that, if you want x GB of node-local storage for your workloads (like Redis),
 		// the ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled.
-		Size int `yaml:"size" validate:"required,gt=200"`
+		Size int `yaml:"size" validate:"required,gt=200" default:"220"`
 	}
 )
 

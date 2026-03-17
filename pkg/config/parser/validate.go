@@ -34,11 +34,23 @@ import (
 func validateConfigs() {
 	ctx := context.Background()
 
+	// Cluster name can't contain any dots.
+	clusterNameContainsDots := strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".")
+	assert.Assert(ctx, !clusterNameContainsDots,
+		"Cluster name connot contain dots. Maybe use hyphens instead",
+	)
+
+	// Cluster type VPN is supported only for the Hetzner provider as of now.
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
+		assert.Assert(ctx, (globals.CloudProviderName == constants.CloudProviderHetzner),
+			"Cluster type VPN is supported only for the Hetzner provider as of now")
+	}
+
+	// Validate based on struct tags.
+
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
 	err := validator.RegisterValidation("notblank", goNonStandardValidtors.NotBlank)
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
-
-	// Validate based on struct tags.
 
 	err = validator.Struct(config.ParsedGeneralConfig)
 	assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
@@ -107,7 +119,7 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 
 // Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
 func getLatestStableK8sVersion(ctx context.Context) string {
-	const kubeadmAPIURL = "https://cdn.dl.k8s.io/release/stable.txt"
+	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
 
 	slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
 
@@ -152,13 +164,16 @@ func validateAzureConfig(ctx context.Context) {
 func validateHetznerConfig(ctx context.Context) {
 	// Ensure that the user has provided Hetzner specific credentials.
 	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
-	// When using the Hetzner provider in bare-metal or hybrid mode,
-	// ensure that the user has provided VSwitch details.
-	// The VSwitch will be used to get the Hetzner Bare Metal servers off the public internet.
-	if config.ParsedGeneralConfig.Cloud.Hetzner.Mode != constants.HetznerModeHCloud {
-		assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch,
-			"VSwitch details not provided",
-		)
+
+	// When provisioning a VPN cluster,
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
+		// We must use the Hetzner's hcloud provider.
+		assert.Assert(ctx,
+			(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHCloud),
+			"VPN cluster can only exist in HCloud. So use the hcloud mode of the Hetzner provider")
+
+		// Nil the .cloud.hetzner.hcloudVPNCluster option, if specified.
+		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
 	if config.UsingHCloud() {
@@ -176,13 +191,11 @@ func validateHCloudConfig(ctx context.Context) {
 	// HCloud specific options must be provided.
 	assert.AssertNotNil(ctx, hetznerConfig.HCloud, "HCloud specific details not provided")
 
-	// If the control-plane is in HCloud,
+	// When the control-plane is in HCloud,
 	// then HCloud specific control-plane options must be provided.
 	if config.ControlPlaneInHCloud() {
-		assert.AssertNotNil(ctx,
-			hetznerConfig.ControlPlane.HCloud,
-			"HCloud specific control-plane details not provided",
-		)
+		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.HCloud,
+			"HCloud specific control-plane details not provided")
 	}
 
 	// Validate auto-scalable node-groups in HCloud.
@@ -193,30 +206,32 @@ func validateHCloudConfig(ctx context.Context) {
 
 func validateHetznerBareMetalConfig(ctx context.Context) {
 	// Hetzner Robot username and password must be provided.
-	assert.AssertNotNil(ctx,
-		config.ParsedSecretsConfig.Hetzner.Robot,
-		"HCloud robot user and password not provided",
-	)
+	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner.Robot,
+		"Hetzner robot user and password not provided")
 
-	hetznerBareMetalConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
 	// Hetzner bare-metal specific options must be provided.
-	assert.AssertNotNil(ctx,
-		hetznerBareMetalConfig.BareMetal,
-		"Hetzner bare metal specific details not provided",
-	)
+	assert.AssertNotNil(ctx, hetznerConfig.BareMetal,
+		"Hetzner bare metal specific details not provided")
 
-	// If the control-plane is in Hetzner bare-metal.
+	// When the cluster is going to be in a Hetzner Network, the user must provide details about
+	// the VSwitch : which'll be used to connect the Hetzner Bare Metal servers with that Hetzner
+	// Network.
+	// TODO : We need this when mode = bare-metal and there is a VPN cluster.
+	if hetznerConfig.Mode == constants.HetznerModeHybrid {
+		assert.AssertNotNil(ctx, hetznerConfig.BareMetal.VSwitch, "VSwitch details not provided")
+	}
+
+	// When the control-plane is in Hetzner bare-metal.
 	if config.ControlPlaneInHetznerBareMetal() {
 		// Then Hetzner bare-metal specific control-plane options must be provided.
-		assert.AssertNotNil(ctx,
-			hetznerBareMetalConfig.ControlPlane.BareMetal,
-			"Hetzner bare metal specific control-plane details not provided",
-		)
+		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.BareMetal,
+			"Hetzner bare metal specific control-plane details not provided")
 	}
 
 	// Validate node-groups in Hetzner bare-metal.
-	for _, hetznerBaremetalNodeGroup := range hetznerBareMetalConfig.NodeGroups.BareMetal {
+	for _, hetznerBaremetalNodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 		validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
 	}
 }
@@ -257,10 +272,7 @@ func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
-func validateBareMetalHost(ctx context.Context,
-	host *config.BareMetalHost,
-	connector *kubeonessh.Connector,
-) {
+func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
 	// Either the public or private IP address must be provided.

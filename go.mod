@@ -57,6 +57,7 @@ require (
 	k8s.io/cloud-provider v0.32.2
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.33.2
+	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/cluster-api v1.10.3
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.8.4
 	sigs.k8s.io/cluster-api-provider-azure v1.20.1
@@ -385,7 +386,6 @@ require (
 	k8s.io/kube-proxy v0.31.1 // indirect
 	k8s.io/kubectl v0.33.3 // indirect
 	k8s.io/kubelet v0.31.1 // indirect
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	monis.app/mlog v0.0.4 // indirect
 	oras.land/oras-go/v2 v2.6.0 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.32.0 // indirect

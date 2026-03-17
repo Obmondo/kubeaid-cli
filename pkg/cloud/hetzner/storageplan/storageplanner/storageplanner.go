@@ -81,10 +81,6 @@ func NewStoragePlan(ctx context.Context, serverID string,
 				continue
 			}
 
-			if unallocated < disk.Size {
-				disk.Partitioned = true
-			}
-
 			disk.Allocations.ZFS += zfsConfig.Size
 			targetDisks = append(targetDisks, disk)
 		}
@@ -94,16 +90,12 @@ func NewStoragePlan(ctx context.Context, serverID string,
 		s.ZFS = targetDisks
 	}
 
-	// Any disk having >= 500GB of storage space, will get allocated to the CEPH cluster.
+	// Any disk having >= 50GB of storage space, will get allocated to the CEPH cluster.
 	targetDisks := []*storageplan.Disk{}
 	for _, disk := range disks {
 		unallocated := disk.Unallocated()
 		if unallocated < constants.CEPHNodeMinSize {
 			continue
-		}
-
-		if unallocated < disk.Size {
-			disk.Partitioned = true
 		}
 
 		disk.Allocations.CEPH = unallocated

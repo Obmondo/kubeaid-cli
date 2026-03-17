@@ -6,7 +6,6 @@ package core
 import (
 	"context"
 	"embed"
-	"net/url"
 	"os"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
@@ -47,7 +46,23 @@ type TemplateValues struct {
 
 	BareMetalConfig *config.BareMetalConfig
 
-	ProvisionedClusterEndpoint *url.URL
+	/*
+		There are scenarios when we know the control-plane endpoint before the cluster is provisioned :
+
+		  (1) When provisioning an HCloud / Hetzner hybrid cluster, and we have a VPN cluster.
+
+		  (2) When provisioning a Bare Metal / Hetzner Bare Metal cluster; the user specifies it.
+
+		We specify that pre-provisioned LB IP as the control-plane endpoint to CAPI and Cilium.
+
+		Otherwise, we need to wait until the cluster has been provisioned. Once the cluster is
+		provisioned, we get the control-plane endpoint from the Cluster resource. And then it's
+		specified to Cilium.
+
+		NOTE : Initially Cilium is installed using the postKubeadm hook in the KubeadmControlPlane
+		       resource. The control-plane endpoint is determined from the kubeconfig file in the node.
+	*/
+	ControlPlaneEndpoint string
 
 	*config.DisasterRecoveryConfig
 
@@ -96,16 +111,29 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(ctx)
 	}
 
-	/*
-		Set control-plane endpoint, if cluster has been provisioned (detects by trying to query the
-		Cluster resource from the management / provisioned cluster).
-		The control-plane endpoint will be used to create the Cilium ArgoCD App.
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-		NOTE : Initially, Cilium is installed in kube-proxyless mode in the provisioned cluster, using
-		the postKubeadm hook in the KubeadmControlPlane resource. After the cluster has been
-		provisioned, we bring it in the GitOPs cycle.
-	*/
-	templateValues.ProvisionedClusterEndpoint = kubernetes.GetMainClusterEndpoint(ctx)
+	// Set the control-plane endpoint.
+	switch globals.CloudProviderName {
+	case constants.CloudProviderHetzner:
+		switch {
+		// Hetzner Bare Metal cluster; the user specifies it.
+		case hetznerConfig.Mode == constants.HetznerModeBareMetal:
+			templateValues.ControlPlaneEndpoint = hetznerConfig.ControlPlane.BareMetal.Endpoint.Host
+
+		// HCloud / Hetzner hybrid cluster, when we have a VPN cluster.
+		// We've pre-provisioned the control-plane LB.
+		case ((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid) && (hetznerConfig.HCloudVPNCluster != nil)):
+			templateValues.ControlPlaneEndpoint = globals.PreProvisionedControlPlaneLBIP
+		}
+
+	// Bare Metal cluster; the user specifies it.
+	case constants.CloudProviderBareMetal:
+		templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Endpoint.Host
+
+	default:
+		templateValues.ControlPlaneEndpoint = kubernetes.GetMainClusterEndpoint(ctx).Hostname()
+	}
 
 	return templateValues
 }

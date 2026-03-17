@@ -36,14 +36,9 @@ func hydrateSSHKeyConfigs() {
 		)
 
 	case constants.CloudProviderHetzner:
-		mode := generalConfig.Cloud.Hetzner.Mode
-
-		// When using Hetzner bare-metal.
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
-			hydrateSSHKeyPairConfig(
-				&generalConfig.Cloud.Hetzner.BareMetal.SSHKeyPair.SSHKeyPairConfig,
-			)
-		}
+		hydrateSSHKeyPairConfig(
+			&generalConfig.Cloud.Hetzner.SSHKeyPair.SSHKeyPairConfig,
+		)
 
 	case constants.CloudProviderBareMetal:
 		if generalConfig.Cloud.BareMetal.SSH.PrivateKey != nil {

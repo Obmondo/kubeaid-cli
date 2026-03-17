@@ -305,10 +305,8 @@ func getSSHPrivateKeyFilePaths() map[string]bool {
 	case constants.CloudProviderHetzner:
 		hetznerConfig := parsedGeneralConfig.Cloud.Hetzner
 
-		if config.UsingHetznerBareMetal() {
-			// Used to SSH into the Hetzner Bare Metal servers.
-			paths[hetznerConfig.BareMetal.SSHKeyPair.PrivateKeyFilePath] = true
-		}
+		// Used to SSH into the Hetzner Bare Metal / HCloud servers.
+		paths[hetznerConfig.SSHKeyPair.PrivateKeyFilePath] = true
 
 	case constants.CloudProviderBareMetal:
 		bareMetalConfig := parsedGeneralConfig.Cloud.BareMetal

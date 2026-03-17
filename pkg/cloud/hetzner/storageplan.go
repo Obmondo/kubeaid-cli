@@ -26,7 +26,7 @@ import (
 func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) {
 	allStoragePlans := make(storageplan.StoragePlans)
 
-	privateKey := hetznerConfig.BareMetal.SSHKeyPair.PrivateKey
+	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 
 	/*
 		When the control-plane is in Hetzner bare-metal, we :
@@ -71,6 +71,13 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			assert.AssertErrNil(nodeCtx, err, "Failed generating storage plan")
 
 			storagePlans[i] = storagePlan
+
+			// Store WWNs of the 2 disks across which the OS will be installed,
+			// into the BareMetalHostConfig.
+			host.WWNs = []string{}
+			for _, disk := range storagePlan.OS {
+				host.WWNs = append(host.WWNs, disk.WWN)
+			}
 		}
 
 		// Check alikeness of storage plans.
@@ -105,6 +112,13 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			assert.AssertErrNil(nodeCtx, err, "Failed generating storage plan")
 
 			storagePlans[i] = storagePlan
+
+			// Store WWNs of the 2 disks across which the OS will be installed,
+			// into the BareMetalHostConfig.
+			host.WWNs = []string{}
+			for _, disk := range storagePlan.OS {
+				host.WWNs = append(host.WWNs, disk.WWN)
+			}
 		}
 
 		// Check alikeness of storage plans.
@@ -210,12 +224,18 @@ func (h *Hetzner) getServerDisks(ctx context.Context, id, privateKey string) []*
 
 	disks := make([]*storageplan.Disk, len(lsblkOutput.BlockDevices))
 	for i, row := range lsblkOutput.BlockDevices {
-		disks[i] = &storageplan.Disk{
-			Name: row.Name,
-			WWN:  row.WWN,
-			Type: row.GetDiskType(),
+		assert.Assert(ctx, (len(row.PartitionTableType) > 0), "Empty partition table type",
+			slog.String("disk", row.Name),
+		)
 
-			Size: row.Size / (1000 * 1000 * 1000),
+		disks[i] = &storageplan.Disk{
+			Name:               row.Name,
+			WWN:                row.WWN,
+			Type:               row.GetDiskType(),
+			PartitionTableType: row.PartitionTableType,
+
+			// 2G is kept aside for the boot and EFI partitions.
+			Size: (row.Size / (1024 * 1024 * 1024)) - 2,
 
 			WithHighSpeedNIC: (maxNICSpeed >= constants.HighSpeedNICThreshold),
 		}
