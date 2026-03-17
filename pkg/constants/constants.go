@@ -90,6 +90,8 @@ const HighSpeedNICThreshold = 5000 // GBPS.
 
 const CEPHNodeMinSize = 50 // GB.
 
+const LatestKubeOneSupportedK8sVersion = "v1.34" // Need Updation after every kubeone package updates
+
 // ZFS.
 const (
 	ZFSVolumeSizeContainerImages     = 100

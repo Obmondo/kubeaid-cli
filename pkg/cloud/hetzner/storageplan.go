@@ -184,7 +184,7 @@ func (h *Hetzner) getServerDisks(ctx context.Context, id, privateKey string) []*
 		Hostname:   address,
 		Port:       22,
 		Username:   "root",
-		PrivateKey: privateKey,
+		PrivateKey: []byte(privateKey),
 
 		Timeout: time.Second * 10,
 	})

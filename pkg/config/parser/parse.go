@@ -106,7 +106,8 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	hydrateVMSpecs(ctx)
 
 	// Validate the general and secrets configs.
-	validateConfigs()
+	err = validateConfigs(ctx)
+	assert.AssertErrNil(ctx, err, "Config validation failed")
 }
 
 // Based on the parsed config, detects the underlying cloud-provider name.

@@ -31,7 +31,8 @@ var templates embed.FS
 type (
 	K3DConfigTemplateValues struct {
 		Name,
-		K8sVersion string
+		K8sVersion,
+		K3sVersion string
 
 		WorkloadIdentity *WorkloadIdentity
 	}
@@ -119,9 +120,18 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 // Generates the K3D cluster config file.
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
+	latestK3sVersion, err := config.GetLatestK3sImageTag(ctx)
+	if err != nil {
+		slog.InfoContext(ctx, "Failed fetching latest k3s image tag, using fallback",
+			"error", err,
+			"using version", latestK3sVersion,
+		)
+	}
+
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
+		K3sVersion: latestK3sVersion,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

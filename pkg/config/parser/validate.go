@@ -16,7 +16,7 @@ import (
 	"unicode"
 
 	validatorV10 "github.com/go-playground/validator/v10"
-	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
+	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
@@ -32,14 +32,10 @@ import (
 )
 
 // Validates the parsed general and secrets config.
-func validateConfigs() {
-	ctx := context.Background()
-
-	// Cluster name can't contain any dots.
-	clusterNameContainsDots := strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".")
-	assert.Assert(ctx, !clusterNameContainsDots,
-		"Cluster name connot contain dots. Maybe use hyphens instead",
-	)
+func validateConfigs(ctx context.Context) error {
+	if strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".") {
+		return fmt.Errorf("cluster name cannot contain any dots")
+	}
 
 	// Cluster type VPN is supported only for the Hetzner provider as of now.
 	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
@@ -50,7 +46,7 @@ func validateConfigs() {
 	// Validate based on struct tags.
 
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	err := validator.RegisterValidation("notblank", goNonStandardValidtors.NotBlank)
+	err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank)
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
 
 	err = validator.Struct(config.ParsedGeneralConfig)
@@ -99,11 +95,17 @@ func validateConfigs() {
 	case constants.CloudProviderLocal:
 		break
 	}
+
+	return nil
 }
 
 // Checks whether the given string represents a valid  and supported Kubernetes version or not.
 // If not, then panics.
 func validateK8sVersion(ctx context.Context, k8sVersion string) {
+	assert.Assert(ctx, strings.HasPrefix(k8sVersion, "v"),
+		"K8s version must start with 'v' (for example: v1.35.0)",
+	)
+
 	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
@@ -294,6 +296,18 @@ func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
+	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
+	// We would need to update this after each kubeone package upgrade in the codebase. currently kubeone supports k8s version upto v1.34
+	if semver.IsValid(k8sVersion) &&
+		semver.Compare(semver.MajorMinor(k8sVersion), constants.LatestKubeOneSupportedK8sVersion) > 0 {
+		slog.ErrorContext(
+			ctx,
+			"Latest k8s supported version currently for bare metal is v1.34",
+			slog.String("version", k8sVersion),
+		)
+		os.Exit(1)
+	}
+
 	// Either the public or private IP address must be provided.
 	// When both are provided, then we'll use the private address to SSH into the server, in the
 	// following section.
@@ -364,7 +378,7 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		Hostname:   address,
 		Port:       22,
 		Username:   "root",
-		PrivateKey: privateKey,
+		PrivateKey: []byte(privateKey),
 
 		Timeout: time.Second * 10,
 	}
@@ -420,8 +434,8 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
 
 		_, _, _, err := connection.Exec(command)
-		assert.AssertErrNil(ctx, err, "Required package must be installed in the server",
-			slog.String("package", p),
+		assert.AssertErrNil(ctx, err, "All required packages must be installed on the server",
+			slog.Any("packages", packages),
 		)
 	}
 }

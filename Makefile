@@ -18,7 +18,13 @@ run-generators:
 	@go run ./tools/generators/cmd \
     ./pkg/config/general.go ./pkg/config/secrets.go
 
-VERSION := $(shell cat ./cmd/kubeaid-core/root/version/version.txt)
+.PHONY: build-cli
+build-cli:
+	@go build -o ./build/kubeaid-cli ./cmd/kubeaid-core
+
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
 CONTAINER_NAME=kubeaid-core
 
@@ -27,7 +33,12 @@ NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 
 .PHONY: build-image
 build-image:
-	@docker build --build-arg CPU_ARCHITECTURE=arm64 -t $(IMAGE_NAME) .
+	@docker build \
+		--build-arg CPU_ARCHITECTURE=arm64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(IMAGE_NAME) .
 
 .PHONY: remove-image
 remove-image:
@@ -98,7 +109,7 @@ devenv-create-azure:
 		--debug \
     --configs-directory ./outputs/configs/azure/ \
     --skip-pr-workflow
-    
+
 .PHONY: bootstrap-cluster-azure
 bootstrap-cluster-azure:
 	@go run ./cmd/kubeaid-core cluster bootstrap \
