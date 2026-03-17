@@ -19,9 +19,9 @@ builds:
     goarch: ["amd64", "arm64"]
     ldflags:
       - -s -w
-      - -X main.Version={{ .Tag }}
-      - -X main.Commit={{ .ShortCommit }}
-      - -X main.Date={{ .Date }}
+      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version={{ .Tag }}
+      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit={{ .ShortCommit }}
+      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date={{ .Date }}
 
 upx:
   - enabled: true
