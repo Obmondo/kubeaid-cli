@@ -6,8 +6,10 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"path"
+	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
@@ -38,6 +40,34 @@ func getLatestKubeAidVersion(ctx context.Context) string {
 	assert.AssertErrNil(ctx, err, "Failed JSON decoding KubeAid's latest release details")
 
 	return releaseDetails.TagName
+}
+
+func GetLatestK3sImageTag(ctx context.Context) (string, error) {
+	defaultVersion := "v1.34.5-k3s1"
+	resp, err := http.Get("https://api.github.com/repos/k3s-io/k3s/releases/latest")
+	if err != nil {
+		return defaultVersion, err
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return defaultVersion, err
+	}
+
+	// This is present to handle any unexpected type of error like 404 etc
+	if release.TagName == "" {
+		slog.InfoContext(ctx,
+			"Fetched tag name is empty, using default version",
+			"defaultVersion", defaultVersion,
+		)
+		return defaultVersion, nil
+	}
+
+	// Upstream contains "+" which we need to replace to "-" to match tags naming convention
+	return strings.ReplaceAll(release.TagName, "+", "-"), nil
 }
 
 func GetGeneralConfigFilePath() string {
