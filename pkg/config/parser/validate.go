@@ -324,7 +324,8 @@ func validateBareMetalHost(ctx context.Context,
 
 	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
 	// We would need to update this after each kubeone package upgrade in the codebase. currently kubeone supports k8s version upto v1.34
-	if semver.IsValid(k8sVersion) && semver.Compare(semver.MajorMinor(k8sVersion), constants.LatestKubeOneSupportedK8sVersion) > 0 {
+	if semver.IsValid(k8sVersion) &&
+		semver.Compare(semver.MajorMinor(k8sVersion), constants.LatestKubeOneSupportedK8sVersion) > 0 {
 		slog.ErrorContext(
 			ctx,
 			"Latest k8s supported version currently for bare metal is v1.34",
