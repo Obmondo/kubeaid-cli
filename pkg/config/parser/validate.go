@@ -19,6 +19,7 @@ import (
 	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/mod/semver"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -60,6 +61,13 @@ func validateConfigs() {
 
 	// Validate K8s version.
 	validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
+
+	// Validate KubePrometheus version.
+	validateKubePrometheusVersion(
+		ctx,
+		config.ParsedGeneralConfig.KubePrometheus.Version,
+		config.ParsedGeneralConfig.Cluster.K8sVersion,
+	)
 
 	// Validate additional users.
 	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
@@ -117,24 +125,35 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 	}
 }
 
-// Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
+// Fetches and returns the latest stable Kubernetes version from the kubeadm API.
+// It will try multiple kubeadm API endpoints, and return the version fetched from the first successful response.
+// The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
 func getLatestStableK8sVersion(ctx context.Context) string {
 	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
 
-	slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
-
-	response, err := http.Get(kubeadmAPIURL)
+	latestStableK8sVersion, err := fetchLatestStableK8sVersion(kubeadmAPIURL)
 	assert.AssertErrNil(ctx, err, "Failed fetching latest stable K8s version")
-	if response.StatusCode != http.StatusOK {
-		slog.ErrorContext(ctx, "Failed fetching latest stable Kubernetes version")
-		os.Exit(1)
+
+	return latestStableK8sVersion
+}
+
+func fetchLatestStableK8sVersion(kubeadmAPIURL string) (string, error) {
+	response, err := http.Get(kubeadmAPIURL)
+	if err != nil {
+		return "", err
 	}
 	defer response.Body.Close()
 
-	latestStableK8sVersion, err := io.ReadAll(response.Body)
-	assert.AssertErrNil(ctx, err, "Failed reading latest stable K8s version from response body")
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", response.StatusCode)
+	}
 
-	return string(latestStableK8sVersion)
+	latestStableK8sVersion, err := io.ReadAll(response.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(latestStableK8sVersion), nil
 }
 
 func validateAWSConfig(ctx context.Context) {
@@ -458,4 +477,60 @@ func validateLabelsAndTaints(ctx context.Context,
 	// Validate taints.
 	err = labelsPkg.ValidateTaints(taintsAsKVPairs)
 	assert.AssertErrNil(ctx, err, "NodeGroup taints validation failed")
+}
+
+func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion string, k8sVersion string) {
+	if config.ParsedGeneralConfig.KubePrometheus.Version == "" {
+		return
+	}
+
+	if !semver.IsValid(k8sVersion) || !semver.IsValid(kubePrometheusVersion) {
+		err := fmt.Errorf(
+			"invalid semver format: k8s=%s, kube-prometheus=%s",
+			k8sVersion,
+			kubePrometheusVersion,
+		)
+		assert.AssertErrNil(ctx, err, "Version formatting validation failed")
+	}
+
+	// To get just major version like v1.34.2 -> v1.34
+	k8sVersionTrimmed := semver.MajorMinor(k8sVersion)
+	kubePrometheusVersionTrimmed := semver.MajorMinor(kubePrometheusVersion)
+
+	// Source - https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility
+	compatibilityMatrix := map[string][]string{
+		"v0.15": {"v1.31", "v1.32", "v1.33"},
+		"v0.16": {"v1.31", "v1.32", "v1.33", "v1.34"},
+	}
+
+	// Check if kube prometheus version exists in our matrix
+	supportedK8s, exists := compatibilityMatrix[kubePrometheusVersionTrimmed]
+	if !exists {
+		err := fmt.Errorf(
+			"kube-prometheus version %s is not in the validation matrix",
+			kubePrometheusVersionTrimmed,
+		)
+		assert.AssertErrNil(ctx, err, "Unknown kube-prometheus version detected")
+	}
+
+	// Check if the target K8s version is in the supported list
+	isSupported := false
+	for _, supported := range supportedK8s {
+		if k8sVersionTrimmed == supported {
+			isSupported = true
+			slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
+			break
+		}
+	}
+
+	if !isSupported {
+		err := fmt.Errorf(
+			"kube-prometheus %s does not support Kubernetes %s. Supported KubePrometheus versions for k8s %v are: %s",
+			kubePrometheusVersion,
+			k8sVersion,
+			supportedK8s,
+			kubePrometheusVersionTrimmed,
+		)
+		assert.AssertErrNil(ctx, err, "Kubernetes version do not supports KubePrometheus version")
+	}
 }

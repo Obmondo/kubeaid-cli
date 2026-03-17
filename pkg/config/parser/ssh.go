@@ -83,7 +83,8 @@ func hydrateSSHKeyPairConfig(sshKeyConfig *config.SSHKeyPairConfig) {
 		// Validate the SSH public key.
 		switch {
 		// OpenSSH.
-		case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSH):
+		case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSHRSA) ||
+			strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSHEd25519):
 
 			_, _, _, _, err = ssh.ParseAuthorizedKey(publicKey)
 			assert.AssertErrNil(ctx, err,
