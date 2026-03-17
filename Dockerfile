@@ -10,9 +10,18 @@ RUN --mount=type=bind,src=go.mod,target=go.mod \
   --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
   go mod download
 
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+
 RUN --mount=type=bind,src=.,target=. \
   --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
-  CGO_ENABLED=0 go build -ldflags="-s -w" -v -o /usr/local/bin/kubeaid-core ./cmd/kubeaid-core
+  CGO_ENABLED=0 go build \
+  -ldflags="-s -w \
+    -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=${VERSION} \
+    -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=${COMMIT} \
+    -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=${BUILD_DATE}" \
+  -v -o /usr/local/bin/kubeaid-core ./cmd/kubeaid-core
 
 #--- Dependencies layer ---
 FROM alpine:3.22 AS runtime-dependencies-installer

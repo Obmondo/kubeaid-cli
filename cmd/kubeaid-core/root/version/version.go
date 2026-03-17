@@ -4,19 +4,23 @@
 package version
 
 import (
-	_ "embed"
 	"fmt"
 
 	"github.com/spf13/cobra"
 )
 
-//go:embed version.txt
-var Version string
+// These variables are set at build time via -ldflags.
+// When not set (e.g. during development with `go run`), they fall back to defaults.
+var (
+	Version = "dev"
+	Commit  = "unknown"
+	Date    = "unknown"
+)
 
 var VersionCommand = &cobra.Command{
 	Use: "version",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("v" + Version)
+		fmt.Printf("version: %s\ncommit:  %s\nbuilt:   %s\n", Version, Commit, Date)
 	},
 }
