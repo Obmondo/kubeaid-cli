@@ -21,6 +21,6 @@ repos:
 
       - id: commitlint
         name: Lint commit message
-        entry: bun run commitlint --from HEAD~1 --to HEAD
+        entry: bun run commitlint --edit
         language: system
-        pass_filenames: false
+        stages: [commit-msg]

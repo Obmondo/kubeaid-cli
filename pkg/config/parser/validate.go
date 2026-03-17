@@ -16,7 +16,7 @@ import (
 	"unicode"
 
 	validatorV10 "github.com/go-playground/validator/v10"
-	goNonStandardValidtors "github.com/go-playground/validator/v10/non-standard/validators"
+	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
@@ -32,27 +32,22 @@ import (
 )
 
 // Validates the parsed general and secrets config.
-func validateConfigs() {
-	ctx := context.Background()
-
-	// Cluster name can't contain any dots.
-	clusterNameContainsDots := strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".")
-	assert.Assert(ctx, !clusterNameContainsDots,
-		"Cluster name connot contain dots. Maybe use hyphens instead",
-	)
+func validateConfigs(ctx context.Context) error {
+	if strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".") {
+		return fmt.Errorf("cluster name cannot contain any dots")
+	}
 
 	// VPN cluster type is supported only for the Hetzner provider as of now.
-	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
-		assert.Assert(ctx,
-			(globals.CloudProviderName == constants.CloudProviderHetzner),
-			"VPN cluster is supported only for the Hetzner provider as of now",
-		)
+	if (config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN) &&
+		(globals.CloudProviderName != constants.CloudProviderHetzner) {
+
+		return fmt.Errorf("VPN cluster is supported only for the Hetzner provider as of now")
 	}
 
 	// Validate based on struct tags.
 
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	err := validator.RegisterValidation("notblank", goNonStandardValidtors.NotBlank)
+	err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank)
 	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
 
 	err = validator.Struct(config.ParsedGeneralConfig)
@@ -101,6 +96,8 @@ func validateConfigs() {
 	case constants.CloudProviderLocal:
 		break
 	}
+
+	return nil
 }
 
 // Checks whether the given string represents a valid  and supported Kubernetes version or not.
