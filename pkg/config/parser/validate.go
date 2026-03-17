@@ -318,6 +318,17 @@ func validateBareMetalHost(ctx context.Context,
 ) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
+	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
+	// We would need to update this after each kubeone package upgrade in the codebase. currently kubeone supports k8s version upto v1.34
+	if semver.IsValid(k8sVersion) && semver.Compare(semver.MajorMinor(k8sVersion), constants.LatestKubeOneSupportedK8sVersion) > 0 {
+		slog.ErrorContext(
+			ctx,
+			"Latest k8s supported version currently for bare metal is v1.34",
+			slog.String("version", k8sVersion),
+		)
+		os.Exit(1)
+	}
+
 	// Either the public or private IP address must be provided.
 	// When both are provided, then we'll use the private address to SSH into the server, in the
 	// following section.
@@ -388,7 +399,7 @@ func validateBareMetalHost(ctx context.Context,
 		Hostname:   address,
 		Port:       22,
 		Username:   "root",
-		PrivateKey: privateKey,
+		PrivateKey: []byte(privateKey),
 
 		Timeout: time.Second * 10,
 	}
@@ -444,8 +455,8 @@ func validateBareMetalHost(ctx context.Context,
 		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
 
 		_, _, _, err := connection.Exec(command)
-		assert.AssertErrNil(ctx, err, "Required package must be installed in the server",
-			slog.String("package", p),
+		assert.AssertErrNil(ctx, err, "All required packages must be installed on the server",
+			slog.Any("packages", packages),
 		)
 	}
 }

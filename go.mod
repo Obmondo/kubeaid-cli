@@ -47,20 +47,21 @@ require (
 	github.com/syself/cluster-api-provider-hetzner v1.0.7
 	github.com/vmware-tanzu/velero v1.16.1
 	golang.org/x/crypto v0.46.0
+	golang.org/x/mod v0.30.0
 	google.golang.org/grpc v1.73.0
 	gopkg.in/yaml.v3 v3.0.1
 	helm.sh/helm/v3 v3.18.5
-	k8c.io/kubeone v1.11.1-0.20250904083130-7d3314c42634
-	k8s.io/api v0.33.3
-	k8s.io/apimachinery v0.33.3
-	k8s.io/client-go v0.33.3
+	k8c.io/kubeone v1.12.0
+	k8s.io/api v0.33.4
+	k8s.io/apimachinery v0.33.4
+	k8s.io/client-go v0.33.4
 	k8s.io/cloud-provider v0.32.2
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubernetes v1.33.2
 	sigs.k8s.io/cluster-api v1.10.3
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.8.4
 	sigs.k8s.io/cluster-api-provider-azure v1.20.1
-	sigs.k8s.io/controller-runtime v0.20.4
+	sigs.k8s.io/controller-runtime v0.21.0
 )
 
 require (
@@ -352,7 +353,6 @@ require (
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
-	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
@@ -373,18 +373,18 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
-	k8c.io/machine-controller/sdk v1.63.0 // indirect
-	k8s.io/apiextensions-apiserver v0.33.3 // indirect
-	k8s.io/apiserver v0.33.3 // indirect
-	k8s.io/cli-runtime v0.33.3 // indirect
-	k8s.io/cluster-bootstrap v0.32.3 // indirect
-	k8s.io/component-base v0.33.3 // indirect
+	k8c.io/machine-controller/sdk v1.64.0 // indirect
+	k8s.io/apiextensions-apiserver v0.33.4 // indirect
+	k8s.io/apiserver v0.33.4 // indirect
+	k8s.io/cli-runtime v0.33.4 // indirect
+	k8s.io/cluster-bootstrap v0.33.4 // indirect
+	k8s.io/component-base v0.33.4 // indirect
 	k8s.io/component-helpers v0.32.3 // indirect
-	k8s.io/kube-aggregator v0.31.3 // indirect
+	k8s.io/kube-aggregator v0.33.4 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
-	k8s.io/kube-proxy v0.31.1 // indirect
-	k8s.io/kubectl v0.33.3 // indirect
-	k8s.io/kubelet v0.31.1 // indirect
+	k8s.io/kube-proxy v0.33.4 // indirect
+	k8s.io/kubectl v0.33.4 // indirect
+	k8s.io/kubelet v0.33.4 // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect
 	monis.app/mlog v0.0.4 // indirect
 	oras.land/oras-go/v2 v2.6.0 // indirect
