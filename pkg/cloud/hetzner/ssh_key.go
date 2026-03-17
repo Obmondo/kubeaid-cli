@@ -25,10 +25,10 @@ type GetSSHKeysResponse []struct {
 }
 
 func (h *Hetzner) ValidateHetznerSSHKeyPair(ctx context.Context, hetznerConfig *config.HetznerConfig) {
-	keyName := hetznerConfig.BareMetal.SSHKeyPair.Name
+	keyName := hetznerConfig.SSHKeyPair.Name
 
 	// directly loading up key data since it's processed during parsing phase
-	publicKey := hetznerConfig.BareMetal.SSHKeyPair.PublicKey
+	publicKey := hetznerConfig.SSHKeyPair.PublicKey
 	slog.InfoContext(ctx,
 		"Checking if SSH key exists in Hetzner",
 		slog.String("key_name", keyName),
