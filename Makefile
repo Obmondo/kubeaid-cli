@@ -18,14 +18,18 @@ run-generators:
 	@go run ./tools/generators/cmd \
     ./pkg/config/general.go ./pkg/config/secrets.go
 
-.PHONY: build-cli
-build-cli:
-	@go build -o ./build/kubeaid-cli ./cmd/kubeaid-core
-
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:v$(VERSION)
+LDFLAGS := -s -w \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=$(VERSION) \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
+
+.PHONY: build-cli
+build-cli:
+	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-core
+IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:$(VERSION)
 CONTAINER_NAME=kubeaid-core
 
 MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
