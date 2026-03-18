@@ -205,6 +205,13 @@ func getEmbeddedSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := constants.CommonSecretTemplateNames
 
+	// Include KubeAid deploy key template only when the deploy key is provided.
+	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.KubeaidSecretTemplateName,
+		)
+	}
+
 	// Add cloud provider specific templates, if required.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
