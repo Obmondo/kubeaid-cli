@@ -69,13 +69,17 @@ func (scg *SampleConfigGenerator) visitStruct(ctx context.Context,
 ) {
 	for _, field := range s.Fields {
 		if len(field.Doc) > 0 {
-			for line := range strings.SplitSeq(field.Doc, "\n") {
+			for line := range strings.SplitSeq(strings.TrimRight(field.Doc, "\n"), "\n") {
 				_, err := fmt.Fprintf(w, "%s# %s\n", indentation, line)
 				assert.AssertErrNil(ctx, err, "Failed writing to file")
 			}
 		}
 
-		_, err := fmt.Fprintf(w, "%s%s: %s\n", indentation, field.Name, field.DefaultValue)
+		if field.DefaultValue != "" {
+			field.DefaultValue = " " + field.DefaultValue
+		}
+
+		_, err := fmt.Fprintf(w, "%s%s:%s\n", indentation, field.Name, field.DefaultValue)
 
 		assert.AssertErrNil(ctx, err, "Failed writing to file")
 
