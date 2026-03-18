@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -133,7 +134,6 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 // The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
 func getLatestStableK8sVersion(ctx context.Context) string {
 	kubeadmAPIURLs := []string{
-		"https://cdn.dl.k8s.io/release/stable.txt",
 		"https://dl.k8s.io/release/stable.txt",
 	}
 
@@ -552,12 +552,9 @@ func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion st
 
 	// Check if the target K8s version is in the supported list
 	isSupported := false
-	for _, supported := range supportedK8s {
-		if k8sVersionTrimmed == supported {
-			isSupported = true
-			slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
-			break
-		}
+	if slices.Contains(supportedK8s, k8sVersionTrimmed) {
+		isSupported = true
+		slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
 	}
 
 	if !isSupported {

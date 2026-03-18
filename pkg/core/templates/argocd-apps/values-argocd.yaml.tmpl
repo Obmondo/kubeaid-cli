@@ -1,1 +1,5 @@
 ---
+configs:
+  ssh:
+    knownHosts: |
+{{- .SSHKnownHosts | nindent 6 }}
