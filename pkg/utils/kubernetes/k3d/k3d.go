@@ -51,10 +51,10 @@ Does the following :
 	(1) Creates a K3D cluster with the given name, if it doesn't already exist.
 
 	(2) Creates 2 kubeconfig files, which can be used to access the cluster, from inside the
-	    KubeAid Bootstrap Script container, or from the user's host machine.
+			KubeAid Bootstrap Script container, or from the user's host machine.
 
 	(3) Ensures that each master node has the node-role.kubernetes.io/control-plane= label,
-	    just like it is for a Vanilla Kubernetes cluster.
+			just like it is for a Vanilla Kubernetes cluster.
 
 Keep in mind :
 
@@ -62,7 +62,7 @@ Keep in mind :
 	Otherwise, access to the K3D cluster will break.
 
 	(1) From inside the container, we can access the K3D cluster's API server using
-	    https://k3d-management-cluster-server-0:6443.
+			https://k3d-management-cluster-server-0:6443.
 
 	(2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 */
@@ -106,7 +106,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		on this label to get scheduled to the master node.
 
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
-		       The cluster won't even startup.
+					 The cluster won't even startup.
 	*/
 	utils.ExecuteCommandOrDie(`
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
@@ -120,18 +120,10 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 // Generates the K3D cluster config file.
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
-	latestK3sVersion, err := config.GetLatestK3sImageTag(ctx)
-	if err != nil {
-		slog.InfoContext(ctx, "Failed fetching latest k3s image tag, using fallback",
-			"error", err,
-			"using version", latestK3sVersion,
-		)
-	}
-
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
-		K3sVersion: latestK3sVersion,
+		K3sVersion: constants.K3sVersion,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

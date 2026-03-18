@@ -99,6 +99,11 @@ const (
 	ZFSVolumeSizePodEphemeralVolumes = 50
 )
 
+// k3d
+const (
+	K3sVersion = "v1.33.5-k3s1" // pining to this version, so Ubuntu 20.04 can also work
+)
+
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
