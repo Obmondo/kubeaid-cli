@@ -43,7 +43,7 @@ func getLatestKubeAidVersion(ctx context.Context) string {
 }
 
 func GetLatestK3sImageTag(ctx context.Context) (string, error) {
-	defaultVersion := "v1.34.5-k3s1"
+	defaultVersion := "v1.33.5-k3s1"
 	resp, err := http.Get("https://api.github.com/repos/k3s-io/k3s/releases/latest")
 	if err != nil {
 		return defaultVersion, err
