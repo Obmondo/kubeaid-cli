@@ -102,7 +102,7 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 // Once the change get merged to the default branch, we'll trigger the actual rollout process.
 func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) {
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx, ReadBundledKnownHosts())
 
 	// Clone the KubeAid Config repository locally, if it's not already there.
 	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)

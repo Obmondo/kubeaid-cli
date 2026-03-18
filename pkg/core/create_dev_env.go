@@ -27,7 +27,7 @@ type CreateDevEnvArgs struct {
 
 func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Detect git authentication method.
-	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx)
+	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx, ReadBundledKnownHosts())
 
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {

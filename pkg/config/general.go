@@ -57,6 +57,11 @@ type (
 		// Or, make KubeAid CLI use the SSH Agent.
 		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
 		UseSSHAgent bool `yaml:"useSSHAgent"`
+
+		// Additional SSH known host entries.
+		// Merged with the bundled known hosts for
+		// GitHub, GitLab, Bitbucket and Azure DevOps.
+		KnownHosts []string `yaml:"knownHosts"`
 	}
 
 	// KubeAid and KubeAid Config repository specific details.

@@ -8,6 +8,7 @@ import (
 	"embed"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
@@ -15,10 +16,35 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/*
 var KubeaidConfigFileTemplates embed.FS
+
+// ReadBundledKnownHosts parses the embedded known_hosts.yaml
+// and returns the entries as a string slice.
+func ReadBundledKnownHosts() []string {
+	data, _ := KubeaidConfigFileTemplates.ReadFile(
+		"templates/known_hosts.yaml",
+	)
+
+	var entries []string
+	_ = yaml.Unmarshal(data, &entries)
+
+	return entries
+}
+
+// GetSSHKnownHosts returns all known host entries (bundled + user)
+// as a single newline-separated string. Used by templates.
+func GetSSHKnownHosts() string {
+	all := append(
+		ReadBundledKnownHosts(),
+		config.ParsedGeneralConfig.Git.KnownHosts...,
+	)
+
+	return strings.Join(all, "\n")
+}
 
 type TemplateValues struct {
 	GeneralConfigFileContents string
@@ -46,6 +72,8 @@ type TemplateValues struct {
 	HetznerCredentials *config.HetznerCredentials
 
 	BareMetalConfig *config.BareMetalConfig
+
+	SSHKnownHosts string
 
 	ProvisionedClusterEndpoint *url.URL
 
@@ -82,6 +110,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
 
 		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
+
+		SSHKnownHosts: GetSSHKnownHosts(),
 	}
 
 	// Set cloud provider specific values.

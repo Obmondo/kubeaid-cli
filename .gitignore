@@ -13,3 +13,5 @@ temp/
 kubeaid-cli
 
 *.swp
+
+robot_id_rsa*

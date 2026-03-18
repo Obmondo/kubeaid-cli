@@ -125,7 +125,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx, ReadBundledKnownHosts())
 
 	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
