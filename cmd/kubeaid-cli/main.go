@@ -126,10 +126,14 @@ func proxyRun(command *cobra.Command, args []string) {
 
 	// Pull the KubeAid Core container image, if it doesn't exist locally.
 
-	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:v%s", version.Version)
+	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:%s", version.Version)
 
 	pullProgressReader, err := dockerCLI.ImagePull(ctx, containerImageName, image.PullOptions{})
-	assert.AssertErrNil(ctx, err, "Failed ensuring that KubeAid Core container image exists locally")
+	assert.AssertErrNil(ctx, err,
+		"Failed pulling KubeAid Core container image. "+
+			"Ensure the image exists and your version is released",
+		slog.String("image", containerImageName),
+	)
 	defer pullProgressReader.Close()
 
 	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
