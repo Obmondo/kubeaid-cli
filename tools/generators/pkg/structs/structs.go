@@ -4,6 +4,7 @@
 package structs
 
 import (
+	"cmp"
 	"context"
 	"go/ast"
 	"go/token"
@@ -66,6 +67,20 @@ func NewStructsFromAST(ctx context.Context, imports map[string]string, node ast.
 	})
 
 	return structs
+}
+
+// Sorted returns all structs sorted alphabetically by name.
+func (structs *Structs) Sorted() []*Struct {
+	sorted := make([]*Struct, 0, len(structs.All))
+	for _, s := range structs.All {
+		sorted = append(sorted, s)
+	}
+
+	slices.SortFunc(sorted, func(a, b *Struct) int {
+		return cmp.Compare(a.Name, b.Name)
+	})
+
+	return sorted
 }
 
 // For each struct, we remove the embedded struct fields, and add the corresponding promoted fields.
