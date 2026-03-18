@@ -15,7 +15,8 @@ import (
 )
 
 var ClusterCmd = &cobra.Command{
-	Use: "cluster",
+	Use:   "cluster",
+	Short: "Manage Kubernetes cluster lifecycle",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Parse config files.
