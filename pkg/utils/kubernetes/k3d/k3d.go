@@ -77,6 +77,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Create the K3D cluster, if it doesn't already exist.
 	createK3dCluster(ctx, name)
 
+	// Ensure kubeconfig output directory exists.
+	utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathManagementClusterHostKubeconfig)
+
 	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
 	_, err := k3dClient.KubeconfigGetWrite(ctx, runtimes.Docker,
