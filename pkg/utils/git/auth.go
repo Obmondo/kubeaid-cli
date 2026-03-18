@@ -5,10 +5,10 @@ package git
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gossh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
@@ -84,12 +84,8 @@ func BuildKnownHostsCallback(
 		bundledKnownHosts,
 		config.ParsedGeneralConfig.Git.KnownHosts...,
 	)
-	for _, entry := range allEntries {
-		_, err = fmt.Fprintf(f, "%s\n", entry)
-		assert.AssertErrNil(ctx, err,
-			"Failed writing known host entry",
-		)
-	}
+	_, err = f.WriteString(strings.Join(allEntries, "\n") + "\n")
+	assert.AssertErrNil(ctx, err, "Failed writing known hosts")
 
 	f.Close()
 
