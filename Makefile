@@ -19,6 +19,7 @@ run-generators:
     ./pkg/config/general.go ./pkg/config/secrets.go
 
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
@@ -28,7 +29,8 @@ LDFLAGS := -s -w \
 
 .PHONY: build-cli
 build-cli:
-	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-core
+	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-cli
+
 IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:$(VERSION)
 CONTAINER_NAME=kubeaid-core
 
