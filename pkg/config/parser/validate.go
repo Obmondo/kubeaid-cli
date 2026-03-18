@@ -133,7 +133,6 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 // The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
 func getLatestStableK8sVersion(ctx context.Context) string {
 	kubeadmAPIURLs := []string{
-		"https://cdn.dl.k8s.io/release/stable.txt",
 		"https://dl.k8s.io/release/stable.txt",
 	}
 
