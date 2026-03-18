@@ -6,9 +6,12 @@ package k3d
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/k3d-io/k3d/v5/cmd/cluster"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
@@ -27,6 +30,63 @@ import (
 
 //go:embed templates/*
 var templates embed.FS
+
+// getK3sVersion returns the appropriate k3s version based on the
+// host's cgroup version. k8s 1.34+ dropped cgroup v1 support.
+func getK3sVersion(ctx context.Context) string {
+	// cgroup v1 — pin to 1.33.x.
+	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
+		slog.InfoContext(ctx,
+			"Detected cgroup v1, pinning k3s version",
+			slog.String("version", constants.K3sVersionCgroupV1),
+		)
+		return constants.K3sVersionCgroupV1
+	}
+
+	// cgroup v2 — fetch latest k3s release.
+	version, err := getLatestK3sVersion(ctx)
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Failed fetching latest k3s version, falling back",
+			slog.String("error", err.Error()),
+			slog.String("fallback", constants.K3sVersionCgroupV1),
+		)
+		return constants.K3sVersionCgroupV1
+	}
+
+	slog.InfoContext(ctx,
+		"Detected cgroup v2, using latest k3s",
+		slog.String("version", version),
+	)
+	return version
+}
+
+func getLatestK3sVersion(ctx context.Context) (string, error) {
+	resp, err := http.Get(
+		"https://api.github.com/repos/k3s-io/k3s/releases/latest",
+	)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+
+	if release.TagName == "" {
+		slog.InfoContext(ctx,
+			"Fetched tag name is empty, using fallback",
+		)
+		return constants.K3sVersionCgroupV1, nil
+	}
+
+	// Upstream uses "+" which needs to be "-" for image tags.
+	return strings.ReplaceAll(release.TagName, "+", "-"), nil
+}
 
 type (
 	K3DConfigTemplateValues struct {
@@ -126,7 +186,7 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
-		K3sVersion: constants.K3sVersion,
+		K3sVersion: getK3sVersion(ctx),
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

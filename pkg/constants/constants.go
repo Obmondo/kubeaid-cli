@@ -99,10 +99,9 @@ const (
 	ZFSVolumeSizePodEphemeralVolumes = 50
 )
 
-// k3d
-const (
-	K3sVersion = "v1.33.5-k3s1" // pining to this version, so Ubuntu 20.04 can also work
-)
+// k3d — k8s 1.34+ dropped cgroup v1 support, so hosts running
+// cgroup v1 (e.g. Ubuntu 20.04) must use k3s 1.33.x.
+const K3sVersionCgroupV1 = "v1.33.9-k3s1"
 
 // Output paths.
 var (
