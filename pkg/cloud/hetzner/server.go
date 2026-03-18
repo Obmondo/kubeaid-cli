@@ -106,7 +106,7 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 			"Failed creating NAT Gateway server",
 			logger.Error(err), slog.Any("response", response),
 		)
-		slog.InfoContext(ctx, "Created NAT Gateway")
+		slog.InfoContext(ctx, "Created NAT Gateway server")
 
 		server = result.Server
 	}
@@ -161,7 +161,7 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 			Hostname:   server.PublicNet.IPv4.IP.String(),
 			Port:       22,
 			Username:   "root",
-			PrivateKey: hetznerConfig.SSHKeyPair.PrivateKey,
+			PrivateKey: []byte(hetznerConfig.SSHKeyPair.PrivateKey),
 
 			Timeout: time.Second * 10,
 		})

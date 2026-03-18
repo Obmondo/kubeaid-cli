@@ -26,7 +26,7 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 
 	switch {
 	// SSH private key.
-	case gitConfig.SSHPrivateKeyConfig != nil:
+	case gitConfig.SSHKeyPairConfig != nil:
 		authMethod, err = ssh.NewPublicKeysFromFile(gitConfig.SSHUsername, gitConfig.PrivateKeyFilePath, "")
 		assert.AssertErrNil(ctx, err,
 			"Failed generating SSH public key from SSH private key and empty passphrase",

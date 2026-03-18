@@ -218,14 +218,7 @@ const (
 	ServiceAccountSealedSecrets = "sealed-secrets"
 )
 
-// SSH keys.
-const (
-	SSHPrivateKeyPrefixOpenSSH       = "-----BEGIN OPENSSH PRIVATE KEY-----"
-	SSHPublicKeyPrefixOpenSSHRSA     = "ssh-rsa "
-	SSHPublicKeyPrefixOpenSSHEd25519 = "ssh-ed25519 "
-	SSHPrivateKeyPrefixPEM           = "-----BEGIN PRIVATE KEY-----"
-	SSHPublicKeyPrefixPEM            = "-----BEGIN PUBLIC KEY-----"
-)
+const PEMBlockTypeOpenSSHPrivateKey = "OPENSSH PRIVATE KEY"
 
 // Cluster types.
 const (

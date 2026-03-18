@@ -52,7 +52,7 @@ type (
 		SSHUsername string `yaml:"sshUsername" validate:"notblank" default:"git"`
 
 		// Either make KubeAid CLI use the given SSH private key.
-		*SSHPrivateKeyConfig `yaml:",inline"`
+		*SSHKeyPairConfig `yaml:",inline"`
 
 		// Or, make KubeAid CLI use the SSH Agent.
 		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
@@ -128,8 +128,8 @@ type (
 	}
 
 	DeployKeysConfig struct {
-		KubeaidConfig SSHPrivateKeyConfig `yaml:"kubeaidConfig" validate:"required"`
-		Kubeaid       SSHPrivateKeyConfig `yaml:"kubeaid"       validate:"required"`
+		KubeaidConfig SSHKeyPairConfig `yaml:"kubeaidConfig" validate:"required"`
+		Kubeaid       SSHKeyPairConfig `yaml:"kubeaid"       validate:"required"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
@@ -216,15 +216,11 @@ type (
 	}
 
 	SSHKeyPairConfig struct {
-		SSHPrivateKeyConfig `yaml:",inline"`
-
-		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"notblank"`
-		PublicKey         string `                         validate:"notblank"`
-	}
-
-	SSHPrivateKeyConfig struct {
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
-		PrivateKey         string `                          validate:"notblank"`
+		PrivateKey,
+
+		PublicKey,
+		Fingerprint string
 	}
 
 	KubePrometheusConfig struct {
@@ -296,7 +292,12 @@ type (
 	}
 
 	WorkloadIdentity struct {
-		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"notblank"`
+		OpenIDProviderSSHKeyPair OpenIDProviderSSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"required"`
+	}
+
+	OpenIDProviderSSHKeyPairConfig struct {
+		SSHKeyPairConfig  `       yaml:",inline"`
+		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"notblank"`
 	}
 
 	CanonicalUbuntuImage struct {
@@ -503,8 +504,8 @@ type (
 	}
 
 	BareMetalSSHConfig struct {
-		Port       uint                 `yaml:"port"       validate:"required" default:"22"`
-		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
+		Port              uint `yaml:"port"    validate:"required" default:"22"`
+		*SSHKeyPairConfig `     yaml:",inline"`
 	}
 
 	BareMetalControlPlane struct {

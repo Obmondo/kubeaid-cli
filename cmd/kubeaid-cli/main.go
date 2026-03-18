@@ -291,15 +291,16 @@ func getSSHPrivateKeyFilePaths() map[string]bool {
 	parsedGeneralConfig := config.ParsedGeneralConfig
 
 	// Used by ArgoCD to access the KubeAid and KubeAid Config repositories.
-	if len(parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
-		paths[parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid.PrivateKeyFilePath] = true
+	deployKeys := parsedGeneralConfig.Cluster.ArgoCD.DeployKeys
+	if len(deployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
+		paths[deployKeys.Kubeaid.PrivateKeyFilePath] = true
 	}
-	if len(parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig.PrivateKeyFilePath) > 0 {
-		paths[parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig.PrivateKeyFilePath] = true
+	if len(deployKeys.KubeaidConfig.PrivateKeyFilePath) > 0 {
+		paths[deployKeys.KubeaidConfig.PrivateKeyFilePath] = true
 	}
 
 	// Used to clone the Git repositories.
-	if parsedGeneralConfig.Git.SSHPrivateKeyConfig != nil {
+	if parsedGeneralConfig.Git.SSHKeyPairConfig != nil {
 		paths[parsedGeneralConfig.Git.PrivateKeyFilePath] = true
 	}
 
@@ -321,20 +322,20 @@ func getSSHPrivateKeyFilePaths() map[string]bool {
 
 		// Used to SSH into the Bare Metal servers.
 
-		if bareMetalConfig.SSH.PrivateKey != nil {
-			paths[bareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath] = true
+		if bareMetalConfig.SSH.SSHKeyPairConfig != nil {
+			paths[bareMetalConfig.SSH.PrivateKeyFilePath] = true
 		}
 
 		for _, host := range bareMetalConfig.ControlPlane.Hosts {
-			if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
-				paths[host.SSH.PrivateKey.PrivateKeyFilePath] = true
+			if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
+				paths[host.SSH.PrivateKeyFilePath] = true
 			}
 		}
 
 		for _, nodeGroup := range bareMetalConfig.NodeGroups {
 			for _, host := range nodeGroup.Hosts {
-				if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
-					paths[host.SSH.PrivateKey.PrivateKeyFilePath] = true
+				if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
+					paths[host.SSH.PrivateKeyFilePath] = true
 				}
 			}
 		}

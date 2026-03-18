@@ -20,10 +20,10 @@ controlPlane:
       sshPort: {{ $.BareMetalConfig.SSH.Port }}
       {{- end }}
 
-      {{- if and ($host.SSH) ($host.SSH.PrivateKey) }}
-      sshPrivateKeyFile: {{ $host.SSH.PrivateKey.PrivateKeyFilePath }}
-      {{- else if and ($.BareMetalConfig.SSH) ($.BareMetalConfig.SSH.PrivateKey) }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- if and ($host.SSH) ($host.SSH.SSHKeyPairConfig) }}
+      sshPrivateKeyFile: {{ $host.SSH.PrivateKeyFilePath }}
+      {{- else if and ($.BareMetalConfig.SSH) ($.BareMetalConfig.SSH.SSHKeyPairConfig) }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
       {{- end }}
 
       {{- if $host.PublicAddress }}
@@ -58,10 +58,10 @@ staticWorkers:
       sshPort: {{ $.BareMetalConfig.SSH.Port }}
       {{- end }}
 
-      {{- if and ($host.SSH) ($host.SSH.PrivateKey) }}
-      sshPrivateKeyFile: {{ $host.SSH.PrivateKey.PrivateKeyFilePath }}
-      {{- else if and ($.BareMetalConfig.SSH) ($.BareMetalConfig.SSH.PrivateKey) }}
-      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKey.PrivateKeyFilePath }}
+      {{- if and ($host.SSH) ($host.SSH.SSHKeyPairConfig) }}
+      sshPrivateKeyFile: {{ $host.SSH.PrivateKeyFilePath }}
+      {{- else if and ($.BareMetalConfig.SSH) ($.BareMetalConfig.SSH.SSHKeyPairConfig) }}
+      sshPrivateKeyFile: {{ $.BareMetalConfig.SSH.PrivateKeyFilePath }}
       {{- end }}
 
       {{- if $host.PublicAddress }}

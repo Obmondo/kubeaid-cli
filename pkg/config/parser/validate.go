@@ -357,13 +357,13 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 	// Determine the SSH private key to use.
 	privateKey := ""
 	switch {
-	// Use the server sepcific SSH private key.
-	case (host.SSH != nil) && (host.SSH.PrivateKey != nil):
-		privateKey = host.SSH.PrivateKey.PrivateKey
+	// Use the server sepcific SSH private key, if specified.
+	case (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil):
+		privateKey = host.SSH.PrivateKey
 
-	// Use the common SSH private key.
-	case bareMetalConfig.SSH.PrivateKey != nil:
-		privateKey = bareMetalConfig.SSH.PrivateKey.PrivateKey
+	// Otherwise, use the common SSH private key.
+	case bareMetalConfig.SSH.SSHKeyPairConfig != nil:
+		privateKey = bareMetalConfig.SSH.PrivateKey
 
 	// Otherwise, either the SSH_AUTH_SOCK environment variable is set,
 	// or no private key authentication is required (highly unlikely).
