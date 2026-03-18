@@ -32,6 +32,12 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		slog.String("repo", url), slog.String("path", path),
 	})
 
+	// For HTTPS URLs, no auth is needed (public repos only).
+	// If the clone fails, the repo is likely private and requires an SSH URL.
+	if IsHTTPSURL(url) {
+		authMethod = nil
+	}
+
 	// When the repo is already cloned.
 	if _, err := os.ReadDir(path); err == nil {
 		repo, err := goGit.PlainOpen(path)
@@ -59,6 +65,17 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 	}
 
 	repo, err := goGit.PlainClone(path, false, opts)
+
+	if IsHTTPSURL(url) && err != nil &&
+		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
+		slog.ErrorContext(
+			ctx,
+			"HTTPS clone failed: private repo detected, switch to SSH URL",
+			slog.String("url", url),
+		)
+		os.Exit(1)
+	}
+
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&
 		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL) {
 		// Remote KubeAid Config repository is empty.
