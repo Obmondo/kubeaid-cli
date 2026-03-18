@@ -37,7 +37,7 @@ func TestValidateConfigsExitsWhenClusterNameContainsDots(t *testing.T) {
 						PrivateKeyFilePath: "kubeaid-config-key",
 						PrivateKey:         "kubeaid-config-private-key",
 					},
-					Kubeaid: config.SSHPrivateKeyConfig{
+					Kubeaid: &config.SSHPrivateKeyConfig{
 						PrivateKeyFilePath: "kubeaid-key",
 						PrivateKey:         "kubeaid-private-key",
 					},

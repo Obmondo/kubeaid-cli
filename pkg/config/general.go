@@ -128,8 +128,8 @@ type (
 	}
 
 	DeployKeysConfig struct {
-		KubeaidConfig SSHPrivateKeyConfig `yaml:"kubeaidConfig" validate:"required"`
-		Kubeaid       SSHPrivateKeyConfig `yaml:"kubeaid"       validate:"required"`
+		KubeaidConfig SSHPrivateKeyConfig  `yaml:"kubeaidConfig" validate:"required"`
+		Kubeaid       *SSHPrivateKeyConfig `yaml:"kubeaid"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.

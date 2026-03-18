@@ -291,7 +291,8 @@ func getSSHPrivateKeyFilePaths() map[string]bool {
 	parsedGeneralConfig := config.ParsedGeneralConfig
 
 	// Used by ArgoCD to access the KubeAid and KubeAid Config repositories.
-	if len(parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
+	if parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil &&
+		len(parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
 		paths[parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid.PrivateKeyFilePath] = true
 	}
 	if len(parsedGeneralConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig.PrivateKeyFilePath) > 0 {
