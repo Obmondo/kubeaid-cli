@@ -81,7 +81,7 @@ dynamicWorkers: []
 helmReleases:
   - repoURL: https://helm.cilium.io/
     chart: cilium
-    version: 1.17.5
+    version: 1.19.1
     releaseName: cilium
     namespace: cilium
     wait: true
@@ -92,8 +92,8 @@ helmReleases:
             rollOutPods: true
             priorityClassName: system-node-critical
           kubeProxyReplacement: "true"
-          k8sServiceHost: {{ .BareMetalConfig.ControlPlane.Endpoint.Host }}
-          k8sServicePort: {{ .BareMetalConfig.ControlPlane.Endpoint.Port }}
+          k8sServiceHost: "{{ .BareMetalConfig.ControlPlane.Endpoint.Host }}"
+          k8sServicePort: "{{ .BareMetalConfig.ControlPlane.Endpoint.Port }}"
           ipam:
             mode: kubernetes
           rollOutCiliumPods: true
