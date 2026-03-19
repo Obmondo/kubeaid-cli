@@ -60,6 +60,9 @@ const (
 	FlagNameNewImagePath         = "new-image-path"
 
 	FlagNameNewK8sVersion = "new-k8s-version"
+
+	FlagNameOSSize      = "os-size"
+	FlagNameZFSPoolSize = "zfs-pool-size"
 )
 
 // Kube API server CLI flags.
@@ -88,16 +91,20 @@ const (
 
 const HighSpeedNICThreshold = 5000 // GBPS.
 
-const CEPHNodeMinSize = 50 // GB.
-
 const LatestKubeOneSupportedK8sVersion = "v1.34" // Need Updation after every kubeone package updates
+
+const OSDefaultSize = 50 // GB.
 
 // ZFS.
 const (
+	ZFSPoolDefaultSize = (ZFSVolumeSizeContainerImages + ZFSVolumeSizePodLogs + ZFSVolumeSizePodEphemeralVolumes) + 20 // = 220 GB.
+
 	ZFSVolumeSizeContainerImages     = 100
 	ZFSVolumeSizePodLogs             = 50
 	ZFSVolumeSizePodEphemeralVolumes = 50
 )
+
+const CEPHNodeMinSize = 50 // GB.
 
 // Output paths.
 var (

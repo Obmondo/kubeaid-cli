@@ -21,6 +21,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
@@ -89,14 +90,18 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
-	utils.ExecuteCommandOrDie(fmt.Sprintf(
-		"cp %s %s && KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443",
-		constants.OutputPathManagementClusterHostKubeconfig,
-		constants.OutputPathManagementClusterContainerKubeconfig,
-		constants.OutputPathManagementClusterContainerKubeconfig,
-		name,
-		name,
-	))
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+		fmt.Sprintf(
+			`
+        cp %s %s
+        KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443
+      `,
+			constants.OutputPathManagementClusterHostKubeconfig,
+			constants.OutputPathManagementClusterContainerKubeconfig,
+			constants.OutputPathManagementClusterContainerKubeconfig,
+			name,
+			name,
+		))
 
 	/*
 		Initially the master nodes have label node-role.kubernetes.io/control-plane=true.
@@ -108,7 +113,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
 		       The cluster won't even startup.
 	*/
-	utils.ExecuteCommandOrDie(`
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx, `
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
 
 		for node in $master_nodes; do

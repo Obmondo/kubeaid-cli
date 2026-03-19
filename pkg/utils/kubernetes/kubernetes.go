@@ -33,6 +33,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -279,10 +280,12 @@ func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient cl
 			// If the taint exists, then remove it.
 			// NOTE : We're assuming that the taint effect is 'NoSchedule'.
 			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
-				utils.ExecuteCommandOrDie(fmt.Sprintf(`
-          kubectl taint node %s \
-            node-role.kubernetes.io/control-plane:NoSchedule-
-        `, masterNode.Name))
+				commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+					fmt.Sprintf(
+						"kubectl taint node %s node-role.kubernetes.io/control-plane:NoSchedule-",
+						masterNode.Name,
+					),
+				)
 			}
 		}
 	}

@@ -7,7 +7,7 @@ import (
 	gogiturl "github.com/kubescape/go-git-url"
 	coreV1 "k8s.io/api/core/v1"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner/storageplan"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
 )
 
 var (

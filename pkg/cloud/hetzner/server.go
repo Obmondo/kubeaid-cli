@@ -5,6 +5,7 @@ package hetzner
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -186,4 +187,32 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 	))
 	assert.AssertErrNil(ctx, err, "Failed configuring NAT Gateway server")
 	slog.InfoContext(ctx, "Configured NAT Gateway server")
+}
+
+type (
+	GetServerResponseBody struct {
+		Server Server `json:"server"`
+	}
+
+	Server struct {
+		IP string `json:"server_ip"`
+	}
+)
+
+// Fetches public IPv4 address of the Hetzner bare-metal server with the given ID.
+func (h *Hetzner) getHetznerBareMetalServerIP(ctx context.Context, id string) string {
+	response, err := h.robotClient.R().Get("/server/" + id)
+	assert.AssertErrNil(ctx, err, "Failed getting server details")
+	assert.Assert(ctx,
+		(response.StatusCode() == http.StatusOK),
+		"Failed getting server details",
+		slog.Any("response", response),
+	)
+
+	getServerResponseBody := GetServerResponseBody{}
+
+	err = json.Unmarshal(response.Body(), &getServerResponseBody)
+	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling GetServerResponseBody")
+
+	return getServerResponseBody.Server.IP
 }

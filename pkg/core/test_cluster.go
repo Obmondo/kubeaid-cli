@@ -11,6 +11,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -40,12 +41,11 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	// So they need to run in privileged mode.
 	// Let's apply appropriate namespace label, to enforce the privileged Pod Security Standard.
 	// REFER : https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/.
-	utils.ExecuteCommandOrDie(
-		"kubectl label namespace cilium-test pod-security.kubernetes.io/enforce=privileged",
-	)
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+		"kubectl label namespace cilium-test pod-security.kubernetes.io/enforce=privileged")
 
 	// Run minimal Cilium network connectivity tests.
-	utils.ExecuteCommandOrDie(`
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx, `
     cilium-cli connectivity test \
       --namespace cilium \
       --test-namespace cilium-test \
@@ -55,5 +55,6 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
-	utils.ExecuteCommandOrDie("kubectl delete namespace cilium-test cilium-test-1")
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+		"kubectl delete namespace cilium-test cilium-test-1")
 }

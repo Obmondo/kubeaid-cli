@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -249,5 +250,6 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	// Run the KubePrometheus build script.
 	slog.InfoContext(ctx, "Running KubePrometheus build script...")
 	kubePrometheusBuildScriptPath := path.Join(utils.GetKubeAidDir(), "build/kube-prometheus/build.sh")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
+	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+		fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
 }

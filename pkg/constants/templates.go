@@ -3,6 +3,8 @@
 
 package constants
 
+const TemplateNameStoragePlanExecutor = "templates/storage-plan-executor.sh.tmpl"
+
 // Common template names.
 var (
 	CommonNonSecretTemplateNames = []string{
