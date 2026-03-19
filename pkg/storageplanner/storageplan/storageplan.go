@@ -7,6 +7,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"log/slog"
 
 	"github.com/charmbracelet/lipgloss/tree"
 
@@ -89,6 +90,6 @@ func (s *StoragePlan) Execute(ctx context.Context, commandExecutor commandexecut
 		&templates, constants.TemplateNameStoragePlanExecutor, storagePlanExecutorTemplateValues)
 
 	// Run those shell commands.
-
 	commandExecutor.MustExecute(ctx, string(storagePlanExecutorAsBytes))
+	slog.InfoContext(ctx, "Executed storage plan")
 }

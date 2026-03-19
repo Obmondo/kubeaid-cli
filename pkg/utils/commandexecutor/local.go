@@ -15,10 +15,13 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-type LocalCommandExecutor struct{}
+type LocalCommandExecutor struct {
+	// Stream the command execution output to stdout.
+	streamOutput bool
+}
 
-func NewLocalCommandExecutor() CommandExecutor {
-	return &LocalCommandExecutor{}
+func NewLocalCommandExecutor(streamOutput bool) CommandExecutor {
+	return &LocalCommandExecutor{streamOutput}
 }
 
 func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (string, error) {
@@ -44,7 +47,9 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 
 	waitGroup.Go(func() error {
 		for line := range commandExecutor.Stdout {
-			fmt.Println(line)
+			if l.streamOutput {
+				fmt.Println(line)
+			}
 
 			stdoutOutputBuilder.WriteString(line)
 		}
@@ -53,7 +58,9 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 
 	waitGroup.Go(func() error {
 		for line := range commandExecutor.Stderr {
-			fmt.Println(line)
+			if l.streamOutput {
+				fmt.Println(line)
+			}
 
 			stderrOutputBuilder.WriteString(line)
 		}
@@ -72,6 +79,8 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
 		return stdoutOutput, err
 	}
+
+	slog.DebugContext(ctx, "Command executed successfully. Output : \n"+stdoutOutput)
 
 	return stdoutOutput, nil
 }

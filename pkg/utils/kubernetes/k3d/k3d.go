@@ -90,7 +90,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		fmt.Sprintf(
 			`
         cp %s %s
@@ -113,7 +113,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
 		       The cluster won't even startup.
 	*/
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx, `
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
 
 		for node in $master_nodes; do

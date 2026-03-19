@@ -51,7 +51,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	   NOTE : We need to retry, since raw.githubusercontent.com doesn't respond sometimes.
 	*/
 	for {
-		_, err := commandexecutor.NewLocalCommandExecutor().Execute(ctx,
+		_, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,
 			fmt.Sprintf(
 				`
           kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
@@ -87,11 +87,11 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// which ArgoCD will use to access the KubeAid and KubeAid Config Git repositories.
 
 	repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
 
 	repoKubeaidConfigSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid-config.yaml")
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		fmt.Sprintf("kubectl apply -f %s", repoKubeaidConfigSecretPath))
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
@@ -121,7 +121,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// Create the root ArgoCD App.
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 	slog.InfoContext(ctx, "Created root ArgoCD app")
 

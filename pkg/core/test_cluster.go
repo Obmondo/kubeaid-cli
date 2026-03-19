@@ -41,11 +41,11 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	// So they need to run in privileged mode.
 	// Let's apply appropriate namespace label, to enforce the privileged Pod Security Standard.
 	// REFER : https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/.
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		"kubectl label namespace cilium-test pod-security.kubernetes.io/enforce=privileged")
 
 	// Run minimal Cilium network connectivity tests.
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx, `
+	commandexecutor.NewLocalCommandExecutor(true).MustExecute(ctx, `
     cilium-cli connectivity test \
       --namespace cilium \
       --test-namespace cilium-test \
@@ -55,6 +55,6 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		"kubectl delete namespace cilium-test cilium-test-1")
 }

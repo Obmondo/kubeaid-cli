@@ -250,6 +250,6 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	// Run the KubePrometheus build script.
 	slog.InfoContext(ctx, "Running KubePrometheus build script...")
 	kubePrometheusBuildScriptPath := path.Join(utils.GetKubeAidDir(), "build/kube-prometheus/build.sh")
-	commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 		fmt.Sprintf("%s %s", kubePrometheusBuildScriptPath, clusterDir))
 }

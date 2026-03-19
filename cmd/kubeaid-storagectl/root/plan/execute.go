@@ -19,7 +19,7 @@ var ExecuteCommand = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		commandExecutor := commandexecutor.NewLocalCommandExecutor()
+		commandExecutor := commandexecutor.NewLocalCommandExecutor(false)
 
 		storagePlan, err := storageplanner.GenerateStoragePlan(ctx, "", commandExecutor, osSize, zfsPoolSize)
 		assert.AssertErrNil(ctx, err, "Failed generating storage-plan")

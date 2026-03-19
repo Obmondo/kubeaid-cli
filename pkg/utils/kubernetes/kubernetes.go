@@ -280,7 +280,7 @@ func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient cl
 			// If the taint exists, then remove it.
 			// NOTE : We're assuming that the taint effect is 'NoSchedule'.
 			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
-				commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+				commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 					fmt.Sprintf(
 						"kubectl taint node %s node-role.kubernetes.io/control-plane:NoSchedule-",
 						masterNode.Name,

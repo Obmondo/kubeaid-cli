@@ -85,7 +85,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			       Because of which, doing kubectl apply for the second time errors out, thus hindering
 			       the script's idempotency.
 		*/
-		commandexecutor.NewLocalCommandExecutor().MustExecute(ctx,
+		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath))
 
 		slog.InfoContext(ctx,
