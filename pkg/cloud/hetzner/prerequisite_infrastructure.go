@@ -40,8 +40,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig)
 
-		panic("checkpoint")
-
 		// Ensure that the required VSwitch is created.
 		vswitchID := h.CreateVSwitch(ctx)
 
