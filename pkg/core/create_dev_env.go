@@ -36,15 +36,19 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 		aws.CreateIAMCloudFormationStack(ctx)
 	}
 
-	// Set KUBECONFIG env.
-	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
-	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
-	//
-	// and then create the K3D management cluster (if it doesn't already exist).
-	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
-
 	// Clone the KubeAid config fork locally (if not already cloned).
 	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+
+	// For bare-metal, no management cluster is needed.
+	// KubeOne runs directly on the node.
+	if globals.CloudProviderName == constants.CloudProviderBareMetal {
+		return
+	}
+
+	// Set KUBECONFIG env and create the K3D management cluster.
+	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
+	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
 
 	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
 		managementClusterKubeconfigPath,
