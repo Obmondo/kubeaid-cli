@@ -103,6 +103,12 @@ const (
 // cgroup v1 (e.g. Ubuntu 20.04) must use k3s 1.33.x.
 const K3sVersionCgroupV1 = "v1.33.9-k3s1"
 
+// Containerd.
+const (
+	ContainerdSocketPath = "/run/containerd/containerd.sock"
+	ContainerdNamespace  = "kubeaid"
+)
+
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
