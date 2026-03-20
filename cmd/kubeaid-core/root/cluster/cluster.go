@@ -26,7 +26,11 @@ var ClusterCmd = &cobra.Command{
 		utils.InitTempDir(cmd.Context())
 
 		// Ensure required runtime dependencies are installed.
-		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
+		// For bare-metal, skip — KubeOne handles everything and
+		// kube-prometheus build tools run in a container.
+		if globals.CloudProviderName != constants.CloudProviderBareMetal {
+			utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
+		}
 	},
 }
 
