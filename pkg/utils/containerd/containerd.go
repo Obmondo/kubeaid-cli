@@ -43,7 +43,13 @@ func RunContainer(ctx context.Context, args RunContainerArgs) uint32 {
 
 	client, err := containerd.New(constants.ContainerdSocketPath)
 	assert.AssertErrNil(ctx, err, "Failed connecting to containerd")
-	defer client.Close()
+	defer func() {
+		if err := client.Close(); err != nil {
+			slog.WarnContext(ctx, "Failed closing containerd client",
+				slog.String("error", err.Error()),
+			)
+		}
+	}()
 
 	// Pull image.
 	slog.InfoContext(ctx, "Pulling container image",
@@ -136,4 +142,3 @@ func RunContainer(ctx context.Context, args RunContainerArgs) uint32 {
 
 	return exitCode
 }
-

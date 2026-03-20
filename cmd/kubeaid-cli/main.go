@@ -102,20 +102,9 @@ func createRootCommand() *cobra.Command {
 	return rootCmd
 }
 
-// Unsets PersistentPreRun and Run,
-// for the given command, as well as, its subcommands.
-func unsetRunners(command *cobra.Command) {
-	command.PersistentPreRun = nil
-	command.Run = func(cmd *cobra.Command, args []string) {}
-
-	for _, subCommand := range command.Commands() {
-		unsetRunners(subCommand)
-	}
-}
-
 // proxyRun proxies the command execution to containerized KubeAid Core.
 // Called only for non-bare-metal providers.
-func proxyRun(command *cobra.Command, args []string) {
+func proxyRun(command *cobra.Command, _ []string) {
 	ctx := command.Context()
 
 	// Config is already parsed by the original PersistentPreRun.
