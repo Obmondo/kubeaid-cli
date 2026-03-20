@@ -31,6 +31,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
@@ -57,7 +58,11 @@ func createRootCommand() *cobra.Command {
 
 	rootCmd.Use = "kubeaid-cli"
 
-	// Proxy cluster and devenv subcommands to containerized KubeAid core.
+	// For bare-metal, run kubeaid-core commands natively (no Docker proxy).
+	// For all other providers, proxy to containerized KubeAid Core.
+	//
+	// We can't parse config here (flags aren't parsed yet), so we
+	// wrap the PersistentPreRun to decide at runtime.
 	for _, subCommand := range rootCmd.Commands() {
 		subCommandName := subCommand.Name()
 
@@ -65,34 +70,45 @@ func createRootCommand() *cobra.Command {
 			continue
 		}
 
-		// Unset PersistentPreRun and Run,
-		// for this subcommand, and subcommands of this subcommand.
-		unsetRunners(subCommand)
+		subCommand.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+			ctx := cmd.Context()
 
-		// Proxy command execution to containerized KubeAid Core.
-		subCommand.PersistentPreRun = proxyRun
+			// Parse config to detect the cloud provider.
+			parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
+
+			// For bare-metal, run the full original PersistentPreRun
+			// (temp dir, dependency checks) and let cobra's Run
+			// handlers execute normally.
+			if globals.CloudProviderName == constants.CloudProviderBareMetal {
+				slog.InfoContext(ctx,
+					"Bare-metal detected, running in-process",
+				)
+
+				// Init temp dir and check dependencies
+				// (the original PersistentPreRun minus ParseConfigFiles
+				// which we already called above).
+				utils.InitTempDir(ctx)
+				return
+			}
+
+			// For all other providers, proxy to Docker container
+			// and exit when done. No need for temp dir or dependency
+			// checks on the host — those run inside the container.
+			proxyRun(cmd, args)
+			os.Exit(0)
+		}
 	}
 
 	return rootCmd
 }
 
-// Unsets PersistentPreRun and Run,
-// for the given command, as well as, its subcommands.
-func unsetRunners(command *cobra.Command) {
-	command.PersistentPreRun = nil
-	command.Run = func(cmd *cobra.Command, args []string) {}
-
-	for _, subCommand := range command.Commands() {
-		unsetRunners(subCommand)
-	}
-}
-
-func proxyRun(command *cobra.Command, args []string) {
+// proxyRun proxies the command execution to containerized KubeAid Core.
+// Called only for non-bare-metal providers.
+func proxyRun(command *cobra.Command, _ []string) {
 	ctx := command.Context()
 
-	// Parse and validate config files.
+	// Config is already parsed by the original PersistentPreRun.
 	configsDirectory := MustAbs(ctx, globals.ConfigsDirectory)
-	parser.ParseConfigFiles(ctx, configsDirectory)
 
 	// Determine current working directory.
 	workingDirectory, err := os.Getwd()
@@ -126,10 +142,14 @@ func proxyRun(command *cobra.Command, args []string) {
 
 	// Pull the KubeAid Core container image, if it doesn't exist locally.
 
-	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:v%s", version.Version)
+	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:%s", version.Version)
 
 	pullProgressReader, err := dockerCLI.ImagePull(ctx, containerImageName, image.PullOptions{})
-	assert.AssertErrNil(ctx, err, "Failed ensuring that KubeAid Core container image exists locally")
+	assert.AssertErrNil(ctx, err,
+		"Failed pulling KubeAid Core container image. "+
+			"Ensure the image exists and your version is released",
+		slog.String("image", containerImageName),
+	)
 	defer pullProgressReader.Close()
 
 	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
@@ -292,7 +312,7 @@ func getSSHPrivateKeyFilePaths() map[string]bool {
 
 	// Used by ArgoCD to access the KubeAid and KubeAid Config repositories.
 	deployKeys := parsedGeneralConfig.Cluster.ArgoCD.DeployKeys
-	if len(deployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
+	if deployKeys.Kubeaid != nil && len(deployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
 		paths[deployKeys.Kubeaid.PrivateKeyFilePath] = true
 	}
 	if len(deployKeys.KubeaidConfig.PrivateKeyFilePath) > 0 {

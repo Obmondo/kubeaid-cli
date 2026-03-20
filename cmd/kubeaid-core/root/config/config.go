@@ -8,7 +8,8 @@ import (
 )
 
 var ConfigCmd = &cobra.Command{
-	Use: "config",
+	Use:   "config",
+	Short: "Generate and manage configuration files",
 }
 
 var ConfigFilesDirectory string

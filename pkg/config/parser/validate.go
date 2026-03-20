@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -20,6 +21,7 @@ import (
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/mod/semver"
+	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -308,33 +310,34 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		os.Exit(1)
 	}
 
-	// Either the public or private IP address must be provided.
-	// When both are provided, then we'll use the private address to SSH into the server, in the
-	// following section.
-	var address string
-	switch {
-	case host.PrivateAddress != nil:
-		// The private IP address must not be a hostname.
+	// At least one of public or private IP address must be provided.
+	if host.PublicAddress == nil && host.PrivateAddress == nil {
+		slog.ErrorContext(ctx, "Neither public, nor private IP address provided for a Bare Metal host")
+		os.Exit(1)
+	}
+
+	// Validate privateAddress format if provided.
+	if host.PrivateAddress != nil {
 		parsedPrivateIP := net.ParseIP(*host.PrivateAddress)
 		assert.AssertNotNil(ctx, parsedPrivateIP,
 			"Invalid private IP address provided for Bare Metal host",
 			slog.String("address", *host.PrivateAddress),
 		)
-
-		address = *host.PrivateAddress
-
-	case host.PublicAddress != nil:
-		address = *host.PublicAddress
-
-	default:
-		slog.ErrorContext(ctx, "Neither public, nor private IP address provided for a Bare Metal host")
 	}
 
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("address", address),
-	})
+	// Build list of addresses to try for SSH.
+	// Prefer publicAddress (matching KubeOne behavior), fall back to privateAddress.
+	var sshAddresses []string
+	if host.PublicAddress != nil {
+		sshAddresses = append(sshAddresses, *host.PublicAddress)
+	}
+	if host.PrivateAddress != nil {
+		sshAddresses = append(sshAddresses, *host.PrivateAddress)
+	}
 
-	slog.InfoContext(ctx, "Ensuring that the server meets the pre-requisites")
+	slog.InfoContext(ctx, "Ensuring that the server meets the pre-requisites",
+		slog.Any("addresses", sshAddresses),
+	)
 
 	/*
 		We need to SSH into the host, and ensure the following :
@@ -342,8 +345,6 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		  (1) We can SSH into the server, as the root user.
 
 		  (2) The server's hostname (stored in /etc/hostname) doesn't contain any uppercase letters.
-		    We'll also look in the /etc/hosts file, ensuring that localhost and the server's public and
-		    private addresses are mapped to that same hostname.
 
 		  (3) Docker isn't installed there. Otherwise, KubeOne will error out.
 
@@ -370,24 +371,43 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 	default:
 	}
 
-	// Open an SSH connection to the server.
+	// Try SSH connection using each address, preferring publicAddress.
+	var connection executor.Interface
+	for _, address := range sshAddresses {
+		ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+			slog.String("address", address),
+		})
 
-	opts := kubeonessh.Opts{
-		Context: ctx,
+		opts := kubeonessh.Opts{
+			Context: ctx,
 
-		Hostname:   address,
-		Port:       22,
-		Username:   "root",
-		PrivateKey: []byte(privateKey),
+			Hostname:   address,
+			Port:       22,
+			Username:   "root",
+			PrivateKey: []byte(privateKey),
 
-		Timeout: time.Second * 10,
+			Timeout: time.Second * 10,
+		}
+		if len(privateKey) == 0 {
+			opts.AgentSocket = os.Getenv(constants.EnvNameSSHAuthSock)
+		}
+
+		var err error
+		connection, err = kubeonessh.NewConnection(connector, opts)
+		if err == nil {
+			slog.InfoContext(ctx, "SSH connection established")
+			break
+		}
+
+		slog.WarnContext(ctx, "SSH connection failed, trying next address",
+			logger.Error(err),
+		)
 	}
-	if len(privateKey) == 0 {
-		opts.AgentSocket = os.Getenv(constants.EnvNameSSHAuthSock)
-	}
 
-	connection, err := kubeonessh.NewConnection(connector, opts)
-	assert.AssertErrNil(ctx, err, "Failed opening SSH connection to server")
+	if connection == nil {
+		slog.ErrorContext(ctx, "Failed to SSH into server using any address")
+		os.Exit(1)
+	}
 	defer connection.Close()
 
 	slog.DebugContext(ctx, "Opened an SSH connection to the server")
@@ -529,12 +549,9 @@ func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion st
 
 	// Check if the target K8s version is in the supported list
 	isSupported := false
-	for _, supported := range supportedK8s {
-		if k8sVersionTrimmed == supported {
-			isSupported = true
-			slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
-			break
-		}
+	if slices.Contains(supportedK8s, k8sVersionTrimmed) {
+		isSupported = true
+		slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
 	}
 
 	if !isSupported {

@@ -7,6 +7,9 @@ import (
 	"context"
 	"embed"
 	"os"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
@@ -18,6 +21,30 @@ import (
 
 //go:embed templates/*
 var KubeaidConfigFileTemplates embed.FS
+
+// ReadBundledKnownHosts parses the embedded known_hosts.yaml
+// and returns the entries as a string slice.
+func ReadBundledKnownHosts() []string {
+	data, _ := KubeaidConfigFileTemplates.ReadFile(
+		"templates/known_hosts.yaml",
+	)
+
+	var entries []string
+	_ = yaml.Unmarshal(data, &entries)
+
+	return entries
+}
+
+// GetSSHKnownHosts returns all known host entries (bundled + user)
+// as a single newline-separated string. Used by templates.
+func GetSSHKnownHosts() string {
+	all := append(
+		ReadBundledKnownHosts(),
+		config.ParsedGeneralConfig.Git.KnownHosts...,
+	)
+
+	return strings.Join(all, "\n")
+}
 
 type TemplateValues struct {
 	GeneralConfigFileContents string
@@ -64,6 +91,8 @@ type TemplateValues struct {
 	*/
 	ControlPlaneEndpoint string
 
+	SSHKnownHosts string
+
 	*config.DisasterRecoveryConfig
 
 	*config.ObmondoConfig
@@ -97,6 +126,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
 
 		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
+
+		SSHKnownHosts: GetSSHKnownHosts(),
 	}
 
 	// Set cloud provider specific values.
@@ -232,6 +263,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 func getEmbeddedSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := constants.CommonSecretTemplateNames
+
+	// Include KubeAid deploy key template only when the deploy key is provided.
+	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.KubeaidSecretTemplateName,
+		)
+	}
 
 	// Add cloud provider specific templates, if required.
 	switch globals.CloudProviderName {

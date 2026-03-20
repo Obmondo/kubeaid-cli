@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"path"
+	"strings"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -25,11 +26,21 @@ func GetRepoDir(parsedURL gogiturl.IGitURL) string {
 	)
 }
 
-func MustParseURL(ctx context.Context, sshURL string) gogiturl.IGitURL {
-	parsedURL, err := gogiturl.NewGitURL(sshURL)
-	assert.AssertErrNil(ctx, err, "Failed parsing SSH URL of Git repository")
+func MustParseURL(ctx context.Context, url string) gogiturl.IGitURL {
+	parsedURL, err := gogiturl.NewGitURL(url)
+	assert.AssertErrNil(ctx, err,
+		"Failed parsing Git repository URL. "+
+			"Expected format: https://github.com/org/repo.git "+
+			"or git@github.com:org/repo.git",
+		slog.String("url", url),
+	)
 
 	return parsedURL
+}
+
+// IsHTTPSURL returns true if the given URL uses the HTTPS scheme.
+func IsHTTPSURL(url string) bool {
+	return strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")
 }
 
 func GetDefaultBranchName(ctx context.Context,

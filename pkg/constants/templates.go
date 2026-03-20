@@ -32,8 +32,10 @@ var (
 	CommonSecretTemplateNames = []string{
 		// For ArgoCD.
 		"sealed-secrets/argocd/repo-kubeaid-config.yaml.tmpl",
-		"sealed-secrets/argocd/repo-kubeaid.yaml.tmpl",
 	}
+
+	// KubeAid deploy key template, only used when the deploy key is provided.
+	KubeaidSecretTemplateName = "sealed-secrets/argocd/repo-kubeaid.yaml.tmpl"
 )
 
 // Common template names (for clusters being provisioned in any of the supported cloud providers).

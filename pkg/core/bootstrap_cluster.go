@@ -46,7 +46,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod := git.GetGitAuthMethod(ctx, ReadBundledKnownHosts())
 
 	// Create 'dev environment'.
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
@@ -122,7 +122,11 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	}
 
 	// Close management cluster's ArgoCD application client.
-	_ = globals.ArgoCDApplicationClientCloser.Close()
+	// Skip for bare-metal since there is no management cluster.
+	if globals.CloudProviderName != constants.CloudProviderBareMetal &&
+		globals.ArgoCDApplicationClientCloser != nil {
+		_ = globals.ArgoCDApplicationClientCloser.Close()
+	}
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)

@@ -6,9 +6,12 @@ package k3d
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/k3d-io/k3d/v5/cmd/cluster"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
@@ -28,6 +31,63 @@ import (
 
 //go:embed templates/*
 var templates embed.FS
+
+// getK3sVersion returns the appropriate k3s version based on the
+// host's cgroup version. k8s 1.34+ dropped cgroup v1 support.
+func getK3sVersion(ctx context.Context) string {
+	// cgroup v1 — pin to 1.33.x.
+	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
+		slog.InfoContext(ctx,
+			"Detected cgroup v1, pinning k3s version",
+			slog.String("version", constants.K3sVersionCgroupV1),
+		)
+		return constants.K3sVersionCgroupV1
+	}
+
+	// cgroup v2 — fetch latest k3s release.
+	version, err := getLatestK3sVersion(ctx)
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Failed fetching latest k3s version, falling back",
+			slog.String("error", err.Error()),
+			slog.String("fallback", constants.K3sVersionCgroupV1),
+		)
+		return constants.K3sVersionCgroupV1
+	}
+
+	slog.InfoContext(ctx,
+		"Detected cgroup v2, using latest k3s",
+		slog.String("version", version),
+	)
+	return version
+}
+
+func getLatestK3sVersion(ctx context.Context) (string, error) {
+	resp, err := http.Get(
+		"https://api.github.com/repos/k3s-io/k3s/releases/latest",
+	)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	var release struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return "", err
+	}
+
+	if release.TagName == "" {
+		slog.InfoContext(ctx,
+			"Fetched tag name is empty, using fallback",
+		)
+		return constants.K3sVersionCgroupV1, nil
+	}
+
+	// Upstream uses "+" which needs to be "-" for image tags.
+	return strings.ReplaceAll(release.TagName, "+", "-"), nil
+}
 
 type (
 	K3DConfigTemplateValues struct {
@@ -52,10 +112,10 @@ Does the following :
 	(1) Creates a K3D cluster with the given name, if it doesn't already exist.
 
 	(2) Creates 2 kubeconfig files, which can be used to access the cluster, from inside the
-	    KubeAid Bootstrap Script container, or from the user's host machine.
+			KubeAid Bootstrap Script container, or from the user's host machine.
 
 	(3) Ensures that each master node has the node-role.kubernetes.io/control-plane= label,
-	    just like it is for a Vanilla Kubernetes cluster.
+			just like it is for a Vanilla Kubernetes cluster.
 
 Keep in mind :
 
@@ -63,7 +123,7 @@ Keep in mind :
 	Otherwise, access to the K3D cluster will break.
 
 	(1) From inside the container, we can access the K3D cluster's API server using
-	    https://k3d-management-cluster-server-0:6443.
+			https://k3d-management-cluster-server-0:6443.
 
 	(2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 */
@@ -77,6 +137,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 	// Create the K3D cluster, if it doesn't already exist.
 	createK3dCluster(ctx, name)
+
+	// Ensure kubeconfig output directory exists.
+	utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathManagementClusterHostKubeconfig)
 
 	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
@@ -111,7 +174,7 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		on this label to get scheduled to the master node.
 
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
-		       The cluster won't even startup.
+					 The cluster won't even startup.
 	*/
 	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
@@ -125,18 +188,10 @@ func CreateK3DCluster(ctx context.Context, name string) {
 
 // Generates the K3D cluster config file.
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
-	latestK3sVersion, err := config.GetLatestK3sImageTag(ctx)
-	if err != nil {
-		slog.InfoContext(ctx, "Failed fetching latest k3s image tag, using fallback",
-			"error", err,
-			"using version", latestK3sVersion,
-		)
-	}
-
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
-		K3sVersion: latestK3sVersion,
+		K3sVersion: getK3sVersion(ctx),
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

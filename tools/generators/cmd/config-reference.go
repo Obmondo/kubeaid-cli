@@ -7,7 +7,9 @@ import (
 	"bytes"
 	"context"
 	_ "embed"
+	"fmt"
 	"os"
+	gostrings "strings"
 	"text/template"
 
 	"github.com/go-sprout/sprout"
@@ -30,14 +32,37 @@ type ConfigReferenceTemplateValues struct {
 	Structs *structs.Structs
 }
 
-func generateConfigReference(ctx context.Context, structs *structs.Structs) {
-	// TODO : Sort the structs alphabetically by their name.
+// typeLink returns a markdown-linked type string.
+// If the base type name (stripped of "[]" prefix) exists in the known structs map,
+// it renders as a markdown link pointing to the corresponding heading anchor.
+// Otherwise, it returns the type name as-is.
+func typeLink(knownStructs map[string]*structs.Struct, typeName string) string {
+	prefix := ""
+	base := typeName
 
+	if gostrings.HasPrefix(base, "[]") {
+		prefix = "[]"
+		base = base[2:]
+	}
+
+	if _, ok := knownStructs[base]; ok {
+		return fmt.Sprintf("%s[`%s`](#%s)", prefix, base, gostrings.ToLower(base))
+	}
+
+	return fmt.Sprintf("%s`%s`", prefix, base)
+}
+
+func generateConfigReference(ctx context.Context, structs *structs.Structs) {
 	// Execute the config reference markdown template.
 
 	sproutFuncs := sprout.New(sprout.WithRegistries(
 		strings.NewRegistry(),
 	)).Build()
+
+	// Add custom template function for rendering type links.
+	sproutFuncs["typeLink"] = func(typeName string) string {
+		return typeLink(structs.All, typeName)
+	}
 
 	parsedTemplate, err := template.New(TemplateNameConfigReference).
 		Funcs(sproutFuncs).
