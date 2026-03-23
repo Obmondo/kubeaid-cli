@@ -60,6 +60,9 @@ const (
 	FlagNameNewImagePath         = "new-image-path"
 
 	FlagNameNewK8sVersion = "new-k8s-version"
+
+	FlagNameOSSize      = "os-size"
+	FlagNameZFSPoolSize = "zfs-pool-size"
 )
 
 // Kube API server CLI flags.
@@ -88,16 +91,20 @@ const (
 
 const HighSpeedNICThreshold = 5000 // GBPS.
 
-const CEPHNodeMinSize = 50 // GB.
-
 const LatestKubeOneSupportedK8sVersion = "v1.34" // Need Updation after every kubeone package updates
+
+const OSDefaultSize = 50 // GB.
 
 // ZFS.
 const (
+	ZFSPoolDefaultSize = (ZFSVolumeSizeContainerImages + ZFSVolumeSizePodLogs + ZFSVolumeSizePodEphemeralVolumes) + 20 // = 220 GB.
+
 	ZFSVolumeSizeContainerImages     = 100
 	ZFSVolumeSizePodLogs             = 50
 	ZFSVolumeSizePodEphemeralVolumes = 50
 )
+
+const CEPHNodeMinSize = 50 // GB.
 
 // k3d — k8s 1.34+ dropped cgroup v1 support, so hosts running
 // cgroup v1 (e.g. Ubuntu 20.04) must use k3s 1.33.x.
@@ -202,6 +209,14 @@ const (
 	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 	HetznerVSwitchGatewayIP  = "10.0.1.0"
+
+	HCloudServerTypeCAX11 = "cax11"
+
+	HCloudServerImageUbuntu2404 = "ubuntu-24.04"
+
+	HCloudLocationHel1 = "hel1"
+
+	HCloudLBTypeLB11 = "lb11"
 )
 
 const (
@@ -220,14 +235,7 @@ const (
 	ServiceAccountSealedSecrets = "sealed-secrets"
 )
 
-// SSH keys.
-const (
-	SSHPrivateKeyPrefixOpenSSH       = "-----BEGIN OPENSSH PRIVATE KEY-----"
-	SSHPublicKeyPrefixOpenSSHRSA     = "ssh-rsa "
-	SSHPublicKeyPrefixOpenSSHEd25519 = "ssh-ed25519 "
-	SSHPrivateKeyPrefixPEM           = "-----BEGIN PRIVATE KEY-----"
-	SSHPublicKeyPrefixPEM            = "-----BEGIN PUBLIC KEY-----"
-)
+const PEMBlockTypeOpenSSHPrivateKey = "OPENSSH PRIVATE KEY"
 
 // Cluster types.
 const (

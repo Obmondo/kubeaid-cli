@@ -42,6 +42,7 @@ func (d *Disk) Allocated() int {
 	return (allocations.OS + allocations.ZFS + allocations.CEPH)
 }
 
+// Returns the amount of unallocated storage.
 func (d *Disk) Unallocated() int {
 	return (d.Size - d.Allocated())
 }

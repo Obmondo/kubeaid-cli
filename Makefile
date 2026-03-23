@@ -1,6 +1,15 @@
 # Needed for shell expansion
 SHELL = /bin/bash
 
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+LDFLAGS := -s -w \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=$(VERSION) \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
+	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
+
 .PHONY: format
 format:
 	@golangci-lint fmt
@@ -18,14 +27,13 @@ run-generators:
 	@go run ./tools/generators/cmd \
     ./pkg/config/general.go ./pkg/config/secrets.go
 
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+.PHONY: build-kubeaid-core
+build-kubeaid-core:
+	@go build -ldflags "-s -w" -o ./build/kubeaid-core ./cmd/kubeaid-core
 
-COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -s -w \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=$(VERSION) \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
+.PHONY: build-kubeaid-storagectl
+build-kubeaid-storagectl:
+	@go build  -ldflags "-s -w" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
 
 .PHONY: build-cli
 build-cli:

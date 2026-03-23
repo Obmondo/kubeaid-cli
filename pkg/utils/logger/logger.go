@@ -5,34 +5,22 @@ package logger
 
 import (
 	"io"
-	"log"
 	"log/slog"
-	"os"
 
 	"github.com/go-logr/logr"
 	"k8s.io/klog/v2"
 	controllerRuntimeLogger "sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-// Initializes the logger.
-func InitLogger(isDebugModeEnabled bool) {
+// Creates the logger.
+func CreateLogger(isDebugModeEnabled bool, writers []io.Writer) {
 	logLevel := slog.LevelInfo
 	if isDebugModeEnabled {
 		logLevel = slog.LevelDebug
 	}
 
-	logFile, err := os.OpenFile(constants.OutputPathLogFile,
-		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		0o600,
-	)
-	if err != nil {
-		log.Fatal("Failed opening log file")
-	}
-
 	logger := slog.New(withContextualSlogAttributesHandler(NewCustomTextHandler(
-		io.MultiWriter(logFile, os.Stdout), &slog.HandlerOptions{
+		io.MultiWriter(writers...), &slog.HandlerOptions{
 			Level: logLevel,
 		},
 	)))

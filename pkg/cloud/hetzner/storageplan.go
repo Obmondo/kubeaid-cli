@@ -5,28 +5,23 @@ package hetzner
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
-	"net/http"
-	"slices"
-	"strconv"
-	"strings"
 	"time"
 
 	"k8c.io/kubeone/pkg/ssh"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner/storageplan/storageplanner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) {
 	allStoragePlans := make(storageplan.StoragePlans)
 
-	privateKey := hetznerConfig.BareMetal.SSHKeyPair.PrivateKey
+	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 
 	/*
 		When the control-plane is in Hetzner bare-metal, we :
@@ -61,15 +56,14 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
-			disks := h.getServerDisks(nodeCtx, host.ServerID, privateKey)
+			storagePlan := h.generateStoragePlan(nodeCtx,
 
-			storagePlan, err := storageplanner.NewStoragePlan(nodeCtx, host.ServerID,
+				host,
+				privateKey,
+
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
-				hetznerConfig.ControlPlane.BareMetal.ZFS,
-				disks,
+				hetznerConfig.ControlPlane.BareMetal.ZFS.Size,
 			)
-			assert.AssertErrNil(nodeCtx, err, "Failed generating storage plan")
-
 			storagePlans[i] = storagePlan
 
 			// Store WWNs of the 2 disks across which the OS will be installed,
@@ -89,7 +83,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 		hetznerConfig.ControlPlane.BareMetal.StoragePlan = *storagePlans[0]
 	}
 
-	// We do the similar for each Hetzner bare-metal node-group.
+	// We do the similar for each Hetzner Bare Metal node-group.
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 		nodeGroupCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("node-group", nodeGroup.Name),
@@ -102,15 +96,14 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
-			disks := h.getServerDisks(nodeCtx, host.ServerID, privateKey)
+			storagePlan := h.generateStoragePlan(nodeCtx,
 
-			storagePlan, err := storageplanner.NewStoragePlan(nodeCtx, host.ServerID,
+				host,
+				privateKey,
+
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
-				nodeGroup.ZFS,
-				disks,
+				hetznerConfig.ControlPlane.BareMetal.ZFS.Size,
 			)
-			assert.AssertErrNil(nodeCtx, err, "Failed generating storage plan")
-
 			storagePlans[i] = storagePlan
 
 			// Store WWNs of the 2 disks across which the OS will be installed,
@@ -133,49 +126,17 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 	allStoragePlans.GetApproval(ctx)
 }
 
-type (
-	LSBLKOutput struct {
-		BlockDevices []LSBLKOutputRow `json:"blockdevices"`
-	}
+// Generates and returns storage-plan for the given Hetzner Bare Metal server.
+func (h *Hetzner) generateStoragePlan(ctx context.Context,
 
-	// REFER : https://github.com/util-linux/util-linux/blob/4a4eb88f263bfffeee75cfcabcb6e364ef5900a3/misc-utils/lsblk.c#L174.
-	LSBLKOutputRow struct {
-		Name string `json:"name"`
-		WWN  string `json:"wwn"`
-		Size int    `json:"size"`
+	host *config.HetznerBareMetalHost,
+	privateKey string,
 
-		RotationalDevice   bool   `json:"rota"`
-		TransportType      string `json:"tran"`
-		PartitionTableType string `json:"pttype"`
-	}
-)
-
-const (
-	TransportTypeSATA = "sata"
-	TransportTypeNVMe = "nvme"
-)
-
-func (r *LSBLKOutputRow) GetDiskType() string {
-	if r.RotationalDevice {
-		return constants.DiskTypeHDD
-	}
-
-	switch r.TransportType {
-	case TransportTypeSATA:
-		return constants.DiskTypeSSD
-
-	case TransportTypeNVMe:
-		return constants.DiskTypeNVMe
-
-	default:
-		return constants.DiskTypeUnknown
-	}
-}
-
-// Fetches disk details for the given Hetzner bare-metal server.
-func (h *Hetzner) getServerDisks(ctx context.Context, id, privateKey string) []*storageplan.Disk {
+	osSize,
+	zfsPoolSize int,
+) *storageplan.StoragePlan {
 	// Fetch the server's public IPv4 address.
-	address := h.getServerIP(ctx, id)
+	address := h.getHetznerBareMetalServerIP(ctx, host.ServerID)
 
 	// Open an SSH connection to the server.
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
@@ -191,83 +152,17 @@ func (h *Hetzner) getServerDisks(ctx context.Context, id, privateKey string) []*
 	assert.AssertErrNil(ctx, err, "Failed opening SSH connection")
 	defer connection.Close()
 
-	// Determine whether the server has a high speed NIC (bandwidth >= 5 GBPS) attached or not.
+	commandExecutor := commandexecutor.NewSSHCommandExecutor(connection)
 
-	stdout, _, _, err := connection.Exec(`
-    for i in /sys/class/net/*;
-      do [ -e "$i/device" ] && cat "$i/speed" 2>/dev/null;
-    done || true
-  `)
-	assert.AssertErrNil(ctx, err, "Failed listing NIC speeds")
+	storagePlan, err := storageplanner.GenerateStoragePlan(ctx,
 
-	maxNICSpeed := 0
-	for nicSpeed := range strings.FieldsSeq(stdout) {
-		parsedNICSpeed, err := strconv.Atoi(nicSpeed)
-		assert.AssertErrNil(ctx, err, "Failed parsing NIC speed", slog.String("nic-speed", nicSpeed))
+		host.ServerID,
+		commandExecutor,
 
-		maxNICSpeed = max(maxNICSpeed, parsedNICSpeed)
-	}
-
-	// List hardware disks, using lsblk.
-
-	stdout, _, _, err = connection.Exec("lsblk -dn -o NAME,TRAN,ROTA,WWN,SIZE,PTTYPE -J --bytes")
-	assert.AssertErrNil(ctx, err, "Failed listing hardware disks")
-
-	var lsblkOutput LSBLKOutput
-	err = json.Unmarshal([]byte(stdout), &lsblkOutput)
-	assert.AssertErrNil(ctx, err, "Failed unmarshalling lsblk output")
-
-	// Filter out rows which correspond to unknown disk types.
-	lsblkOutput.BlockDevices = slices.DeleteFunc(lsblkOutput.BlockDevices, func(row LSBLKOutputRow) bool {
-		return row.GetDiskType() == constants.DiskTypeUnknown
-	})
-
-	disks := make([]*storageplan.Disk, len(lsblkOutput.BlockDevices))
-	for i, row := range lsblkOutput.BlockDevices {
-		assert.Assert(ctx, (len(row.PartitionTableType) > 0), "Empty partition table type",
-			slog.String("disk", row.Name),
-		)
-
-		disks[i] = &storageplan.Disk{
-			Name:               row.Name,
-			WWN:                row.WWN,
-			Type:               row.GetDiskType(),
-			PartitionTableType: row.PartitionTableType,
-
-			// 2G is kept aside for the boot and EFI partitions.
-			Size: (row.Size / (1024 * 1024 * 1024)) - 2,
-
-			WithHighSpeedNIC: (maxNICSpeed >= constants.HighSpeedNICThreshold),
-		}
-		disks[i].AssignPriorityScores()
-	}
-	return disks
-}
-
-type (
-	GetServerResponseBody struct {
-		Server Server `json:"server"`
-	}
-
-	Server struct {
-		IP string `json:"server_ip"`
-	}
-)
-
-// Fetches public IPv4 address of the Hetzner bare-metal server with the given ID.
-func (h *Hetzner) getServerIP(ctx context.Context, id string) string {
-	response, err := h.robotClient.R().Get("/server/" + id)
-	assert.AssertErrNil(ctx, err, "Failed getting server details")
-	assert.Assert(ctx,
-		(response.StatusCode() == http.StatusOK),
-		"Failed getting server details",
-		slog.Any("response", response),
+		osSize,
+		zfsPoolSize,
 	)
+	assert.AssertErrNil(ctx, err, "Failed generating storage plan")
 
-	getServerResponseBody := GetServerResponseBody{}
-
-	err = json.Unmarshal(response.Body(), &getServerResponseBody)
-	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling GetServerResponseBody")
-
-	return getServerResponseBody.Server.IP
+	return storagePlan
 }

@@ -33,13 +33,11 @@ func TestValidateConfigsExitsWhenClusterNameContainsDots(t *testing.T) {
 			K8sVersion: "v1.31.0",
 			ArgoCD: config.ArgoCDConfig{
 				DeployKeys: config.DeployKeysConfig{
-					KubeaidConfig: config.SSHPrivateKeyConfig{
+					KubeaidConfig: config.SSHKeyPairConfig{
 						PrivateKeyFilePath: "kubeaid-config-key",
-						PrivateKey:         "kubeaid-config-private-key",
 					},
-					Kubeaid: &config.SSHPrivateKeyConfig{
+					Kubeaid: &config.SSHKeyPairConfig{
 						PrivateKeyFilePath: "kubeaid-key",
-						PrivateKey:         "kubeaid-private-key",
 					},
 				},
 			},

@@ -18,7 +18,7 @@ jobs:
       - name: Golang CI lint
         uses: https://gitea.obmondo.com/Obmondo/golangci-lint-action@v7.0.1
         with:
-          version: v2.5.0
+          version: v2.11.3
           args: --timeout=5m --config=.golangci.yaml
 
   unit-tests:

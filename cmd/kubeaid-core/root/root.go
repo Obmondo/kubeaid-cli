@@ -4,6 +4,8 @@
 package root
 
 import (
+	"io"
+	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -26,8 +28,17 @@ var RootCmd = &cobra.Command{
 		err := os.MkdirAll(constants.OutputsDirectory, 0o750)
 		assert.AssertErrNil(cmd.Context(), err, "Failed ensuring that outputs directory exists")
 
-		// Initialize logger.
-		logger.InitLogger(globals.IsDebugModeEnabled)
+		// Create logger.
+
+		logFile, err := os.OpenFile(constants.OutputPathLogFile,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
+			0o600,
+		)
+		if err != nil {
+			log.Fatalf("Failed opening log file : %v", err)
+		}
+
+		logger.CreateLogger(globals.IsDebugModeEnabled, []io.Writer{logFile, os.Stdout})
 	},
 
 	RunE: func(cmd *cobra.Command, args []string) error {

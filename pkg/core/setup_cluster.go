@@ -22,6 +22,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -67,7 +68,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
 	}
 
-	// If recovering a cluster, then restore the Sealed Secrets controller private keys.
+	// When recovering a cluster, restore the Sealed Secrets controller private keys.
 	if args.IsPartOfDisasterRecovery {
 		// Create the sealed-secrets namespace.
 		kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
@@ -84,9 +85,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			       Because of which, doing kubectl apply for the second time errors out, thus hindering
 			       the script's idempotency.
 		*/
-		utils.ExecuteCommandOrDie(
-			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath),
-		)
+		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath))
 
 		slog.InfoContext(ctx,
 			"Restored Sealed Secrets controller private keys",

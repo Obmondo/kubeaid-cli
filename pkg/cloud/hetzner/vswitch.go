@@ -47,10 +47,9 @@ type CreateVSwitchResponseBody struct {
 // This function is responsible for creating that VSwitch, if it doesn't already exist.
 // The VSwitch ID gets returned.
 func (h *Hetzner) CreateVSwitch(ctx context.Context) int {
-	vSwitchConfig := config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch
+	vSwitchConfig := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.VSwitch
 
-	// List all the VSwitches and see whether a VSwitch with the given name and VLAN ID already
-	// exists.
+	// Check whether the VSwitch already exists or not.
 
 	response, err := h.robotClient.NewRequest().Get("/vswitch")
 
@@ -67,16 +66,26 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) int {
 	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling list VSwitch response body")
 
 	for _, vSwitch := range listVSwitchResponseBody {
-		if ((vSwitch.Name == vSwitchConfig.Name) && (vSwitch.VLANID == vSwitchConfig.VLANID)) &&
-			!vSwitch.Cancelled {
-			// VSwitch already exists.
-			// So, we don't need to do anything else.
-
-			vSwitchID = vSwitch.ID
-
-			slog.InfoContext(ctx, "VSwitch already exists", slog.Int("id", vSwitchID))
-			return vSwitchID
+		if vSwitch.VLANID != vSwitchConfig.VLANID {
+			continue
 		}
+
+		// Ensure that a different VSwitch with the same VLANID doesn't exist.
+		assert.Assert(ctx, (vSwitch.Name == vSwitchConfig.Name),
+			"A different VSwitch with the same VLANID exists. Please provide a different VLANID.",
+			slog.String("existing-vswitch", vSwitch.Name),
+		)
+
+		// Ensure that the VSwitch isn't being deleted (cancelled).
+		assert.Assert(ctx, !vSwitch.Cancelled, "VSwitch exists but is being deleted (cancelled)")
+
+		// VSwitch already exists.
+		// So, we don't need to do anything else.
+
+		vSwitchID = vSwitch.ID
+
+		slog.InfoContext(ctx, "VSwitch already exists", slog.Int("id", vSwitchID))
+		return vSwitchID
 	}
 
 	// The VSwitch doesn't already exist.

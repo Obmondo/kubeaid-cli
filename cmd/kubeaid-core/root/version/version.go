@@ -10,7 +10,7 @@ import (
 )
 
 // These variables are set at build time via -ldflags.
-// When not set (e.g. during development with `go run`), they fall back to defaults.
+// When not set (e.g. during development with "go run"), they fall back to defaults.
 var (
 	Version = "dev"
 	Commit  = "unknown"

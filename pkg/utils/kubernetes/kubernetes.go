@@ -33,6 +33,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -138,7 +139,7 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 	return nil
 }
 
-// Returns the main cluster's API server endpoint, if provisioned.
+// Returns the main cluster's control-plane endpoint, if provisioned.
 // Otherwise returns nil.
 func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 	kubeConfig, err := clientcmd.LoadFromFile(constants.OutputPathMainClusterKubeconfig)
@@ -157,10 +158,13 @@ func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 		return nil
 	}
 
-	mainClusterEndpoint, err := url.Parse(mainCluster.Server)
-	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint")
+	endpoint, err := url.Parse(mainCluster.Server)
+	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint",
+		slog.String("endpoint", mainCluster.Server))
 
-	return mainClusterEndpoint
+	// TODO : Ping the control-plane once.
+
+	return endpoint
 }
 
 // Creates the given namespace (if it doesn't already exist).
@@ -276,10 +280,12 @@ func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient cl
 			// If the taint exists, then remove it.
 			// NOTE : We're assuming that the taint effect is 'NoSchedule'.
 			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
-				utils.ExecuteCommandOrDie(fmt.Sprintf(`
-          kubectl taint node %s \
-            node-role.kubernetes.io/control-plane:NoSchedule-
-        `, masterNode.Name))
+				commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+					fmt.Sprintf(
+						"kubectl taint node %s node-role.kubernetes.io/control-plane:NoSchedule-",
+						masterNode.Name,
+					),
+				)
 			}
 		}
 	}

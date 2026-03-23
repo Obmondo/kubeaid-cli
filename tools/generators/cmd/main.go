@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"maps"
 	"os"
 
@@ -17,7 +18,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	logger.InitLogger(false)
+	logger.CreateLogger(false, []io.Writer{os.Stdout})
 
 	assert.Assert(ctx,
 		(len(os.Args) >= 3),

@@ -22,6 +22,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	containerdUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/containerd"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
@@ -258,7 +259,8 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	// For non-bare-metal, the build tools are available locally
 	// (running inside the kubeaid-core container via Docker).
 	if globals.CloudProviderName != constants.CloudProviderBareMetal {
-		utils.ExecuteCommandOrDie(fmt.Sprintf("%s %s", buildScriptPath, clusterDir))
+		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+			fmt.Sprintf("%s %s", buildScriptPath, clusterDir))
 		return
 	}
 

@@ -18,8 +18,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -43,14 +43,16 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (done bool, err error) {
 			for _, xrClaim := range xrClaims {
-				output, err := utils.ExecuteCommand(fmt.Sprintf(
-					`
-            kubectl get %s \
-              -n crossplane \
-              -o "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
-          `,
-					xrClaim,
-				))
+				output, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,
+					fmt.Sprintf(
+						`
+              kubectl get %s \
+                -n crossplane \
+                -o "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
+            `,
+						xrClaim,
+					),
+				)
 				if (err != nil) || (output != "True") {
 					//nolint:nilerr
 					return false, nil
@@ -91,9 +93,8 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		  (2) Wait for the proper RoleAssignments to be created.
 	*/
 	slog.InfoContext(ctx, "Recreating UAMI RoleAssignments")
-	utils.ExecuteCommandOrDie(
-		"kubectl delete roleassignments.authorization.azure.upbound.io -l 'uami in (capi, velero)'",
-	)
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+		"kubectl delete roleassignments.authorization.azure.upbound.io -l 'uami in (capi, velero)'")
 
 	slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")
 }
@@ -114,7 +115,7 @@ Retrieves details about the infrastructure provisioned using CrossPlane.
 func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client.Client) {
 	// Retrieve resource specific non-secret details.
 
-	globals.CAPIUAMIClientID = utils.ExecuteCommandOrDie(`
+	globals.CAPIUAMIClientID = commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
     kubectl get userassignedidentities \
       -l "uami=capi" \
       -n crossplane \
@@ -122,7 +123,7 @@ func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client
   `)
 
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-		globals.VeleroUAMIClientID = utils.ExecuteCommandOrDie(`
+		globals.VeleroUAMIClientID = commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
       kubectl get userassignedidentities \
         -l "uami=velero" \
         -n crossplane \

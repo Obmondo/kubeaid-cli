@@ -34,7 +34,7 @@ func GetGitAuthMethod(
 
 	switch {
 	// SSH private key.
-	case gitConfig.SSHPrivateKeyConfig != nil:
+	case gitConfig.SSHKeyPairConfig != nil:
 		authMethod, err = gossh.NewPublicKeysFromFile(
 			gitConfig.SSHUsername,
 			gitConfig.PrivateKeyFilePath,

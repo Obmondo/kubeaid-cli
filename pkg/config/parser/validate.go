@@ -39,11 +39,10 @@ func validateConfigs(ctx context.Context) error {
 		return fmt.Errorf("cluster name cannot contain any dots")
 	}
 
-	// VPN cluster type is supported only for the Hetzner provider as of now.
-	if (config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN) &&
-		(globals.CloudProviderName != constants.CloudProviderHetzner) {
-
-		return fmt.Errorf("VPN cluster is supported only for the Hetzner provider as of now")
+	// Cluster type VPN is supported only for the Hetzner provider as of now.
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
+		assert.Assert(ctx, (globals.CloudProviderName == constants.CloudProviderHetzner),
+			"Cluster type VPN is supported only for the Hetzner provider as of now")
 	}
 
 	// Validate based on struct tags.
@@ -134,31 +133,12 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 // It will try multiple kubeadm API endpoints, and return the version fetched from the first successful response.
 // The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
 func getLatestStableK8sVersion(ctx context.Context) string {
-	kubeadmAPIURLs := []string{
-		"https://dl.k8s.io/release/stable.txt",
-	}
+	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
 
-	var lastErr error
+	latestStableK8sVersion, err := fetchLatestStableK8sVersion(kubeadmAPIURL)
+	assert.AssertErrNil(ctx, err, "Failed fetching latest stable K8s version")
 
-	for _, kubeadmAPIURL := range kubeadmAPIURLs {
-		slog.InfoContext(ctx, "Fetching latest stable K8s version", slog.String("URL", kubeadmAPIURL))
-
-		latestStableK8sVersion, err := fetchLatestStableK8sVersion(kubeadmAPIURL)
-		if err == nil {
-			return latestStableK8sVersion
-		}
-
-		lastErr = fmt.Errorf("failed fetching from %s: %w", kubeadmAPIURL, err)
-
-		slog.WarnContext(ctx,
-			"Failed fetching latest stable K8s version, trying next URL",
-			logger.Error(lastErr),
-		)
-	}
-
-	assert.AssertErrNil(ctx, lastErr, "Failed fetching latest stable K8s version")
-
-	return ""
+	return latestStableK8sVersion
 }
 
 func fetchLatestStableK8sVersion(kubeadmAPIURL string) (string, error) {
@@ -208,14 +188,15 @@ func validateHetznerConfig(ctx context.Context) {
 	// Ensure that the user has provided Hetzner specific credentials.
 	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
 
-	// When provisioning a workload cluster, with a VPN cluster hooked up, the user must provide
-	// VSwitch details.
-	if (config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeWorkload) &&
-		(config.ParsedGeneralConfig.Cloud.Hetzner.VPNCluster != nil) {
+	// When provisioning a VPN cluster,
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
+		// We must use the Hetzner's hcloud provider.
+		assert.Assert(ctx,
+			(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHCloud),
+			"VPN cluster can only exist in HCloud. So use the hcloud mode of the Hetzner provider")
 
-		assert.AssertNotNil(ctx, config.ParsedGeneralConfig.Cloud.Hetzner.VSwitch,
-			"VSwitch details not provided",
-		)
+		// Nil the .cloud.hetzner.hcloudVPNCluster option, if specified.
+		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
 	if config.UsingHCloud() {
@@ -233,13 +214,11 @@ func validateHCloudConfig(ctx context.Context) {
 	// HCloud specific options must be provided.
 	assert.AssertNotNil(ctx, hetznerConfig.HCloud, "HCloud specific details not provided")
 
-	// If the control-plane is in HCloud,
+	// When the control-plane is in HCloud,
 	// then HCloud specific control-plane options must be provided.
 	if config.ControlPlaneInHCloud() {
-		assert.AssertNotNil(ctx,
-			hetznerConfig.ControlPlane.HCloud,
-			"HCloud specific control-plane details not provided",
-		)
+		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.HCloud,
+			"HCloud specific control-plane details not provided")
 	}
 
 	// Validate auto-scalable node-groups in HCloud.
@@ -250,30 +229,32 @@ func validateHCloudConfig(ctx context.Context) {
 
 func validateHetznerBareMetalConfig(ctx context.Context) {
 	// Hetzner Robot username and password must be provided.
-	assert.AssertNotNil(ctx,
-		config.ParsedSecretsConfig.Hetzner.Robot,
-		"HCloud robot user and password not provided",
-	)
+	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner.Robot,
+		"Hetzner robot user and password not provided")
 
-	hetznerBareMetalConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
 	// Hetzner bare-metal specific options must be provided.
-	assert.AssertNotNil(ctx,
-		hetznerBareMetalConfig.BareMetal,
-		"Hetzner bare metal specific details not provided",
-	)
+	assert.AssertNotNil(ctx, hetznerConfig.BareMetal,
+		"Hetzner bare metal specific details not provided")
 
-	// If the control-plane is in Hetzner bare-metal.
+	// When the cluster is going to be in a Hetzner Network, the user must provide details about
+	// the VSwitch : which'll be used to connect the Hetzner Bare Metal servers with that Hetzner
+	// Network.
+	// TODO : We need this when mode = bare-metal and there is a VPN cluster.
+	if hetznerConfig.Mode == constants.HetznerModeHybrid {
+		assert.AssertNotNil(ctx, hetznerConfig.BareMetal.VSwitch, "VSwitch details not provided")
+	}
+
+	// When the control-plane is in Hetzner bare-metal.
 	if config.ControlPlaneInHetznerBareMetal() {
 		// Then Hetzner bare-metal specific control-plane options must be provided.
-		assert.AssertNotNil(ctx,
-			hetznerBareMetalConfig.ControlPlane.BareMetal,
-			"Hetzner bare metal specific control-plane details not provided",
-		)
+		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.BareMetal,
+			"Hetzner bare metal specific control-plane details not provided")
 	}
 
 	// Validate node-groups in Hetzner bare-metal.
-	for _, hetznerBaremetalNodeGroup := range hetznerBareMetalConfig.NodeGroups.BareMetal {
+	for _, hetznerBaremetalNodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 		validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
 	}
 }
@@ -314,10 +295,7 @@ func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
-func validateBareMetalHost(ctx context.Context,
-	host *config.BareMetalHost,
-	connector *kubeonessh.Connector,
-) {
+func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
 	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
@@ -380,13 +358,13 @@ func validateBareMetalHost(ctx context.Context,
 	// Determine the SSH private key to use.
 	privateKey := ""
 	switch {
-	// Use the server specific SSH private key.
-	case (host.SSH != nil) && (host.SSH.PrivateKey != nil):
-		privateKey = host.SSH.PrivateKey.PrivateKey
+	// Use the server sepcific SSH private key, if specified.
+	case (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil):
+		privateKey = host.SSH.PrivateKey
 
-	// Use the common SSH private key.
-	case bareMetalConfig.SSH.PrivateKey != nil:
-		privateKey = bareMetalConfig.SSH.PrivateKey.PrivateKey
+	// Otherwise, use the common SSH private key.
+	case bareMetalConfig.SSH.SSHKeyPairConfig != nil:
+		privateKey = bareMetalConfig.SSH.PrivateKey
 
 	// Otherwise, either the SSH_AUTH_SOCK environment variable is set,
 	// or no private key authentication is required (highly unlikely).

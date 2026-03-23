@@ -8,98 +8,136 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"os"
+
+	"github.com/hetznercloud/hcloud-go/hcloud"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-type GetSSHKeysResponse []struct {
+// Creates the given SSH key in HCloud, if it doesn't already exist.
+func (h *Hetzner) CreateHCloudSSHKey(ctx context.Context, name string, sshKeyPair config.SSHKeyPairConfig) {
+	// List all the HCloud SSH keys.
+	sshKeys, response, err := h.hcloudClient.SSHKey.List(ctx, hcloud.SSHKeyListOpts{})
+	assert.Assert(ctx,
+		((err == nil) && (response.StatusCode == http.StatusOK)),
+		"Failed listing HCloud SSH keys",
+		logger.Error(err), slog.Any("response", response),
+	)
+
+	for _, sshKey := range sshKeys {
+		switch {
+		// Check whether we have an SSH key with different name but same data.
+		case (sshKey.Fingerprint == sshKeyPair.Fingerprint):
+			assert.Assert(ctx, (sshKey.Name == name),
+				"Found an HCloud SSH key with different name but same fingerprint")
+
+		// Check whether we have an SSH key with same name but different data.
+		case (sshKey.Name == name):
+			assert.Assert(ctx, false,
+				"Found an HCloud SSH key with same name but different fingerprint")
+
+		default:
+			continue
+		}
+
+		slog.InfoContext(ctx, "HCloud SSH key already exists")
+		return
+	}
+
+	// We need to create the HCloud SSH key.
+	_, response, err = h.hcloudClient.SSHKey.Create(ctx, hcloud.SSHKeyCreateOpts{
+		Name:      name,
+		PublicKey: sshKeyPair.PublicKey,
+	})
+	assert.Assert(ctx,
+		((err == nil) && (response.StatusCode == http.StatusCreated)),
+		"Failed creating HCloud SSH key",
+		logger.Error(err), slog.Any("response", response),
+	)
+	slog.InfoContext(ctx, "Created HCloud SSH key")
+}
+
+type (
+	GetKeysResponse []struct {
+		Key Key `json:"key"`
+	}
+
 	Key struct {
 		Name        string `json:"name"`
 		Fingerprint string `json:"fingerprint"`
-		Type        string `json:"type"`
-		Size        int    `json:"size"`
-		Data        string `json:"data"`
-		CreatedAt   string `json:"created_at"`
-	} `json:"key"`
-}
+	}
+)
 
-func (h *Hetzner) ValidateHetznerSSHKeyPair(ctx context.Context, hetznerConfig *config.HetznerConfig) {
-	keyName := hetznerConfig.BareMetal.SSHKeyPair.Name
-
-	// directly loading up key data since it's processed during parsing phase
-	publicKey := hetznerConfig.BareMetal.SSHKeyPair.PublicKey
-	slog.InfoContext(ctx,
-		"Checking if SSH key exists in Hetzner",
-		slog.String("key_name", keyName),
-	)
-	h.checkAndCreateSSHKeyPair(ctx, keyName, publicKey)
-}
-
-func (h *Hetzner) checkAndCreateSSHKeyPair(
+// Creates the given SSH key in Hetzner Bare Metal, if it doesn't already exist.
+func (h *Hetzner) CreateHetznerBareMetalSSHKey(
 	ctx context.Context,
-	keyName string,
-	keyData string,
+	name string,
+	sshKeyPair config.SSHKeyPairConfig,
 ) {
+	// Query all the SSH keys.
+
 	response, err := h.robotClient.R().Get("/key")
-	assert.AssertErrNil(ctx, err, "Failed getting SSH keys")
+	assert.AssertErrNil(ctx, err, "Failed getting Hetzner Bare Metal SSH keys")
 
-	// Official docs says Error 404 means keys not found i.e. no keys are available so it's safe to ignore
-	if response.StatusCode() == http.StatusNotFound {
-		response = nil
-	} else {
-		assert.Assert(ctx,
-			response.StatusCode() == http.StatusOK,
-			"Failed getting SSH keys",
-			slog.Any("response", response),
-		)
-	}
+	switch response.StatusCode() {
+	// No SSH keys exist.
+	case http.StatusNotFound:
+		break
 
-	keyExists := false
+	case http.StatusOK:
+		// Check whether the SSH key already exists.
 
-	// Check if key exists
-	if response != nil {
-		var getSSHKeysResponse GetSSHKeysResponse
-		err = json.Unmarshal(response.Body(), &getSSHKeysResponse)
-		assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling GetSSHKeysResponse")
+		var getKeysResponse GetKeysResponse
+		err = json.Unmarshal(response.Body(), &getKeysResponse)
+		assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling GetKeysResponse")
 
-		for _, k := range getSSHKeysResponse {
-			if k.Key.Name == keyName {
-				keyExists = true
-				slog.InfoContext(ctx,
-					"SSH key already exists in Hetzner",
-					slog.String("key_name", keyName),
-				)
-				break
+		for _, element := range getKeysResponse {
+			key := element.Key
+
+			switch {
+			// Check whether we have an SSH key with different name but same fingerprint.
+			case (key.Fingerprint == sshKeyPair.Fingerprint):
+				assert.Assert(ctx, (key.Name == name),
+					"Found a Hetzner Bare Metal SSH key with different name but same fingerprint")
+
+			// Check whether we have an SSH key with same name but different fingerprint.
+			case (key.Name == name):
+				assert.Assert(ctx, (key.Fingerprint == sshKeyPair.Fingerprint),
+					"Found a Hetzner Bare Metal SSH key with same name but different fingerprint")
+
+			default:
+				continue
 			}
+
+			slog.InfoContext(ctx, "Hetzner Bare Metal SSH key already exists")
+			return
 		}
+
+	default:
+		slog.ErrorContext(ctx,
+			"Unexpected response statuscode, when trying to list Hetzner Bare Metal SSH keys",
+			logger.Error(err), slog.Any("response", response),
+		)
+		os.Exit(1)
 	}
 
-	// Create it, if not found
-	if !keyExists {
-		slog.InfoContext(ctx,
-			"SSH key does not exist in Hetzner, creating it",
-			slog.String("key_name", keyName),
-		)
-		createResponse, err := h.robotClient.R().
-			SetFormData(map[string]string{
-				"name": keyName,
-				"data": keyData,
-			}).
-			Post("/key")
+	// No SSH keys exist.
+	// Let's create this one.
 
-		assert.AssertErrNil(ctx, err, "Failed creating SSH key")
+	response, err = h.robotClient.R().
+		SetFormData(map[string]string{
+			"name": name,
+			"data": sshKeyPair.PublicKey,
+		}).
+		Post("/key")
+	assert.Assert(ctx,
+		((err == nil) && (response.StatusCode() == http.StatusCreated)),
+		"Failed creating Hetzner Bare Metal SSH key",
+		logger.Error(err), slog.Any("response", response),
+	)
 
-		// 201 = Created (from docs)
-		assert.Assert(ctx,
-			createResponse.StatusCode() == http.StatusCreated,
-			"Failed creating SSH key",
-			slog.Any("response", createResponse),
-		)
-
-		slog.InfoContext(ctx,
-			"Added the SSH key pair in Hetzner",
-			slog.String("key_name", keyName),
-		)
-	}
+	slog.InfoContext(ctx, "Created SSH key in Hetzner Bare Metal")
 }

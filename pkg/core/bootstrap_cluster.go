@@ -34,94 +34,15 @@ type BootstrapClusterArgs struct {
 }
 
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
-	// When using Hetzner bare-metal,
-	if config.UsingHetznerBareMetal() {
+	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
+	// NOTE : Though HCloud has an official Terraform provider which can be imported into a
+	//        CrossPlane provider, Hetzner Bare Metal doesn't have any. So, we can't use CrossPlane
+	//        as of now.
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-
-		// Generate storage plan for the control-plane and each node-group.
-		hetznerCloudProvider.GenerateStoragePlans(ctx, hetznerConfig)
-
-		/*
-			We have 2 types of clusters : VPN and Workload.
-
-			You first provision the VPN cluster using KubeAid CLI, and have KeycloakX, NetBird and
-			NetBird Operator running there.
-			NOTE : A VPN cluster is composed of HCloud servers only.
-
-			Next, when provisioning a workload cluster, we want each of its underlying servers to have a
-			private IP, the public IP being disabled. HCloud servers get private IPs from HCloud's
-			built-in DHCP server. And, Hetzner Bare Metal servers get it from ClusterAPI IPAM Provider
-			In Cluster.
-
-			Now, we need to ensure that the Hetzner Bare Metal servers of the workload cluster, via their
-			private IP, can communicate with :
-
-			  (1) the HCloud servers of the workload cluster.
-
-			      This is done by following https://docs.hetzner.com/networking/networks/connect-dedi-vswitch/.
-
-			  (2) the HCloud servers of the VPN cluster.
-
-			      This is done by attaching them to the Hetzner Network being used for the workload
-			      cluster.
-
-			      NOTE : Currently, an HCloud server can be attached to 3 Hetzner Networks at max. So, we
-			              can have 3 workload clusters corresponding to a VPN cluster, at max.
-
-			      Sysadmins can then SSH into the workload cluster nodes via NetBird running in the VPN
-			      cluster.
-
-			Currently, VPN clusters are only supported for the Hetzner provider. We look forward to
-			extending this support to other providers in the future.
-		*/
-		// When provisioning a workload cluster, if the user wants to hook up a VPN cluster, then we
-		// need to ensure that required infrastructure has been setup as per
-		// https://docs.hetzner.com/networking/networks/connect-dedi-vswitch/.
-		// NOTE : We cannot use CrossPlane to do the following, since there is no official Terraform
-		//        provider for Hetzner Bare Metal.
-		if (config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeWorkload) &&
-			(config.ParsedGeneralConfig.Cloud.Hetzner.VPNCluster != nil) {
-
-			// Ensure that the Hetzner Network is created.
-			network := hetznerCloudProvider.CreateNetwork(ctx)
-
-			// Ensure that the required VSwitch is created.
-			vswitchID := hetznerCloudProvider.CreateVSwitch(ctx)
-
-			// Validate SSH keys
-			hetznerCloudProvider.ValidateHetznerSSHKeyPair(ctx, config.ParsedGeneralConfig.Cloud.Hetzner)
-
-			// Ensure that the VSwitch is connected to that Hetzner Network.
-			hetznerCloudProvider.ConnectVSwitchWithHetznerNetwork(ctx, network)
-
-			// Ensure that the Hetzner Bare Metal servers are attached to the VSwitch.
-
-			if config.ControlPlaneInHetznerBareMetal() {
-				for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
-					hetznerCloudProvider.AttachServerToVSwitch(ctx, host.ServerID, vswitchID)
-				}
-			}
-
-			for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
-				for _, host := range nodeGroup.BareMetalHosts {
-					hetznerCloudProvider.AttachServerToVSwitch(ctx, host.ServerID, vswitchID)
-				}
-			}
-
-			// Ensure that the HCloud servers corresponding to the VPN cluster are attached to that
-			// Hetzner Network.
-
-			serverIDs := hetznerCloudProvider.GetHCloudServerIDsForCluster(ctx,
-				hetznerConfig.VPNCluster.Name,
-			)
-
-			for _, serverID := range serverIDs {
-				hetznerCloudProvider.AttachHCloudServerToNetwork(ctx, serverID, network.ID)
-			}
-		}
+		hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx)
 	}
 
 	// Detect git authentication method.

@@ -5,16 +5,20 @@ hcloud-cloud-controller-manager:
     HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:
       value: {{ .HetznerConfig.HCloud.Zone }}
 
-    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.VPNCluster) }}
+    {{/* When using a VPN cluster, we'll be using Hetzner Network, and thus can have internal LBs.
+         By default, apps will be exposed to internally.
+         When needed, sysadmins can explicitly specify (using annotations) that they want to expose
+         an app to the public internet. */}}
+    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
 
     # Disables the public interface of the Load Balancer by default.
     HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:
-      value: true
+      value: "true"
 
     # Configures the Load Balancer to use the private IP for Load Balancer server targets by
     # default.
     HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
-      value: true
+      value: "true"
     {{- end }}
 
 {{- end }}

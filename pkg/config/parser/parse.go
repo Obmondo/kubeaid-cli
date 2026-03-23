@@ -60,7 +60,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		hydrateCABundle(ctx)
 
 		// Read SSH keys from provided file paths, validate them and store them in config.
-		hydrateSSHKeyConfigs()
+		hydrateSSHKeyPairConfigs()
 
 		// Hydrate with Audit Logging options (if required).
 		hydrateWithAuditLoggingOptions()
@@ -183,23 +183,29 @@ func hydrateCABundle(ctx context.Context) {
 func hydrateVMSpecs(ctx context.Context) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
+		awsConfig := config.ParsedGeneralConfig.Cloud.AWS
+
+		for i, nodeGroup := range awsConfig.NodeGroups {
 			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.InstanceType)
 
-			config.ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].CPU = instanceSpecs.CPU
-			config.ParsedGeneralConfig.Cloud.AWS.NodeGroups[i].Memory = instanceSpecs.Memory
+			awsConfig.NodeGroups[i].CPU = instanceSpecs.CPU
+			awsConfig.NodeGroups[i].Memory = instanceSpecs.Memory
 		}
 
 	case constants.CloudProviderAzure:
-		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
+		azureConfig := config.ParsedGeneralConfig.Cloud.Azure
+
+		for i, nodeGroup := range azureConfig.NodeGroups {
 			vmSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
 
-			config.ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].CPU = vmSpecs.CPU
-			config.ParsedGeneralConfig.Cloud.Azure.NodeGroups[i].Memory = vmSpecs.Memory
+			azureConfig.NodeGroups[i].CPU = vmSpecs.CPU
+			azureConfig.NodeGroups[i].Memory = vmSpecs.Memory
 		}
 
 	case constants.CloudProviderHetzner:
-		for i, nodeGroup := range config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud {
+		hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+
+		for i, nodeGroup := range hetznerConfig.NodeGroups.HCloud {
 			machineSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.MachineType)
 			assert.AssertNotNil(
 				ctx,
@@ -207,9 +213,9 @@ func hydrateVMSpecs(ctx context.Context) {
 				"Implementation error : machine details returned by HetznerCloudProvider.GetVMSpecs() must include RootVolumeSize",
 			)
 
-			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].CPU = machineSpecs.CPU
-			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].Memory = machineSpecs.Memory
-			config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
+			hetznerConfig.NodeGroups.HCloud[i].CPU = machineSpecs.CPU
+			hetznerConfig.NodeGroups.HCloud[i].Memory = machineSpecs.Memory
+			hetznerConfig.NodeGroups.HCloud[i].RootVolumeSize = *machineSpecs.RootVolumeSize
 		}
 
 	case constants.CloudProviderBareMetal:

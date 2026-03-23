@@ -57,10 +57,10 @@ options:
 
 {{- if .WorkloadIdentity }}
 volumes:
-  - volume: "{{ .WorkloadIdentity.SSHPublicKeyFilePath }}:/etc/kubernetes/pki/sa.pub"
+  - volume: "{{ .WorkloadIdentity.PublicKeyFilePath }}:/etc/kubernetes/pki/sa.pub"
     nodeFilters:
       - server:*
-  - volume: "{{ .WorkloadIdentity.SSHPrivateKeyFilePath }}:/etc/kubernetes/pki/sa.key"
+  - volume: "{{ .WorkloadIdentity.PrivateKeyFilePath }}:/etc/kubernetes/pki/sa.key"
     nodeFilters:
       - server:*
 {{ end }}

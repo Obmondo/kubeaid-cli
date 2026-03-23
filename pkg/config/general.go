@@ -7,7 +7,7 @@ import (
 	gogiturl "github.com/kubescape/go-git-url"
 	coreV1 "k8s.io/api/core/v1"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner/storageplan"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
 )
 
 var (
@@ -52,7 +52,7 @@ type (
 		SSHUsername string `yaml:"sshUsername" validate:"notblank" default:"git"`
 
 		// Either make KubeAid CLI use the given SSH private key.
-		*SSHPrivateKeyConfig `yaml:",inline"`
+		*SSHKeyPairConfig `yaml:",inline"`
 
 		// Or, make KubeAid CLI use the SSH Agent.
 		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
@@ -133,8 +133,8 @@ type (
 	}
 
 	DeployKeysConfig struct {
-		KubeaidConfig SSHPrivateKeyConfig  `yaml:"kubeaidConfig" validate:"required"`
-		Kubeaid       *SSHPrivateKeyConfig `yaml:"kubeaid"`
+		KubeaidConfig SSHKeyPairConfig  `yaml:"kubeaidConfig" validate:"required"`
+		Kubeaid       *SSHKeyPairConfig `yaml:"kubeaid"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
@@ -221,15 +221,11 @@ type (
 	}
 
 	SSHKeyPairConfig struct {
-		SSHPrivateKeyConfig `yaml:",inline"`
-
-		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"notblank"`
-		PublicKey         string `                         validate:"notblank"`
-	}
-
-	SSHPrivateKeyConfig struct {
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
-		PrivateKey         string `                          validate:"notblank"`
+		PrivateKey,
+
+		PublicKey,
+		Fingerprint string
 	}
 
 	KubePrometheusConfig struct {
@@ -301,7 +297,12 @@ type (
 	}
 
 	WorkloadIdentity struct {
-		OpenIDProviderSSHKeyPair SSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"notblank"`
+		OpenIDProviderSSHKeyPair OpenIDProviderSSHKeyPairConfig `yaml:"openIDProviderSSHKeyPair" validate:"required"`
+	}
+
+	OpenIDProviderSSHKeyPairConfig struct {
+		SSHKeyPairConfig  `       yaml:",inline"`
+		PublicKeyFilePath string `yaml:"publicKeyFilePath" validate:"notblank"`
 	}
 
 	CanonicalUbuntuImage struct {
@@ -339,14 +340,25 @@ type (
 		*/
 		Mode string `yaml:"mode" default:"hcloud" validate:"notblank,oneof=bare-metal hcloud hybrid"`
 
-		VSwitch *VSwitchConfig `yaml:"vswitch"`
+		// Details about the VPN cluster you have in HCloud.
+		HCloudVPNCluster *HCloudVPNClusterConfig `yaml:"hcloudVPNCluster"`
 
-		HCloud    *HetznerHCloudConfig    `yaml:"hcloud"`
+		// Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner
+		// Bare Metal server.
+		// KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,
+		// if it / they doesn't already exist.
+		SSHKeyPair HetznerSSHKeyPair `yaml:"sshKeyPair" validate:"required"`
+
+		// HCloud specific details.
+		HCloud *HCloudConfig `yaml:"hcloud"`
+
+		// Hetzner bare-metal specific details.
 		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
+		// Control-plane specific details.
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
 
-		// Details about node-groups in Hetzner.
+		// Details about the node-groups.
 		NodeGroups HetznerNodeGroups `yaml:"nodeGroups"`
 
 		VPNCluster *HCloudVPNClusterConfig `yaml:"vpnCluster"`
@@ -356,21 +368,31 @@ type (
 		Name string `yaml:"name" validate:"notblank"`
 	}
 
-	VSwitchConfig struct {
-		VLANID int    `yaml:"vlanID"`
-		Name   string `yaml:"name"   validate:"notblank"`
+	HetznerSSHKeyPair struct {
+		Name             string `yaml:"name"    validate:"notblank"`
+		SSHKeyPairConfig `       yaml:",inline"`
 	}
 
-	HetznerHCloudConfig struct {
-		Zone           string `yaml:"zone"           validate:"notblank"`
-		ImageName      string `yaml:"imageName"      validate:"notblank" default:"ubuntu-24.04"`
-		SSHKeyPairName string `yaml:"sshKeyPairName" validate:"notblank"`
+	HCloudConfig struct {
+		Zone      string `yaml:"zone"      validate:"notblank"`
+		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-24.04"`
+
+		// Hetzner Network specific details.
+		HetznerNetwork HetznerNetworkConfig `yaml:"hetznerNetwork" validate:"required"`
+	}
+
+	HetznerNetworkConfig struct {
+		CIDR                    string `yaml:"cidr"                    validate:"cidrv4"`
+		HCloudServersSubnetCIDR string `yaml:"hcloudServersSubnetCIDR" validate:"cidrv4"`
 	}
 
 	HetznerBareMetalConfig struct {
-		WipeDisks    bool                       `yaml:"wipeDisks"    default:"false"`
-		InstallImage InstallImageConfig         `yaml:"installImage"`
-		SSHKeyPair   HetznerBareMetalSSHKeyPair `yaml:"sshKeyPair"                   validate:"required"`
+		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
+		InstallImage InstallImageConfig `yaml:"installImage"`
+
+		// Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
+		// the Hetzner Network.
+		VSwitch *VSwitchConfig `yaml:"vSwitch"`
 	}
 
 	InstallImageConfig struct {
@@ -378,14 +400,16 @@ type (
 		VG0       VG0Config `yaml:"vg0"`
 	}
 
-	HetznerBareMetalSSHKeyPair struct {
-		Name             string `yaml:"name"    validate:"notblank"`
-		SSHKeyPairConfig `       yaml:",inline"`
-	}
-
 	VG0Config struct {
 		Size           int `yaml:"size"           validate:"notblank" default:"80"`
 		RootVolumeSize int `yaml:"rootVolumeSize" validate:"notblank" default:"50"`
+	}
+
+	VSwitchConfig struct {
+		VLANID int    `yaml:"vlanID"`
+		Name   string `yaml:"name"   validate:"notblank"`
+
+		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
 	}
 
 	HetznerControlPlane struct {
@@ -460,8 +484,9 @@ type (
 	}
 
 	HetznerBareMetalHost struct {
-		ServerID string `yaml:"serverID" validate:"notblank"`
-		WWNs     []string
+		ServerID  string `yaml:"serverID"  validate:"notblank"`
+		PrivateIP string `yaml:"privateIP" validate:"ipv4"`
+		WWNs      []string
 	}
 
 	ZFSConfig struct {
@@ -484,8 +509,8 @@ type (
 	}
 
 	BareMetalSSHConfig struct {
-		Port       uint                 `yaml:"port"       validate:"required" default:"22"`
-		PrivateKey *SSHPrivateKeyConfig `yaml:"privateKey"`
+		Port              uint `yaml:"port"    validate:"required" default:"22"`
+		*SSHKeyPairConfig `     yaml:",inline"`
 	}
 
 	BareMetalControlPlane struct {

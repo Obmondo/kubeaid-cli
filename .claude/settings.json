@@ -1,0 +1,6 @@
+{
+  "enabledPlugins": {
+    "context-mode@context-mode": true,
+    "claude-mem@thedotmack": true
+  }
+}

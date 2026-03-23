@@ -115,11 +115,12 @@ func WaitUntilPRMerged(ctx context.Context,
 		)
 		assert.AssertErrNil(ctx, err, "Failed to get default branch ref")
 
-		if commitPresent := isCommitPresentInBranch(
+		commitPresent := isCommitPresentInBranch(
 			repo,
 			commitHash,
 			defaultBranchRef.Hash(),
-		); commitPresent {
+		)
+		if commitPresent {
 			slog.Info("Detected branch merged")
 			return
 		}

@@ -5,6 +5,8 @@ package parser
 
 import (
 	"context"
+	"crypto"
+	"encoding/pem"
 	"log/slog"
 	"os"
 	"strings"
@@ -15,55 +17,70 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func hydrateSSHKeyConfigs() {
+func hydrateSSHKeyPairConfigs() {
 	generalConfig := config.ParsedGeneralConfig
 
 	// Deploy keys used by ArgoCD to access the KubeAid and KubeAid Config repositories.
 	if generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
-		hydrateSSHPrivateKeyConfig(generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid)
+		hydrateSSHKeyPairConfig(generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid)
 	}
-	hydrateSSHPrivateKeyConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig)
+	hydrateSSHKeyPairConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig)
 
 	// When using SSH private key to authenticate against git.
-	if generalConfig.Git.SSHPrivateKeyConfig != nil {
-		hydrateSSHPrivateKeyConfig(generalConfig.Git.SSHPrivateKeyConfig)
+	if generalConfig.Git.SSHKeyPairConfig != nil {
+		hydrateSSHKeyPairConfig(generalConfig.Git.SSHKeyPairConfig)
 	}
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
-		hydrateSSHKeyPairConfig(
-			&generalConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair,
+		openIDProviderSSHKeyPair := generalConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair
+
+		hydrateSSHKeyPairConfig(&openIDProviderSSHKeyPair.SSHKeyPairConfig)
+
+		// Ensure that the provided SSH public key file contains the correct SSH public key.
+
+		ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
+			slog.String("public-key-file-path", openIDProviderSSHKeyPair.PublicKeyFilePath),
+		})
+
+		providedPublicKey, err := os.ReadFile(openIDProviderSSHKeyPair.PublicKeyFilePath)
+		assert.AssertErrNil(ctx, err, "Failed reading SSH public key file")
+
+		parsedProvidedPublicKey, err := ssh.ParsePublicKey(providedPublicKey)
+		assert.AssertErrNil(ctx, err, "Failed parsing provided SSH public")
+
+		providedPublicKeyFingerprint := ssh.FingerprintSHA256(parsedProvidedPublicKey)
+		assert.Assert(ctx,
+			(providedPublicKeyFingerprint == openIDProviderSSHKeyPair.Fingerprint),
+			"Provided SSH public key isn't derived from the SSH private key",
+			slog.String("private-key-file-path", openIDProviderSSHKeyPair.PrivateKeyFilePath),
 		)
 
 	case constants.CloudProviderHetzner:
-		mode := generalConfig.Cloud.Hetzner.Mode
-
-		// When using Hetzner bare-metal.
-		if (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid) {
-			hydrateSSHKeyPairConfig(
-				&generalConfig.Cloud.Hetzner.BareMetal.SSHKeyPair.SSHKeyPairConfig,
-			)
-		}
+		hydrateSSHKeyPairConfig(&generalConfig.Cloud.Hetzner.SSHKeyPair.SSHKeyPairConfig)
 
 	case constants.CloudProviderBareMetal:
-		if generalConfig.Cloud.BareMetal.SSH.PrivateKey != nil {
-			hydrateSSHPrivateKeyConfig(generalConfig.Cloud.BareMetal.SSH.PrivateKey)
+		bareMetalConfig := generalConfig.Cloud.BareMetal
+
+		if bareMetalConfig.SSH.SSHKeyPairConfig != nil {
+			hydrateSSHKeyPairConfig(bareMetalConfig.SSH.SSHKeyPairConfig)
 		}
 
 		// Handle host level SSH config overrides, if any.
 
-		for _, host := range generalConfig.Cloud.BareMetal.ControlPlane.Hosts {
-			if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
-				hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)
+		for _, host := range bareMetalConfig.ControlPlane.Hosts {
+			if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
+				hydrateSSHKeyPairConfig(host.SSH.SSHKeyPairConfig)
 			}
 		}
 
-		for _, nodeGroup := range generalConfig.Cloud.BareMetal.NodeGroups {
+		for _, nodeGroup := range bareMetalConfig.NodeGroups {
 			for _, host := range nodeGroup.Hosts {
-				if (host.SSH != nil) && (host.SSH.PrivateKey != nil) {
-					hydrateSSHPrivateKeyConfig(host.SSH.PrivateKey)
+				if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
+					hydrateSSHKeyPairConfig(host.SSH.SSHKeyPairConfig)
 				}
 			}
 		}
@@ -72,78 +89,38 @@ func hydrateSSHKeyConfigs() {
 
 // Reads and validates an SSH key-pair from the provided file paths.
 // The key-pair is then stored in the SSH key config struct itself.
-func hydrateSSHKeyPairConfig(sshKeyConfig *config.SSHKeyPairConfig) {
-	ctx := context.Background()
-
-	// Read and validate the SSH private key.
-	hydrateSSHPrivateKeyConfig(&sshKeyConfig.SSHPrivateKeyConfig)
-
-	{
-		// Read the SSH public key.
-		publicKey, err := os.ReadFile(sshKeyConfig.PublicKeyFilePath)
-		assert.AssertErrNil(ctx, err,
-			"Failed reading file",
-			slog.String("path", sshKeyConfig.PublicKeyFilePath),
-		)
-		sshKeyConfig.PublicKey = string(publicKey)
-
-		// Validate the SSH public key.
-		switch {
-		// OpenSSH.
-		case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSHRSA) ||
-			strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixOpenSSHEd25519):
-
-			_, _, _, _, err = ssh.ParseAuthorizedKey(publicKey)
-			assert.AssertErrNil(ctx, err,
-				"SSH public key is invalid : failed parsing",
-				slog.String("path", sshKeyConfig.PublicKeyFilePath),
-			)
-
-		//nolint:godox
-		// TODO : PEM.
-		case strings.HasPrefix(sshKeyConfig.PublicKey, constants.SSHPublicKeyPrefixPEM):
-			break
-
-		default:
-			slog.ErrorContext(ctx, "Failed identifying SSH public key type")
-			os.Exit(1)
-		}
-	}
-}
-
-// Reads and validates an SSH private key from the provided file path.
-// The private key is then stored in the SSH private key config struct itself.
-func hydrateSSHPrivateKeyConfig(sshPrivateKeyConfig *config.SSHPrivateKeyConfig) {
-	ctx := context.Background()
+func hydrateSSHKeyPairConfig(sshKeyPairConfig *config.SSHKeyPairConfig) {
+	ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
+		slog.String("private-key-file-path", sshKeyPairConfig.PrivateKeyFilePath),
+	})
 
 	// Read the SSH private key.
+	privateKey, err := os.ReadFile(sshKeyPairConfig.PrivateKeyFilePath)
+	assert.AssertErrNil(ctx, err, "Failed reading file")
 
-	privateKey, err := os.ReadFile(sshPrivateKeyConfig.PrivateKeyFilePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed reading file",
-		slog.String("path", sshPrivateKeyConfig.PrivateKeyFilePath),
+	sshKeyPairConfig.PrivateKey = strings.TrimSpace(string(privateKey))
+
+	// Ensure that the serialization format is OpenSSH.
+	block, _ := pem.Decode(privateKey)
+	assert.Assert(ctx,
+		((block != nil) && (block.Type == constants.PEMBlockTypeOpenSSHPrivateKey)),
+		"Serialization format for SSH private key isn't OpenSSH",
 	)
-	sshPrivateKeyConfig.PrivateKey = string(privateKey)
 
-	// Validate the SSH private key, based on its type.
+	// Parse the SSH private key.
+	parsedPrivateKey, err := ssh.ParseRawPrivateKey(privateKey)
+	assert.AssertErrNil(ctx, err, "Failed to parse SSH private key")
 
-	switch {
-	// OpenSSH.
-	case strings.HasPrefix(sshPrivateKeyConfig.PrivateKey, constants.SSHPrivateKeyPrefixOpenSSH):
+	// Get the public key and fingerprint,
+	// and store them in the SSHKeyPairConfig struct itself.
 
-		_, err = ssh.ParsePrivateKey(privateKey)
-		assert.AssertErrNil(ctx, err,
-			"SSH private key is invalid : failed parsing",
-			slog.String("path", sshPrivateKeyConfig.PrivateKeyFilePath),
-		)
+	signer, ok := parsedPrivateKey.(crypto.Signer)
+	assert.Assert(ctx, ok, "Failed getting crypto signer from SSH private key")
 
-	//nolint:godox
-	// TODO : PEM.
-	case strings.HasPrefix(sshPrivateKeyConfig.PrivateKey, constants.SSHPrivateKeyPrefixPEM):
-		break
+	parsedPublicKey, err := ssh.NewPublicKey(signer.Public())
+	assert.AssertErrNil(ctx, err, "Failed getting SSH public key")
 
-	default:
-		slog.ErrorContext(ctx, "Failed identifying SSH privaye key type")
-		os.Exit(1)
-	}
+	sshKeyPairConfig.PublicKey = string(parsedPublicKey.Marshal())
+
+	sshKeyPairConfig.Fingerprint = ssh.FingerprintSHA256(parsedPublicKey)
 }

@@ -1,0 +1,65 @@
+set -e
+
+apt-get update -y
+apt install zfsutils-linux -y
+
+# Create necessary partitions.
+{{- range $i, $disk := .StoragePlan.Disks }}
+
+  {{- if eq $disk.Allocations.OS 0 }}
+  echo ",1K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
+  echo ",1K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
+  echo ",1K,L" | sfdisk -N 3 /dev/{{ $disk.Name }} --force --no-reread
+  {{- end }}
+
+  sfdisk --delete /dev/{{ $disk.Name }} 4 || true
+
+  {{- if eq $disk.PartitionTableType "dos" }}
+  echo ",,E" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+  {{- else }}
+  echo ",1K,L" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
+  {{- end }}
+
+  {{- $partitionSize := "1K" }}
+  {{- if gt $disk.Allocations.ZFS 0 }}
+  {{- $partitionSize = printf "%dG" $disk.Allocations.ZFS }}
+  {{- end }}
+  echo ",{{ $partitionSize }},L" | sfdisk -N 5 /dev/{{ $disk.Name }} --force --no-reread
+
+  echo ",,L" | sfdisk -N 6 /dev/{{ $disk.Name }} --force --no-reread
+
+  partprobe /dev/{{ $disk.Name }}
+  udevadm settle
+
+{{- end }}
+
+if zpool import -f primary >/dev/null 2>&1; then
+  echo "Imported existing primary ZFS pool"
+else
+  # Create the ZFS pool with mirroring enabled.
+  zpool create primary mirror \
+    {{- range $i, $disk := .StoragePlan.ZFS }}
+      {{- if eq $disk.Type "NVMe" }}
+        /dev/{{ $disk.Name }}p5 {{ if eq $i 0 }}\{{ end }}
+      {{- else }}
+        /dev/{{ $disk.Name }}5 {{ if eq $i 0 }}\{{ end }}
+      {{- end -}}
+    {{ end }}
+
+  # Create the filesystem for ContainerD, to store container images.
+  zfs create primary/containerd
+  zfs set mountpoint=/var/lib/containerd primary/containerd
+
+  # Create the filesystem where pod logs will be stored.
+  zfs create primary/pod-logs
+  zfs set mountpoint=/var/log/pods primary/pod-logs
+
+  # Create the filesystem where pod ephemeral volumes will be stored.
+  zfs create primary/pod-ephemeral-volumes
+  zfs set mountpoint=/var/lib/kubelet/pods primary/pod-ephemeral-volumes
+
+  # Enable weekly ZPool trimming for the ZPool.
+  # So unused storage space will be reclaimed back, into the ZFS pool.
+  # REFER : https://openzfs.github.io/openzfs-docs/man/master/8/zpool-trim.8.html.
+  systemctl enable zfs-trim-weekly@rpool.timer --now
+fi

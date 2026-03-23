@@ -34,6 +34,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -50,17 +51,19 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	   NOTE : We need to retry, since raw.githubusercontent.com doesn't respond sometimes.
 	*/
 	for {
-		_, err := utils.ExecuteCommand(fmt.Sprintf(
-			`
-        kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
+		_, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,
+			fmt.Sprintf(
+				`
+          kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
 
-        kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
-        kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
-        kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
-      `,
-			constants.ReleaseNameArgoCD,
-			constants.NamespaceArgoCD,
-		))
+          kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
+          kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
+          kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
+        `,
+				constants.ReleaseNameArgoCD,
+				constants.NamespaceArgoCD,
+			),
+		)
 		if err == nil {
 			break
 		}
@@ -84,10 +87,12 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// which ArgoCD will use to access the KubeAid and KubeAid Config Git repositories.
 
 	repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+		fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
 
 	repoKubeaidConfigSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid-config.yaml")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", repoKubeaidConfigSecretPath))
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+		fmt.Sprintf("kubectl apply -f %s", repoKubeaidConfigSecretPath))
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
 	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
@@ -116,7 +121,8 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// Create the root ArgoCD App.
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
-	utils.ExecuteCommandOrDie(fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+		fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
 	slog.InfoContext(ctx, "Created root ArgoCD app")
 
 	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
