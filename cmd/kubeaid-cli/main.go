@@ -4,35 +4,13 @@
 package main
 
 import (
-	"context"
-	"fmt"
-	"io"
 	"log/slog"
 	"os"
-	"os/signal"
-	"path"
-	"path/filepath"
-	"strings"
-	"syscall"
 
-	"github.com/containerd/containerd/errdefs"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/moby/term"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime/docker"
 )
 
 func main() {
@@ -58,11 +36,7 @@ func createRootCommand() *cobra.Command {
 
 	rootCmd.Use = "kubeaid-cli"
 
-	// For bare-metal, run kubeaid-core commands natively (no Docker proxy).
-	// For all other providers, proxy to containerized KubeAid Core.
-	//
-	// We can't parse config here (flags aren't parsed yet), so we
-	// wrap the PersistentPreRun to decide at runtime.
+	// Proxy cluster and devenv subcommands to containerized KubeAid core.
 	for _, subCommand := range rootCmd.Commands() {
 		subCommandName := subCommand.Name()
 
@@ -70,296 +44,37 @@ func createRootCommand() *cobra.Command {
 			continue
 		}
 
-		subCommand.PersistentPreRun = func(cmd *cobra.Command, args []string) {
-			ctx := cmd.Context()
+		// Unset PersistentPreRun and Run,
+		// for this subcommand, and subcommands of this subcommand.
+		unsetRunners(subCommand)
 
-			// Parse config to detect the cloud provider.
-			parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
-
-			// For bare-metal, run the full original PersistentPreRun
-			// (temp dir, dependency checks) and let cobra's Run
-			// handlers execute normally.
-			if globals.CloudProviderName == constants.CloudProviderBareMetal {
-				slog.InfoContext(ctx,
-					"Bare-metal detected, running in-process",
-				)
-
-				// Init temp dir and check dependencies
-				// (the original PersistentPreRun minus ParseConfigFiles
-				// which we already called above).
-				utils.InitTempDir(ctx)
-				return
-			}
-
-			// For all other providers, proxy to Docker container
-			// and exit when done. No need for temp dir or dependency
-			// checks on the host — those run inside the container.
-			proxyRun(cmd, args)
-			os.Exit(0)
-		}
+		// Proxy command execution to containerized KubeAid Core.
+		subCommand.PersistentPreRun = proxyRun
 	}
 
 	return rootCmd
 }
 
-// proxyRun proxies the command execution to containerized KubeAid Core.
-// Called only for non-bare-metal providers.
+// Unsets PersistentPreRun and Run,
+// for the given command, as well as, its subcommands.
+func unsetRunners(command *cobra.Command) {
+	command.PersistentPreRun = nil
+	command.Run = func(cmd *cobra.Command, args []string) {}
+
+	for _, subCommand := range command.Commands() {
+		unsetRunners(subCommand)
+	}
+}
+
+// proxyRun proxies the command execution to the KubeAid Core container.
 func proxyRun(command *cobra.Command, _ []string) {
 	ctx := command.Context()
 
-	// Config is already parsed by the original PersistentPreRun.
-	configsDirectory := MustAbs(ctx, globals.ConfigsDirectory)
-
-	// Determine current working directory.
-	workingDirectory, err := os.Getwd()
-	assert.AssertErrNil(ctx, err, "Failed determining working directory")
-
 	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
 
-	// Determine management cluster name.
-	managementClusterName, err := command.Flags().GetString(constants.FlagNameManagementClusterName)
-	assert.AssertErrNil(ctx, err, "Failed getting management-cluster-name flag value")
+	containerRuntime := docker.NewDocker(ctx)
+	defer containerRuntime.CloseSocketConnection(ctx)
 
-	dockerCLI, err := client.NewClientWithOpts(
-		client.WithHostFromEnv(),
-		client.WithAPIVersionNegotiation(),
-	)
-	assert.AssertErrNil(ctx, err, "Failed creating docker CLI")
-
-	// The KubeAid Core container should run in the same Docker network,
-	// where the K3D management cluster is / will be running.
-	// Create that Docker network, if it doesn't already exist.
-
-	networkName := fmt.Sprintf("k3d-%s", managementClusterName)
-
-	_, err = dockerCLI.NetworkCreate(ctx, networkName, network.CreateOptions{})
-	if !errdefs.IsConflict(err) {
-		assert.AssertErrNil(ctx, err,
-			"Failed creating Docker network",
-			slog.String("name", networkName),
-		)
-	}
-
-	// Pull the KubeAid Core container image, if it doesn't exist locally.
-
-	containerImageName := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:%s", version.Version)
-
-	pullProgressReader, err := dockerCLI.ImagePull(ctx, containerImageName, image.PullOptions{})
-	assert.AssertErrNil(ctx, err,
-		"Failed pulling KubeAid Core container image. "+
-			"Ensure the image exists and your version is released",
-		slog.String("image", containerImageName),
-	)
-	defer pullProgressReader.Close()
-
-	stdoutFD, isTerminal := term.GetFdInfo(os.Stdout)
-	_ = jsonmessage.DisplayJSONMessagesStream(pullProgressReader, os.Stdout, stdoutFD, isTerminal, nil)
-
-	// Determine volume bind mounts, for the KubeAid Core container.
-
-	sshKnownHostsFilePath := MustAbs(ctx, "~/.ssh/known_hosts")
-
-	binds := []string{
-		// (1) Container Runtime (Docker Engine) socket.
-		"/var/run/docker.sock:/var/run/docker.sock",
-
-		// (2) Directory containing KubeAid CLI configuration files, i.e., general.yaml and secrets.yaml.
-		fmt.Sprintf("%s:%s", configsDirectory, configsDirectory),
-
-		// (3) Output directory, where artifacts generated by KubeAid CLI will be stored.
-		fmt.Sprintf("%s:/outputs",
-			path.Join(workingDirectory, "outputs")),
-
-		// (4) Temp directory, where Git repositories will get cloned.
-		fmt.Sprintf("%s:%s", constants.TempDirectory, constants.TempDirectory),
-
-		// (5) SSH known hosts file.
-		fmt.Sprintf("%s:%s", sshKnownHostsFilePath, sshKnownHostsFilePath),
-	}
-
-	// (6) SSH Auth Socket.
-	sshAuthSock := os.Getenv(constants.EnvNameSSHAuthSock)
-	switch len(sshAuthSock) == 0 {
-	case true:
-		slog.WarnContext(ctx, "SSH_AUTH_SOCK environment variable not set")
-
-	default:
-		binds = append(binds,
-			fmt.Sprintf("%s:%s", sshAuthSock, sshAuthSock),
-		)
-	}
-
-	// (7) SSH private key files.
-	for privateKeyFilePath := range getSSHPrivateKeyFilePaths() {
-		privateKeyFilePath = MustAbs(ctx, privateKeyFilePath)
-
-		binds = append(binds,
-			fmt.Sprintf("%s:%s", privateKeyFilePath, privateKeyFilePath),
-		)
-	}
-
-	// Spin up the KubeAid Core container,
-	// proxying the command execution.
-
-	slog.InfoContext(ctx, "Spinning up KubeAid Core container")
-
-	containerCreateResponse, err := dockerCLI.ContainerCreate(ctx,
-		&container.Config{
-			Image: containerImageName,
-
-			// In case of the bare-metal provider, the user might need to provide YubiKey pin for SSH
-			// authentication against bare-metal servers.
-			// So, we need a pseudo-terminal for the container, and keep the standard input accessible
-			// from the host.
-			Tty:       true,
-			OpenStdin: true,
-
-			AttachStdout: true,
-			AttachStderr: true,
-
-			Env: []string{
-				fmt.Sprintf("%s=%s", constants.EnvNameSSHAuthSock, sshAuthSock),
-
-				// Go Git doesn't automatically pickup the ~/.ssh/known_hosts file.
-				// But rather, expects the SSH_KNOWN_HOSTS environment variable to be set to the path of
-				// the SSH known hosts file.
-				fmt.Sprintf("%s=%s", constants.EnvNameSSHKnownHosts, sshKnownHostsFilePath),
-			},
-
-			Cmd: os.Args[1:],
-		},
-		&container.HostConfig{
-			NetworkMode: container.NetworkMode(networkName),
-			Binds:       binds,
-			AutoRemove:  true,
-		},
-		&network.NetworkingConfig{},
-		&v1.Platform{},
-		"kubeaid-core",
-	)
-	assert.AssertErrNil(ctx, err, "Failed creating KubeAid Core container")
-
-	containerID := containerCreateResponse.ID
-
-	containerAttachResponse, err := dockerCLI.ContainerAttach(ctx, containerID,
-		container.AttachOptions{
-			Stdin: true,
-
-			Stdout: true,
-			Stderr: true,
-			Stream: true,
-		},
-	)
-	assert.AssertErrNil(ctx, err, "Failed attaching the KubeAid Core container to the host program")
-	defer containerAttachResponse.Close()
-
-	err = dockerCLI.ContainerStart(ctx, containerID, container.StartOptions{})
-	assert.AssertErrNil(ctx, err, "Failed starting KubeAid Core container")
-
-	// Stream container logs, to this host program's stdout and stderr.
-	go func() {
-		_, err := io.Copy(os.Stdout, containerAttachResponse.Reader)
-		assert.AssertErrNil(ctx, err, "Failed streaming KubeAid Core container logs")
-	}()
-
-	// Wait until the KubeAid Core container exits naturally.
-	// Or, if we receive a program termination signal, then we explicitly stop the container, which
-	// then gets auto-removed.
-
-	containerStatusChan, containerExecutionErrorChan := dockerCLI.ContainerWait(ctx,
-		containerID, container.WaitConditionNotRunning,
-	)
-
-	terminationSignalChan := make(chan os.Signal, 1)
-	signal.Notify(terminationSignalChan, syscall.SIGINT, syscall.SIGTERM)
-
-	select {
-	case err := <-containerExecutionErrorChan:
-		assert.AssertErrNil(ctx, err, "KubeAid Core container execution failed")
-
-	case <-containerStatusChan:
-
-	case <-terminationSignalChan:
-		err := dockerCLI.ContainerStop(ctx, containerID, container.StopOptions{})
-		assert.AssertErrNil(ctx, err, "Failed stopping the KubeAid Core container")
-	}
-}
-
-// Returns canonical version of the given path.
-func MustAbs(ctx context.Context, path string) string {
-	// When the path starts with "~/", we need to expand "~" to the user's home directory path.
-	// REFER : https://www.gnu.org/software/bash/manual/html_node/Tilde-Expansion.html.
-	if strings.HasPrefix(path, "~/") {
-		homeDir, err := os.UserHomeDir()
-		assert.AssertErrNil(ctx, err, "Failed getting home directory")
-
-		path = homeDir + path[1:]
-		return path
-	}
-
-	absolutePath, err := filepath.Abs(path)
-	assert.AssertErrNil(ctx, err, "Failed canonicalizing given path", slog.String("path", path))
-
-	return absolutePath
-}
-
-// Returns the list of SSH private key file paths.
-// Those SSH private key files will be mounted to the KubeAid Core container.
-func getSSHPrivateKeyFilePaths() map[string]bool {
-	paths := map[string]bool{}
-
-	parsedGeneralConfig := config.ParsedGeneralConfig
-
-	// Used by ArgoCD to access the KubeAid and KubeAid Config repositories.
-	deployKeys := parsedGeneralConfig.Cluster.ArgoCD.DeployKeys
-	if deployKeys.Kubeaid != nil && len(deployKeys.Kubeaid.PrivateKeyFilePath) > 0 {
-		paths[deployKeys.Kubeaid.PrivateKeyFilePath] = true
-	}
-	if len(deployKeys.KubeaidConfig.PrivateKeyFilePath) > 0 {
-		paths[deployKeys.KubeaidConfig.PrivateKeyFilePath] = true
-	}
-
-	// Used to clone the Git repositories.
-	if parsedGeneralConfig.Git.SSHKeyPairConfig != nil {
-		paths[parsedGeneralConfig.Git.PrivateKeyFilePath] = true
-	}
-
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAzure:
-		azureConfig := parsedGeneralConfig.Cloud.Azure
-
-		// Used to setup Workload Identity.
-		paths[azureConfig.WorkloadIdentity.OpenIDProviderSSHKeyPair.PrivateKeyFilePath] = true
-
-	case constants.CloudProviderHetzner:
-		hetznerConfig := parsedGeneralConfig.Cloud.Hetzner
-
-		// Used to SSH into the Hetzner Bare Metal / HCloud servers.
-		paths[hetznerConfig.SSHKeyPair.PrivateKeyFilePath] = true
-
-	case constants.CloudProviderBareMetal:
-		bareMetalConfig := parsedGeneralConfig.Cloud.BareMetal
-
-		// Used to SSH into the Bare Metal servers.
-
-		if bareMetalConfig.SSH.SSHKeyPairConfig != nil {
-			paths[bareMetalConfig.SSH.PrivateKeyFilePath] = true
-		}
-
-		for _, host := range bareMetalConfig.ControlPlane.Hosts {
-			if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
-				paths[host.SSH.PrivateKeyFilePath] = true
-			}
-		}
-
-		for _, nodeGroup := range bareMetalConfig.NodeGroups {
-			for _, host := range nodeGroup.Hosts {
-				if (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil) {
-					paths[host.SSH.PrivateKeyFilePath] = true
-				}
-			}
-		}
-	}
-
-	return paths
+	kubeAidCoreContainer := &KubeAidCoreContainer{}
+	kubeAidCoreContainer.Run(ctx)
 }

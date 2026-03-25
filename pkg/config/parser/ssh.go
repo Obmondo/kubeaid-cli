@@ -24,10 +24,11 @@ func hydrateSSHKeyPairConfigs() {
 	generalConfig := config.ParsedGeneralConfig
 
 	// Deploy keys used by ArgoCD to access the KubeAid and KubeAid Config repositories.
-	if generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
-		hydrateSSHKeyPairConfig(generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid)
+	deployKeys := generalConfig.Cluster.ArgoCD.DeployKeys
+	if deployKeys.Kubeaid != nil {
+		hydrateSSHKeyPairConfig(deployKeys.Kubeaid)
 	}
-	hydrateSSHKeyPairConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig)
+	hydrateSSHKeyPairConfig(&deployKeys.KubeaidConfig)
 
 	// When using SSH private key to authenticate against git.
 	if generalConfig.Git.SSHKeyPairConfig != nil {

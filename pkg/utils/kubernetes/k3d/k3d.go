@@ -32,63 +32,6 @@ import (
 //go:embed templates/*
 var templates embed.FS
 
-// getK3sVersion returns the appropriate k3s version based on the
-// host's cgroup version. k8s 1.34+ dropped cgroup v1 support.
-func getK3sVersion(ctx context.Context) string {
-	// cgroup v1 — pin to 1.33.x.
-	if _, err := os.Stat("/sys/fs/cgroup/cgroup.controllers"); err != nil {
-		slog.InfoContext(ctx,
-			"Detected cgroup v1, pinning k3s version",
-			slog.String("version", constants.K3sVersionCgroupV1),
-		)
-		return constants.K3sVersionCgroupV1
-	}
-
-	// cgroup v2 — fetch latest k3s release.
-	version, err := getLatestK3sVersion(ctx)
-	if err != nil {
-		slog.WarnContext(ctx,
-			"Failed fetching latest k3s version, falling back",
-			slog.String("error", err.Error()),
-			slog.String("fallback", constants.K3sVersionCgroupV1),
-		)
-		return constants.K3sVersionCgroupV1
-	}
-
-	slog.InfoContext(ctx,
-		"Detected cgroup v2, using latest k3s",
-		slog.String("version", version),
-	)
-	return version
-}
-
-func getLatestK3sVersion(ctx context.Context) (string, error) {
-	resp, err := http.Get(
-		"https://api.github.com/repos/k3s-io/k3s/releases/latest",
-	)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var release struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return "", err
-	}
-
-	if release.TagName == "" {
-		slog.InfoContext(ctx,
-			"Fetched tag name is empty, using fallback",
-		)
-		return constants.K3sVersionCgroupV1, nil
-	}
-
-	// Upstream uses "+" which needs to be "-" for image tags.
-	return strings.ReplaceAll(release.TagName, "+", "-"), nil
-}
-
 type (
 	K3DConfigTemplateValues struct {
 		Name,
@@ -135,10 +78,10 @@ func CreateK3DCluster(ctx context.Context, name string) {
 	// Generate the K3D cluster config file.
 	generateK3DClusterConfigFile(ctx, name)
 
-	// Create the K3D cluster, if it doesn't already exist.
-	createK3dCluster(ctx, name)
+	// Ensure that the K3D cluster is created.
+	createK3DCluster(ctx, name)
 
-	// Ensure kubeconfig output directory exists.
+	// Ensure existence of the directory which'll contain the kubeconfig file.
 	utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathManagementClusterHostKubeconfig)
 
 	// Create the K3D management cluster's host kubeconfig.
@@ -190,7 +133,6 @@ func CreateK3DCluster(ctx context.Context, name string) {
 func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
-		K8sVersion: config.ParsedGeneralConfig.Cluster.K8sVersion,
 		K3sVersion: getK3sVersion(ctx),
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
@@ -226,7 +168,7 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 }
 
 // Create the K3D cluster, if it doesn't already exist.
-func createK3dCluster(ctx context.Context, name string) {
+func createK3DCluster(ctx context.Context, name string) {
 	if doesK3dClusterExist(ctx, name) {
 		slog.InfoContext(ctx, "Skipped creating the K3D management cluster")
 		return
@@ -266,4 +208,54 @@ func DeleteK3DCluster(ctx context.Context) {
 	})
 	err := clusterDeleteCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err, "Failed deleting K3D cluster")
+}
+
+// Returns K3s version to be used for the cluster being spunup using K3D.
+func getK3sVersion(ctx context.Context) string {
+	// As you know : for the Local provider, we spinup a local K3s cluster, where the user can try
+	// out KubeAid.
+	// Just use the K8s version specified in the general.yaml file.
+	if globals.CloudProviderName == constants.CloudProviderLocal {
+		return config.ParsedGeneralConfig.Cluster.K8sVersion
+	}
+
+	// Otherwise, just use the latest K3s version.
+	return getLatestK3sVersion(ctx)
+}
+
+// Returns the max K8s version supported by K3s.
+func GetMaxK3sSupportedK8sVersion(ctx context.Context) string {
+	// Get the latest K3s version.
+	latestK3sVersion := getLatestK3sVersion(ctx)
+
+	// Extract the corresponding K8s version from that.
+	// Extract Kubernetes version (before '+k3s')
+	i := strings.Index(latestK3sVersion, "-")
+	assert.Assert(ctx, (i > 0),
+		fmt.Sprintf("Failed extracting K8s version from latest K3s version : %s", latestK3sVersion))
+	maxSupportedK8sVersion := latestK3sVersion[:i]
+
+	return maxSupportedK8sVersion
+}
+
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
+// Returns the latest K3s version.
+func getLatestK3sVersion(ctx context.Context) string {
+	response, err := http.Get(constants.K3sReleasesAPIURL)
+	assert.Assert(ctx,
+		((err == nil) && (response.StatusCode == http.StatusOK)),
+		"Faile getting latest K3s version",
+		logger.Error(err), slog.Any("response", response),
+	)
+	defer response.Body.Close()
+
+	var release GitHubRelease
+	err = json.NewDecoder(response.Body).Decode(&release)
+	assert.AssertErrNil(ctx, err,
+		"Failed JSON unmarshalling GitHub release data for K3s latest version")
+
+	return strings.ReplaceAll(release.TagName, "+", "-")
 }

@@ -58,9 +58,8 @@ type (
 		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
 		UseSSHAgent bool `yaml:"useSSHAgent"`
 
-		// Additional SSH known host entries.
-		// Merged with the bundled known hosts for
-		// GitHub, GitLab, Bitbucket and Azure DevOps.
+		// Additional SSH known hosts.
+		// Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
 		KnownHosts []string `yaml:"knownHosts"`
 	}
 
@@ -133,8 +132,8 @@ type (
 	}
 
 	DeployKeysConfig struct {
-		KubeaidConfig SSHKeyPairConfig  `yaml:"kubeaidConfig" validate:"required"`
 		Kubeaid       *SSHKeyPairConfig `yaml:"kubeaid"`
+		KubeaidConfig SSHKeyPairConfig  `yaml:"kubeaidConfig" validate:"required"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.

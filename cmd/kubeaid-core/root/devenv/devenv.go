@@ -14,7 +14,7 @@ import (
 
 var DevenvCmd = &cobra.Command{
 	Use:   "devenv",
-	Short: "Manage local development environments",
+	Short: "Manage local development environment (i.e. the management cluster)",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Parse config files.

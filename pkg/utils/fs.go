@@ -7,7 +7,6 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -91,16 +90,20 @@ func GetDownloadedStorageBucketContentsDir(bucketName string) string {
 	return path.Join(constants.TempDirectory, "buckets", bucketName)
 }
 
-// Converts the given relative path to an absolute path.
-func ToAbsolutePath(ctx context.Context, relativePath string) string {
-	currentWorkingDirectory, err := os.Getwd()
-	assert.AssertErrNil(ctx, err, "Failed getting current working directory")
+// Returns canonical version of the given path.
+func ToAbsolutePath(ctx context.Context, path string) string {
+	// When the path starts with "~/", we need to expand "~" to the user's home directory path.
+	// REFER : https://www.gnu.org/software/bash/manual/html_node/Tilde-Expansion.html.
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		assert.AssertErrNil(ctx, err, "Failed getting home directory")
 
-	absolutePath, err := url.JoinPath(currentWorkingDirectory, relativePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed joining current working directory with given relative path",
-		slog.String("relative-path", relativePath),
-	)
+		path = homeDir + path[1:]
+		return path
+	}
+
+	absolutePath, err := filepath.Abs(path)
+	assert.AssertErrNil(ctx, err, "Failed canonicalizing given path", slog.String("path", path))
 
 	return absolutePath
 }

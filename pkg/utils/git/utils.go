@@ -28,18 +28,18 @@ func GetRepoDir(parsedURL gogiturl.IGitURL) string {
 
 func MustParseURL(ctx context.Context, url string) gogiturl.IGitURL {
 	parsedURL, err := gogiturl.NewGitURL(url)
-	assert.AssertErrNil(ctx, err,
-		"Failed parsing Git repository URL. "+
-			"Expected format: https://github.com/org/repo.git "+
-			"or git@github.com:org/repo.git",
+	assert.AssertErrNil(
+		ctx,
+		err,
+		"Failed parsing Git repository URL. Expected format : https://gitserver.com/org/repo.git or git@gitserver.com:org/repo.git",
 		slog.String("url", url),
 	)
 
 	return parsedURL
 }
 
-// IsHTTPSURL returns true if the given URL uses the HTTPS scheme.
-func IsHTTPSURL(url string) bool {
+// Returns whether the URL uses HTTP scheme.
+func isHTTPURL(url string) bool {
 	return strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")
 }
 

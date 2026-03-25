@@ -32,9 +32,9 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		slog.String("repo", url), slog.String("path", path),
 	})
 
-	// For HTTPS URLs, no auth is needed (public repos only).
+	// For HTTPs URLs, no auth is needed (public repos only).
 	// If the clone fails, the repo is likely private and requires an SSH URL.
-	if IsHTTPSURL(url) {
+	if isHTTPURL(url) {
 		authMethod = nil
 	}
 
@@ -66,10 +66,9 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 
 	repo, err := goGit.PlainClone(path, false, opts)
 
-	if IsHTTPSURL(url) && err != nil &&
+	if isHTTPURL(url) &&
 		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
-		slog.ErrorContext(
-			ctx,
+		slog.ErrorContext(ctx,
 			"HTTPS clone failed: private repo detected, switch to SSH URL",
 			slog.String("url", url),
 		)

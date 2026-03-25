@@ -1,0 +1,2 @@
+- Always follow Google's [Go style decisions](https://google.github.io/styleguide/go/decisions).
+- Always follow Google's [Go style best practices](https://google.github.io/styleguide/go/best-practices).

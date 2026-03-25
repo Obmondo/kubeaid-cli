@@ -9,7 +9,7 @@ import (
 
 var ConfigCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Generate and manage configuration files",
+	Short: "Generate and manage required configuration files (i.e. the general.yaml and secrets.yaml files)",
 }
 
 var ConfigFilesDirectory string

@@ -29,7 +29,9 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -101,63 +103,80 @@ func validateConfigs(ctx context.Context) error {
 	return nil
 }
 
-// Checks whether the given string represents a valid  and supported Kubernetes version or not.
-// If not, then panics.
+// Checks whether the given string represents a valid and supported Kubernetes version.
 func validateK8sVersion(ctx context.Context, k8sVersion string) {
-	assert.Assert(ctx, strings.HasPrefix(k8sVersion, "v"),
-		"K8s version must start with 'v' (for example: v1.35.0)",
-	)
+	hasPrefixV := strings.HasPrefix(k8sVersion, "v")
+	assert.Assert(ctx, hasPrefixV, "K8s version must start with 'v' (for e.g.: v1.35.0)")
+
+	// Determine the min and max K8s versions supported by KubeAid CLI,
+	// considering the provider being used.
+
+	var minSupportedK8sVersion,
+		maxSupportedK8sVersion string
+
+	switch globals.CloudProviderName {
+	// For the Bare Metal provider, we use KubeOne under the hood.
+	// And we need to ensure that the provided K8s version is officially supported by KubeOne.
+	case constants.CloudProviderBareMetal:
+		minSupportedK8sVersion = constants.MinKubeOneSupportedK8sVersion
+		maxSupportedK8sVersion = constants.MaxKubeOneSupportedK8sVersion
+
+	// When using the Local provider, we create a K3s cluster, where the user can try out KubeAid.
+	// Ensure that the given K8s version is supported by K3s,
+	// and compatible with the CGroup version on the host system.
+	case constants.CloudProviderLocal:
+		minSupportedK8sVersion = constants.MinSupportedK8sVersion
+
+		maxSupportedK8sVersion = k3d.GetMaxK3sSupportedK8sVersion(ctx)
+		if utils.IsCGroupV2() {
+			maxSupportedK8sVersion = constants.MaxCGroupV1CompatibleK8sVersion
+		}
+
+	default:
+		minSupportedK8sVersion = constants.MinSupportedK8sVersion
+		maxSupportedK8sVersion = getLatestStableK8sVersion(ctx)
+	}
+
+	parsedMinSupportedK8sVersion, err := version.ParseMajorMinor(minSupportedK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing min supported K8s version")
+
+	parsedMaxSupportedK8sVersion, err := version.ParseMajorMinor(maxSupportedK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing max supported K8s version")
+
+	// Check that : min supported K8s version <= provided K8s version <= max supported K8s version.
 
 	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
-	const leastSupportedK8sVersion = "v1.30.0"
-	parsedLeastSupportedK8sVersion, err := version.ParseSemantic(leastSupportedK8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing least supported K8s version")
-
-	latestStableK8sVersion := getLatestStableK8sVersion(ctx)
-	parsedLatestStableK8sVersion, err := version.ParseSemantic(latestStableK8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing latest stable K8s version")
-
-	// least supported version <= user provided version <= latest stable version.
-	//nolint:staticcheck
-	if !parsedK8sVersion.AtLeast(parsedLeastSupportedK8sVersion) &&
-		!(parsedK8sVersion.LessThan(parsedLatestStableK8sVersion) || parsedK8sVersion.EqualTo(parsedLatestStableK8sVersion)) {
-
-		slog.ErrorContext(ctx, "K8s versions below v1.30.0 aren't supported")
-		os.Exit(1)
-	}
+	k8sVersionSupported := parsedK8sVersion.AtLeast(parsedMinSupportedK8sVersion) &&
+		(parsedK8sVersion.LessThan(parsedMaxSupportedK8sVersion) || parsedK8sVersion.EqualTo(parsedMaxSupportedK8sVersion))
+	assert.Assert(ctx, k8sVersionSupported,
+		fmt.Sprintf("K8s version must be in the range (inclusive) : %s - %s",
+			minSupportedK8sVersion, maxSupportedK8sVersion,
+		),
+	)
 }
 
-// Fetches and returns the latest stable Kubernetes version from the kubeadm API.
-// It will try multiple kubeadm API endpoints, and return the version fetched from the first successful response.
-// The error can be produced by a transient network issue, or an issue in the kubeadm API itself.
+// Fetches and returns the latest stable Kubernetes version, from the Kubeadm API endpoint.
 func getLatestStableK8sVersion(ctx context.Context) string {
-	const kubeadmAPIURL = "https://dl.k8s.io/release/stable.txt"
+	slog.InfoContext(
+		ctx,
+		"Fetching latest stable K8s version",
+		slog.String("URL", constants.K8sReleaseAPIURL),
+	)
 
-	latestStableK8sVersion, err := fetchLatestStableK8sVersion(kubeadmAPIURL)
-	assert.AssertErrNil(ctx, err, "Failed fetching latest stable K8s version")
-
-	return latestStableK8sVersion
-}
-
-func fetchLatestStableK8sVersion(kubeadmAPIURL string) (string, error) {
-	response, err := http.Get(kubeadmAPIURL)
-	if err != nil {
-		return "", err
-	}
+	response, err := http.Get(constants.K8sReleaseAPIURL)
+	assert.Assert(ctx,
+		((err == nil) && (response.StatusCode != http.StatusOK)),
+		"Failed fetching latest stable Kubernetes version",
+		logger.Error(err), slog.Any("response", response),
+	)
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
 	latestStableK8sVersion, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", err
-	}
+	assert.AssertErrNil(ctx, err, "Failed reading latest stable K8s version from response body")
 
-	return string(latestStableK8sVersion), nil
+	return string(latestStableK8sVersion)
 }
 
 func validateAWSConfig(ctx context.Context) {
@@ -298,18 +317,6 @@ func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
 func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector) {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
-	k8sVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
-	// We would need to update this after each kubeone package upgrade in the codebase. currently kubeone supports k8s version upto v1.34
-	if semver.IsValid(k8sVersion) &&
-		semver.Compare(semver.MajorMinor(k8sVersion), constants.LatestKubeOneSupportedK8sVersion) > 0 {
-		slog.ErrorContext(
-			ctx,
-			"Latest k8s supported version currently for bare metal is v1.34",
-			slog.String("version", k8sVersion),
-		)
-		os.Exit(1)
-	}
-
 	// At least one of public or private IP address must be provided.
 	if host.PublicAddress == nil && host.PrivateAddress == nil {
 		slog.ErrorContext(ctx, "Neither public, nor private IP address provided for a Bare Metal host")
@@ -428,23 +435,29 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		)
 	}
 
-	// Ensure that Docker isn't installed.
+	// Ensure that the Docker APT repository isn't added using commands which aren't used by KubeOne.
 	{
-		command = "! which docker &> /dev/null"
-		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
-
-		_, _, _, err = connection.Exec(command)
-		assert.AssertErrNil(ctx, err, "Docker must not be installed in the server")
-
-		// It might be so that Docker was installed initially. And then, the user uninstalled it.
-		// We need to ensure that the APT source and keyring have been removed as well.
-		// Otherwise, KubeOne will error out.
-
 		command = "[ ! -f /etc/apt/sources.list.d/docker.sources ] && [ ! -f /etc/apt/keyrings/docker.asc ]"
 		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
 
 		_, _, _, err = connection.Exec(command)
-		assert.AssertErrNil(ctx, err, "Docker's APT source and keyring must not be added to the server")
+		assert.AssertErrNil(ctx, err, `
+Please install the Docker APT repository using commands which KubeOne use :
+
+  		sudo apt-get update
+			sudo apt-get install -y apt-transport-https ca-certificates curl lsb-release
+			sudo install -m 0755 -d /etc/apt/keyrings
+			sudo rm -f /etc/apt/keyrings/docker.gpg
+			curl -fsSL https://download.docker.com/linux/$(lsb_release -si | tr '[:upper:]' '[:lower:]')/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+			sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+			echo "deb [signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$(lsb_release -si | tr '[:upper:]' '[:lower:]') $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list
+			sudo apt-get update
+
+REFER : https://github.com/kubermatic/kubeone/blob/225825f44bf38f4c5eca33c76343aed9319413ca/pkg/scripts/render.go#L55.
+
+And remove /etc/apt/sources.list.d/docker.sources and /etc/apt/keyrings/docker.asc.
+    `)
 	}
 
 	// Ensure that socat, conntrack and pigz are installed.

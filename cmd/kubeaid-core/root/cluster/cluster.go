@@ -16,7 +16,7 @@ import (
 
 var ClusterCmd = &cobra.Command{
 	Use:   "cluster",
-	Short: "Manage Kubernetes cluster lifecycle",
+	Short: "Manage lifecycle of the KubeAid managed cluster",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Parse config files.
@@ -26,11 +26,7 @@ var ClusterCmd = &cobra.Command{
 		utils.InitTempDir(cmd.Context())
 
 		// Ensure required runtime dependencies are installed.
-		// For bare-metal, skip — KubeOne handles everything and
-		// kube-prometheus build tools run in a container.
-		if globals.CloudProviderName != constants.CloudProviderBareMetal {
-			utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
-		}
+		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
 	},
 }
 
@@ -48,8 +44,7 @@ func init() {
 
 	ClusterCmd.PersistentFlags().
 		BoolVar(&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
-			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
-		)
+			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch")
 
 	ClusterCmd.PersistentFlags().
 		StringVar(&managementClusterName,

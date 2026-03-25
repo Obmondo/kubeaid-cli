@@ -2,4 +2,6 @@
 configs:
   ssh:
     knownHosts: |
-{{- .SSHKnownHosts | nindent 6 }}
+{{- range $i, $extraKnownHost := $.ExtraKnownHosts }}
+{{- $extraKnownHost | nindent 6 }}
+{{- end }}

@@ -16,14 +16,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
-	containerdUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/containerd"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -256,29 +253,6 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	kubeAidDir := utils.GetKubeAidDir()
 	buildScriptPath := path.Join(kubeAidDir, "build/kube-prometheus/build.sh")
 
-	// For non-bare-metal, the build tools are available locally
-	// (running inside the kubeaid-core container via Docker).
-	if globals.CloudProviderName != constants.CloudProviderBareMetal {
-		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-			fmt.Sprintf("%s %s", buildScriptPath, clusterDir))
-		return
-	}
-
-	// For bare-metal, use containerd to run the build inside the
-	// kubeaid-core container (which has jsonnet tooling bundled).
-	containerBuildScript := path.Join("/kubeaid", "build/kube-prometheus/build.sh")
-	containerClusterDir := "/cluster-dir"
-
-	exitCode := containerdUtils.RunContainer(ctx, containerdUtils.RunContainerArgs{
-		ImageRef: fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:%s", version.Version),
-		Command:  []string{containerBuildScript, containerClusterDir},
-		Binds: map[string]string{
-			kubeAidDir: "/kubeaid",
-			clusterDir: containerClusterDir,
-		},
-	})
-	assert.Assert(ctx, exitCode == 0,
-		"KubePrometheus build failed",
-		slog.Any("exit-code", exitCode),
-	)
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+		fmt.Sprintf("%s %s", buildScriptPath, clusterDir))
 }
