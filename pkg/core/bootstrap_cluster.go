@@ -46,10 +46,17 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx, ReadBundledKnownHosts())
+	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Create 'dev environment'.
-	CreateDevEnv(ctx, args.CreateDevEnvArgs)
+	switch globals.CloudProviderName {
+	// When using the Bare Metal provider, we don't need a local management cluster.
+	case constants.CloudProviderBareMetal:
+		_ = git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+
+	// Create and setup the management cluster.
+	default:
+		CreateDevEnv(ctx, args.CreateDevEnvArgs)
+	}
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
@@ -60,8 +67,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	// Construct main cluster client.
 	mainClusterClient := kubernetes.MustCreateClusterClient(ctx,
-		utils.MustGetEnv(constants.EnvNameKubeconfig),
-	)
+		utils.MustGetEnv(constants.EnvNameKubeconfig))
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
@@ -119,12 +125,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	default:
 		// Use ClusterAPI to provision the main cluster in the cloud.
 		provisionMainClusterUsingClusterAPI(ctx)
-	}
 
-	// Close management cluster's ArgoCD application client.
-	// Skip for bare-metal since there is no management cluster.
-	if globals.CloudProviderName != constants.CloudProviderBareMetal &&
-		globals.ArgoCDApplicationClientCloser != nil {
+		// Close management cluster's ArgoCD application client.
 		_ = globals.ArgoCDApplicationClientCloser.Close()
 	}
 
@@ -135,12 +137,14 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	)
 
 	// Ensure that application workloads can be scheduled.
-	if kubernetes.IsNodeGroupCountZero(ctx) {
-		// If there are 0 node-groups, then we need to remove the NoSchedule taint from the master
-		// nodes.
+	switch kubernetes.IsNodeGroupCountZero(ctx) {
+	// When there are 0 node-groups, then we need to remove the NoSchedule taint from the master
+	// nodes.
+	case true:
 		kubernetes.RemoveNoScheduleTaintsFromMasterNodes(ctx, provisionedClusterClient)
-	} else {
-		// Otherwise, wait for atleast 1 worker node to be initialized.
+
+	// Otherwise, wait for atleast 1 worker node to be initialized.
+	default:
 		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
 	}
 
@@ -212,21 +216,6 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	)
 
 	if config.UsingHetznerBareMetal() {
-		// When spinning up a Hetzner hybrid cluster,
-		// we need to establish private connectivity between the Hetzner Network in HCloud and Hetzner
-		// Bare Metal servers, using the VSwitch.
-		//
-		// TODO : Uncomment this, after https://gitea.obmondo.com/EnableIT/kubeaid-cli/issues/298 gets
-		//        resolved.
-		/*
-			if config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHybrid {
-			  hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-			  assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
-
-			  hetznerCloudProvider.ConnectVSwitchWithHCloudNetwork(ctx)
-			}
-		*/
-
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 		// we need to make the Failover IP point to the 'init master node'.
 		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
@@ -303,24 +292,45 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 
 	slog.InfoContext(ctx, "Provisioning main cluster using Kubermatic KubeOne")
 
-	// Initialize the Kubernetes cluster, using 'kubeone apply'.
+	// Run "kubeone apply".
 	kubeoneCmd := kubeoneCmd.NewRoot()
 	kubeoneCmd.SetArgs([]string{
 		"apply",
 		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
 		"--auto-approve",
+
+		/*
+			It's common to have Docker installed in the servers. And installing Docker, installs
+			ContainerD.
+			REFER : https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository.
+
+			NOTE : The Docker APT repository must be added using commands which KubeOne use :
+			       https://github.com/kubermatic/kubeone/blob/225825f44bf38f4c5eca33c76343aed9319413ca/pkg/scripts/render.go#L55.
+
+			       Otherwise, if we use the commands specified in Docker's documentation website,
+			       /etc/apt/sources.list.d/docker.sources and /etc/apt/keyrings/docker.asc will collide
+			       with /etc/apt/sources.list.d/docker.list and /etc/apt/keyrings/docker.gpg created
+			       by KubeOne.
+
+			When initializing the node, KubeOne also tries to install ContainerD in there.
+			Now, the issue is : KubeOne relies on a specific version of ContainerD, which is pretty old.
+			REFER : https://github.com/kubermatic/kubeone/blob/225825f44bf38f4c5eca33c76343aed9319413ca/pkg/scripts/render.go#L80.
+
+			So, it'll most most likely try to downgrade the ContainerD APT package. And to downgrade
+			an APT package you need to use the "--allow-downgrade" flag, which is enabled by using this
+			"--force-install" flag.
+		*/
+		"--force-install",
 	})
 	err := kubeoneCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err,
-		"Failed initializing Kubernetes cluster using KubeOne",
-	)
+		"Failed initializing Kubernetes cluster using KubeOne")
 
 	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.
 	// We don't need it.
 	err = os.Remove(fmt.Sprintf("%s/%s.tar.gz", kubeoneDir, mainClusterName))
 	assert.AssertErrNil(ctx, err,
-		"Failed deleting main cluster's PKI infrastructure backup",
-	)
+		"Failed deleting main cluster's PKI infrastructure backup")
 
 	/*
 		KubeOne also saves the main cluster's kubeconfig locally.
@@ -336,8 +346,7 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 	*/
 	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
 	utils.MustMoveFile(ctx,
-		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
-	)
+		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig)
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",

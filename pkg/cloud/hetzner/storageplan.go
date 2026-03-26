@@ -62,7 +62,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				privateKey,
 
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
-				hetznerConfig.ControlPlane.BareMetal.ZFS.Size,
+				hetznerConfig.BareMetal.ZFS.Size,
 			)
 			storagePlans[i] = storagePlan
 
@@ -102,7 +102,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				privateKey,
 
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
-				hetznerConfig.ControlPlane.BareMetal.ZFS.Size,
+				hetznerConfig.BareMetal.ZFS.Size,
 			)
 			storagePlans[i] = storagePlan
 

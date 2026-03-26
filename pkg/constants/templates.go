@@ -34,8 +34,7 @@ var (
 		"sealed-secrets/argocd/repo-kubeaid-config.yaml.tmpl",
 	}
 
-	// KubeAid deploy key template, only used when the deploy key is provided.
-	KubeaidSecretTemplateName = "sealed-secrets/argocd/repo-kubeaid.yaml.tmpl"
+	KubeaidDeployKeySecretTemplateName = "sealed-secrets/argocd/repo-kubeaid.yaml.tmpl"
 )
 
 // Common template names (for clusters being provisioned in any of the supported cloud providers).
@@ -244,11 +243,10 @@ var (
 	TemplateNameLocalSecretsConfig = "templates/local/secrets.config.yaml.tmpl"
 )
 
-// Miscellaneous.
-const (
-	TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
+const TemplateNameK3DConfig = "templates/k3d.config.yaml.tmpl"
 
-	// For KubePrometheus.
+// For KubePrometheus.
+const (
 	TemplateNameKubePrometheusArgoCDApp = "argocd-apps/templates/kube-prometheus.yaml.tmpl"
 	TemplateNameKubePrometheusVars      = "cluster-vars.jsonnet.tmpl"
 )

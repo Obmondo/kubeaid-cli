@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-var TempDirectory = "/tmp/kubeaid-core"
+const TempDirectory = "/tmp/kubeaid-core"
 
 // Environment variable names.
 const (
@@ -91,8 +91,6 @@ const (
 
 const HighSpeedNICThreshold = 5000 // GBPS.
 
-const LatestKubeOneSupportedK8sVersion = "v1.34" // Need Updation after every kubeone package updates
-
 const OSDefaultSize = 50 // GB.
 
 // ZFS.
@@ -106,21 +104,13 @@ const (
 
 const CEPHNodeMinSize = 50 // GB.
 
-// k3d — k8s 1.34+ dropped cgroup v1 support, so hosts running
-// cgroup v1 (e.g. Ubuntu 20.04) must use k3s 1.33.x.
-const K3sVersionCgroupV1 = "v1.33.9-k3s1"
-
-// Containerd.
-const (
-	ContainerdSocketPath = "/run/containerd/containerd.sock"
-	ContainerdNamespace  = "kubeaid"
-)
-
 // Output paths.
 var (
 	OutputsDirectory = "outputs"
 
 	OutputPathLogFile = path.Join(OutputsDirectory, ".log")
+
+	OutputPathKnownHostsFile = path.Join(TempDirectory, "known_hosts")
 
 	OutputPathManagementClusterK3DConfig = path.Join(OutputsDirectory, "k3d.config.yaml")
 
@@ -257,4 +247,46 @@ const (
 const (
 	OneDay   = 24 * time.Hour
 	OneMonth = 30 * OneDay
+)
+
+// Git related.
+const (
+	CommitAuthorName  = "KubeAid CLI"
+	CommitAuthorEmail = "info@obmondo.com"
+)
+
+// Docker related.
+const (
+	DockerSocketPath         = "/var/run/docker.dock"
+	DockerDefaultNetworkName = "default"
+)
+
+// K3s related.
+const (
+	K3sReleasesAPIURL = "https://api.github.com/repos/k3s-io/k3s/releases/latest"
+
+	// CGroup v1 support has been dropped from K8s version v1.35.
+	// REFER : https://www.sysdig.com/blog/kubernetes-1-35-whats-new#changes-in-kubernetes-135-that-may-break-things.
+	MaxCGroupV1CompatibleK3sVersion = "v1.34.5-k3s1"
+)
+
+// K8s version related
+const (
+	MinSupportedK8sVersion = "v1.30"
+	//
+	// Whatever is the latest K8s version, that becomes the max supported K8s version.
+	// We get the latest K8s version from the K8s release API.
+	K8sReleaseAPIURL = "https://dl.k8s.io/release/stable.txt"
+
+	// CGroup v1 support has been dropped from K8s version v1.35.
+	// REFER : https://www.sysdig.com/blog/kubernetes-1-35-whats-new#changes-in-kubernetes-135-that-may-break-things.
+	MaxCGroupV1CompatibleK8sVersion = "v1.34"
+
+	// For the Bare Metal provider though, the story is a bit different.
+	// We're using KubeOne v1.12. And you can see the K8s versions officially supported by KubeOne
+	// here : https://docs.kubermatic.com/kubeone/v1.12/architecture/compatibility/supported-versions.
+	// That range becomes the range of K8s version supported by KubeAid CLI.
+	// NOTE : We need update this range manually, when upgrading KubeOne.
+	MinKubeOneSupportedK8sVersion = "v1.32"
+	MaxKubeOneSupportedK8sVersion = "v1.34"
 )

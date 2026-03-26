@@ -36,7 +36,7 @@ func (h *Hetzner) CreateHCloudSSHKey(ctx context.Context, name string, sshKeyPai
 
 		// Check whether we have an SSH key with same name but different data.
 		case (sshKey.Name == name):
-			assert.Assert(ctx, false,
+			assert.Assert(ctx, (sshKey.Fingerprint == sshKeyPair.Fingerprint),
 				"Found an HCloud SSH key with same name but different fingerprint")
 
 		default:

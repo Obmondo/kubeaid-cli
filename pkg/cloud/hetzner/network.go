@@ -71,6 +71,8 @@ func (h *Hetzner) CreateNetwork(ctx context.Context) *hcloud.Network {
 				NetworkZone: hcloud.NetworkZoneEUCentral,
 			},
 		},
+
+		ExposeRoutesToVSwitch: true,
 	})
 	assert.Assert(ctx,
 		((err == nil) && (response.StatusCode == http.StatusCreated)),

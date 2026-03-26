@@ -24,10 +24,11 @@ func hydrateSSHKeyPairConfigs() {
 	generalConfig := config.ParsedGeneralConfig
 
 	// Deploy keys used by ArgoCD to access the KubeAid and KubeAid Config repositories.
-	if generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
-		hydrateSSHKeyPairConfig(generalConfig.Cluster.ArgoCD.DeployKeys.Kubeaid)
+	deployKeys := &generalConfig.Cluster.ArgoCD.DeployKeys
+	if deployKeys.Kubeaid != nil {
+		hydrateSSHKeyPairConfig(deployKeys.Kubeaid)
 	}
-	hydrateSSHKeyPairConfig(&generalConfig.Cluster.ArgoCD.DeployKeys.KubeaidConfig)
+	hydrateSSHKeyPairConfig(&deployKeys.KubeaidConfig)
 
 	// When using SSH private key to authenticate against git.
 	if generalConfig.Git.SSHKeyPairConfig != nil {
@@ -120,7 +121,7 @@ func hydrateSSHKeyPairConfig(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	parsedPublicKey, err := ssh.NewPublicKey(signer.Public())
 	assert.AssertErrNil(ctx, err, "Failed getting SSH public key")
 
-	sshKeyPairConfig.PublicKey = string(parsedPublicKey.Marshal())
+	sshKeyPairConfig.PublicKey = string(ssh.MarshalAuthorizedKey(parsedPublicKey))
 
-	sshKeyPairConfig.Fingerprint = ssh.FingerprintSHA256(parsedPublicKey)
+	sshKeyPairConfig.Fingerprint = ssh.FingerprintLegacyMD5(parsedPublicKey)
 }

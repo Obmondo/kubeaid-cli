@@ -28,8 +28,7 @@ import (
 // Returns whether we're using Clusterapi or not.
 func UsingClusterAPI() (usingClusterAPI bool) {
 	switch globals.CloudProviderName {
-	case constants.CloudProviderBareMetal:
-	case constants.CloudProviderLocal:
+	case constants.CloudProviderBareMetal, constants.CloudProviderLocal:
 		usingClusterAPI = false
 
 	default:

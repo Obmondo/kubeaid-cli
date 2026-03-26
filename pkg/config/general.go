@@ -58,9 +58,8 @@ type (
 		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
 		UseSSHAgent bool `yaml:"useSSHAgent"`
 
-		// Additional SSH known host entries.
-		// Merged with the bundled known hosts for
-		// GitHub, GitLab, Bitbucket and Azure DevOps.
+		// Additional SSH known hosts.
+		// Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
 		KnownHosts []string `yaml:"knownHosts"`
 	}
 
@@ -133,8 +132,8 @@ type (
 	}
 
 	DeployKeysConfig struct {
-		KubeaidConfig SSHKeyPairConfig  `yaml:"kubeaidConfig" validate:"required"`
 		Kubeaid       *SSHKeyPairConfig `yaml:"kubeaid"`
+		KubeaidConfig SSHKeyPairConfig  `yaml:"kubeaidConfig" validate:"required"`
 	}
 
 	// REFER : https://github.com/kubernetes-sigs/cluster-api/blob/main/controlplane/kubeadm/config/crd/bases/controlplane.cluster.x-k8s.io_kubeadmcontrolplanes.yaml.
@@ -390,6 +389,12 @@ type (
 		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
 		InstallImage InstallImageConfig `yaml:"installImage"`
 
+		// ZFS specific configuration.
+		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
+		// logs and pod ephemeral volumes from that ZFS pool, as required.
+		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+
 		// Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
 		// the Hetzner Network.
 		VSwitch *VSwitchConfig `yaml:"vSwitch"`
@@ -428,12 +433,6 @@ type (
 	HetznerBareMetalControlPlane struct {
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
 		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
-
-		// ZFS specific configuration.
-		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
-		// logs and pod ephemeral volumes from that ZFS pool, as required.
-		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
 		StoragePlan storageplan.StoragePlan
 	}
