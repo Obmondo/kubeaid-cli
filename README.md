@@ -23,7 +23,7 @@ KubeAid CLI is a thin client that proxies `cluster` and `devenv` commands to a c
 ### Shell script (Linux / macOS)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Obmondo/kubeaid-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/Obmondo/kubeaid-cli/main/scripts/install.sh | sh
 ```
 
 Supports `x86_64` and `arm64` on Linux and macOS. Installs to `/usr/local/bin` (may prompt for `sudo`).
