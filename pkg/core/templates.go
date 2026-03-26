@@ -64,7 +64,7 @@ type TemplateValues struct {
 	*/
 	ControlPlaneEndpoint string
 
-	ExtraSSHKnownHosts []string
+	ExtraKnownHosts []string
 
 	*config.DisasterRecoveryConfig
 
@@ -100,7 +100,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
 
-		ExtraSSHKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
+		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
 	}
 
 	// Set cloud provider specific values.

@@ -389,6 +389,12 @@ type (
 		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
 		InstallImage InstallImageConfig `yaml:"installImage"`
 
+		// ZFS specific configuration.
+		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
+		// logs and pod ephemeral volumes from that ZFS pool, as required.
+		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+
 		// Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
 		// the Hetzner Network.
 		VSwitch *VSwitchConfig `yaml:"vSwitch"`
@@ -427,12 +433,6 @@ type (
 	HetznerBareMetalControlPlane struct {
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
 		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
-
-		// ZFS specific configuration.
-		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
-		// logs and pod ephemeral volumes from that ZFS pool, as required.
-		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
 		StoragePlan storageplan.StoragePlan
 	}

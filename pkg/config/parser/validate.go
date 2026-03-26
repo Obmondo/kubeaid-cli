@@ -167,7 +167,7 @@ func getLatestStableK8sVersion(ctx context.Context) string {
 
 	response, err := http.Get(constants.K8sReleaseAPIURL)
 	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode != http.StatusOK)),
+		((err == nil) && (response.StatusCode == http.StatusOK)),
 		"Failed fetching latest stable Kubernetes version",
 		logger.Error(err), slog.Any("response", response),
 	)
