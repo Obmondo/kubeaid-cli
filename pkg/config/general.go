@@ -434,7 +434,7 @@ type (
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
 		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
 
-		StoragePlan storageplan.StoragePlan
+		StoragePlan storageplan.StoragePlan `yaml:"-"`
 	}
 
 	HetznerBareMetalControlPlaneEndpoint struct {
@@ -479,7 +479,7 @@ type (
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
 		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
-		StoragePlan storageplan.StoragePlan
+		StoragePlan storageplan.StoragePlan `yaml:"-"`
 	}
 
 	HetznerBareMetalHost struct {
