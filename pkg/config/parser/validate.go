@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -20,7 +19,6 @@ import (
 	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
-	"golang.org/x/mod/semver"
 	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
@@ -63,11 +61,11 @@ func validateConfigs(ctx context.Context) error {
 	validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
 
 	// Validate KubePrometheus version.
-	validateKubePrometheusVersion(
-		ctx,
-		config.ParsedGeneralConfig.KubePrometheus.Version,
-		config.ParsedGeneralConfig.Cluster.K8sVersion,
-	)
+	// validateKubePrometheusVersion(
+	// 	ctx,
+	// 	config.ParsedGeneralConfig.KubePrometheus.Version,
+	// 	config.ParsedGeneralConfig.Cluster.K8sVersion,
+	// )
 
 	// Validate additional users.
 	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
@@ -526,55 +524,55 @@ func validateLabelsAndTaints(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "NodeGroup taints validation failed")
 }
 
-func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion string, k8sVersion string) {
-	if config.ParsedGeneralConfig.KubePrometheus.Version == "" {
-		return
-	}
-
-	if !semver.IsValid(k8sVersion) || !semver.IsValid(kubePrometheusVersion) {
-		err := fmt.Errorf(
-			"invalid semver format: k8s=%s, kube-prometheus=%s",
-			k8sVersion,
-			kubePrometheusVersion,
-		)
-		assert.AssertErrNil(ctx, err, "Version formatting validation failed")
-	}
-
-	// To get just major version like v1.34.2 -> v1.34
-	k8sVersionTrimmed := semver.MajorMinor(k8sVersion)
-	kubePrometheusVersionTrimmed := semver.MajorMinor(kubePrometheusVersion)
-
-	// Source - https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility
-	compatibilityMatrix := map[string][]string{
-		"v0.15": {"v1.31", "v1.32", "v1.33"},
-		"v0.16": {"v1.31", "v1.32", "v1.33", "v1.34"},
-	}
-
-	// Check if kube prometheus version exists in our matrix
-	supportedK8s, exists := compatibilityMatrix[kubePrometheusVersionTrimmed]
-	if !exists {
-		err := fmt.Errorf(
-			"kube-prometheus version %s is not in the validation matrix",
-			kubePrometheusVersionTrimmed,
-		)
-		assert.AssertErrNil(ctx, err, "Unknown kube-prometheus version detected")
-	}
-
-	// Check if the target K8s version is in the supported list
-	isSupported := false
-	if slices.Contains(supportedK8s, k8sVersionTrimmed) {
-		isSupported = true
-		slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
-	}
-
-	if !isSupported {
-		err := fmt.Errorf(
-			"kube-prometheus %s does not support Kubernetes %s. Supported KubePrometheus versions for k8s %v are: %s",
-			kubePrometheusVersion,
-			k8sVersion,
-			supportedK8s,
-			kubePrometheusVersionTrimmed,
-		)
-		assert.AssertErrNil(ctx, err, "Kubernetes version do not supports KubePrometheus version")
-	}
-}
+// func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion string, k8sVersion string) {
+// 	if config.ParsedGeneralConfig.KubePrometheus.Version == "" {
+// 		return
+// 	}
+//
+// 	if !semver.IsValid(k8sVersion) || !semver.IsValid(kubePrometheusVersion) {
+// 		err := fmt.Errorf(
+// 			"invalid semver format: k8s=%s, kube-prometheus=%s",
+// 			k8sVersion,
+// 			kubePrometheusVersion,
+// 		)
+// 		assert.AssertErrNil(ctx, err, "Version formatting validation failed")
+// 	}
+//
+// 	// To get just major version like v1.34.2 -> v1.34
+// 	k8sVersionTrimmed := semver.MajorMinor(k8sVersion)
+// 	kubePrometheusVersionTrimmed := semver.MajorMinor(kubePrometheusVersion)
+//
+// 	// Source - https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility
+// 	compatibilityMatrix := map[string][]string{
+// 		"v0.15": {"v1.31", "v1.32", "v1.33"},
+// 		"v0.16": {"v1.31", "v1.32", "v1.33", "v1.34"},
+// 	}
+//
+// 	// Check if kube prometheus version exists in our matrix
+// 	supportedK8s, exists := compatibilityMatrix[kubePrometheusVersionTrimmed]
+// 	if !exists {
+// 		err := fmt.Errorf(
+// 			"kube-prometheus version %s is not in the validation matrix",
+// 			kubePrometheusVersionTrimmed,
+// 		)
+// 		assert.AssertErrNil(ctx, err, "Unknown kube-prometheus version detected")
+// 	}
+//
+// 	// Check if the target K8s version is in the supported list
+// 	isSupported := false
+// 	if slices.Contains(supportedK8s, k8sVersionTrimmed) {
+// 		isSupported = true
+// 		slog.InfoContext(ctx, "Kube Prometheus version is supported", slog.String("version", k8sVersion))
+// 	}
+//
+// 	if !isSupported {
+// 		err := fmt.Errorf(
+// 			"kube-prometheus %s does not support Kubernetes %s. Supported KubePrometheus versions for k8s %v are: %s",
+// 			kubePrometheusVersion,
+// 			k8sVersion,
+// 			supportedK8s,
+// 			kubePrometheusVersionTrimmed,
+// 		)
+// 		assert.AssertErrNil(ctx, err, "Kubernetes version do not supports KubePrometheus version")
+// 	}
+// }

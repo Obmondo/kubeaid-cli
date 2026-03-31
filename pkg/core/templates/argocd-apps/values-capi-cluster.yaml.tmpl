@@ -95,8 +95,8 @@ hetzner:
     installImage:
       imagePath: {{ .HetznerConfig.BareMetal.InstallImage.ImagePath }}
       vg0:
-        size: {{ .HetznerConfig.BareMetal.InstallImage.VG0.Size }}G
-        rootVolumeSize: {{ .HetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize }}G
+        size: {{ .HetznerConfig.BareMetal.InstallImage.VG0.Size }}
+        rootVolumeSize: {{ .HetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize }}
     vSwitch:
       vlanID: {{ .HetznerConfig.BareMetal.VSwitch.VLANID }}
   {{- end }}

@@ -187,9 +187,12 @@ var (
 )
 
 // Bare metal specific template names.
+
+const KubeOneConfigTemlateName = "kubeone/kubeone-cluster.yaml.tmpl"
+
 var BareMetalSpecificNonSecretTemplateNames = []string{
 	// For KubeOne.
-	"kubeone/kubeone-cluster.yaml.tmpl",
+	KubeOneConfigTemlateName,
 
 	// For Cilium
 	"argocd-apps/templates/cilium.yaml.tmpl",

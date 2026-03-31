@@ -26,8 +26,8 @@ func init() {
 	// Flags.
 
 	PlanCommand.PersistentFlags().
-		IntVar(&osSize, constants.FlagNameOSSize, constants.OSDefaultSize, "OS size")
+		IntVar(&osSize, constants.FlagNameOSSize, constants.OSDefaultSize, "OS size (in GB)")
 
 	PlanCommand.PersistentFlags().
-		IntVar(&zfsPoolSize, constants.FlagNameZFSPoolSize, constants.ZFSPoolDefaultSize, "ZFS pool size")
+		IntVar(&zfsPoolSize, constants.FlagNameZFSPoolSize, constants.ZFSPoolDefaultSize, "ZFS pool size (in GB)")
 }

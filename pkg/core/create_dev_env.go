@@ -39,7 +39,18 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Ensure that the KubeAid Config repo is cloned locally.
 	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
 
-	// Set KUBECONFIG environment variable.
+	// When using the Bare Metal provider, no management cluster is needed.
+	// We just need to create the KubeOne config file.
+	if globals.CloudProviderName == constants.CloudProviderBareMetal {
+		SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
+			CreateDevEnvArgs: args,
+			GitAuthMethod:    gitAuthMethod,
+		})
+
+		return
+	}
+
+	// Set KUBECONFIG env and create the K3D management cluster.
 	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 

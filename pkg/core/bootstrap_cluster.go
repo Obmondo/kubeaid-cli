@@ -48,15 +48,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Detect git authentication method.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	switch globals.CloudProviderName {
-	// When using the Bare Metal provider, we don't need a local management cluster.
-	case constants.CloudProviderBareMetal:
-		_ = git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
-
 	// Create and setup the management cluster.
-	default:
-		CreateDevEnv(ctx, args.CreateDevEnvArgs)
-	}
+	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.

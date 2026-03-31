@@ -18,6 +18,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
@@ -79,17 +80,20 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 	clusterDir := utils.GetClusterDir()
 
-	if !args.IsPartOfDisasterRecovery {
-		// Create / update non Secret files.
-		createOrUpdateNonSecretFiles(ctx, clusterDir, args.SkipMonitoringSetup)
+	// Determine whether the main cluster has already been provisioned.
+	mainClusterEndpoint := kubernetes.GetMainClusterEndpoint(ctx)
+	mainClusterProvisioned := (mainClusterEndpoint != nil)
 
-		// Create / update Secret files.
-		CreateOrUpdateSealedSecretFiles(ctx, clusterDir)
-	} else {
-		// Otherwise, if the main cluster is running on some cloud provider,
-		// we just need to update the Kubernetes API server host and port in Cilium values file.
-		mainClusterEndpoint := kubernetes.GetMainClusterEndpoint(ctx)
-		if mainClusterEndpoint != nil {
+	// Determine whether this is part of setting up the main cluster.
+	settingUpMainCluster := (os.Getenv(constants.EnvNameKubeconfig) == constants.OutputPathMainClusterKubeconfig)
+
+	switch {
+	// We're doing a disaster recovery. The only thing we need to consider is :
+	// the main cluster's Kubernetes API server endpoint might have changed - for e.g., when you're
+	// provisioning a VPN cluster in HCloud.
+	// We need to reflect this change in the Cilium values file.
+	case args.IsPartOfDisasterRecovery:
+		if mainClusterProvisioned {
 			ciliumValuesFilePath := path.Join(clusterDir, "argocd-apps/values-cilium.yaml")
 
 			yqCmd := yqCmdLib.New()
@@ -108,6 +112,21 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 				"Failed updating main cluster's API server endpoint, in values-cilium.yaml file",
 			)
 		}
+
+	// We're using the Bare Metal provider, trying to provision the main cluster usig KubeOne.
+	// We just need the KubeOne config file.
+	case (globals.CloudProviderName == constants.CloudProviderBareMetal) && !settingUpMainCluster:
+		templateValues := getTemplateValues(ctx)
+		createOrUpdateKubeOneConfigFile(ctx, templateValues, clusterDir)
+
+	default:
+		templateValues := getTemplateValues(ctx)
+
+		// Create / update non Secret files.
+		createOrUpdateNonSecretFiles(ctx, templateValues, clusterDir, args.SkipMonitoringSetup)
+
+		// Create / update Secret files.
+		createOrUpdateSealedSecretFiles(ctx, templateValues, clusterDir)
 	}
 
 	// Add, commit and push the changes.
@@ -146,10 +165,13 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 // Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
 // repository.
-func createOrUpdateNonSecretFiles(ctx context.Context, clusterDir string, skipMonitoringSetup bool) {
+func createOrUpdateNonSecretFiles(ctx context.Context,
+	templateValues *TemplateValues,
+	clusterDir string,
+	skipMonitoringSetup bool,
+) {
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
-	templateValues := getTemplateValues(ctx)
 
 	// Add KubePrometheus specific templates.
 	// Then execute the Obmondo's KubePrometheus build script.
@@ -171,12 +193,21 @@ func createOrUpdateNonSecretFiles(ctx context.Context, clusterDir string, skipMo
 	}
 }
 
+// Creates / updates the KubeOne config file used to provision the main cluster, when using the
+// Bare Metal provider.
+func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
+	destinationFilePath := path.Join(
+		clusterDir,
+		strings.TrimSuffix(constants.KubeOneConfigTemlateName, ".tmpl"),
+	)
+	createFileFromTemplate(ctx, destinationFilePath, constants.KubeOneConfigTemlateName, templateValues)
+}
+
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid
 // config repository.
-func CreateOrUpdateSealedSecretFiles(ctx context.Context, clusterDir string) {
+func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
 	// Get Secret templates.
 	embeddedTemplateNames := getEmbeddedSecretTemplateNames()
-	templateValues := getTemplateValues(ctx)
 
 	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
