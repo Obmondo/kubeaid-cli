@@ -162,7 +162,17 @@ func GetMainClusterEndpoint(ctx context.Context) *url.URL {
 	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint",
 		slog.String("endpoint", mainCluster.Server))
 
-	// TODO : Ping the control-plane once.
+	// Ping the K8s API server once.
+
+	clusterClient, err := CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig)
+	if err != nil {
+		return nil
+	}
+
+	err = pingKubernetesCluster(ctx, clusterClient)
+	if err != nil {
+		return nil
+	}
 
 	return endpoint
 }

@@ -228,7 +228,7 @@ type (
 	}
 
 	KubePrometheusConfig struct {
-		Version    string `yaml:"version"`
+		Version    string `yaml:"version"    default:"v0.15" validate:"notblank"`
 		GrafanaURL string `yaml:"grafanaURL"`
 	}
 

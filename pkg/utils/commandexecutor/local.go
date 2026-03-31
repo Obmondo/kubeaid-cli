@@ -75,14 +75,18 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 	stdoutOutput := stdoutOutputBuilder.String()
 	stderrOutput := stderrOutputBuilder.String()
 
-	if commandExecutionStatus.Error != nil {
+	switch commandExecutionStatus.Exit {
+	case 0:
+		slog.DebugContext(ctx, "Command executed successfully. Output : \n"+stdoutOutput)
+
+		return stdoutOutput, nil
+
+	default:
+		slog.DebugContext(ctx, "Command execution failed. Output : \n"+stdoutOutput)
+
 		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
 		return stdoutOutput, err
 	}
-
-	slog.DebugContext(ctx, "Command executed successfully. Output : \n"+stdoutOutput)
-
-	return stdoutOutput, nil
 }
 
 func (l *LocalCommandExecutor) MustExecute(ctx context.Context, command string) string {
