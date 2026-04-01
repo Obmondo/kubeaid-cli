@@ -540,7 +540,7 @@ func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion, k
 	key := fmt.Sprintf("v%d.%d", parsedKubePrometheusVersion.Major(), parsedKubePrometheusVersion.Minor())
 
 	supportedK8sVersions, ok := constants.KubePrometheusKubernetesVersionCompatibilityMatrix[key]
-	assert.Assert(ctx, ok, "Unrecognized KubePrometheus version")
+	assert.Assert(ctx, ok, "Unsupported KubePrometheus version")
 
 	k8sVersionSupported := slices.Contains(supportedK8sVersions,
 		fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor()))
