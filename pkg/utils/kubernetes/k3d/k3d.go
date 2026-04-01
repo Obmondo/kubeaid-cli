@@ -216,7 +216,7 @@ func getK3sVersion(ctx context.Context) string {
 	// out KubeAid.
 	// Just use the K8s version specified in the general.yaml file.
 	if globals.CloudProviderName == constants.CloudProviderLocal {
-		return config.ParsedGeneralConfig.Cluster.K8sVersion
+		return fmt.Sprintf("%s-k3s1", config.ParsedGeneralConfig.Cluster.K8sVersion)
 	}
 
 	// Otherwise, just use the latest K3s version.

@@ -290,3 +290,9 @@ const (
 	MinKubeOneSupportedK8sVersion = "v1.32"
 	MaxKubeOneSupportedK8sVersion = "v1.34"
 )
+
+// REFER : https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility.
+var KubePrometheusKubernetesVersionCompatibilityMatrix = map[string][]string{
+	"v0.16": {"v1.32", "v1.33", "v1.34"},
+	"v0.17": {"v1.33", "v1.34", "v1.35"},
+}
