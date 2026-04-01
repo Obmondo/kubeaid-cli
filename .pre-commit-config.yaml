@@ -19,8 +19,8 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: commitlint
+      - id: conform
         name: Lint commit message
-        entry: bun run commitlint --edit
+        entry: conform enforce --commit-msg-file
         language: system
         stages: [commit-msg]

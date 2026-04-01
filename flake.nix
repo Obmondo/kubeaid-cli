@@ -67,9 +67,10 @@
 
                     clusterctl
 
-                    bun
                     addlicense
                     pre-commit
+                    conform
+                    semantic-release
                     nix-update
                     goreleaser
                   ]
