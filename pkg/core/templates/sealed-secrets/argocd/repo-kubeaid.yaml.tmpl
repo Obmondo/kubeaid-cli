@@ -10,5 +10,7 @@ stringData:
   name: kubeaid
   url: {{ .KubeaidFork.URL }}
   type: git
+  {{- if not (.KubeaidFork.URL | hasPrefix "http") }}
   sshPrivateKey: |-
 {{- .ClusterConfig.ArgoCD.DeployKeys.Kubeaid.PrivateKey | nindent 4 }}
+  {{- end }}

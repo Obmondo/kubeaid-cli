@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"k8s.io/utils/ptr"
@@ -34,7 +35,7 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		return loadBalancer
 	}
 
-	result, response, err := h.hcloudClient.LoadBalancer.Create(ctx, hcloud.LoadBalancerCreateOpts{
+	_, response, err = h.hcloudClient.LoadBalancer.Create(ctx, hcloud.LoadBalancerCreateOpts{
 		Name: clusterName,
 		LoadBalancerType: &hcloud.LoadBalancerType{
 			Name:        constants.HCloudLBTypeLB11,
@@ -57,5 +58,22 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 	)
 	slog.InfoContext(ctx, "Created Hetzner LB")
 
-	return result.LoadBalancer
+	// The private IP allocation isn't instant.
+	// So we need to wait fot sometime and GET the loadbalancer.
+	for {
+		time.Sleep(10 * time.Second)
+
+		loadBalancer, response, err = h.hcloudClient.LoadBalancer.Get(ctx, clusterName)
+		assert.Assert(ctx,
+			((err == nil) && (response.StatusCode == http.StatusOK)),
+			"Failed running Hetzner LB GET operation",
+			slog.Any("response", response),
+		)
+
+		if len(loadBalancer.PrivateNet) > 0 {
+			break
+		}
+	}
+
+	return loadBalancer
 }
