@@ -10,7 +10,11 @@ import (
 	"github.com/spf13/cobra"
 
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime/docker"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
 func main() {
@@ -72,9 +76,22 @@ func proxyRun(command *cobra.Command, _ []string) {
 
 	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
 
+	// Parse config files, similar to kubeaid-core's cluster/devenv PersistentPreRun.
+	parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
+
+	managementClusterName, err := command.Flags().GetString(constants.FlagNameManagementClusterName)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed reading management cluster name from flag", slog.Any("error", err))
+		os.Exit(1)
+	}
+
 	containerRuntime := docker.NewDocker(ctx)
 	defer containerRuntime.CloseSocketConnection(ctx)
 
-	kubeAidCoreContainer := &KubeAidCoreContainer{}
+	kubeAidCoreContainer := &KubeAidCoreContainer{
+		containerRuntime:      containerRuntime,
+		managementClusterName: managementClusterName,
+		generalConfig:         config.ParsedGeneralConfig,
+	}
 	kubeAidCoreContainer.Run(ctx)
 }
