@@ -86,7 +86,9 @@ hetzner:
     name: {{ .HetznerConfig.SSHKeyPair.Name }}
 
   {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-  hcloud: {{ .HetznerConfig.HCloud | toIndentYAML 2 | nindent 4 }}
+  hcloud:
+    sshKeyPairName: {{ .HetznerConfig.SSHKeyPair.Name }}
+{{ .HetznerConfig.HCloud | toIndentYAML 2 | nindent 4 }}
   {{- end }}
 
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}

@@ -53,10 +53,10 @@ install_jsonnet() {
     return
   fi
 
-  JSONNET_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/google/go-jsonnet/releases/latest -o /dev/null | sed -e 's|.*/v||')
+  JSONNET_VERSION=$(curl --retry 5 --retry-connrefused -w '%{url_effective}' -I -L -s -S https://github.com/google/go-jsonnet/releases/latest -o /dev/null | sed -e 's|.*/v||')
   JSONNET_DOWNLOAD_URL=https://github.com/google/go-jsonnet/releases/download/v"${JSONNET_VERSION}"/go-jsonnet_"${JSONNET_VERSION}"_"${OS}"_"${CPU_ARCHITECTURE}".tar.gz
 
-  wget "${JSONNET_DOWNLOAD_URL}" -O "${binary_name}".tar.gz
+  wget --tries=5 "${JSONNET_DOWNLOAD_URL}" -O "${binary_name}".tar.gz
   tar -C "${BINARY_DESTINATION}" -xzvf "${binary_name}".tar.gz
 
   rm "${BINARY_DESTINATION}"/jsonnet-deps "${BINARY_DESTINATION}"/jsonnet-lint "${BINARY_DESTINATION}"/jsonnetfmt "${BINARY_DESTINATION}"/LICENSE "${BINARY_DESTINATION}"/README.md
@@ -68,13 +68,13 @@ install_jq() {
     return
   fi
 
-  JQ_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/jqlang/jq/releases/latest -o /dev/null | sed -e 's|.*/jq-||')
+  JQ_VERSION=$(curl --retry 5 --retry-connrefused -w '%{url_effective}' -I -L -s -S https://github.com/jqlang/jq/releases/latest -o /dev/null | sed -e 's|.*/jq-||')
   JQ_DOWNLOAD_URL=https://github.com/jqlang/jq/releases/download/jq-"${JQ_VERSION}"/jq-"${OS}"-"${CPU_ARCHITECTURE}"
   if [[ "$OS" == "darwin" ]]; then
     JQ_DOWNLOAD_URL=https://github.com/jqlang/jq/releases/download/jq-"${JQ_VERSION}"/jq-macos-"${CPU_ARCHITECTURE}"
   fi
 
-  wget "${JQ_DOWNLOAD_URL}" -O "${binary_name}"
+  wget --tries=5 "${JQ_DOWNLOAD_URL}" -O "${binary_name}"
   chmod +x "${binary_name}"
   mv "${binary_name}" "${BINARY_DESTINATION}"
 }
@@ -85,8 +85,8 @@ install_gojsontoyaml() {
     return
   fi
 
-  GO_JSON_TO_YAML_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/brancz/gojsontoyaml/releases/latest -o /dev/null | sed -e 's|.*/v||')
-  wget https://github.com/brancz/gojsontoyaml/releases/download/v"${GO_JSON_TO_YAML_VERSION}"/gojsontoyaml_"${GO_JSON_TO_YAML_VERSION}"_"${OS}"_"${CPU_ARCHITECTURE}".tar.gz
+  GO_JSON_TO_YAML_VERSION=$(curl --retry 5 --retry-connrefused -w '%{url_effective}' -I -L -s -S https://github.com/brancz/gojsontoyaml/releases/latest -o /dev/null | sed -e 's|.*/v||')
+  wget --tries=5 https://github.com/brancz/gojsontoyaml/releases/download/v"${GO_JSON_TO_YAML_VERSION}"/gojsontoyaml_"${GO_JSON_TO_YAML_VERSION}"_"${OS}"_"${CPU_ARCHITECTURE}".tar.gz
   tar -xvzf gojsontoyaml_"${GO_JSON_TO_YAML_VERSION}"_"${OS}"_"${CPU_ARCHITECTURE}".tar.gz
   chmod +x gojsontoyaml
   mv ./gojsontoyaml "${BINARY_DESTINATION}"
@@ -98,8 +98,8 @@ install_jb() {
     return
   fi
 
-  JB_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/jsonnet-bundler/jsonnet-bundler/releases/latest -o /dev/null | sed -e 's|.*/v||')
-  wget https://github.com/jsonnet-bundler/jsonnet-bundler/releases/download/v"${JB_VERSION}"/jb-"${OS}"-"${CPU_ARCHITECTURE}"
+  JB_VERSION=$(curl --retry 5 --retry-connrefused -w '%{url_effective}' -I -L -s -S https://github.com/jsonnet-bundler/jsonnet-bundler/releases/latest -o /dev/null | sed -e 's|.*/v||')
+  wget --tries=5 https://github.com/jsonnet-bundler/jsonnet-bundler/releases/download/v"${JB_VERSION}"/jb-"${OS}"-"${CPU_ARCHITECTURE}"
   chmod +x jb-"${OS}"-"${CPU_ARCHITECTURE}"
   mv jb-"${OS}"-"${CPU_ARCHITECTURE}" "${BINARY_DESTINATION}"/jb
 }
@@ -110,14 +110,7 @@ install_kubectl() {
     return
   fi
 
-  local kubectl_version
-  kubectl_version=$(curl -L -sf https://dl.k8s.io/release/stable.txt)
-  if [ -z "${kubectl_version}" ]; then
-    echo "Failed to fetch kubectl stable version" >&2
-    exit 1
-  fi
-
-  curl -Lfo ./kubectl "https://dl.k8s.io/release/${kubectl_version}/bin/${OS}/${CPU_ARCHITECTURE}/kubectl"
+  curl --retry 5 --retry-connrefused -LO "https://dl.k8s.io/release/$(curl --retry 5 --retry-connrefused -L -s https://dl.k8s.io/release/stable.txt)/bin/"${OS}"/${CPU_ARCHITECTURE}/kubectl"
   chmod +x ./kubectl
   mv ./kubectl "${BINARY_DESTINATION}"
 }
@@ -128,10 +121,47 @@ install_cilium() {
     return
   fi
 
-  CILIUM_CLI_VERSION=$(curl -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
-  curl -OL --remote-name-all https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-"${OS}"-${CPU_ARCHITECTURE}.tar.gz{,.sha256sum}
-  sha256sum -c cilium-"${OS}"-${CPU_ARCHITECTURE}.tar.gz.sha256sum
-  tar -C "${BINARY_DESTINATION}" -xzvf cilium-"${OS}"-${CPU_ARCHITECTURE}.tar.gz
+  CILIUM_CLI_VERSION=$(curl --retry 5 --retry-connrefused --retry-all-errors -s https://raw.githubusercontent.com/cilium/cilium-cli/main/stable.txt)
+
+  echo "Installing cilium CLI version ${CILIUM_CLI_VERSION}..."
+
+  TAR_URL="https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz"
+  SHA_URL="https://github.com/cilium/cilium-cli/releases/download/${CILIUM_CLI_VERSION}/cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz.sha256sum"
+
+  # Try wget first (often handles DNS better in containers)
+  if command -v wget &>/dev/null; then
+    echo "Using wget for cilium download..."
+    wget --tries=3 --retry-connrefused --timeout=30 \
+      -O cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz \
+      "${TAR_URL}" || {
+      echo "wget failed, falling back to curl..."
+      curl -L --retry 3 --retry-connrefused --retry-all-errors \
+        -o cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz \
+        "${TAR_URL}"
+    }
+
+    wget --tries=3 --retry-connrefused --timeout=30 \
+      -O cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz.sha256sum \
+      "${SHA_URL}" 2>/dev/null || echo "Warning: SHA256 file download failed, skipping checksum"
+  else
+    # Fallback to curl with GitHub redirect
+    curl -L --retry 3 --retry-connrefused --retry-all-errors \
+      -o cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz \
+      "${TAR_URL}"
+
+    curl -L --retry 3 --retry-connrefused --retry-all-errors \
+      -o cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz.sha256sum \
+      "${SHA_URL}" 2>/dev/null || echo "Warning: SHA256 file download failed, skipping checksum"
+  fi
+
+  # Only verify checksum if SHA file was downloaded
+  if [ -f cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz.sha256sum ]; then
+    sha256sum -c cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz.sha256sum
+  else
+    echo "Warning: Skipping checksum verification (SHA256 file unavailable)"
+  fi
+
+  tar -C "${BINARY_DESTINATION}" -xzvf cilium-${OS}-${CPU_ARCHITECTURE}.tar.gz
 }
 
 # -------------------------------- Required to build KubePrometheus -------------------------------

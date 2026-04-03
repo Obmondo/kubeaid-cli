@@ -541,22 +541,43 @@ func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion, k
 	hasPrefixV := strings.HasPrefix(kubePrometheusVersion, "v")
 	assert.Assert(ctx, hasPrefixV, "KubePrometheus version must start with 'v' (for e.g.: v0.15.0)")
 
-	parsedKubePrometheusVersion, err := version.Parse(kubePrometheusVersion)
+	parsedKubePrometheusVersion, err := version.ParseGeneric(kubePrometheusVersion)
 	assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
 
 	// Ensure that the KubePrometheus and K8s versions are officially compatible.
 
-	parsedK8sVersion := version.MustParse(k8sVersion)
+	parsedK8sVersion, err := version.ParseGeneric(k8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing Kubernetes semantic version")
 
-	key := fmt.Sprintf("v%d.%d", parsedKubePrometheusVersion.Major(), parsedKubePrometheusVersion.Minor())
+	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
 
-	supportedK8sVersions, ok := constants.KubePrometheusKubernetesVersionCompatibilityMatrix[key]
-	assert.Assert(ctx, ok, "Unsupported KubePrometheus version")
+	compatibleKubePrometheusVersions, ok := constants.KubernetesKubePrometheusVersionCompatibilityMatrix[k8sMajorMinorVersion]
+	assert.Assert(
+		ctx,
+		ok,
+		fmt.Sprintf(
+			"Unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
+			k8sMajorMinorVersion,
+		),
+	)
 
-	k8sVersionSupported := slices.Contains(supportedK8sVersions,
-		fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor()))
+	kubePrometheusVersionSupported := slices.ContainsFunc(
+		compatibleKubePrometheusVersions,
+		func(compatibleVersion string) bool {
+			parsedCompatibleVersion, err := version.ParseGeneric(compatibleVersion)
+			assert.AssertErrNil(
+				ctx,
+				err,
+				"Failed parsing KubePrometheus semantic version from compatibility matrix",
+			)
 
-	assert.Assert(ctx, k8sVersionSupported, `
+			// Match major + minor only (patch versions are backward compatible)
+			return (parsedCompatibleVersion.Major() == parsedKubePrometheusVersion.Major()) &&
+				(parsedCompatibleVersion.Minor() == parsedKubePrometheusVersion.Minor())
+		},
+	)
+
+	assert.Assert(ctx, kubePrometheusVersionSupported, `
 KubePrometheus and K8s versions aren't officially compatible! You can check the compatibility
 matrix here :
 
