@@ -55,9 +55,6 @@ install_jsonnet() {
 
   JSONNET_VERSION=$(curl -w '%{url_effective}' -I -L -s -S https://github.com/google/go-jsonnet/releases/latest -o /dev/null | sed -e 's|.*/v||')
   JSONNET_DOWNLOAD_URL=https://github.com/google/go-jsonnet/releases/download/v"${JSONNET_VERSION}"/go-jsonnet_"${JSONNET_VERSION}"_"${OS}"_"${CPU_ARCHITECTURE}".tar.gz
-  if [[ "$CPU_ARCHITECTURE" == "amd64" ]]; then
-    JSONNET_DOWNLOAD_URL=https://github.com/google/go-jsonnet/releases/download/v"${JSONNET_VERSION}"/go-jsonnet_"${OS}"_x86_64.tar.gz
-  fi
 
   wget "${JSONNET_DOWNLOAD_URL}" -O "${binary_name}".tar.gz
   tar -C "${BINARY_DESTINATION}" -xzvf "${binary_name}".tar.gz
