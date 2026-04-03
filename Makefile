@@ -48,7 +48,6 @@ NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
 .PHONY: build-image
 build-image:
 	@docker build \
-		--build-arg CPU_ARCHITECTURE=arm64 \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
@@ -247,7 +246,7 @@ delete-provisioned-cluster-bare-metal:
 bootstrap-cluster-local:
 	@go run ./cmd/kubeaid-core cluster bootstrap \
 		--debug \
-    --configs-directory ./outputs/configs/local/ \
+    --configs-directory ./outputs/configs/ \
     --skip-monitoring-setup \
     --skip-pr-workflow
 

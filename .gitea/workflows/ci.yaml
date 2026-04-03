@@ -38,3 +38,33 @@ jobs:
 
       - name: Show total coverage
         run: go tool cover -func=coverage.out
+
+  build-binaries:
+    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v4.2.2
+
+      - name: Setup Go
+        uses: https://gitea.obmondo.com/Obmondo/setup-go@v5.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Build kubeaid-core
+        run: make build-kubeaid-core
+
+      - name: Build kubeaid-storagectl
+        run: make build-kubeaid-storagectl
+
+      - name: Build kubeaid-cli
+        run: make build-cli
+
+  build-image:
+    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v4.2.2
+
+      - name: Build Docker image
+        run: make build-image
