@@ -26,7 +26,7 @@ type TemplateValues struct {
 	config.ForksConfig
 
 	config.ClusterConfig
-	config.KubePrometheusConfig
+	*config.KubePrometheusConfig
 	CAPIClusterNamespace string
 
 	AWSConfig      *config.AWSConfig
@@ -136,7 +136,9 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Endpoint.Host
 
 	default:
-		templateValues.ControlPlaneEndpoint = kubernetes.GetMainClusterEndpoint(ctx).Hostname()
+		if endpoint := kubernetes.GetMainClusterEndpoint(ctx); endpoint != nil {
+			templateValues.ControlPlaneEndpoint = endpoint.Hostname()
+		}
 	}
 
 	return templateValues
@@ -274,7 +276,7 @@ func getEmbeddedSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderLocal:
-		embeddedTemplateNames = constants.CommonSecretTemplateNames
+		// No additional provider-specific secret templates needed.
 	}
 
 	//nolint:staticcheck,revive

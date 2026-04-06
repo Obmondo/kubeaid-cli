@@ -13,6 +13,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime/docker"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
@@ -90,6 +91,7 @@ func proxyRun(command *cobra.Command, _ []string) {
 
 	kubeAidCoreContainer := &KubeAidCoreContainer{
 		containerRuntime:      containerRuntime,
+		imagePullPolicy:       containerruntime.ImagePullPolicy(config.ParsedGeneralConfig.ImagePullPolicy),
 		managementClusterName: managementClusterName,
 		generalConfig:         config.ParsedGeneralConfig,
 	}

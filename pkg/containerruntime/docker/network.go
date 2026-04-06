@@ -18,7 +18,7 @@ func (d *Docker) CreateNetwork(ctx context.Context, name string) {
 	_, err := d.client.NetworkCreate(ctx, name, network.CreateOptions{})
 
 	// The network already exists.
-	if !errdefs.IsConflict(err) {
+	if errdefs.IsConflict(err) {
 		return
 	}
 

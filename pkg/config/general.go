@@ -20,6 +20,10 @@ var (
 type (
 	// Non secret configuration options.
 	GeneralConfig struct {
+		// Image pull policy for the KubeAid Core container image.
+		// Valid values: Always, IfNotPresent, Never.
+		ImagePullPolicy string `yaml:"imagePullPolicy" default:"IfNotPresent" validate:"oneof=Always IfNotPresent Never"`
+
 		// Git server specific details.
 		Git GitConfig `yaml:"git"`
 
@@ -34,7 +38,7 @@ type (
 		Cloud CloudConfig `yaml:"cloud" validate:"required"`
 
 		// Kube Prometheus installation specific details.
-		KubePrometheus KubePrometheusConfig `yaml:"kubePrometheus"`
+		KubePrometheus *KubePrometheusConfig `yaml:"kubePrometheus"`
 
 		// Obmondo customer specific details.
 		Obmondo *ObmondoConfig `yaml:"obmondo"`
@@ -79,7 +83,7 @@ type (
 		ParsedURL gogiturl.IGitURL
 
 		// KubeAid tag.
-		Version string `yaml:"version" validate:"notblank"`
+		Version string `yaml:"version"`
 	}
 
 	// KubeAid Config repository specific details.
@@ -214,8 +218,8 @@ type (
 	}
 
 	DisasterRecoveryConfig struct {
-		VeleroBackupsBucketName        string `yaml:"veleroBackupsBucketName"        validate:"notblank"`
-		SealedSecretsBackupsBucketName string `yaml:"sealedSecretsBackupsBucketName" validate:"notblank"`
+		VeleroBackupsBucketName        string `yaml:"veleroBackupsBucketName"`
+		SealedSecretsBackupsBucketName string `yaml:"sealedSecretsBackupsBucketName"`
 	}
 
 	SSHKeyPairConfig struct {
@@ -227,12 +231,12 @@ type (
 	}
 
 	KubePrometheusConfig struct {
-		Version    string `yaml:"version"    validate:"notblank"`
+		Version    string `yaml:"version"`
 		GrafanaURL string `yaml:"grafanaURL"`
 	}
 
 	ObmondoConfig struct {
-		CustomerID string `yaml:"customerID" validate:"notblank"`
+		CustomerID string `yaml:"customerID"`
 		Monitoring bool   `yaml:"monitoring"`
 	}
 )

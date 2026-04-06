@@ -24,19 +24,21 @@ var (
 
 type KubeAidCoreContainer struct {
 	containerRuntime containerruntime.ContainerRuntime
+	imagePullPolicy  containerruntime.ImagePullPolicy
 
 	managementClusterName string
 	generalConfig         *config.GeneralConfig
 }
 
 func (k *KubeAidCoreContainer) Run(ctx context.Context) {
-	// Ensure that the container image is pulled.
+	// Ensure that the container image is available, respecting the pull policy.
 	imageRef := fmt.Sprintf("ghcr.io/obmondo/kubeaid-core:%s", version.Version)
-	k.containerRuntime.PullImage(ctx, imageRef)
+	k.containerRuntime.PullImage(ctx, imageRef, k.imagePullPolicy)
 
 	// Determine the Docker network inside which it'll run.
 	// And, ensure that the Docker network is created.
 	networkName := k.getNetworkName()
+	k.containerRuntime.CreateNetwork(ctx, networkName)
 
 	// Determine required volume bind mounts.
 	bindMounts := k.getBindMounts(ctx)

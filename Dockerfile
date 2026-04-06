@@ -5,17 +5,16 @@ FROM golang:1.26.1-alpine AS builder
 
 WORKDIR /app
 
-RUN --mount=type=bind,src=go.mod,target=go.mod \
-  --mount=type=bind,src=go.sum,target=go.sum \
-  --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache \
   go mod download
 
 ARG VERSION=dev
 ARG COMMIT=unknown
 ARG BUILD_DATE=unknown
 
-RUN --mount=type=bind,src=.,target=. \
-  --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache  \
+COPY . .
+RUN --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache \
   CGO_ENABLED=0 go build \
   -ldflags="-s -w \
     -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=${VERSION} \
@@ -26,7 +25,7 @@ RUN --mount=type=bind,src=.,target=. \
 #--- Dependencies layer ---
 FROM alpine:3.22 AS runtime-dependencies-installer
 
-RUN apk add --no-cache bash curl wget unzip 
+RUN apk add --no-cache bash curl wget unzip
 
 COPY scripts/install-runtime-dependencies.sh /opt/install-runtime-dependencies.sh
 
@@ -47,7 +46,7 @@ LABEL org.opencontainers.image.licenses="GPL3"
 
 ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
 
-RUN apk add --no-cache bash
+RUN apk add --no-cache bash grep
 
 COPY --from=builder /usr/local/bin/kubeaid-core /usr/local/bin/kubeaid-core
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin

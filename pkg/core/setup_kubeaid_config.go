@@ -36,8 +36,7 @@ type SetupKubeAidConfigArgs struct {
 /*
 Does the following :
 
-	(1) Creates / updates all necessary files for the given cluster, in the user's KubeAid config
-			repository.
+	(1) Creates / updates all necessary files for the given cluster, in the user's KubeAid config repository.
 
 	(2) Commits and pushes those changes to the upstream.
 

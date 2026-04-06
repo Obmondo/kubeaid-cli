@@ -42,7 +42,7 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 // with the underlying cloud provider.
 func GetCapiClusterNamespace() string {
 	capiClusterNamespace := "capi-cluster"
-	if config.ParsedGeneralConfig.Obmondo != nil {
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.CustomerID != "" {
 		capiClusterNamespace = fmt.Sprintf(
 			"capi-cluster-%s",
 			config.ParsedGeneralConfig.Obmondo.CustomerID,
