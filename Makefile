@@ -1,6 +1,3 @@
-# Needed for shell expansion
-SHELL = /bin/bash
-
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -10,43 +7,65 @@ LDFLAGS := -s -w \
 	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
 	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
 
+IMAGE_NAME := ghcr.io/obmondo/kubeaid-core:$(VERSION)
+CONTAINER_NAME := kubeaid-core
+MANAGEMENT_CLUSTER_NAME := kubeaid-bootstrapper
+NETWORK_NAME := k3d-$(MANAGEMENT_CLUSTER_NAME)
+
+default: help ## Run help by default
+
+help: ## This help screen
+	@printf "Available targets:\n\n"
+	@awk 'BEGIN { FS = ":.*## " } /^[a-zA-Z0-9][a-zA-Z0-9_-]*:/ { \
+		target = $$1; \
+		sub(/:.*/, "", target); \
+		rest = substr($$0, index($$0, ":") + 1); \
+		while (substr(rest, 1, 1) == " " || substr(rest, 1, 1) == "\t") { \
+			rest = substr(rest, 2); \
+		} \
+		if (substr(rest, 1, 1) == "=") { \
+			next; \
+		} \
+		description = "No description"; \
+		if (index($$0, "## ") > 0) { \
+			description = $$2; \
+		} \
+		printf "  \x1b[32;01m%-35s\x1b[0m %s\n", target, description; \
+	}' $(MAKEFILE_LIST) | sort -u
+	@printf "\n"
+
+
 .PHONY: format
-format:
+format: ## Run formatter checks
 	@golangci-lint fmt
 
 .PHONY: lint
-lint:
+lint: ## Run Go linters
 	@golangci-lint run ./...
 
 .PHONY: addlicense
-addlicense:
+addlicense: ## Add AGPL3 headers to Go files
 	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
 
 .PHONY: run-generators
-run-generators:
+run-generators: ## Generate config artifacts
 	@go run ./tools/generators/cmd \
-    ./pkg/config/general.go ./pkg/config/secrets.go
+		./pkg/config/general.go ./pkg/config/secrets.go
 
 .PHONY: build-kubeaid-core
-build-kubeaid-core:
-	@go build -ldflags "-s -w" -o ./build/kubeaid-core ./cmd/kubeaid-core
+build-kubeaid-core: ## Build kubeaid-core binary
+	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-core ./cmd/kubeaid-core
 
 .PHONY: build-kubeaid-storagectl
-build-kubeaid-storagectl:
-	@go build  -ldflags "-s -w" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
+build-kubeaid-storagectl: ## Build kubeaid-storagectl binary
+	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
 
 .PHONY: build-cli
-build-cli:
+build-cli: ## Build kubeaid-cli binary
 	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-cli
 
-IMAGE_NAME=ghcr.io/obmondo/kubeaid-core:$(VERSION)
-CONTAINER_NAME=kubeaid-core
-
-MANAGEMENT_CLUSTER_NAME=kubeaid-bootstrapper
-NETWORK_NAME=k3d-$(MANAGEMENT_CLUSTER_NAME)
-
 .PHONY: build-image
-build-image:
+build-image: ## Build container image
 	@docker build \
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
@@ -54,203 +73,34 @@ build-image:
 		-t $(IMAGE_NAME) .
 
 .PHONY: remove-image
-remove-image:
+remove-image: ## Remove container image
 	@docker rmi $(IMAGE_NAME)
 
 .PHONY: run-container
-run-container: build-image-dev
+run-container: build-image ## Run container with local mounts
 	@if ! docker network ls | grep -q $(NETWORK_NAME); then \
 		docker network create $(NETWORK_NAME); \
 	fi
 	@docker run --name $(CONTAINER_NAME) \
-    --network $(NETWORK_NAME) \
-    -v ./outputs:/outputs \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    --rm \
-    $(IMAGE_NAME)
+		--network $(NETWORK_NAME) \
+		-v ./outputs:/outputs \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		--rm \
+		$(IMAGE_NAME)
 
 .PHONY: exec-container
-exec-container:
+exec-container: ## Open shell in running container
 	@docker exec -it $(CONTAINER_NAME) /bin/sh
 
 .PHONY: stop-container
-stop-container:
+stop-container: ## Stop running container
 	@docker stop $(CONTAINER_NAME)
 
 .PHONY: remove-container
-remove-container: stop-container-dev
+remove-container: stop-container ## Stop and remove container
 	@docker rm $(CONTAINER_NAME)
 
-.PHONY: sample-config-generate-aws
-sample-config-generate-aws:
-	@go run ./cmd/kubeaid-core config generate aws
-
-.PHONY: devenv-create-aws
-devenv-create-aws:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/aws/
-
-.PHONY: bootstrap-cluster-aws
-bootstrap-cluster-aws:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/aws/
-
-.PHONY: upgrade-cluster-aws
-upgrade-cluster-aws:
-	@go run ./cmd/kubeaid-core cluster upgrade aws \
-		--debug \
-    --configs-directory ./outputs/configs/aws/ \
-		--k8s-version "v1.32.0" --ami-id "ami-042e8a22a289729b1"
-
-.PHONY: delete-provisioned-cluster-aws
-delete-provisioned-cluster-aws:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --configs-directory ./outputs/configs/aws/
-
-.PHONY: recover-cluster-aws
-recover-cluster-aws:
-	@go run ./cmd/kubeaid-core cluster recover aws \
-		--debug \
-    --configs-directory ./outputs/configs/aws/ \
-    --skip-pr-workflow
-
-.PHONY: devenv-create-azure
-devenv-create-azure:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/azure/ \
-    --skip-pr-workflow
-
-.PHONY: bootstrap-cluster-azure
-bootstrap-cluster-azure:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/azure/ \
-    --skip-monitoring-setup \
-    --skip-pr-workflow
-
-.PHONY: upgrade-cluster-azure
-upgrade-cluster-azure:
-	@go run ./cmd/kubeaid-core cluster upgrade azure \
-		--debug \
-    --configs-directory ./outputs/configs/azure/ \
-		--k8s-version "v1.32.0"
-
-.PHONY: delete-provisioned-cluster-azure
-delete-provisioned-cluster-azure:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --configs-directory ./outputs/configs/azure/
-
-.PHONY: recover-cluster-azure
-recover-cluster-azure:
-	@go run ./cmd/kubeaid-core cluster recover azure \
-		--debug \
-    --configs-directory ./outputs/configs/azure/ \
-    --skip-pr-workflow
-
-.PHONY: devenv-create-hcloud
-devenv-create-hcloud:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/hcloud \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: bootstrap-cluster-hcloud
-bootstrap-cluster-hcloud:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/hcloud/ \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: delete-provisioned-cluster-hcloud
-delete-provisioned-cluster-hcloud:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --configs-directory ./outputs/configs/hetzner/hcloud/
-
-.PHONY: devenv-create-hetzner-bare-metal
-devenv-create-hetzner-bare-metal:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/bare-metal \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: bootstrap-cluster-hetzner-bare-metal
-bootstrap-cluster-hetzner-bare-metal:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/bare-metal \
-    --skip-pr-workflow
-
-.PHONY: delete-provisioned-cluster-hetzner-bare-metal
-delete-provisioned-cluster-hetzner-bare-metal:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --debug \
-    --configs-directory ./outputs/configs/hetzner/bare-metal/
-
-.PHONY: devenv-create-hetzner-hybrid
-devenv-create-hetzner-hybrid:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/hybrid \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: bootstrap-cluster-hetzner-hybrid
-bootstrap-cluster-hetzner-hybrid:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/hetzner/hybrid/ \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: delete-provisioned-cluster-hetzner-hybrid
-delete-provisioned-cluster-hetzner-hybrid:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --debug \
-    --configs-directory ./outputs/configs/hetzner/hybrid/
-
-.PHONY: devenv-create-bare-metal
-devenv-create-bare-metal:
-	@go run ./cmd/kubeaid-core devenv create \
-		--debug \
-    --configs-directory ./outputs/configs/bare-metal/ \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: bootstrap-cluster-bare-metal
-bootstrap-cluster-bare-metal:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/bare-metal/ \
-    --skip-pr-workflow \
-    --skip-monitoring-setup
-
-.PHONY: test-cluster-bare-metal
-test-cluster-bare-metal:
-	@go run ./cmd/kubeaid-core cluster test \
-		--debug \
-    --configs-directory ./outputs/configs/bare-metal/
-
-.PHONY: delete-provisioned-cluster-bare-metal
-delete-provisioned-cluster-bare-metal:
-	@go run ./cmd/kubeaid-core cluster delete \
-    --debug \
-    --configs-directory ./outputs/configs/bare-metal/
-
-.PHONY: bootstrap-cluster-local
-bootstrap-cluster-local:
-	@go run ./cmd/kubeaid-core cluster bootstrap \
-		--debug \
-    --configs-directory ./outputs/configs/ \
-    --skip-monitoring-setup \
-    --skip-pr-workflow
-
 .PHONY: management-cluster-delete
-management-cluster-delete:
+management-cluster-delete: ## Delete the management k3d cluster
 	KUBECONFIG=./outputs/kubeconfigs/clusters/management/container.yaml \
 		k3d cluster delete $(MANAGEMENT_CLUSTER_NAME)

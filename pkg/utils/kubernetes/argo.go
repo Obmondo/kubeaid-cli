@@ -86,9 +86,11 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// Create the Kubernetes Secrets containing deploy keys,
 	// which ArgoCD will use to access the KubeAid and KubeAid Config Git repositories.
 
-	repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
+	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
+		repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
+		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+			fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
+	}
 
 	repoKubeaidConfigSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid-config.yaml")
 	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,

@@ -63,7 +63,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		utils.MustGetEnv(constants.EnvNameKubeconfig))
 
 	// Setup Disaster Recovery, if the user wants.
-	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
 		globals.CloudProvider.SetupDisasterRecovery(ctx)
 	}
 
@@ -78,7 +78,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
-	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
 		// Create the first Velero backup.
 		kubernetes.CreateBackup(ctx, "init", mainClusterClient)
 

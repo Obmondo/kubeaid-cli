@@ -257,7 +257,7 @@ const (
 
 // Docker related.
 const (
-	DockerSocketPath         = "/var/run/docker.dock"
+	DockerSocketPath         = "/var/run/docker.sock"
 	DockerDefaultNetworkName = "default"
 )
 

@@ -110,7 +110,14 @@ install_kubectl() {
     return
   fi
 
-  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/"${OS}"/${CPU_ARCHITECTURE}/kubectl"
+  local kubectl_version
+  kubectl_version=$(curl -L -sf https://dl.k8s.io/release/stable.txt)
+  if [ -z "${kubectl_version}" ]; then
+    echo "Failed to fetch kubectl stable version" >&2
+    exit 1
+  fi
+
+  curl -Lfo ./kubectl "https://dl.k8s.io/release/${kubectl_version}/bin/${OS}/${CPU_ARCHITECTURE}/kubectl"
   chmod +x ./kubectl
   mv ./kubectl "${BINARY_DESTINATION}"
 }

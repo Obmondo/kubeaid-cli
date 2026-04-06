@@ -15,7 +15,7 @@ import (
 )
 
 func HardResetRepoToTag(ctx context.Context, repo *git.Repository, tag string) {
-	if tag == plumbing.HEAD.String() {
+	if tag == "" || tag == plumbing.HEAD.String() {
 		return
 	}
 

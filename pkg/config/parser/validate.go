@@ -61,11 +61,22 @@ func validateConfigs(ctx context.Context) error {
 	// Validate K8s version.
 	validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
 
+	// Validate KubeAid fork version for non-local providers.
+	if globals.CloudProviderName != constants.CloudProviderLocal {
+		assert.Assert(ctx,
+			config.ParsedGeneralConfig.Forks.KubeaidFork.Version != "",
+			"KubeAid fork version is required for non-local providers",
+		)
+	}
+
 	// Validate KubePrometheus version.
-	validateKubePrometheusVersion(ctx,
-		config.ParsedGeneralConfig.KubePrometheus.Version,
-		config.ParsedGeneralConfig.Cluster.K8sVersion,
-	)
+	if config.ParsedGeneralConfig.KubePrometheus != nil &&
+		config.ParsedGeneralConfig.KubePrometheus.Version != "" {
+		validateKubePrometheusVersion(ctx,
+			config.ParsedGeneralConfig.KubePrometheus.Version,
+			config.ParsedGeneralConfig.Cluster.K8sVersion,
+		)
+	}
 
 	// Validate additional users.
 	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
