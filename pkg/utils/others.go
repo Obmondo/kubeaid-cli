@@ -5,6 +5,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -35,6 +36,10 @@ func MustSetEnv(name, value string) {
 }
 
 func WithRetry(delay time.Duration, attempts uint8, fn func() error) error {
+	if attempts == 0 {
+		return fmt.Errorf("WithRetry called with 0 attempts")
+	}
+
 	var err error
 
 	for i := range attempts {

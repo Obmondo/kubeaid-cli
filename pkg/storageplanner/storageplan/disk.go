@@ -69,20 +69,22 @@ func (d *Disk) AssignPriorityScores() {
 
 	d.PriorityScores.ZFS = (func() int {
 		switch {
-		case d.Type == constants.DiskTypeNVMe:
-			return 5
-
-		case d.Type == constants.DiskTypeSSD:
-			return 4
-
-		case d.Type == constants.DiskTypeHDD:
-			return 3
+		// High-speed NIC boosts ZFS priority for fast disks,
+		// since CEPH OSDs can leverage the increased network bandwidth.
+		case d.WithHighSpeedNIC && (d.Type == constants.DiskTypeNVMe):
+			return 6
 
 		case d.WithHighSpeedNIC && (d.Type == constants.DiskTypeSSD):
-			return 2
+			return 5
 
-		case d.WithHighSpeedNIC && (d.Type == constants.DiskTypeNVMe):
-			return 1
+		case d.Type == constants.DiskTypeNVMe:
+			return 4
+
+		case d.Type == constants.DiskTypeSSD:
+			return 3
+
+		case d.Type == constants.DiskTypeHDD:
+			return 2
 
 		default:
 			return 0
