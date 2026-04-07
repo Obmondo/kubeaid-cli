@@ -1,3 +1,6 @@
+# Image pull policy for the KubeAid Core container image.
+# Valid values: Always, IfNotPresent, Never.
+imagePullPolicy: IfNotPresent
 # Git server specific details.
 git:
   caBundlePath:
@@ -6,6 +9,9 @@ git:
   # Or, make KubeAid CLI use the SSH Agent.
   # So, you (the one who runs KubeAid CLI) can use your YubiKey.
   useSSHAgent:
+  # Additional SSH known hosts.
+  # Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
+  knownHosts:
   privateKeyFilePath:
 # KubeAid and KubeAid Config repository specific details.
 # The KubeAid and KubeAid Config repositories must be hosted in the same Git server.
@@ -53,9 +59,9 @@ cluster:
   # ArgoCD specific details.
   argoCD:
     deployKeys:
-      kubeaidConfig:
-        privateKeyFilePath:
       kubeaid:
+        privateKeyFilePath:
+      kubeaidConfig:
         privateKeyFilePath:
 # Cloud provider specific details.
 cloud:
@@ -102,13 +108,25 @@ cloud:
     # 			  (3) hybrid : The control-plane will be in HCloud, and each node-group can be either in
     # 			               HCloud or Hetzner Bare Metal.
     mode: hcloud
-    vswitch:
-      vlanID:
+    # Details about the VPN cluster you have in HCloud.
+    hcloudVPNCluster:
       name:
+    # Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner
+    # Bare Metal server.
+    # KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,
+    # if it / they doesn't already exist.
+    sshKeyPair:
+      name:
+      privateKeyFilePath:
+    # HCloud specific details.
     hcloud:
       zone:
       imageName: ubuntu-24.04
-      sshKeyPairName:
+      # Hetzner Network specific details.
+      hetznerNetwork:
+        cidr:
+        hcloudServersSubnetCIDR:
+    # Hetzner bare-metal specific details.
     bareMetal:
       wipeDisks: false
       installImage:
@@ -116,10 +134,24 @@ cloud:
         vg0:
           size: 80
           rootVolumeSize: 50
-      sshKeyPair:
+      # ZFS specific configuration.
+      # Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
+      # logs and pod ephemeral volumes from that ZFS pool, as required.
+      # The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
+      zfs:
+        # ZFS pool size (in GB), on each node in the corresponding node-group.
+        # Must be >= 200 GB : reserving 100 GB for container images, 50 GB for pod logs and 50 GB for
+        # pod ephemeral volumes.
+        # On top of that, if you want x GB of node-local storage for your workloads (like Redis),
+        # the ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled.
+        size: 220
+      # Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
+      # the Hetzner Network.
+      vSwitch:
+        vlanID:
         name:
-        publicKeyFilePath:
-        privateKeyFilePath:
+        subnetCIDRBlock:
+    # Control-plane specific details.
     controlPlane:
       hcloud:
         machineType:
@@ -132,19 +164,9 @@ cloud:
           isFailoverIP:
           host:
         bareMetalHosts:
-        # ZFS specific configuration.
-        # Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
-        # logs and pod ephemeral volumes from that ZFS pool, as required.
-        # The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
-        zfs:
-          # ZFS pool size (in GB), on each node in the corresponding node-group.
-          # Must be >= 200 GB : reserving 100 GB for container images, 50 GB for pod logs and 50 GB for
-          # pod ephemeral volumes.
-          # On top of that, if you want x GB of node-local storage for your workloads (like Redis),
-          # the ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled.
-          size: 220
+        -:
       regions:
-    # Details about node-groups in Hetzner.
+    # Details about the node-groups.
     nodeGroups:
       # Details about node-groups in HCloud.
       hcloud:
@@ -155,8 +177,7 @@ cloud:
   bare-metal:
     ssh:
       port: 22
-      privateKey:
-        privateKeyFilePath:
+      privateKeyFilePath:
     controlPlane:
       endpoint:
         host:
@@ -167,8 +188,7 @@ cloud:
   disasterRecovery:
     veleroBackupsBucketName:
     sealedSecretsBackupsBucketName:
-# Kube Prometheus installation specific details. Defaults to Latest
-# Fill this only if you want a specific version
+# Kube Prometheus installation specific details.
 kubePrometheus:
   version:
   grafanaURL:
