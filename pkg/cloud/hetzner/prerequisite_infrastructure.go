@@ -65,6 +65,9 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 
 		// Generate storage plan for the control-plane and each node-group.
 		h.GenerateStoragePlans(ctx, hetznerConfig)
+
+		// Apply node labels derived from the storage plan (e.g. disk=nvme).
+		hydrateNodeGroupLabels(hetznerConfig)
 	}
 
 	if hetznerConfig.HCloudVPNCluster != nil {
