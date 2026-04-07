@@ -136,6 +136,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Endpoint.Host
 
 	default:
+		// For local/dev clusters, the main cluster endpoint may not be available yet.
 		if endpoint := kubernetes.GetMainClusterEndpoint(ctx); endpoint != nil {
 			templateValues.ControlPlaneEndpoint = endpoint.Hostname()
 		}

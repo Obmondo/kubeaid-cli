@@ -5,7 +5,6 @@ package docker
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"os"
 
@@ -24,24 +23,17 @@ func (d *Docker) PullImage(ctx context.Context, ref string, policy containerrunt
 		slog.String("pullPolicy", string(policy)),
 	})
 
-	_, err := d.client.ImageInspect(ctx, ref)
-	imageExistsLocally := err == nil
+	// Check if image already exists locally to avoid unnecessary registry pulls.
+	existingImages, err := d.client.ImageList(ctx, image.ListOptions{All: true})
+	assert.AssertErrNil(ctx, err, "Failed listing local container images")
 
-	switch policy {
-	case containerruntime.ImagePullPolicyNever:
-		assert.Assert(ctx, imageExistsLocally,
-			fmt.Sprintf("Image %s not found locally and pull policy is Never", ref))
-		slog.InfoContext(ctx, "Using local container image")
-		return
-
-	case containerruntime.ImagePullPolicyIfNotPresent:
-		if imageExistsLocally {
-			slog.InfoContext(ctx, "Container image already exists locally, skipping pull")
-			return
+	for _, img := range existingImages {
+		for _, tag := range img.RepoTags {
+			if tag == ref {
+				slog.InfoContext(ctx, "Container image already exists locally")
+				return
+			}
 		}
-
-	case containerruntime.ImagePullPolicyAlways:
-		// Always pull, fall through.
 	}
 
 	slog.InfoContext(ctx, "Pulling container image")

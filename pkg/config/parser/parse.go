@@ -5,13 +5,16 @@ package parser
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
+	"k8s.io/apimachinery/pkg/util/version"
 
 	awsCloudProvider "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
@@ -64,6 +67,9 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 		// Hydrate with Audit Logging options (if required).
 		hydrateWithAuditLoggingOptions()
+
+		// Default KubePrometheus version when not explicitly provided.
+		hydrateKubePrometheusVersion(ctx)
 	}
 
 	// Read contents of the secrets config file into ParsedSecretsConfig.
@@ -108,6 +114,60 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	// Validate the general and secrets configs.
 	err = validateConfigs(ctx)
 	assert.AssertErrNil(ctx, err, "Config validation failed")
+}
+
+// If the user hasn't specified KubePrometheus version, select the latest
+// KubePrometheus version that's officially compatible with the configured K8s version.
+func hydrateKubePrometheusVersion(ctx context.Context) {
+	if len(config.ParsedGeneralConfig.KubePrometheus.Version) > 0 {
+		return
+	}
+
+	parsedK8sVersion, err := version.ParseGeneric(config.ParsedGeneralConfig.Cluster.K8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing Kubernetes semantic version")
+
+	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
+	compatibleKubePrometheusVersions, ok := constants.KubernetesKubePrometheusVersionCompatibilityMatrix[k8sMajorMinorVersion]
+	assert.Assert(
+		ctx,
+		ok,
+		fmt.Sprintf(
+			"Unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
+			k8sMajorMinorVersion,
+		),
+	)
+
+	assert.Assert(
+		ctx,
+		len(compatibleKubePrometheusVersions) > 0,
+		fmt.Sprintf(
+			"No compatible KubePrometheus versions found for Kubernetes version %s",
+			k8sMajorMinorVersion,
+		),
+	)
+
+	sortedCompatibleKubePrometheusVersions := slices.Clone(compatibleKubePrometheusVersions)
+	slices.SortFunc(sortedCompatibleKubePrometheusVersions, func(a, b string) int {
+		parsedA, err := version.ParseGeneric(a)
+		assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
+
+		parsedB, err := version.ParseGeneric(b)
+		assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
+
+		// Compare in this version of apimachinery returns (int, error)
+		cmp, err := parsedA.Compare(parsedB.String())
+		assert.AssertErrNil(ctx, err, "Failed comparing KubePrometheus versions")
+
+		return cmp
+	})
+
+	selectedKubePrometheusVersion := sortedCompatibleKubePrometheusVersions[len(sortedCompatibleKubePrometheusVersions)-1]
+	config.ParsedGeneralConfig.KubePrometheus.Version = selectedKubePrometheusVersion
+
+	slog.InfoContext(ctx, "Auto-selected KubePrometheus version",
+		slog.String("k8s_version", k8sMajorMinorVersion),
+		slog.String("selected_version", selectedKubePrometheusVersion),
+	)
 }
 
 // Based on the parsed config, detects the underlying cloud-provider name.

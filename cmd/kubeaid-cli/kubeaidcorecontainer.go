@@ -38,7 +38,9 @@ func (k *KubeAidCoreContainer) Run(ctx context.Context) {
 	// Determine the Docker network inside which it'll run.
 	// And, ensure that the Docker network is created.
 	networkName := k.getNetworkName()
-	k.containerRuntime.CreateNetwork(ctx, networkName)
+	if networkName != constants.DockerDefaultNetworkName {
+		k.containerRuntime.CreateNetwork(ctx, networkName)
+	}
 
 	// Determine required volume bind mounts.
 	bindMounts := k.getBindMounts(ctx)

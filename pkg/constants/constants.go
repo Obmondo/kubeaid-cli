@@ -291,8 +291,12 @@ const (
 	MaxKubeOneSupportedK8sVersion = "v1.34"
 )
 
+// Kubernetes -> KubePrometheus compatibility matrix.
+// This makes it easy to select a default KubePrometheus version for a given K8s version.
 // REFER : https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility.
-var KubePrometheusKubernetesVersionCompatibilityMatrix = map[string][]string{
-	"v0.16": {"v1.32", "v1.33", "v1.34"},
-	"v0.17": {"v1.33", "v1.34", "v1.35"},
+var KubernetesKubePrometheusVersionCompatibilityMatrix = map[string][]string{
+	"v1.32": {"v0.16.0"},
+	"v1.33": {"v0.16.0", "v0.17.0"},
+	"v1.34": {"v0.16.0", "v0.17.0"},
+	"v1.35": {"v0.17.0"},
 }
