@@ -43,6 +43,29 @@ jobs:
             echo '```'
           } >> $GITHUB_STEP_SUMMARY
 
+  create-release:
+    name: Create release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Cocogito
+        uses: cocogitto/cocogitto-action@v4
+        with:
+          command: get-version
+
+      - name: Generate Changelog
+        run: cog changelog --at ${{ github.ref_name }} -t full_hash > GITHUB_CHANGELOG.md
+
+      - name: Upload github release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: GITHUB_CHANGELOG.md
+          tag_name: ${{ github.ref_name }}
+
   build_and_push_kubeaid_core_container_images:
     name: Build and push KubeAid Core container images
     runs-on: ubuntu-latest

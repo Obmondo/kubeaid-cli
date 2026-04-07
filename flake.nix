@@ -4,7 +4,6 @@
   inputs = {
     nixpkgs.url = "github:cachix/devenv-nixpkgs/rolling";
     flake-utils.url = "github:numtide/flake-utils";
-
     devenv.url = "github:cachix/devenv";
   };
 
@@ -69,9 +68,7 @@
 
                     addlicense
                     pre-commit
-                    conform
-                    semantic-release
-                    nix-update
+                    cocogitto
                     goreleaser
                   ]
                   # Runtime dependencies.

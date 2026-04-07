@@ -19,8 +19,8 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: conform
+      - id: cog-verify
         name: Lint commit message
-        entry: conform enforce --commit-msg-file
+        entry: cog verify --file
         language: system
         stages: [commit-msg]
