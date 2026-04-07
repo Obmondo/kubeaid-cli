@@ -1,0 +1,17 @@
+tag_prefix = "v"
+
+pre_bump_hooks = [
+  "make run-generators",
+
+  "sed -i 's/version = \".*\";/version = \"{{version}}\";/' flake.nix",
+  # Updates the vendor hash for the KubeAid CLI package in the flake.nix file.
+  #
+  # This takes a few minutes to run, which might irritate other team members while trying to create
+  # a release. But, you can uncomment this, when a customer / open-source users requests to be able
+  # to install KubeAid CLI using Nix package manager :).
+  # "nix-update --flake --version=skip default"
+]
+
+post_bump_hooks = ["git push origin {{version_tag}}"]
+
+ignore_merge_commits = true

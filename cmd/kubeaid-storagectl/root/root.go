@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root/plan"
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root/version"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -30,6 +31,7 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	// Subcommands.
+	RootCmd.AddCommand(version.VersionCommand)
 	RootCmd.AddCommand(plan.PlanCommand)
 
 	// Flags.
