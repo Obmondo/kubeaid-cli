@@ -38,18 +38,25 @@ func TestUnallocated(t *testing.T) {
 
 func TestAssignPriorityScores(t *testing.T) {
 	for _, tc := range []struct {
-		diskType string
-		os, zfs  int
+		diskType         string
+		withHighSpeedNIC bool
+		os, zfs          int
 	}{
-		{constants.DiskTypeHDD, 3, 3},
-		{constants.DiskTypeSSD, 2, 4},
-		{constants.DiskTypeNVMe, 1, 5},
-		{constants.DiskTypeUnknown, 0, 0},
+		{constants.DiskTypeHDD, false, 3, 2},
+		{constants.DiskTypeSSD, false, 2, 3},
+		{constants.DiskTypeNVMe, false, 1, 4},
+		{constants.DiskTypeUnknown, false, 0, 0},
+
+		{constants.DiskTypeHDD, true, 3, 2},
+		{constants.DiskTypeSSD, true, 2, 5},
+		{constants.DiskTypeNVMe, true, 1, 6},
 	} {
-		d := &Disk{Type: tc.diskType}
+		d := &Disk{Type: tc.diskType, WithHighSpeedNIC: tc.withHighSpeedNIC}
 		d.AssignPriorityScores()
-		assert.Equal(t, tc.os, d.PriorityScores.OS, "OS score for %s", tc.diskType)
-		assert.Equal(t, tc.zfs, d.PriorityScores.ZFS, "ZFS score for %s", tc.diskType)
+		assert.Equal(t, tc.os, d.PriorityScores.OS,
+			"OS score for %s (highNIC=%v)", tc.diskType, tc.withHighSpeedNIC)
+		assert.Equal(t, tc.zfs, d.PriorityScores.ZFS,
+			"ZFS score for %s (highNIC=%v)", tc.diskType, tc.withHighSpeedNIC)
 	}
 }
 
@@ -60,5 +67,5 @@ func TestAssignPriorityScoresOverwritesPrevious(t *testing.T) {
 	}
 	d.AssignPriorityScores()
 	assert.Equal(t, 3, d.PriorityScores.OS)
-	assert.Equal(t, 3, d.PriorityScores.ZFS)
+	assert.Equal(t, 2, d.PriorityScores.ZFS)
 }

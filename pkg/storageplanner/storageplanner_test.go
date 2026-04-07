@@ -16,7 +16,7 @@ import (
 )
 
 type mockExecutor struct {
-	// commands is a list of (output) pairs returned in order.
+	// commands is a list of outputs returned in order.
 	commands []string
 	callIdx  int
 }
@@ -40,24 +40,22 @@ func newMock(nicSpeed string, devices []LSBLKOutputRow) *mockExecutor {
 	return &mockExecutor{commands: []string{nicSpeed, string(data)}}
 }
 
-func device(name, tran, pttype string, sizeGB int, rota bool) LSBLKOutputRow {
+func device(name, tran string, sizeGB int, rota bool) LSBLKOutputRow {
 	return LSBLKOutputRow{
 		Name:               name,
 		WWN:                "0x" + name,
 		Size:               (sizeGB + 2) * 1024 * 1024 * 1024, // +2GB for boot/EFI reserve
 		RotationalDevice:   rota,
 		TransportType:      tran,
-		PartitionTableType: pttype,
+		PartitionTableType: "gpt",
 	}
 }
 
-func hdd(name string, sizeGB int) LSBLKOutputRow { return device(name, "sata", "gpt", sizeGB, true) }
-func ssd(name string, sizeGB int) LSBLKOutputRow {
-	return device(name, "sata", "gpt", sizeGB, false)
-}
-func nvme(name string, sizeGB int) LSBLKOutputRow {
-	return device(name, "nvme", "gpt", sizeGB, false)
-}
+func hdd(name string, sizeGB int) LSBLKOutputRow { return device(name, "sata", sizeGB, true) }
+
+func ssd(name string, sizeGB int) LSBLKOutputRow { return device(name, "sata", sizeGB, false) }
+
+func nvme(name string, sizeGB int) LSBLKOutputRow { return device(name, "nvme", sizeGB, false) }
 
 func TestGetDiskType(t *testing.T) {
 	assert.Equal(t, constants.DiskTypeHDD,
@@ -112,9 +110,28 @@ func TestGenerateStoragePlan_HDDsForOS_NVMeForZFS(t *testing.T) {
 	assert.Equal(t, "sda", plan.OS[0].Name)
 	assert.Equal(t, "sdb", plan.OS[1].Name)
 
-	// ZFS priority: NVMe=5 > HDD=3
+	// ZFS priority: NVMe=4 > HDD=2
 	assert.Equal(t, "nvme0n1", plan.ZFS[0].Name)
 	assert.Equal(t, "nvme1n1", plan.ZFS[1].Name)
+}
+
+func TestGenerateStoragePlan_HighSpeedNIC_SSDsPreferredForZFS(t *testing.T) {
+	// With a high-speed NIC (>= 5000 Mbps), SSDs get a boosted ZFS score (5 vs HDD 2).
+	mock := newMock("10000\n", []LSBLKOutputRow{
+		ssd("sda", 500), ssd("sdb", 500),
+		hdd("sdc", 500), hdd("sdd", 500),
+	})
+
+	plan, err := GenerateStoragePlan(context.Background(), "srv8", mock, 50, 100)
+	require.NoError(t, err)
+
+	// OS priority: HDD=3 > SSD=2
+	assert.Equal(t, "sdc", plan.OS[0].Name)
+	assert.Equal(t, "sdd", plan.OS[1].Name)
+
+	// ZFS priority: SSD with high-speed NIC = 5 > HDD = 2
+	assert.Equal(t, "sda", plan.ZFS[0].Name)
+	assert.Equal(t, "sdb", plan.ZFS[1].Name)
 }
 
 func TestGenerateStoragePlan_NotEnoughDisksForOS(t *testing.T) {
@@ -158,7 +175,7 @@ func TestGenerateStoragePlan_UnknownDiskTypeFiltered(t *testing.T) {
 	mock := newMock("1000\n", []LSBLKOutputRow{
 		hdd("sda", 500),
 		hdd("sdb", 500),
-		device("sdc", "usb", "gpt", 500, false), // usb -> unknown -> filtered
+		device("sdc", "usb", 500, false), // usb -> unknown -> filtered
 	})
 
 	plan, err := GenerateStoragePlan(context.Background(), "srv7", mock, 50, 100)
