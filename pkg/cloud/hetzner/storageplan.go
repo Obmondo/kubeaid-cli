@@ -11,7 +11,6 @@ import (
 	"k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
@@ -122,16 +121,6 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 		allStoragePlans[nodeGroup.Name] = storagePlans
 
 		nodeGroup.StoragePlan = *storagePlans[0]
-
-		// If the nodegroup's ZFS disks are NVMe, automatically add disk=nvme to the node labels.
-		// This ensures NVMe-specific DaemonSets (e.g. zfs-localpv-node) are only scheduled on
-		// nodes that actually have NVMe storage, preventing misscheduling on control-plane nodes.
-		if len(storagePlans[0].ZFS) > 0 && storagePlans[0].ZFS[0].Type == constants.DiskTypeNVMe {
-			if nodeGroup.Labels == nil {
-				nodeGroup.Labels = make(map[string]string)
-			}
-			nodeGroup.Labels["disk"] = "nvme"
-		}
 	}
 
 	allStoragePlans.GetApproval(ctx)
