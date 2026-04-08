@@ -29,17 +29,13 @@ func InitTempDir(ctx context.Context) {
 
 	// Check if a temp dir already exists for KubeAid Bootstrap Script.
 	// If yes, then reuse that.
-	filesAndFolders, err := os.ReadDir("/tmp")
-	assert.AssertErrNil(ctx, err, "Failed listing files and folders in /tmp")
-	for _, item := range filesAndFolders {
-		if item.IsDir() && (item.Name() == constants.TempDirectory) {
-			slog.InfoContext(ctx, "Skipped creating temp dir, since it already exists")
-			return
-		}
+	if info, err := os.Stat(constants.TempDirectory); err == nil && info.IsDir() {
+		slog.InfoContext(ctx, "Skipped creating temp dir, since it already exists")
+		return
 	}
 
 	// Otherwise, create it.
-	err = os.MkdirAll(constants.TempDirectory, 0o750)
+	err := os.MkdirAll(constants.TempDirectory, 0o750)
 	assert.AssertErrNil(ctx, err, "Failed creating temp dir")
 
 	slog.InfoContext(ctx, "Created temp dir")
@@ -47,11 +43,7 @@ func InitTempDir(ctx context.Context) {
 
 // Returns path to the parent dir of the given file.
 func GetParentDirPath(filePath string) string {
-	splitPosition := strings.LastIndex(filePath, "/")
-	if splitPosition == -1 {
-		return ""
-	}
-	return filePath[:splitPosition]
+	return filepath.Dir(filePath)
 }
 
 // Creates intermediate directories which don't exist for the given file path.
