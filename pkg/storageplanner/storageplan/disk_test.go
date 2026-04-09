@@ -42,14 +42,16 @@ func TestAssignPriorityScores(t *testing.T) {
 		withHighSpeedNIC bool
 		os, zfs          int
 	}{
-		{constants.DiskTypeHDD, false, 3, 2},
-		{constants.DiskTypeSSD, false, 2, 3},
-		{constants.DiskTypeNVMe, false, 1, 4},
+		{constants.DiskTypeHDD, false, 3, 3},
+		{constants.DiskTypeSSD, false, 2, 4},
+		{constants.DiskTypeNVMe, false, 1, 5},
 		{constants.DiskTypeUnknown, false, 0, 0},
 
-		{constants.DiskTypeHDD, true, 3, 2},
-		{constants.DiskTypeSSD, true, 2, 5},
-		{constants.DiskTypeNVMe, true, 1, 6},
+		// With a high-speed NIC, ZFS should run on slower disks so CEPH can use the
+		// faster disks and leverage the higher network bandwidth.
+		{constants.DiskTypeHDD, true, 3, 3},
+		{constants.DiskTypeSSD, true, 2, 2},
+		{constants.DiskTypeNVMe, true, 1, 1},
 	} {
 		d := &Disk{Type: tc.diskType, WithHighSpeedNIC: tc.withHighSpeedNIC}
 		d.AssignPriorityScores()
@@ -67,5 +69,5 @@ func TestAssignPriorityScoresOverwritesPrevious(t *testing.T) {
 	}
 	d.AssignPriorityScores()
 	assert.Equal(t, 3, d.PriorityScores.OS)
-	assert.Equal(t, 2, d.PriorityScores.ZFS)
+	assert.Equal(t, 3, d.PriorityScores.ZFS)
 }

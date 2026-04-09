@@ -110,13 +110,15 @@ func TestGenerateStoragePlan_HDDsForOS_NVMeForZFS(t *testing.T) {
 	assert.Equal(t, "sda", plan.OS[0].Name)
 	assert.Equal(t, "sdb", plan.OS[1].Name)
 
-	// ZFS priority: NVMe=4 > HDD=2
+	// ZFS priority: NVMe=5 > HDD=3
 	assert.Equal(t, "nvme0n1", plan.ZFS[0].Name)
 	assert.Equal(t, "nvme1n1", plan.ZFS[1].Name)
 }
 
-func TestGenerateStoragePlan_HighSpeedNIC_SSDsPreferredForZFS(t *testing.T) {
-	// With a high-speed NIC (>= 5000 Mbps), SSDs get a boosted ZFS score (5 vs HDD 2).
+func TestGenerateStoragePlan_HighSpeedNIC_HDDsPreferredForZFS(t *testing.T) {
+	// With a high-speed NIC (>= 5000 Mbps), SSDs get a low ZFS score (2) so that
+	// CEPH ends up on SSDs and can exploit the higher network bandwidth.
+	// HDDs therefore win the ZFS selection (score 3 > 2).
 	mock := newMock("10000\n", []LSBLKOutputRow{
 		ssd("sda", 500), ssd("sdb", 500),
 		hdd("sdc", 500), hdd("sdd", 500),
@@ -129,9 +131,9 @@ func TestGenerateStoragePlan_HighSpeedNIC_SSDsPreferredForZFS(t *testing.T) {
 	assert.Equal(t, "sdc", plan.OS[0].Name)
 	assert.Equal(t, "sdd", plan.OS[1].Name)
 
-	// ZFS priority: SSD with high-speed NIC = 5 > HDD = 2
-	assert.Equal(t, "sda", plan.ZFS[0].Name)
-	assert.Equal(t, "sdb", plan.ZFS[1].Name)
+	// ZFS priority: HDD=3 > SSD with high-speed NIC=2 (SSDs reserved for CEPH)
+	assert.Equal(t, "sdc", plan.ZFS[0].Name)
+	assert.Equal(t, "sdd", plan.ZFS[1].Name)
 }
 
 func TestGenerateStoragePlan_NotEnoughDisksForOS(t *testing.T) {
