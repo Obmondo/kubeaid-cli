@@ -69,22 +69,20 @@ func (d *Disk) AssignPriorityScores() {
 
 	d.PriorityScores.ZFS = (func() int {
 		switch {
-		// High-speed NIC boosts ZFS priority for fast disks,
-		// since CEPH OSDs can leverage the increased network bandwidth.
+		// When we have a high speed NIC attached to the server, ZFS should run on the slower disks.
+		// So Rook CEPH ends up on the faster disks, taking advantage of the higher network bandwidth.
 		case d.WithHighSpeedNIC && (d.Type == constants.DiskTypeNVMe):
-			return 6
-
+			return 1
 		case d.WithHighSpeedNIC && (d.Type == constants.DiskTypeSSD):
-			return 5
-
-		case d.Type == constants.DiskTypeNVMe:
-			return 4
-
-		case d.Type == constants.DiskTypeSSD:
-			return 3
-
-		case d.Type == constants.DiskTypeHDD:
 			return 2
+
+		// Otherwise, ZFS should be on the faster disks.
+		case d.Type == constants.DiskTypeHDD:
+			return 3
+		case d.Type == constants.DiskTypeSSD:
+			return 4
+		case d.Type == constants.DiskTypeNVMe:
+			return 5
 
 		default:
 			return 0
