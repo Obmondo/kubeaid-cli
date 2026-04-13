@@ -80,9 +80,12 @@ func NewStructFromAST(ctx context.Context,
 	fields := []Field{}
 
 	for _, node := range structDeclarationNode.Fields.List {
-		// Field isn't settable by user, since it doesn't have the yaml struct tag.
-		// So, we'll skip it.
-		if (node.Tag == nil) || (len(getStructTags(node).Get("yaml")) == 0) {
+		// Skip field, if it isn't considered during YAML unmarshalling.
+		if node.Tag == nil {
+			continue
+		}
+		yamlStructTag := getStructTags(node).Get("yaml")
+		if (len(yamlStructTag) == 0) || (yamlStructTag == "-") {
 			continue
 		}
 

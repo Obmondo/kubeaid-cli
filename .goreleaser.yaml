@@ -13,7 +13,8 @@ before:
     - go mod tidy
 
 builds:
-  - main: ./cmd/kubeaid-cli
+  - id: kubeaid-cli
+    main: ./cmd/kubeaid-cli
     binary: kubeaid-cli
     goos: ["darwin", "linux"]
     goarch: ["amd64", "arm64"]
@@ -22,7 +23,8 @@ builds:
       - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version={{ .Tag }}
       - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit={{ .ShortCommit }}
       - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date={{ .Date }}
-  - main: ./cmd/kubeaid-storagectl
+  - id: kubeaid-storagectl
+    main: ./cmd/kubeaid-storagectl
     binary: kubeaid-storagectl
     goos: ["linux"]
     goarch: ["amd64", "arm64"]
