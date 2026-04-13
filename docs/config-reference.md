@@ -28,6 +28,7 @@
 - [GeneralConfig](#generalconfig)
 - [GitConfig](#gitconfig)
 - [HCloudAutoScalableNodeGroup](#hcloudautoscalablenodegroup)
+- [HCloudConfig](#hcloudconfig)
 - [HCloudControlPlane](#hcloudcontrolplane)
 - [HCloudControlPlaneLoadBalancer](#hcloudcontrolplaneloadbalancer)
 - [HCloudVPNClusterConfig](#hcloudvpnclusterconfig)
@@ -36,13 +37,13 @@
 - [HetznerBareMetalControlPlaneEndpoint](#hetznerbaremetalcontrolplaneendpoint)
 - [HetznerBareMetalHost](#hetznerbaremetalhost)
 - [HetznerBareMetalNodeGroup](#hetznerbaremetalnodegroup)
-- [HetznerBareMetalSSHKeyPair](#hetznerbaremetalsshkeypair)
 - [HetznerConfig](#hetznerconfig)
 - [HetznerControlPlane](#hetznercontrolplane)
 - [HetznerCredentials](#hetznercredentials)
-- [HetznerHCloudConfig](#hetznerhcloudconfig)
+- [HetznerNetworkConfig](#hetznernetworkconfig)
 - [HetznerNodeGroups](#hetznernodegroups)
 - [HetznerRobotCredentials](#hetznerrobotcredentials)
+- [HetznerSSHKeyPair](#hetznersshkeypair)
 - [HostPathMountConfig](#hostpathmountconfig)
 - [InstallImageConfig](#installimageconfig)
 - [KubeAidForkConfig](#kubeaidforkconfig)
@@ -51,8 +52,8 @@
 - [LocalConfig](#localconfig)
 - [NodeGroup](#nodegroup)
 - [ObmondoConfig](#obmondoconfig)
+- [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
-- [SSHPrivateKeyConfig](#sshprivatekeyconfig)
 - [SecretsConfig](#secretsconfig)
 - [UserConfig](#userconfig)
 - [VG0Config](#vg0config)
@@ -103,11 +104,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -270,7 +271,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | port | `uint` | 22 |  |
-| privateKey | [`SSHPrivateKeyConfig`](#sshprivatekeyconfig) |  |  |
+| privateKeyFilePath | `string` |  |  |
 
 ## CanonicalUbuntuImage
 
@@ -314,8 +315,8 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| kubeaidConfig | [`SSHPrivateKeyConfig`](#sshprivatekeyconfig) |  |  |
-| kubeaid | [`SSHPrivateKeyConfig`](#sshprivatekeyconfig) |  |  |
+| kubeaid | [`SSHKeyPairConfig`](#sshkeypairconfig) |  |  |
+| kubeaidConfig | [`SSHKeyPairConfig`](#sshkeypairconfig) |  |  |
 
 ## DisasterRecoveryConfig
 
@@ -351,11 +352,12 @@ We require the KubeAid and KubeAid Config repositories to be hosted in the same 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| imagePullPolicy | `string` | IfNotPresent | Image pull policy for the KubeAid Core container image.<br>Valid values: Always, IfNotPresent, Never.<br> |
 | git | [`GitConfig`](#gitconfig) |  | Git server specific details.<br> |
 | forkURLs | [`ForksConfig`](#forksconfig) |  | KubeAid and KubeAid Config repository specific details.<br>The KubeAid and KubeAid Config repositories must be hosted in the same Git server.<br> |
 | cluster | [`ClusterConfig`](#clusterconfig) |  | Kubernetes specific details.<br> |
 | cloud | [`CloudConfig`](#cloudconfig) |  | Cloud provider specific details.<br> |
-| kubePrometheus | [`KubePrometheusConfig`](#kubeprometheusconfig) |  | Kube Prometheus installation specific details. Defaults to Latest<br>Fill this only if you want a specific version<br> |
+| kubePrometheus | [`KubePrometheusConfig`](#kubeprometheusconfig) |  | Kube Prometheus installation specific details.<br> |
 | obmondo | [`ObmondoConfig`](#obmondoconfig) |  | Obmondo customer specific details.<br> |
 
 ## GitConfig
@@ -369,6 +371,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | caBundlePath | `string` |  |  |
 | sshUsername | `string` | git | SSH username.<br> |
 | useSSHAgent | `bool` |  | Or, make KubeAid CLI use the SSH Agent.<br>So, you (the one who runs KubeAid CLI) can use your YubiKey.<br> |
+| knownHosts | []`string` |  | Additional SSH known hosts.<br>Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)<br> |
 | privateKeyFilePath | `string` |  |  |
 
 ## HCloudAutoScalableNodeGroup
@@ -378,11 +381,21 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
+
+## HCloudConfig
+
+<p></p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| zone | `string` |  |  |
+| imageName | `string` | ubuntu-24.04 |  |
+| hetznerNetwork | [`HetznerNetworkConfig`](#hetznernetworkconfig) |  | Hetzner Network specific details.<br> |
 
 ## HCloudControlPlane
 
@@ -419,7 +432,8 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | wipeDisks | `bool` | false |  |
 | installImage | [`InstallImageConfig`](#installimageconfig) |  |  |
-| sshKeyPair | [`HetznerBareMetalSSHKeyPair`](#hetznerbaremetalsshkeypair) |  |  |
+| zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration.<br>Every node runs a ZFS pool, named primary. We carve out storage for container images, pod<br>logs and pod ephemeral volumes from that ZFS pool, as required.<br>The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.<br> |
+| vSwitch | [`VSwitchConfig`](#vswitchconfig) |  | Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with<br>the Hetzner Network.<br> |
 
 ## HetznerBareMetalControlPlane
 
@@ -429,7 +443,6 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | endpoint | [`HetznerBareMetalControlPlaneEndpoint`](#hetznerbaremetalcontrolplaneendpoint) |  |  |
 | bareMetalHosts | [][`HetznerBareMetalHost`](#hetznerbaremetalhost) |  |  |
-| zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration.<br>Every node runs a ZFS pool, named primary. We carve out storage for container images, pod<br>logs and pod ephemeral volumes from that ZFS pool, as required.<br>The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.<br> |
 
 ## HetznerBareMetalControlPlaneEndpoint
 
@@ -447,6 +460,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | serverID | `string` |  |  |
+| privateIP | `string` |  |  |
 
 ## HetznerBareMetalNodeGroup
 
@@ -460,16 +474,6 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
-## HetznerBareMetalSSHKeyPair
-
-<p></p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| name | `string` |  |  |
-| publicKeyFilePath | `string` |  |  |
-| privateKeyFilePath | `string` |  |  |
-
 ## HetznerConfig
 
 <p></p>
@@ -477,11 +481,12 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | mode | `string` | hcloud | 			The Hetzner mode to use :<br><br>			  (1) hcloud : Both the control-plane and the nodegroups will be in HCloud.<br><br>			  (2) bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.<br><br>			  (3) hybrid : The control-plane will be in HCloud, and each node-group can be either in<br>			               HCloud or Hetzner Bare Metal.<br> |
-| vswitch | [`VSwitchConfig`](#vswitchconfig) |  |  |
-| hcloud | [`HetznerHCloudConfig`](#hetznerhcloudconfig) |  |  |
-| bareMetal | [`HetznerBareMetalConfig`](#hetznerbaremetalconfig) |  |  |
-| controlPlane | [`HetznerControlPlane`](#hetznercontrolplane) |  |  |
-| nodeGroups | [`HetznerNodeGroups`](#hetznernodegroups) |  | Details about node-groups in Hetzner.<br> |
+| hcloudVPNCluster | [`HCloudVPNClusterConfig`](#hcloudvpnclusterconfig) |  | Details about the VPN cluster you have in HCloud.<br> |
+| sshKeyPair | [`HetznerSSHKeyPair`](#hetznersshkeypair) |  | Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner<br>Bare Metal server.<br>KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,<br>if it / they doesn't already exist.<br> |
+| hcloud | [`HCloudConfig`](#hcloudconfig) |  | HCloud specific details.<br> |
+| bareMetal | [`HetznerBareMetalConfig`](#hetznerbaremetalconfig) |  | Hetzner bare-metal specific details.<br> |
+| controlPlane | [`HetznerControlPlane`](#hetznercontrolplane) |  | Control-plane specific details.<br> |
+| nodeGroups | [`HetznerNodeGroups`](#hetznernodegroups) |  | Details about the node-groups.<br> |
 | vpnCluster | [`HCloudVPNClusterConfig`](#hcloudvpnclusterconfig) |  |  |
 
 ## HetznerControlPlane
@@ -503,15 +508,14 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | apiToken | `string` |  |  |
 | robot | [`HetznerRobotCredentials`](#hetznerrobotcredentials) |  |  |
 
-## HetznerHCloudConfig
+## HetznerNetworkConfig
 
 <p></p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| zone | `string` |  |  |
-| imageName | `string` | ubuntu-24.04 |  |
-| sshKeyPairName | `string` |  |  |
+| cidr | `string` |  |  |
+| hcloudServersSubnetCIDR | `string` |  |  |
 
 ## HetznerNodeGroups
 
@@ -530,6 +534,15 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | user | `string` |  |  |
 | password | `string` |  |  |
+
+## HetznerSSHKeyPair
+
+<p></p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| name | `string` |  |  |
+| privateKeyFilePath | `string` |  |  |
 
 ## HostPathMountConfig
 
@@ -605,7 +618,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | customerID | `string` |  |  |
 | monitoring | `bool` |  |  |
 
-## SSHKeyPairConfig
+## OpenIDProviderSSHKeyPairConfig
 
 <p></p>
 
@@ -614,7 +627,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | publicKeyFilePath | `string` |  |  |
 | privateKeyFilePath | `string` |  |  |
 
-## SSHPrivateKeyConfig
+## SSHKeyPairConfig
 
 <p></p>
 
@@ -658,6 +671,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | vlanID | `int` |  |  |
 | name | `string` |  |  |
+| subnetCIDRBlock | `string` |  |  |
 
 ## WorkloadIdentity
 
@@ -665,7 +679,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| openIDProviderSSHKeyPair | [`SSHKeyPairConfig`](#sshkeypairconfig) |  |  |
+| openIDProviderSSHKeyPair | [`OpenIDProviderSSHKeyPairConfig`](#openidprovidersshkeypairconfig) |  |  |
 
 ## ZFSConfig
 
