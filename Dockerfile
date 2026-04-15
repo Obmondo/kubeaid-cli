@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/go/pkg/mod,id=kubeaid-cli-gomodcache \
 #--- Dependencies layer ---
 FROM alpine:3.22 AS runtime-dependencies-installer
 
-RUN apk add --no-cache bash curl wget unzip jq
+RUN apk add --no-cache bash curl wget unzip jq git
 
 COPY scripts/install-runtime-dependencies.sh /opt/install-runtime-dependencies.sh
 
@@ -46,7 +46,7 @@ LABEL org.opencontainers.image.licenses="GPL3"
 
 ENV PATH=$PATH:/usr/local/bin:/usr/bin:/bin
 
-RUN apk add --no-cache bash jq
+RUN apk add --no-cache bash jq git
 
 COPY --from=builder /usr/local/bin/kubeaid-core /usr/local/bin/kubeaid-core
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin

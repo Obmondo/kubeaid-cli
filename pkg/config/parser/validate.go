@@ -154,7 +154,10 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 
 	// Check that : min supported K8s version <= provided K8s version <= max supported K8s version.
 
-	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
+	// Strip the patch version so that any patch (e.g. v1.34.6) within a
+	// supported minor release is accepted.
+	semver := version.MustParseSemantic(k8sVersion)
+	parsedK8sVersion, err := version.ParseMajorMinor(fmt.Sprintf("v%d.%d", semver.Major(), semver.Minor()))
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
 	k8sVersionSupported := parsedK8sVersion.AtLeast(parsedMinSupportedK8sVersion) &&

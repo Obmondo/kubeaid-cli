@@ -5,7 +5,9 @@ package parser
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"slices"
@@ -25,6 +27,22 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 )
+
+// ConfigFilesExist checks whether both general.yaml and secrets.yaml exist at the given path.
+func ConfigFilesExist(configsDirectory string) (bool, error) {
+	for _, p := range []string{
+		config.GetGeneralConfigFilePath(),
+		config.GetSecretsConfigFilePath(),
+	} {
+		if _, err := os.Stat(p); err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return false, nil
+			}
+			return false, fmt.Errorf("checking %s: %w", p, err)
+		}
+	}
+	return true, nil
+}
 
 func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	var err error
@@ -55,6 +73,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 		// Parse Git repository URLs, and store the result in the config.
 		// This will later come handy in a lot of places.
+		// Both URLs are required by the config schema (validate:"required").
 		forks.KubeaidFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidFork.URL)
 		forks.KubeaidConfigFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidConfigFork.URL)
 
@@ -119,7 +138,8 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 // If the user hasn't specified KubePrometheus version, select the latest
 // KubePrometheus version that's officially compatible with the configured K8s version.
 func hydrateKubePrometheusVersion(ctx context.Context) {
-	if len(config.ParsedGeneralConfig.KubePrometheus.Version) > 0 {
+	if config.ParsedGeneralConfig.KubePrometheus != nil &&
+		len(config.ParsedGeneralConfig.KubePrometheus.Version) > 0 {
 		return
 	}
 
@@ -162,7 +182,9 @@ func hydrateKubePrometheusVersion(ctx context.Context) {
 	})
 
 	selectedKubePrometheusVersion := sortedCompatibleKubePrometheusVersions[len(sortedCompatibleKubePrometheusVersions)-1]
-	config.ParsedGeneralConfig.KubePrometheus.Version = selectedKubePrometheusVersion
+	config.ParsedGeneralConfig.KubePrometheus = &config.KubePrometheusConfig{
+		Version: selectedKubePrometheusVersion,
+	}
 
 	slog.InfoContext(ctx, "Auto-selected KubePrometheus version",
 		slog.String("k8s_version", k8sMajorMinorVersion),

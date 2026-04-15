@@ -8,23 +8,37 @@ import (
 	"log/slog"
 
 	"github.com/go-logr/logr"
+	k3dLogger "github.com/k3d-io/k3d/v5/pkg/logger"
 	"k8s.io/klog/v2"
 	controllerRuntimeLogger "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Creates the logger.
+// When debug mode is disabled, only ERROR are written to stdout; INFO+ always goes to the
+// log file. When debug mode is enabled, DEBUG+ goes to both.
 func CreateLogger(isDebugModeEnabled bool, writers []io.Writer) {
-	logLevel := slog.LevelInfo
-	if isDebugModeEnabled {
-		logLevel = slog.LevelDebug
-	}
+	// writers[0] is the log file, writers[1] is stdout.
+	// The log file always receives INFO and above.
+	fileHandler := NewCustomTextHandler(writers[0], &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
 
-	logger := slog.New(withContextualSlogAttributesHandler(NewCustomTextHandler(
-		io.MultiWriter(writers...), &slog.HandlerOptions{
-			Level: logLevel,
-		},
-	)))
+	stdoutLevel := slog.LevelError
+	if isDebugModeEnabled {
+		stdoutLevel = slog.LevelDebug
+	}
+	stdoutHandler := NewCustomTextHandler(writers[1], &slog.HandlerOptions{
+		Level: stdoutLevel,
+	})
+
+	logger := slog.New(withContextualSlogAttributesHandler(
+		&multiHandler{handlers: []slog.Handler{fileHandler, stdoutHandler}},
+	))
 	slog.SetDefault(logger)
+
+	// Route logrus output (used by k3d) to the log file.
+	// configure both the global logger and k3d's private logger.
+	k3dLogger.Log().SetOutput(writers[0])
 
 	// Initialize controller-runtime's (or kubebuilder's) base logger. Otherwise, it'll complain with
 	// some error message.

@@ -181,7 +181,15 @@ func createK3DCluster(ctx context.Context, name string) {
 		"--config",
 		constants.OutputPathManagementClusterK3DConfig,
 	})
+
+	// k3d's cluster create command prints help text (e.g. "kubectl cluster-info")
+	// directly to stdout via fmt.Println, bypassing logrus. Temporarily redirect
+	// stdout to suppress this output.
+	origStdout := os.Stdout
+	os.Stdout, _ = os.Open(os.DevNull)
 	err := clusterCreateCmd.ExecuteContext(ctx)
+	os.Stdout = origStdout
+
 	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
 }
 

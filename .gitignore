@@ -14,3 +14,5 @@ temp/
 *.swp
 
 robot_id_rsa*
+
+testcmd

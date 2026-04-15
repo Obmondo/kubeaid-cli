@@ -28,6 +28,7 @@ type KubeAidCoreContainer struct {
 
 	managementClusterName string
 	generalConfig         *config.GeneralConfig
+	commandArgs           []string
 }
 
 func (k *KubeAidCoreContainer) Run(ctx context.Context) {
@@ -63,7 +64,7 @@ func (k *KubeAidCoreContainer) Run(ctx context.Context) {
 			fmt.Sprintf("%s=%s", constants.EnvNameSSHKnownHosts, sshKnownHostsFilePath),
 		},
 
-		Command: os.Args[1:],
+		Command: k.commandArgs,
 	})
 }
 
