@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -24,13 +26,17 @@ var RootCmd = &cobra.Command{
 	Use: "kubeaid-core",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Create outputs directory.
-		err := os.MkdirAll(constants.OutputsDirectory, 0o750)
-		assert.AssertErrNil(cmd.Context(), err, "Failed ensuring that outputs directory exists")
+		// Create outputs and logs directories.
+		err := os.MkdirAll(constants.OutputLogsDirectory, 0o750)
+		assert.AssertErrNil(cmd.Context(), err, "Failed ensuring that logs directory exists")
 
 		// Create logger.
 
-		logFile, err := os.OpenFile(constants.OutputPathLogFile,
+		logFilePath := filepath.Join(
+			constants.OutputLogsDirectory,
+			time.Now().UTC().Format(time.RFC3339)+".log",
+		)
+		logFile, err := os.OpenFile(logFilePath,
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
 			0o600,
 		)

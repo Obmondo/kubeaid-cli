@@ -108,7 +108,7 @@ const CEPHNodeMinSize = 50 // GB.
 var (
 	OutputsDirectory = "outputs"
 
-	OutputPathLogFile = path.Join(OutputsDirectory, ".log")
+	OutputLogsDirectory = path.Join(OutputsDirectory, "logs")
 
 	OutputPathKnownHostsFile = path.Join(TempDirectory, "known_hosts")
 
@@ -240,6 +240,12 @@ const (
 const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
+	// Public HTTPS URL for KubeAid — used by ArgoCD (read-only, no deploy key needed).
+	KubeAidPublicHTTPSURL = "git@github.com:Obmondo/KubeAid.git"
+
+	// GitHub API URL for listing KubeAid releases (used to pick latest-1).
+	KubeAidReleasesAPIURL = "https://api.github.com/repos/Obmondo/KubeAid/releases"
+
 	GzippedFilenameSuffix = ".gz"
 )
 
@@ -277,6 +283,11 @@ const (
 	// Whatever is the latest K8s version, that becomes the max supported K8s version.
 	// We get the latest K8s version from the K8s release API.
 	K8sReleaseAPIURL = "https://dl.k8s.io/release/stable.txt"
+
+	// URL pattern for fetching the latest patch of a specific minor version.
+	// Use fmt.Sprintf with the minor version number, e.g. fmt.Sprintf(K8sStableMinorURLFmt, 34)
+	// yields "https://dl.k8s.io/release/stable-1.34.txt".
+	K8sStableMinorURLFmt = "https://dl.k8s.io/release/stable-1.%d.txt"
 
 	// CGroup v1 support has been dropped from K8s version v1.35.
 	// REFER : https://www.sysdig.com/blog/kubernetes-1-35-whats-new#changes-in-kubernetes-135-that-may-break-things.

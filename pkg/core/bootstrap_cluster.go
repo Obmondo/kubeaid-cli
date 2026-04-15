@@ -26,6 +26,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type BootstrapClusterArgs struct {
@@ -34,11 +35,16 @@ type BootstrapClusterArgs struct {
 }
 
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
+	bar := progress.New("Bootstrapping cluster")
+	defer bar.Finish()
+
 	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
 	// NOTE : Though HCloud has an official Terraform provider which can be imported into a
 	//        CrossPlane provider, Hetzner Bare Metal doesn't have any. So, we can't use CrossPlane
 	//        as of now.
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		bar.Describe("Provisioning Hetzner infrastructure")
+
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
@@ -46,13 +52,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
+	bar.Describe("Detecting Git authentication method")
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create and setup the management cluster.
+	bar.Describe("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
+	bar.Describe("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
 		BootstrapClusterArgs: &args,
 		GitAuthMethod:        gitAuthMethod,
@@ -64,6 +73,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
+		bar.Describe("Setting up disaster recovery")
 		globals.CloudProvider.SetupDisasterRecovery(ctx)
 	}
 
@@ -74,11 +84,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Sync all ArgoCD Apps.
+	bar.Describe("Syncing ArgoCD applications")
 	kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
+		bar.Describe("Creating initial backups")
+
 		// Create the first Velero backup.
 		kubernetes.CreateBackup(ctx, "init", mainClusterClient)
 
@@ -92,6 +105,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		)
 	}
 
+	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 }
 

@@ -1,0 +1,100 @@
+git:
+  sshUsername: {{ .SSHUsername }}
+  useSSHAgent: {{ .UseSSHAgent }}
+{{- if and (not .UseSSHAgent) .SSHKeyPath }}
+  privateKeyFilePath: {{ .SSHKeyPath }}
+{{- end }}
+
+forkURLs:
+  kubeaid:
+    url: {{ .KubeaidForkURL }}
+    version: {{ .KubeaidVersion }}
+  kubeaidConfig:
+    url: {{ .KubeaidConfigForkURL }}
+    directory: {{ .KubeaidConfigDir }}
+
+cluster:
+  type: {{ .ClusterType }}
+  name: {{ .ClusterName }}
+  k8sVersion: {{ .K8sVersion }}
+  enableAuditLogging: {{ .EnableAuditLogging }}
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaid:
+        privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
+      kubeaidConfig:
+        privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
+{{- if .KubePrometheusVersion }}
+
+kubePrometheus:
+  version: {{ .KubePrometheusVersion }}
+{{- end }}
+
+cloud:
+{{- if eq .CloudProvider "aws" }}
+  aws:
+    region: {{ .AWSRegion }}
+    sshKeyName: {{ .AWSSSHKeyName }}
+    bastionEnabled: true
+    controlPlane:
+      loadBalancerScheme: internet-facing
+      replicas: {{ .AWSCPReplicas }}
+      instanceType: {{ .AWSCPInstanceType }}
+      ami:
+        id: {{ .AWSAMIID }}
+{{- end }}
+{{- if eq .CloudProvider "azure" }}
+  azure:
+    tenantID: {{ .AzureTenantID }}
+    subscriptionID: {{ .AzureSubscriptionID }}
+    location: {{ .AzureLocation }}
+    storageAccount: {{ .AzureStorageAccount }}
+    controlPlane:
+      loadBalancerType: Public
+      diskSizeGB: {{ .AzureCPDiskSizeGB }}
+      vmSize: {{ .AzureCPVMSize }}
+      replicas: {{ .AzureCPReplicas }}
+{{- end }}
+{{- if eq .CloudProvider "hetzner" }}
+  hetzner:
+    mode: {{ .HetznerMode }}
+    sshKeyPair:
+      name: {{ .HetznerSSHKeyName }}
+      privateKeyFilePath: {{ .HetznerSSHKeyPath }}
+{{- if or (eq .HetznerMode "hcloud") (eq .HetznerMode "hybrid") }}
+    hcloud:
+      zone: {{ .HetznerHCloudZone }}
+      imageName: ubuntu-24.04
+      hetznerNetwork:
+        cidr: "10.0.0.0/16"
+        hcloudServersSubnetCIDR: "10.0.0.0/24"
+    controlPlane:
+      hcloud:
+        machineType: {{ .HetznerCPMachineType }}
+        replicas: {{ .HetznerCPReplicas }}
+        loadBalancer:
+          enabled: true
+          region: {{ .HetznerLBRegion }}
+      regions:
+        - {{ .HetznerRegion }}
+    nodeGroups:
+      hcloud: []
+{{- end }}
+{{- end }}
+{{- if eq .CloudProvider "bare-metal" }}
+  bare-metal:
+    ssh:
+      port: {{ .BareMetalSSHPort }}
+    controlPlane:
+      endpoint:
+        host: {{ .BareMetalEndpointHost }}
+        port: {{ .BareMetalEndpointPort }}
+      hosts: []
+{{- end }}
+{{- if eq .CloudProvider "local" }}
+  local: {}
+{{- end }}

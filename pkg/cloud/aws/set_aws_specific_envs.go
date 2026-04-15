@@ -37,11 +37,12 @@ func SetAWSSpecificEnvs(ctx context.Context) {
 	err := credentialsCmd.ExecuteContext(ctx)
 	assert.AssertErrNil(ctx, err, "Failed created Base64 encoded credentials for CAPA")
 
+	credentialsCmdOutputParts := strings.Split(
+		credentialsCmdOutputBuffer.String(),
+		"WARNING: `encode-as-profile` should only be used for bootstrapping.",
+	)
 	awsB64EncodedCredentials := strings.TrimSpace(
-		strings.Split(
-			credentialsCmdOutputBuffer.String(),
-			"WARNING: `encode-as-profile` should only be used for bootstrapping.",
-		)[1],
+		credentialsCmdOutputParts[len(credentialsCmdOutputParts)-1],
 	)
 	utils.MustSetEnv(constants.EnvNameAWSB64EcodedCredentials, awsB64EncodedCredentials)
 }

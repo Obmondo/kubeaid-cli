@@ -4,11 +4,13 @@
 package devenv
 
 import (
+	"log/slog"
+	"os"
+
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
+	configSetup "github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
 
@@ -17,14 +19,23 @@ var DevenvCmd = &cobra.Command{
 	Short: "Manage local development environment (i.e. the management cluster)",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Parse config files.
-		parser.ParseConfigFiles(cmd.Context(), globals.ConfigsDirectory)
+		ctx := cmd.Context()
+
+		cleanup, err := configSetup.Prepare(ctx)
+		if err != nil {
+			slog.ErrorContext(ctx, "Failed preparing config files",
+				slog.String("error", err.Error()),
+			)
+			cleanup()
+			os.Exit(1)
+		}
+		cobra.OnFinalize(cleanup)
 
 		// Initialize temp directory.
-		utils.InitTempDir(cmd.Context())
+		utils.InitTempDir(ctx)
 
 		// Ensure required runtime dependencies are installed.
-		utils.EnsureRuntimeDependenciesInstalled(cmd.Context())
+		utils.EnsureRuntimeDependenciesInstalled(ctx)
 	},
 }
 

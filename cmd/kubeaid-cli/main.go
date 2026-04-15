@@ -4,6 +4,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -11,11 +13,10 @@ import (
 
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
+	configSetup "github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/containerruntime/docker"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
 func main() {
@@ -77,23 +78,42 @@ func proxyRun(command *cobra.Command, _ []string) {
 
 	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
 
-	// Parse config files, similar to kubeaid-core's cluster/devenv PersistentPreRun.
-	parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
-
-	managementClusterName, err := command.Flags().GetString(constants.FlagNameManagementClusterName)
-	if err != nil {
-		slog.ErrorContext(ctx, "Failed reading management cluster name from flag", slog.Any("error", err))
+	if err := runProxy(ctx, command); err != nil {
+		slog.ErrorContext(ctx, err.Error())
 		os.Exit(1)
+	}
+}
+
+func runProxy(ctx context.Context, command *cobra.Command) error {
+	cleanup, err := configSetup.Prepare(ctx)
+	if err != nil {
+		cleanup()
+		return fmt.Errorf("preparing config files: %w", err)
+	}
+	defer cleanup()
+
+	managementClusterName, err := command.Flags().GetString(
+		constants.FlagNameManagementClusterName,
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"reading management cluster name from flag: %w", err,
+		)
 	}
 
 	containerRuntime := docker.NewDocker(ctx)
 	defer containerRuntime.CloseSocketConnection(ctx)
 
 	kubeAidCoreContainer := &KubeAidCoreContainer{
-		containerRuntime:      containerRuntime,
-		imagePullPolicy:       containerruntime.ImagePullPolicy(config.ParsedGeneralConfig.ImagePullPolicy),
+		containerRuntime: containerRuntime,
+		imagePullPolicy: containerruntime.ImagePullPolicy(
+			config.ParsedGeneralConfig.ImagePullPolicy,
+		),
 		managementClusterName: managementClusterName,
 		generalConfig:         config.ParsedGeneralConfig,
+		commandArgs:           os.Args[1:],
 	}
 	kubeAidCoreContainer.Run(ctx)
+
+	return nil
 }
