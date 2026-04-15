@@ -207,6 +207,11 @@ const (
 	HCloudLocationHel1 = "hel1"
 
 	HCloudLBTypeLB11 = "lb11"
+
+	// Hetzner Robot OS installation.
+	HetznerRobotResetTypeHardware = "hw"
+	HetznerOSInstallPollInterval  = 20 * time.Second
+	HetznerOSInstallMaxWaitTime   = 12 * time.Minute
 )
 
 const (

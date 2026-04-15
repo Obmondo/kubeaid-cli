@@ -60,8 +60,10 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 			}
 		}
 
-		// TODO : Boot each Hetzner Bare Metal server into rescue mode,
-		//        so that KubeAid CLI can access them using the above Hetzner Bare Metal server.
+		// Install the OS on each Hetzner Bare Metal server (if not already installed).
+		// This activates a Linux installation via the Hetzner Robot API, triggers a hardware
+		// reset, and waits until the server is reachable via SSH.
+		h.InstallOSOnBareMetalServers(ctx)
 
 		// Generate storage plan for the control-plane and each node-group.
 		h.GenerateStoragePlans(ctx, hetznerConfig)

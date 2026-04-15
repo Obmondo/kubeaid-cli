@@ -420,6 +420,9 @@ type (
 	}
 
 	InstallImageConfig struct {
+		// Distribution name for the Hetzner Robot Linux installation API.
+		Distribution string `yaml:"distribution" default:"Ubuntu 24.04 LTS minimal" validate:"notblank"`
+
 		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
 		VG0       VG0Config `yaml:"vg0"`
 	}
