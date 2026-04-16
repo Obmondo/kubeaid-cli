@@ -39,17 +39,19 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	slog.InfoContext(ctx, "Checked out to the default branch")
 
 	// Fetch all the changes.
-	err = repo.Fetch(&goGit.FetchOptions{
-		Auth:     authMethod,
-		CABundle: config.ParsedGeneralConfig.Git.CABundle,
+	err = retryGitOperation(ctx, "fetch latest changes", func() error {
+		return repo.FetchContext(ctx, &goGit.FetchOptions{
+			Auth:     authMethod,
+			CABundle: config.ParsedGeneralConfig.Git.CABundle,
 
-		// The '+' tells Git to update the reference even if it isn’t a fast-forward,
-		// like history rewrites.
-		RefSpecs: []gitConfig.RefSpec{"+refs/*:refs/*"},
+			// The '+' tells Git to update the reference even if it is not a fast-forward,
+			// like history rewrites.
+			RefSpecs: []gitConfig.RefSpec{"+refs/*:refs/*"},
 
-		Tags: goGit.AllTags,
+			Tags: goGit.AllTags,
+		})
 	})
-	if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
+	if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")
 	}
 	slog.InfoContext(ctx, "Fetched latest changes")
