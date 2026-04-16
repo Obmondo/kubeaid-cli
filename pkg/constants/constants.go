@@ -208,10 +208,10 @@ const (
 
 	HCloudLBTypeLB11 = "lb11"
 
-	// Hetzner Robot OS installation.
-	HetznerRobotResetTypeHardware = "hw"
-	HetznerOSInstallPollInterval  = 20 * time.Second
-	HetznerOSInstallMaxWaitTime   = 12 * time.Minute
+	// Hetzner Bare Metal Server (HBMS) OS installation via Hetzner Robot (HRobot).
+	HRobotResetTypeHardware        = "hw"
+	HBMSOSInstallationPollInterval = 20 * time.Second
+	HBMSOSInstallationMaxWaitTime  = 12 * time.Minute
 )
 
 const (

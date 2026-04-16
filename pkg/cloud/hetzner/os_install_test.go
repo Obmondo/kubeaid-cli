@@ -23,7 +23,7 @@ func newTestHetznerWithRobotServer(handler http.Handler) (*Hetzner, *httptest.Se
 	return &Hetzner{robotClient: robotClient}, server
 }
 
-func TestActivateLinuxInstallation(t *testing.T) {
+func TestActivateHRobotLinuxInstallation(t *testing.T) {
 	t.Run("sends correct form params and succeeds on HTTP 200", func(t *testing.T) {
 		var capturedPath string
 		var capturedFormValues map[string][]string
@@ -47,17 +47,17 @@ func TestActivateLinuxInstallation(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		h.activateLinuxInstallation(ctx, "12345", "Ubuntu 24.04 LTS minimal", "ab:cd:ef")
+		h.activateHRobotLinuxInstallation(ctx, "12345", "Ubuntu 24.04 LTS minimal", "ab:cd:ef")
 
 		assert.Equal(t, "/boot/12345/linux", capturedPath)
 		assert.Equal(t, []string{"Ubuntu 24.04 LTS minimal"}, capturedFormValues["dist"])
-		assert.Equal(t, []string{"64"}, capturedFormValues["arch"])
+		assert.NotContains(t, capturedFormValues, "arch")
 		assert.Equal(t, []string{"en"}, capturedFormValues["lang"])
 		assert.Equal(t, []string{"ab:cd:ef"}, capturedFormValues["authorized_key[]"])
 	})
 }
 
-func TestResetServer(t *testing.T) {
+func TestResetHBMS(t *testing.T) {
 	t.Run("sends hw reset type and succeeds on HTTP 200", func(t *testing.T) {
 		var capturedPath string
 		var capturedFormValues map[string][]string
@@ -78,7 +78,7 @@ func TestResetServer(t *testing.T) {
 		defer server.Close()
 
 		ctx := context.Background()
-		h.resetServer(ctx, "12345")
+		h.resetHBMS(ctx, "12345")
 
 		assert.Equal(t, "/reset/12345", capturedPath)
 		assert.Equal(t, []string{"hw"}, capturedFormValues["type"])

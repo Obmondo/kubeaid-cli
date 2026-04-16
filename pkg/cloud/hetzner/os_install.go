@@ -21,7 +21,7 @@ import (
 )
 
 type (
-	ActivateLinuxInstallResponseBody struct {
+	ActivateHRobotLinuxInstallationResponseBody struct {
 		Linux struct {
 			Dist          string   `json:"dist"`
 			Arch          int      `json:"arch"`
@@ -32,7 +32,7 @@ type (
 		} `json:"linux"`
 	}
 
-	ResetResponseBody struct {
+	HRobotResetResponseBody struct {
 		Reset struct {
 			ServerIP string `json:"server_ip"`
 			Type     string `json:"type"`
@@ -40,17 +40,16 @@ type (
 	}
 )
 
-// InstallOSOnBareMetalServers installs Ubuntu on each Hetzner Bare Metal server in parallel.
-// Servers that are already SSH-reachable are skipped (idempotency). Since each server's OS
-// installation takes ~8-12 minutes regardless of others, processing them in parallel bounds
-// total wall-clock time to that of the slowest single server.
-func (h *Hetzner) InstallOSOnBareMetalServers(ctx context.Context) {
+// InstallOSOnAllHBMS installs Ubuntu on each HBMS in parallel. HBMS that are already
+// SSH-reachable are skipped (idempotency). Since each HBMS's OS installation takes ~8-12
+// minutes regardless of others, processing them in parallel bounds total wall-clock time to
+// that of the slowest single host.
+func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 	fingerprint := hetznerConfig.SSHKeyPair.Fingerprint
 	distribution := hetznerConfig.BareMetal.InstallImage.Distribution
 
-	// Collect all bare metal hosts.
 	var hosts []*config.HetznerBareMetalHost
 
 	if config.ControlPlaneInHetznerBareMetal() {
@@ -73,7 +72,7 @@ func (h *Hetzner) InstallOSOnBareMetalServers(ctx context.Context) {
 		wg.Add(1)
 		go func(host *config.HetznerBareMetalHost) {
 			defer wg.Done()
-			h.installOSOnServer(ctx, host, distribution, fingerprint, privateKey)
+			h.installOSOnHBMS(ctx, host, distribution, fingerprint, privateKey)
 		}(host)
 	}
 	wg.Wait()
@@ -81,43 +80,42 @@ func (h *Hetzner) InstallOSOnBareMetalServers(ctx context.Context) {
 	slog.InfoContext(ctx, "All Hetzner Bare Metal servers are ready")
 }
 
-// installOSOnServer runs the full install flow for a single server: idempotency check, activate
-// Linux install, hardware reset, and wait for SSH reachability.
-func (h *Hetzner) installOSOnServer(
+// installOSOnHBMS runs the full install flow for a single HBMS: idempotency check, activate
+// Linux install via HRobot, hardware reset via HRobot, and wait for SSH reachability.
+func (h *Hetzner) installOSOnHBMS(
 	ctx context.Context,
 	host *config.HetznerBareMetalHost,
 	distribution, fingerprint, privateKey string,
 ) {
-	serverCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+	hbmsCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-id", host.ServerID),
 	})
 
-	address := h.getHetznerBareMetalServerIP(serverCtx, host.ServerID)
+	address := h.getHetznerBareMetalServerIP(hbmsCtx, host.ServerID)
 
-	if h.isServerReachable(serverCtx, address, privateKey) {
-		slog.InfoContext(serverCtx, "Server already reachable via SSH, skipping OS installation")
+	if h.isHBMSReachable(hbmsCtx, address, privateKey) {
+		slog.InfoContext(hbmsCtx, "HBMS already reachable via SSH, skipping OS installation")
 		return
 	}
 
-	slog.InfoContext(serverCtx, "Installing OS on server")
+	slog.InfoContext(hbmsCtx, "Installing OS on HBMS")
 
-	h.activateLinuxInstallation(serverCtx, host.ServerID, distribution, fingerprint)
-	h.resetServer(serverCtx, host.ServerID)
-	h.waitForServerReachable(serverCtx, host.ServerID, address, privateKey)
+	h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, distribution, fingerprint)
+	h.resetHBMS(hbmsCtx, host.ServerID)
+	h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey)
 
-	slog.InfoContext(serverCtx, "OS installation completed, server is reachable")
+	slog.InfoContext(hbmsCtx, "OS installation completed, HBMS is reachable")
 }
 
-// activateLinuxInstallation activates a Linux installation for the given server via the Hetzner
-// Robot API. The installation is queued and executed on the next server boot.
-func (h *Hetzner) activateLinuxInstallation(
+// activateHRobotLinuxInstallation activates a Linux installation for the given HBMS via the
+// HRobot API. The installation is queued and executed on the next boot.
+func (h *Hetzner) activateHRobotLinuxInstallation(
 	ctx context.Context,
 	serverID, distribution, fingerprint string,
 ) {
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
 			"dist":             []string{distribution},
-			"arch":             []string{"64"},
 			"lang":             []string{"en"},
 			"authorized_key[]": []string{fingerprint},
 		}).
@@ -134,51 +132,51 @@ func (h *Hetzner) activateLinuxInstallation(
 	)
 }
 
-// resetServer triggers a hardware reset on the given server via the Hetzner Robot API.
-func (h *Hetzner) resetServer(ctx context.Context, serverID string) {
+// resetHBMS triggers a hardware reset on the given HBMS via the HRobot API.
+func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) {
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
-			"type": []string{constants.HetznerRobotResetTypeHardware},
+			"type": []string{constants.HRobotResetTypeHardware},
 		}).
 		Post(fmt.Sprintf("/reset/%s", serverID))
-	assert.AssertErrNil(ctx, err, "Failed resetting server")
+	assert.AssertErrNil(ctx, err, "Failed resetting HBMS")
 	assert.Assert(ctx,
 		response.StatusCode() == http.StatusOK,
-		"Failed resetting server",
+		"Failed resetting HBMS",
 		slog.Any("response", response),
 	)
 
 	slog.InfoContext(ctx, "Triggered hardware reset")
 }
 
-// waitForServerReachable polls via SSH until the server becomes reachable after OS installation.
-func (h *Hetzner) waitForServerReachable(
+// waitForHBMSReachable polls via SSH until the HBMS becomes reachable after OS installation.
+func (h *Hetzner) waitForHBMSReachable(
 	ctx context.Context,
 	serverID, address, privateKey string,
 ) {
-	deadline := time.Now().Add(constants.HetznerOSInstallMaxWaitTime)
+	deadline := time.Now().Add(constants.HBMSOSInstallationMaxWaitTime)
 
 	for {
-		if h.isServerReachable(ctx, address, privateKey) {
+		if h.isHBMSReachable(ctx, address, privateKey) {
 			return
 		}
 
 		assert.Assert(ctx,
 			time.Now().Before(deadline),
-			"Timed out waiting for server to become reachable after OS installation",
+			"Timed out waiting for HBMS to become reachable after OS installation",
 			slog.String("server-id", serverID),
-			slog.Duration("max-wait", constants.HetznerOSInstallMaxWaitTime),
+			slog.Duration("max-wait", constants.HBMSOSInstallationMaxWaitTime),
 		)
 
-		slog.InfoContext(ctx, "Server not yet reachable after OS installation, will retry...",
-			slog.Duration("interval", constants.HetznerOSInstallPollInterval),
+		slog.InfoContext(ctx, "HBMS not yet reachable after OS installation, will retry...",
+			slog.Duration("interval", constants.HBMSOSInstallationPollInterval),
 		)
-		time.Sleep(constants.HetznerOSInstallPollInterval)
+		time.Sleep(constants.HBMSOSInstallationPollInterval)
 	}
 }
 
-// isServerReachable attempts a single SSH connection to check if the server is reachable.
-func (h *Hetzner) isServerReachable(ctx context.Context, address, privateKey string) bool {
+// isHBMSReachable attempts a single SSH connection to check if the HBMS is reachable.
+func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey string) bool {
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
 		Context: ctx,
 
