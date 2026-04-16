@@ -59,6 +59,8 @@ archives:
       mode: 0755
       mtime: "{{ .CommitDate }}"
 
+    allow_different_binary_count: true
+
 # TODO : github.com/Obmondo/homebrew-tab needs to be renamed to github.com/Obmondo/homebrew-tap.
 # homebrew_casks:
 #   - homepage: https://github.com/Obmondo/kubeaid-cli
