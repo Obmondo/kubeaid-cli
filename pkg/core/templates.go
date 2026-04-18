@@ -5,7 +5,10 @@ package core
 
 import (
 	"context"
+	"crypto/x509"
 	"embed"
+	"encoding/pem"
+	"log/slog"
 	"os"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
@@ -13,6 +16,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -69,6 +73,11 @@ type TemplateValues struct {
 	*config.DisasterRecoveryConfig
 
 	*config.ObmondoConfig
+
+	// Subject CN of the Obmondo-issued mTLS cert (ObmondoConfig.CertPath),
+	// populated when Obmondo.Monitoring is true. Used in
+	// cluster-vars.jsonnet.tmpl as the required `certname` field.
+	ObmondoCertCN string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -101,6 +110,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
+	}
+
+	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.
+	// kube-prometheus's common-template fails hard if certname is missing.
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+		templateValues.ObmondoCertCN = readCertCN(ctx,
+			config.ParsedGeneralConfig.Obmondo.CertPath)
 	}
 
 	// Set cloud provider specific values.
@@ -143,6 +159,25 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	return templateValues
+}
+
+// readCertCN reads a PEM-encoded X.509 certificate and returns its Subject
+// Common Name. Fatal if the file can't be read or parsed.
+func readCertCN(ctx context.Context, path string) string {
+	data, err := os.ReadFile(path)
+	assert.AssertErrNil(ctx, err,
+		"Failed reading Obmondo cert file", slog.String("path", path))
+
+	block, _ := pem.Decode(data)
+	assert.Assert(ctx, block != nil,
+		"Failed PEM-decoding Obmondo cert file (no PEM block found)",
+		slog.String("path", path))
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	assert.AssertErrNil(ctx, err,
+		"Failed parsing Obmondo cert", slog.String("path", path))
+
+	return cert.Subject.CommonName
 }
 
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
