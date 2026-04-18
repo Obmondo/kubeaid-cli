@@ -18,7 +18,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	logger.CreateLogger(false, []io.Writer{os.Stdout})
+	logger.CreateLogger(false, []io.Writer{io.Discard, os.Stdout})
 
 	assert.Assert(ctx,
 		(len(os.Args) >= 3),
