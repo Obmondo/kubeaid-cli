@@ -91,6 +91,32 @@ func validateConfigs(ctx context.Context) error {
 		)
 	}
 
+	// When Obmondo monitoring is requested, the customer must supply the mTLS
+	// cert + private key pair issued by Obmondo. kubeaid-agent uses this pair
+	// to authenticate to the Obmondo API, and kube-prometheus's Alertmanager
+	// uses it to push alerts to Obmondo's alert-receiver endpoint.
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+		obmondo := config.ParsedGeneralConfig.Obmondo
+
+		assert.Assert(ctx, obmondo.CertPath != "",
+			"obmondo.monitoring is true but obmondo.certPath is empty"+
+				" — an Obmondo-issued mTLS cert is required")
+		assert.Assert(ctx, obmondo.KeyPath != "",
+			"obmondo.monitoring is true but obmondo.keyPath is empty"+
+				" — the private key paired with obmondo.certPath is required")
+
+		_, err := os.Stat(obmondo.CertPath)
+		assert.AssertErrNil(ctx, err,
+			"obmondo.certPath does not exist",
+			slog.String("path", obmondo.CertPath),
+		)
+		_, err = os.Stat(obmondo.KeyPath)
+		assert.AssertErrNil(ctx, err,
+			"obmondo.keyPath does not exist",
+			slog.String("path", obmondo.KeyPath),
+		)
+	}
+
 	// Validate provider specific configurations.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:

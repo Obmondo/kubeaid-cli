@@ -238,6 +238,16 @@ type (
 	ObmondoConfig struct {
 		CustomerID string `yaml:"customerID"`
 		Monitoring bool   `yaml:"monitoring"`
+
+		// Path to the mTLS client cert issued by Obmondo. Required when
+		// Monitoring is true — kubeaid-agent uses it to authenticate to the
+		// Obmondo API, and kube-prometheus's Alertmanager uses it to push
+		// alerts to Obmondo's alert-receiver endpoint.
+		CertPath string `yaml:"certPath"`
+
+		// Path to the private key paired with CertPath. Required when
+		// Monitoring is true.
+		KeyPath string `yaml:"keyPath"`
 	}
 )
 
