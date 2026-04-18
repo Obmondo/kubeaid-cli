@@ -82,6 +82,8 @@ nfpms:
 release:
   ids:
     - default
+  extra_files:
+    - glob: CHANGELOG.md
 
 gitea_urls:
   api: https://gitea.obmondo.com/api/v1
