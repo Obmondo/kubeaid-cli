@@ -118,6 +118,20 @@ func (k *KubeAidCoreContainer) getBindMounts(ctx context.Context) map[string]str
 		binds[privateKeyFilePath] = privateKeyFilePath
 	}
 
+	// Obmondo mTLS cert + private key (required when obmondo.monitoring is true).
+	// Mount them into the container so validation + downstream template
+	// rendering can reach the files at the same absolute path.
+	if k.generalConfig.Obmondo != nil && k.generalConfig.Obmondo.Monitoring {
+		if k.generalConfig.Obmondo.CertPath != "" {
+			p := utils.ToAbsolutePath(ctx, k.generalConfig.Obmondo.CertPath)
+			binds[p] = p
+		}
+		if k.generalConfig.Obmondo.KeyPath != "" {
+			p := utils.ToAbsolutePath(ctx, k.generalConfig.Obmondo.KeyPath)
+			binds[p] = p
+		}
+	}
+
 	return binds
 }
 

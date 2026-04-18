@@ -221,16 +221,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
-	// We'll deal with the TODOs, once KubeAid Agent is ready.
-	/*
-		if config.ParsedGeneralConfig.Obmondo != nil {
-		  // TODO : Some regex validation, and add customer specific templates
-
-		  if config.ParsedGeneralConfig.Obmondo.Monitoring {
-		    // TODO : Enable monitoring for the customer and setup kubeaid-agent
-		  }
-		}
-	*/
+	// Obmondo customer: include the KubeAid Agent (and sibling teleport-kube-agent)
+	// ArgoCD Application templates when monitoring is requested.
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.CustomerSpecificNonSecretTemplateNames...,
+		)
+	}
 
 	return embeddedTemplateNames
 }

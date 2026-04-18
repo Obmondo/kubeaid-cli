@@ -213,8 +213,8 @@ var (
 		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
 
 		// For KubeAid Agent.
-		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
-		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
+		"argocd-apps/templates/kubeaid-agent.yaml.tmpl",
+		"argocd-apps/values-kubeaid-agent.yaml.tmpl",
 	}
 
 	CustomerSpecificSecretTemplateNames = []string{
