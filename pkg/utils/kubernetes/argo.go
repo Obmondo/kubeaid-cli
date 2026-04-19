@@ -22,6 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	valuesPkg "helm.sh/helm/v3/pkg/cli/values"
 	coreV1 "k8s.io/api/core/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -72,12 +73,17 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 		time.Sleep(10 * time.Second)
 	}
 
-	// Install the ArgoCD Helm chart.
+	// Install the ArgoCD Helm chart. Pass the rendered values-argocd.yaml
+	// from the kubeaid-config fork so the initial install gets the same
+	// configs.ssh.knownHosts payload that the argocd Application will use
+	// on self-sync — keeping argocd-ssh-known-hosts-cm populated before
+	// the first root-app clone of a private git server.
 	HelmInstall(ctx, &HelmInstallArgs{
 		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
+		Values:      argoCDHelmValues(ctx, clusterDir),
 	})
 
 	// Port-forward ArgoCD and create ArgoCD client.
@@ -567,4 +573,22 @@ func getArgoCDAdminPassword(ctx context.Context, clusterClient client.Client) st
 
 	argoCDAdminPassword := string(argoCDInitialAdminSecret.Data["password"])
 	return argoCDAdminPassword
+}
+
+// argoCDHelmValues points helm at the rendered values-argocd.yaml from the
+// kubeaid-config fork. This keeps the initial install's values in sync with
+// the argocd Application's values (same source of truth, same keys), so
+// configs.ssh.knownHosts — derived from user-supplied git.knownHosts in
+// general.yaml — is applied before ArgoCD's first root-app clone.
+//
+// Returns nil if the file doesn't exist (user had no knownHosts and the
+// template rendered nothing, or the config step was skipped).
+func argoCDHelmValues(ctx context.Context, clusterDir string) *valuesPkg.Options {
+	valuesFile := path.Join(clusterDir, "argocd-apps/values-argocd.yaml")
+	if _, err := os.Stat(valuesFile); err != nil {
+		return nil
+	}
+	slog.DebugContext(ctx, "Using rendered values-argocd.yaml for ArgoCD install",
+		slog.String("path", valuesFile))
+	return &valuesPkg.Options{ValueFiles: []string{valuesFile}}
 }
