@@ -169,7 +169,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		// HCloud / Hetzner hybrid cluster, when we have a VPN cluster.
 		// We've pre-provisioned the control-plane LB.
-		case ((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid) && (hetznerConfig.HCloudVPNCluster != nil)):
+		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && (hetznerConfig.HCloudVPNCluster != nil)):
 			templateValues.ControlPlaneEndpoint = globals.PreProvisionedControlPlaneLBIP
 		}
 

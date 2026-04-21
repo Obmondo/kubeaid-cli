@@ -23,4 +23,5 @@ hcloud-cloud-controller-manager:
   {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
   networking:
     enabled: true
+    network: {{ .ClusterConfig.Name }}
   {{- end }}
