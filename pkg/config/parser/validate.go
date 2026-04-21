@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -301,12 +300,6 @@ func validateHetznerBareMetalConfig() error {
 		return errors.New("hetzner bare metal specific details not provided")
 	}
 
-	if err := validateHetznerUbuntuDistribution(
-		hetznerConfig.BareMetal.InstallImage.Distribution,
-	); err != nil {
-		return fmt.Errorf("invalid hetzner bare-metal installImage.distribution: %w", err)
-	}
-
 	if hetznerConfig.Mode == constants.HetznerModeHybrid && hetznerConfig.BareMetal.VSwitch == nil {
 		return errors.New("VSwitch details not provided")
 	}
@@ -526,30 +519,6 @@ func validateLabelsAndTaints(
 		return fmt.Errorf(
 			"NodeGroup taints validation failed for node-group %q: %w",
 			nodeGroupName, err,
-		)
-	}
-	return nil
-}
-
-// hetznerUbuntuDistributionPattern matches Hetzner Robot API distribution strings for Ubuntu.
-//
-// Accepted examples:
-//
-//	"Ubuntu 24.04 LTS minimal"
-//	"Ubuntu 22.04.1 LTS base"
-//	"Ubuntu 24.04"
-//
-// The Robot API is case-sensitive on distribution names, so we require the canonical "Ubuntu"
-// capitalization.
-var hetznerUbuntuDistributionPattern = regexp.MustCompile(
-	`^Ubuntu\s+\d+\.\d+(\.\d+)?(\s+LTS)?(\s+(minimal|base))?$`,
-)
-
-func validateHetznerUbuntuDistribution(distribution string) error {
-	if !hetznerUbuntuDistributionPattern.MatchString(distribution) {
-		return fmt.Errorf(
-			`must be an Ubuntu image (e.g. "Ubuntu 24.04 LTS minimal"), got %q`,
-			distribution,
 		)
 	}
 	return nil

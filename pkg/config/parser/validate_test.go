@@ -572,12 +572,8 @@ func TestValidateHetznerBareMetalConfig(t *testing.T) {
 			general: &config.GeneralConfig{
 				Cloud: config.CloudConfig{
 					Hetzner: &config.HetznerConfig{
-						Mode: constants.HetznerModeHybrid,
-						BareMetal: &config.HetznerBareMetalConfig{
-							InstallImage: config.InstallImageConfig{
-								Distribution: "Ubuntu 24.04 LTS minimal",
-							},
-						},
+						Mode:      constants.HetznerModeHybrid,
+						BareMetal: &config.HetznerBareMetalConfig{},
 					},
 				},
 			},
@@ -592,12 +588,8 @@ func TestValidateHetznerBareMetalConfig(t *testing.T) {
 			general: &config.GeneralConfig{
 				Cloud: config.CloudConfig{
 					Hetzner: &config.HetznerConfig{
-						Mode: constants.HetznerModeBareMetal,
-						BareMetal: &config.HetznerBareMetalConfig{
-							InstallImage: config.InstallImageConfig{
-								Distribution: "Ubuntu 24.04 LTS minimal",
-							},
-						},
+						Mode:      constants.HetznerModeBareMetal,
+						BareMetal: &config.HetznerBareMetalConfig{},
 					},
 				},
 			},
@@ -817,38 +809,6 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-		})
-	}
-}
-
-func TestValidateHetznerUbuntuDistribution(t *testing.T) {
-	validCases := []string{
-		"Ubuntu 24.04 LTS minimal",
-		"Ubuntu 22.04 LTS minimal",
-		"Ubuntu 24.04 LTS base",
-		"Ubuntu 24.04.1 LTS base",
-		"Ubuntu 24.04",
-		"Ubuntu 26.04 LTS minimal",
-	}
-	for _, dist := range validCases {
-		t.Run("valid/"+dist, func(t *testing.T) {
-			assert.NoError(t, validateHetznerUbuntuDistribution(dist))
-		})
-	}
-
-	invalidCases := []string{
-		"",
-		"ubuntu 24.04 LTS minimal",
-		"Debian 12",
-		"CentOS Stream 9",
-		"Ubuntu",
-		"Ubuntu LTS minimal",
-		"Ubuntu 24.04 LTS extreme",
-		"  Ubuntu 24.04 LTS minimal  ",
-	}
-	for _, dist := range invalidCases {
-		t.Run("invalid/"+dist, func(t *testing.T) {
-			assert.Error(t, validateHetznerUbuntuDistribution(dist))
 		})
 	}
 }

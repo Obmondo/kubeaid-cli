@@ -24,7 +24,6 @@ type (
 	ActivateHRobotLinuxInstallationResponseBody struct {
 		Linux struct {
 			Dist          string   `json:"dist"`
-			Arch          int      `json:"arch"`
 			Lang          string   `json:"lang"`
 			Password      string   `json:"password"`
 			AuthorizedKey []string `json:"authorized_key"`
@@ -48,7 +47,6 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 	fingerprint := hetznerConfig.SSHKeyPair.Fingerprint
-	distribution := hetznerConfig.BareMetal.InstallImage.Distribution
 
 	var hosts []*config.HetznerBareMetalHost
 
@@ -65,6 +63,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 
 	slog.InfoContext(ctx, "Installing OS on Hetzner Bare Metal servers in parallel",
 		slog.Int("servers", len(hosts)),
+		slog.String("distribution", constants.HBMSInstallDistributionLatestUbuntu),
 	)
 
 	var wg sync.WaitGroup
@@ -72,7 +71,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 		wg.Add(1)
 		go func(host *config.HetznerBareMetalHost) {
 			defer wg.Done()
-			h.installOSOnHBMS(ctx, host, distribution, fingerprint, privateKey)
+			h.installOSOnHBMS(ctx, host, fingerprint, privateKey)
 		}(host)
 	}
 	wg.Wait()
@@ -85,7 +84,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 func (h *Hetzner) installOSOnHBMS(
 	ctx context.Context,
 	host *config.HetznerBareMetalHost,
-	distribution, fingerprint, privateKey string,
+	fingerprint, privateKey string,
 ) {
 	hbmsCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-id", host.ServerID),
@@ -100,7 +99,7 @@ func (h *Hetzner) installOSOnHBMS(
 
 	slog.InfoContext(hbmsCtx, "Installing OS on HBMS")
 
-	h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, distribution, fingerprint)
+	h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint)
 	h.resetHBMS(hbmsCtx, host.ServerID)
 	h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey)
 
@@ -108,11 +107,14 @@ func (h *Hetzner) installOSOnHBMS(
 }
 
 // activateHRobotLinuxInstallation activates a Linux installation for the given HBMS via the
-// HRobot API. The installation is queued and executed on the next boot.
+// HRobot API, pinned to the latest Ubuntu LTS for security patch currency. The installation
+// is queued and executed on the next boot.
 func (h *Hetzner) activateHRobotLinuxInstallation(
 	ctx context.Context,
-	serverID, distribution, fingerprint string,
+	serverID, fingerprint string,
 ) {
+	distribution := constants.HBMSInstallDistributionLatestUbuntu
+
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
 			"dist":             []string{distribution},
