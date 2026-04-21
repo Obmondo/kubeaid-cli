@@ -7,7 +7,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -162,17 +164,34 @@ func (p *awsPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	}
 }
 
-func (p *awsPrompter) promptAWSQuestions(cfg *PromptedConfig) error {
-	// Provider credentials come first, immediately after cluster name.
-	var provideSecrets bool
-	if err := confirm(
-		"Provide credentials now? (otherwise ~/.aws will be used)",
-		false, &provideSecrets,
-	); err != nil {
-		return err
+// detectAWSCredentials reports whether AWS credentials are reachable via
+// ~/.aws files. On success it also returns the path where they were found.
+func detectAWSCredentials() (source string, ok bool) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", false
 	}
 
-	if provideSecrets {
+	for _, candidate := range []string{
+		filepath.Join(home, ".aws", "credentials"),
+		filepath.Join(home, ".aws", "config"),
+	} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true
+		}
+	}
+
+	return "", false
+}
+
+func (p *awsPrompter) promptAWSQuestions(cfg *PromptedConfig) error {
+	// Only prompt for credentials if none are discoverable under ~/.aws.
+	// Otherwise the SDK picks them up automatically.
+	if source, ok := detectAWSCredentials(); ok {
+		slog.Info("Using existing AWS credentials", slog.String("source", source))
+	} else {
+		slog.Info("No AWS credentials found in ~/.aws — prompting")
+
 		if err := requiredInput("Access Key ID:", &cfg.AWSAccessKeyID); err != nil {
 			return err
 		}

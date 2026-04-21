@@ -130,9 +130,6 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-aws")
 
-	c.expectString("Provide credentials now?")
-	c.sendLine("y")
-
 	c.expectString("Access Key ID:")
 	c.sendLine("AKIAIOSFODNN7EXAMPLE")
 

@@ -10,7 +10,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/AlecAivazis/survey/v2"
+	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -63,10 +63,7 @@ func printSummaryAndConfirm(cfg *PromptedConfig) error {
 	printBox("Configuration Summary", lines)
 
 	var confirmed bool
-	if err := askOne(&survey.Confirm{
-		Message: "Looks good?",
-		Default: true,
-	}, &confirmed); err != nil {
+	if err := confirm("Looks good?", true, &confirmed); err != nil {
 		return err
 	}
 
@@ -199,37 +196,42 @@ func wrapLine(line string, maxWidth int) []string {
 }
 
 // promptSSHPrivateKeyPath asks for an SSH private key file path and validates that the
-// file exists and looks like a PEM-encoded private key. Loops until a valid path is given.
+// file exists and looks like a PEM-encoded private key. Validation errors are shown
+// inline by huh, which keeps the user on the prompt until a valid path is entered.
 // If a well-known SSH key is found (~/.ssh/id_ed25519 or ~/.ssh/id_rsa), it is offered
 // as the default.
 func promptSSHPrivateKeyPath(dest *string, message string) error {
-	defaultKey := detectSSHKeyPath()
+	*dest = detectSSHKeyPath()
 
-	for {
-		if err := askOne(&survey.Input{
-			Message: message,
-			Default: defaultKey,
-		}, dest, survey.WithValidator(survey.Required)); err != nil {
-			return err
-		}
-
-		keyPath := expandTilde(*dest)
-
-		data, err := os.ReadFile(keyPath)
-		if err != nil {
-			fmt.Printf("  File not found: %s\n", keyPath)
-			*dest = ""
-			continue
-		}
-
-		if err := validateSSHPrivateKey(data); err != nil {
-			fmt.Printf("  Not a valid SSH private key (%s): %s\n", err, keyPath)
-			*dest = ""
-			continue
-		}
-
-		return nil
+	if err := huh.NewInput().
+		Title(message).
+		Value(dest).
+		Validate(validateSSHKeyPath).
+		Run(); err != nil {
+		return err
 	}
+
+	printRecap(message, *dest)
+	return nil
+}
+
+func validateSSHKeyPath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errRequired
+	}
+
+	keyPath := expandTilde(path)
+
+	data, err := os.ReadFile(keyPath)
+	if err != nil {
+		return fmt.Errorf("file not found: %s", keyPath)
+	}
+
+	if err := validateSSHPrivateKey(data); err != nil {
+		return fmt.Errorf("not a valid SSH private key: %w", err)
+	}
+
+	return nil
 }
 
 // validateSSHPrivateKey parses the given bytes as an SSH private key. Encrypted
