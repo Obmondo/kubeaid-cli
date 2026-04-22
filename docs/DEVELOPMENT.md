@@ -32,29 +32,4 @@ If cluster provisioning by ClusterAPI gets stuck, then you can :
 
   then that means maybe there are pre-existing IAM resources with overlapping name. Then first delete them manually from the AWS Console and then retry running the script. Filter the IAM roles and policies in the corresponding region with the keyword : `cluster` / `clusterapi`.
 
-## Release Procedure
-
-Checkout to a new branch.
-
-Software versioning is controlled via a single source of truth : `cmd/kubeaid-core/root/version/version.txt`.
-Run [standard-version](https://github.com/conventional-changelog/standard-version), using bun, to :
-
-- Bump the version in that version.txt file.
-
-- Update `vendorHash` for the `KubeAid CLI` package in `flake.nix`.
-  > This will take a bit of time.
-  
-- Create a release commit.
-
-- Create a new tag.
-
-Merge the release commit into the main branch, and sync everything to GitHub.
-
-A GitHub Actions release workflow will get triggered. It'll :
-
-- Scan the source-code, looking for vulnerabilities.
-  > You can view the scan result in the GitHub Actions release workflow summary.
-
-- Build and publish new `KubeAid CLI` binaries, as release artifacts.
-
-- Build and publish new `KubeAid Core` container images.
+See [`release.md`](release.md) for how releases are cut and what CI does on tag push.
