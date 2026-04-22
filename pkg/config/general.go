@@ -248,6 +248,12 @@ type (
 		// Path to the private key paired with CertPath. Required when
 		// Monitoring is true.
 		KeyPath string `yaml:"keyPath"`
+
+		// TeleportAgent gates the teleport-kube-agent ArgoCD App. Defaults to
+		// true when Monitoring is true. Set explicitly to false to skip it —
+		// e.g. test environments that don't have a valid join token, or
+		// clusters that'll use the upcoming Netbird-backed gateway instead.
+		TeleportAgent *bool `yaml:"teleportAgent"`
 	}
 )
 
