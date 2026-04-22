@@ -279,11 +279,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
-	// Obmondo customer: include the KubeAid Agent (and sibling teleport-kube-agent)
-	// ArgoCD Application templates when monitoring is requested.
+	// Obmondo customer: include the KubeAid Agent ArgoCD Application templates
+	// when monitoring is requested. teleport-kube-agent stays out by default —
+	// it needs a live teleport auth + join-token sealed secret that most test
+	// envs don't have, and kubeaid itself flags it as on the way out.
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
 		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.CustomerSpecificNonSecretTemplateNames...,
+			constants.KubeAidAgentNonSecretTemplateNames...,
 		)
 	}
 
