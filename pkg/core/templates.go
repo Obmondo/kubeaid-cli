@@ -78,6 +78,12 @@ type TemplateValues struct {
 	// populated when Obmondo.Monitoring is true. Used in
 	// cluster-vars.jsonnet.tmpl as the required `certname` field.
 	ObmondoCertCN string
+
+	// Raw file contents of ObmondoConfig.CertPath / KeyPath, populated when
+	// Obmondo.Monitoring is true. Base64-encoded into the obmondo-clientcert
+	// sealed-secret templates (one per consuming namespace).
+	ObmondoCertFileContents []byte
+	ObmondoKeyFileContents  []byte
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -114,9 +120,26 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.
 	// kube-prometheus's common-template fails hard if certname is missing.
+	// Also load the cert + key file contents so the obmondo-clientcert
+	// sealed-secret templates can base64-encode them. Paths are validated by
+	// validateConfigs — re-read here to fail with context if they became
+	// unreadable between parse and render.
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
-		templateValues.ObmondoCertCN = readCertCN(ctx,
-			config.ParsedGeneralConfig.Obmondo.CertPath)
+		obmondo := config.ParsedGeneralConfig.Obmondo
+
+		templateValues.ObmondoCertCN = readCertCN(ctx, obmondo.CertPath)
+
+		cert, err := os.ReadFile(obmondo.CertPath)
+		assert.AssertErrNil(ctx, err,
+			"Failed reading Obmondo cert file",
+			slog.String("path", obmondo.CertPath))
+		templateValues.ObmondoCertFileContents = cert
+
+		key, err := os.ReadFile(obmondo.KeyPath)
+		assert.AssertErrNil(ctx, err,
+			"Failed reading Obmondo key file",
+			slog.String("path", obmondo.KeyPath))
+		templateValues.ObmondoKeyFileContents = key
 	}
 
 	// Set cloud provider specific values.
@@ -312,16 +335,14 @@ func getEmbeddedSecretTemplateNames() []string {
 		// No additional provider-specific secret templates needed.
 	}
 
-	//nolint:staticcheck,revive
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		//nolint:godox
-		// TODO : Some regex validation, and add customer specific templates
-
-		//nolint:staticcheck,revive
-		if config.ParsedGeneralConfig.Obmondo.Monitoring {
-			//nolint:godox
-			// TODO : Enable monitoring for the customer and setup kubeaid-agent
-		}
+	// Obmondo customer: render the mTLS client cert as a Secret in both
+	// namespaces that consume it — obmondo (kubeaid-agent → Obmondo API)
+	// and monitoring (Alertmanager → Obmondo alert-receiver). CertPath and
+	// KeyPath are validated in validateConfigs.
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.ObmondoClientCertSecretTemplateNames...,
+		)
 	}
 
 	return embeddedTemplateNames

@@ -220,6 +220,15 @@ var (
 	CustomerSpecificSecretTemplateNames = []string{
 		"sealed-secrets/obmondo/teleport-kube-agent-join-token.yaml.tmpl",
 	}
+
+	// mTLS client cert issued by Obmondo. The same cert+key pair is rendered
+	// into two namespaces — obmondo for kubeaid-agent (Obmondo API auth) and
+	// monitoring for kube-prometheus Alertmanager (pushing alerts to
+	// Obmondo's alert-receiver). Included whenever obmondo.monitoring is true.
+	ObmondoClientCertSecretTemplateNames = []string{
+		"sealed-secrets/obmondo/obmondo-clientcert.yaml.tmpl",
+		"sealed-secrets/monitoring/obmondo-clientcert.yaml.tmpl",
+	}
 )
 
 // Config template names.
