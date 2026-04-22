@@ -4,6 +4,13 @@
   "blackbox-exporter": false,
   {{- if .ObmondoConfig }}
   connect_obmondo: {{ .ObmondoConfig.Monitoring }},
+  {{- if .ObmondoConfig.Monitoring }}
+  // certname is required by kubeaid's kube-prometheus common-template when
+  // connect_obmondo is true. It's the Subject CN of the Obmondo-issued cert
+  // (same cert kubeaid-agent uses for mTLS to the Obmondo API) — read and
+  // passed in by getTemplateValues.
+  certname: "{{ .ObmondoCertCN }}",
+  {{- end }}
   {{- else }}
   connect_obmondo: false,
   {{- end }}
