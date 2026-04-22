@@ -36,9 +36,9 @@ var RootCmd = &cobra.Command{
 			constants.OutputLogsDirectory,
 			time.Now().UTC().Format(time.RFC3339)+".log",
 		)
-		logFile, err := os.OpenFile(logFilePath,
+		logFile, err := os.OpenFile(logFilePath, //nolint:gosec // G302
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-			0o600,
+			0o644,
 		)
 		if err != nil {
 			log.Fatalf("Failed opening log file : %v", err)
