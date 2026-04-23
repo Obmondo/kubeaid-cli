@@ -52,6 +52,7 @@
 - [LocalConfig](#localconfig)
 - [NodeGroup](#nodegroup)
 - [ObmondoConfig](#obmondoconfig)
+- [ObmondoCredentials](#obmondocredentials)
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
@@ -619,6 +620,15 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | monitoring | `bool` |  |  |
 | certPath | `string` |  | Path to the mTLS client cert issued by Obmondo. Required when<br>Monitoring is true — kubeaid-agent uses it to authenticate to the<br>Obmondo API, and kube-prometheus's Alertmanager uses it to push<br>alerts to Obmondo's alert-receiver endpoint.<br> |
 | keyPath | `string` |  | Path to the private key paired with CertPath. Required when<br>Monitoring is true.<br> |
+| teleportAgent | `bool` |  | TeleportAgent gates the teleport-kube-agent ArgoCD App. Defaults to<br>true when Monitoring is true. Set explicitly to false to skip it —<br>e.g. test environments that don't have a valid join token, or<br>clusters that'll use the upcoming Netbird-backed gateway instead.<br> |
+
+## ObmondoCredentials
+
+<p></p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| teleportAuthToken | `string` |  | TeleportAuthToken is the join token teleport-kube-agent uses to<br>register with the Teleport cluster. Required when<br>obmondo.monitoring is true and obmondo.teleportAgent isn't false.<br> |
 
 ## OpenIDProviderSSHKeyPairConfig
 
@@ -646,6 +656,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | aws | [`AWSCredentials`](#awscredentials) |  |  |
 | azure | [`AzureCredentials`](#azurecredentials) |  |  |
 | hetzner | [`HetznerCredentials`](#hetznercredentials) |  |  |
+| obmondo | [`ObmondoCredentials`](#obmondocredentials) |  |  |
 
 ## UserConfig
 

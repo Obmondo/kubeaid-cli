@@ -205,20 +205,23 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 
 // Obmondo customer specific template names.
 var (
-	CustomerSpecificNonSecretTemplateNames = []string{
-		// For Teleport Kube Agent component.
-		// NOTE : When we'll have support for provisioning gateway cluster running Netbird,
-		//        Teleport will be removed.
+	// For Teleport Kube Agent component.
+	// NOTE : When we'll have support for provisioning gateway cluster running Netbird,
+	//        Teleport will be removed. Kept in its own slice so it's gated
+	//        independently of kubeaid-agent.
+	TeleportKubeAgentNonSecretTemplateNames = []string{
 		"argocd-apps/templates/teleport-kube-agent.yaml.tmpl",
 		"argocd-apps/values-teleport-kube-agent.yaml.tmpl",
-
-		// For KubeAid Agent.
-		"argocd-apps/templates/kubeaid-agent.yaml.tmpl",
-		"argocd-apps/values-kubeaid-agent.yaml.tmpl",
 	}
 
-	CustomerSpecificSecretTemplateNames = []string{
+	TeleportKubeAgentSecretTemplateNames = []string{
 		"sealed-secrets/obmondo/teleport-kube-agent-join-token.yaml.tmpl",
+	}
+
+	// For KubeAid Agent. Included whenever obmondo.monitoring is true.
+	KubeAidAgentNonSecretTemplateNames = []string{
+		"argocd-apps/templates/kubeaid-agent.yaml.tmpl",
+		"argocd-apps/values-kubeaid-agent.yaml.tmpl",
 	}
 
 	// mTLS client cert issued by Obmondo. The same cert+key pair is rendered

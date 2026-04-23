@@ -8,6 +8,14 @@ type (
 		AWS     *AWSCredentials     `yaml:"aws"`
 		Azure   *AzureCredentials   `yaml:"azure"`
 		Hetzner *HetznerCredentials `yaml:"hetzner"`
+		Obmondo *ObmondoCredentials `yaml:"obmondo"`
+	}
+
+	ObmondoCredentials struct {
+		// TeleportAuthToken is the join token teleport-kube-agent uses to
+		// register with the Teleport cluster. Required when
+		// obmondo.monitoring is true and obmondo.teleportAgent isn't false.
+		TeleportAuthToken string `yaml:"teleportAuthToken"`
 	}
 
 	AWSCredentials struct {

@@ -115,6 +115,21 @@ func validateConfigs(ctx context.Context) error {
 			"obmondo.keyPath does not exist",
 			slog.String("path", obmondo.KeyPath),
 		)
+
+		// teleport-kube-agent defaults on when monitoring is on. If it's not
+		// explicitly disabled, require the join token — the templated
+		// sealed-secret references it and ArgoCD will crash-loop without.
+		teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
+		if teleportEnabled {
+			assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Obmondo,
+				"obmondo.monitoring is true and obmondo.teleportAgent isn't false"+
+					" — secrets.obmondo.teleportAuthToken is required"+
+					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)")
+			assert.Assert(ctx, config.ParsedSecretsConfig.Obmondo.TeleportAuthToken != "",
+				"obmondo.monitoring is true and obmondo.teleportAgent isn't false"+
+					" — secrets.obmondo.teleportAuthToken is required"+
+					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)")
+		}
 	}
 
 	// Validate provider specific configurations.
