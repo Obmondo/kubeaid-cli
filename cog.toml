@@ -1,5 +1,11 @@
 tag_prefix = "v"
 
+# Releases must originate from main. cog refuses `cog bump` from any branch
+# not in this list — stops accidental bumps from feature or release branches
+# where the bump commit would end up off main and the post-bump push
+# couldn't reconcile it.
+branch_whitelist = ["main"]
+
 pre_bump_hooks = [
   "make run-generators",
 
@@ -13,8 +19,8 @@ pre_bump_hooks = [
 ]
 
 post_bump_hooks = [
-  "git push origin {{version_tag}}",
-  "git push github {{version_tag}}",
+  "git push origin main {{version_tag}}",
+  "git push github main {{version_tag}}",
 ]
 
 ignore_merge_commits = true
