@@ -89,10 +89,21 @@ func newConsole(t *testing.T, binary, outputDir string) (*console, *exec.Cmd) {
 	t.Helper()
 
 	cmd := exec.Command(binary, outputDir) //nolint:gosec // test-only fixed binary path.
-	cmd.Env = filterEnv(os.Environ(), "SSH_AUTH_SOCK")
+
+	// Strip SSH_AUTH_SOCK so the prompt doesn't auto-pick the YubiKey flow,
+	// and point HOME at a scratch dir so ~/.aws and ~/.ssh lookups come up
+	// empty.
+	env := filterEnv(os.Environ(), "SSH_AUTH_SOCK", "HOME")
+	cmd.Env = append(env, "HOME="+t.TempDir())
 
 	ptmx, err := pty.Start(cmd)
 	require.NoError(t, err)
+
+	// Bubbletea-based prompts (huh) skip rendering when the terminal size is
+	// zero, which is the PTY default. Set a reasonable size so the UI renders.
+	if err := pty.Setsize(ptmx, &pty.Winsize{Rows: 24, Cols: 120}); err != nil {
+		t.Fatalf("setting pty size: %v", err)
+	}
 
 	c := &console{
 		t:    t,
@@ -184,10 +195,12 @@ func (c *console) send(s string) {
 	require.NoError(c.t, err)
 }
 
-// sendLine writes text followed by a newline to the PTY.
+// sendLine writes text followed by a newline to the PTY. A leading Ctrl+U
+// clears any pre-filled default in huh's text inputs so the sent value
+// replaces the default rather than appending to it.
 func (c *console) sendLine(s string) {
 	c.t.Helper()
-	c.send(s + "\r")
+	c.send("\x15" + s + "\r")
 }
 
 // selectOption sends N down-arrow keystrokes then enter.
@@ -195,24 +208,34 @@ func (c *console) selectOption(index int) {
 	c.t.Helper()
 	for range index {
 		c.send("\x1b[B")
-		time.Sleep(50 * time.Millisecond) // let survey process the keystroke
+		time.Sleep(50 * time.Millisecond) // let the prompt process the keystroke
 	}
 	time.Sleep(100 * time.Millisecond)
-	c.sendLine("")
+	c.send("\r")
 }
 
-// acceptDefault sends enter to accept the default value.
+// acceptDefault sends enter to accept the default value (pre-filled in huh).
 func (c *console) acceptDefault() {
 	c.t.Helper()
-	c.sendLine("")
+	c.send("\r")
 }
 
-// filterEnv removes the named variable from the environment slice.
-func filterEnv(env []string, name string) []string {
-	prefix := name + "="
+// filterEnv removes any of the named variables from the environment slice.
+func filterEnv(env []string, names ...string) []string {
+	prefixes := make([]string, len(names))
+	for i, n := range names {
+		prefixes[i] = n + "="
+	}
 	filtered := make([]string, 0, len(env))
 	for _, e := range env {
-		if !strings.HasPrefix(e, prefix) {
+		keep := true
+		for _, p := range prefixes {
+			if strings.HasPrefix(e, p) {
+				keep = false
+				break
+			}
+		}
+		if keep {
 			filtered = append(filtered, e)
 		}
 	}

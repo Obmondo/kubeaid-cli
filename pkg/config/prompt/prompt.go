@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/AlecAivazis/survey/v2"
+	"github.com/charmbracelet/huh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
@@ -20,22 +20,6 @@ var (
 	//go:embed templates/secrets.yaml.tmpl
 	secretsConfigTemplate string
 )
-
-// noQuestionIcon removes the default "?" prefix from survey prompts.
-var noQuestionIcon = survey.WithIcons(func(is *survey.IconSet) {
-	is.Question.Text = ""
-	is.Question.Format = ""
-})
-
-// askOne wraps survey.AskOne with consistent styling (no "?" icon).
-func askOne(p survey.Prompt, response any, opts ...survey.AskOpt) error {
-	return survey.AskOne(p, response, append([]survey.AskOpt{noQuestionIcon}, opts...)...)
-}
-
-// ask wraps survey.Ask with consistent styling (no "?" icon).
-func ask(qs []*survey.Question, response any, opts ...survey.AskOpt) error {
-	return survey.Ask(qs, response, append([]survey.AskOpt{noQuestionIcon}, opts...)...)
-}
 
 // PromptedConfig holds all the values collected from interactive prompts and auto-detection.
 type PromptedConfig struct {
@@ -157,9 +141,7 @@ func ConfigFromPrompt(configsDirectory string) error {
 }
 
 func promptClusterName(cfg *PromptedConfig) error {
-	return askOne(&survey.Input{
-		Message: "Cluster name:",
-	}, &cfg.ClusterName, survey.WithValidator(survey.Required))
+	return requiredInput("Cluster name:", &cfg.ClusterName)
 }
 
 // promptHAControlPlane asks whether the user wants a highly available control plane
@@ -178,10 +160,17 @@ func promptHAControlPlane() (string, error) {
 }
 
 func promptConfigRepo(cfg *PromptedConfig) error {
-	return askOne(&survey.Input{
-		Message: "KubeAid Config fork SSH URL:",
-		Default: "git@github.com:Obmondo/kubeaid-config.git",
-	}, &cfg.KubeaidConfigForkURL, survey.WithValidator(survey.Required))
+	const message = "KubeAid Config fork SSH URL:"
+	cfg.KubeaidConfigForkURL = "git@github.com:Obmondo/kubeaid-config.git"
+	if err := huh.NewInput().
+		Title(message).
+		Value(&cfg.KubeaidConfigForkURL).
+		Validate(nonEmpty).
+		Run(); err != nil {
+		return err
+	}
+	printRecap(message, cfg.KubeaidConfigForkURL)
+	return nil
 }
 
 func promptDeployKeyPath(cfg *PromptedConfig) error {
@@ -199,16 +188,18 @@ func promptGitSSHKey(cfg *PromptedConfig) error {
 }
 
 func promptProvider(cfg *PromptedConfig) error {
-	return askOne(&survey.Select{
-		Message: "Cloud provider:",
-		Options: []string{
+	return selectOption(
+		"Cloud provider:",
+		[]string{
 			constants.CloudProviderAWS,
 			constants.CloudProviderAzure,
 			constants.CloudProviderHetzner,
 			constants.CloudProviderBareMetal,
 			constants.CloudProviderLocal,
 		},
-	}, &cfg.CloudProvider)
+		"",
+		&cfg.CloudProvider,
+	)
 }
 
 // promptSSHAuth resolves SSH authentication and config repo URL.

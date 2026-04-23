@@ -6,8 +6,6 @@ package prompt
 import (
 	"fmt"
 	"strings"
-
-	"github.com/AlecAivazis/survey/v2"
 )
 
 type azurePrompter struct {
@@ -31,30 +29,13 @@ func (p *azurePrompter) SummaryLines(cfg *PromptedConfig) []string {
 
 func (p *azurePrompter) promptAzureQuestions(cfg *PromptedConfig) error {
 	// Provider credentials come first, immediately after cluster name.
-	questions := []*survey.Question{
-		{
-			Name:     "tenantID",
-			Prompt:   &survey.Input{Message: "Tenant ID:"},
-			Validate: survey.Required,
-		},
-		{
-			Name:     "subscriptionID",
-			Prompt:   &survey.Input{Message: "Subscription ID:"},
-			Validate: survey.Required,
-		},
-	}
-
-	answers := struct {
-		TenantID       string `survey:"tenantID"`
-		SubscriptionID string `survey:"subscriptionID"`
-	}{}
-
-	if err := ask(questions, &answers); err != nil {
+	if err := requiredInput("Tenant ID:", &cfg.AzureTenantID); err != nil {
 		return err
 	}
 
-	cfg.AzureTenantID = answers.TenantID
-	cfg.AzureSubscriptionID = answers.SubscriptionID
+	if err := requiredInput("Subscription ID:", &cfg.AzureSubscriptionID); err != nil {
+		return err
+	}
 
 	if err := requiredInput("Client ID:", &cfg.AzureClientID); err != nil {
 		return err
