@@ -1,4 +1,39 @@
 - - -
+## v0.22.0 - 2026-04-23
+#### Features
+- (**e2e**) wire obmondo.monitoring to deploy kubeaid-agent via ArgoCD - (e222cd9) - Ashish Jaiswal
+- (**obmondo**) derive kube-prometheus certname from the mTLS cert CN - (3f5ec55) - Ashish Jaiswal
+- (**obmondo**) require mTLS cert+key when monitoring is enabled - (37afacc) - Ashish Jaiswal
+- Add interactive prompting for cluster configuration - (1da5422) - Shubham Gupta
+#### Bug Fixes
+- (**argocd**) reuse rendered values-argocd.yaml for initial ArgoCD install - (12436c4) - Ashish Jaiswal
+- (**ci**) allow different binary count for goreleaser archive - (00249e1) - Archisman
+- (**config**) validate git.knownHosts entries before bootstrap - (7b55391) - Ashish Jaiswal
+- (**config**) add obmondo.teleportAgent toggle and teleportAuthToken secret - (da64e7b) - Ashish Jaiswal
+- (**generators**) satisfy CreateLogger's two-writer contract - (1c1cc55) - Ashish Jaiswal
+- (**obmondo**) render teleport-kube-agent with join token end-to-end - (7868294) - Ashish Jaiswal
+- (**obmondo**) render mTLS client cert as a sealed-secret in both namespaces - (79f6879) - Ashish Jaiswal
+- (**root**) update log file permissions to 0644 - (3c436a5) - Shubham Gupta
+- (**storageplanner**) assigning priority score to disks for ZFS installation - (29e771d) - Archisman
+- (**templates**) split teleport-kube-agent so it can be gated independently - (788eda9) - Ashish Jaiswal
+#### Documentation
+- (**obmondo**) regenerate sample general.yaml + config-reference - (3406154) - Ashish Jaiswal
+- (**release**) document cog-driven release flow - (a8af02e) - Ashish Jaiswal
+- add Architecture.md - (b309b45) - Shivam
+#### Tests
+- (**argocd**) cover argoCDHelmValues presence and absence of values-argocd.yaml - (ec58393) - Ashish Jaiswal
+#### Continuous Integration
+- (**gitea**) strip goreleaser to changelog-only - (c48aefb) - Ashish Jaiswal
+- (**gitea**) generate release notes via cog and attach full CHANGELOG - (aafd9f7) - Ashish Jaiswal
+- (**release**) build KubeAid Core natively per arch instead of QEMU - (d80de06) - Ashish Jaiswal
+- split goreleaser config into github and gitea variants - (6e99810) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**ci**) remove building binary and container image on every PR - (d858ca9) - Archisman
+- (**cog**) push release tags to both origin (gitea) and github - (b1bbe4f) - Ashish Jaiswal
+- (**version**) v0.21.0 - (4adaada) - Archisman
+
+- - -
+
 ## v0.21.0 - 2026-04-16
 #### Features
 - (**ci**) add build binaries and Docker image steps to CI workflow - (cc48157) - Shubham Gupta
