@@ -64,6 +64,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"traefik",
 		"system",
 	}
+	// When obmondo.monitoring is on, the `secrets` ArgoCD App (sync-order 10)
+	// applies obmondo-clientcert as a SealedSecret in the monitoring namespace.
+	// The monitoring namespace itself is created by kube-prometheus at
+	// sync-order 50 — so without pre-creating it here, the secrets App deadlocks
+	// and kube-prometheus never gets a chance to sync.
+	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+		namespacesToBeCreated = append(namespacesToBeCreated, "monitoring")
+	}
 	for _, namespace := range namespacesToBeCreated {
 		kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
 	}
@@ -79,11 +87,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		)
 
 		/*
-			Restore the Sealed Secrets controller private keys.
+		 Restore the Sealed Secrets controller private keys.
 
-			NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
-			       Because of which, doing kubectl apply for the second time errors out, thus hindering
-			       the script's idempotency.
+		 NOTE : The first time we do kubectl apply, resourceVersion of the SealedSecrets change.
+		 Because of which, doing kubectl apply for the second time errors out, thus hindering
+		 the script's idempotency.
 		*/
 		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
 			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath))
