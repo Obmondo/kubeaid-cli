@@ -66,17 +66,33 @@ jobs:
           body_path: GITHUB_CHANGELOG.md
           tag_name: ${{ github.ref_name }}
 
-  build_and_push_kubeaid_core_container_images:
-    name: Build and push KubeAid Core container images
-    runs-on: ubuntu-latest
+  # Build the KubeAid Core image natively on each arch rather than QEMU-emulating
+  # linux/arm64 on an amd64 runner (which the old single-job approach did, and
+  # which took ~40-50 minutes for the arm64 half alone). Each matrix leg runs on
+  # its native runner and pushes a digest-only image; the manifest job then
+  # stitches the two digests into a multi-arch manifest under the release tag.
+  # Reference: https://docs.docker.com/build/ci/github-actions/multi-platform/
+  build_kubeaid_core_per_arch:
+    name: Build KubeAid Core (${{ matrix.platform.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: linux/amd64
+            runner: ubuntu-24.04
+          - name: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
     steps:
+      - name: Derive platform slug for cache + artifact scoping
+        run: |
+          platform="${{ matrix.platform.name }}"
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+
       - name: Checkout code
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -88,25 +104,71 @@ jobs:
           username: obmondo
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push KubeAid Core AMD64 and ARM64 container images
+      - name: Build and push image by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          # NOTE : It takes pretty long to build container images for the ARM64 platform (even when
-          # using QEMU).
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/obmondo/kubeaid-core:${{ github.ref_name }}
+          platforms: ${{ matrix.platform.name }}
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ github.sha }}
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
-          push: true
-          # Experimental cache exporter for GitHub Actions provided by buildx and BuildKit.
-          # It uses the GitHub Cache API to fetch and load the Docker layer cache blobs across
-          # builds.
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Push image blobs without a tag. The manifest job tags the final
+          # multi-arch reference via `docker buildx imagetools create`.
+          outputs: type=image,name=ghcr.io/obmondo/kubeaid-core,push-by-digest=true,name-canonical=true,push=true
+          # Per-arch cache scopes so parallel legs don't thrash each other.
+          cache-from: type=gha,scope=kubeaid-core-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=kubeaid-core-${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: kubeaid-core-digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish_kubeaid_core_manifest:
+    name: Publish KubeAid Core multi-arch manifest
+    runs-on: ubuntu-latest
+    needs: build_kubeaid_core_per_arch
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: kubeaid-core-digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: obmondo
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifest and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/obmondo/kubeaid-core:${{ github.ref_name }} \
+            $(printf 'ghcr.io/obmondo/kubeaid-core@sha256:%s ' *)
+
+      - name: Inspect the published manifest
+        run: |
+          docker buildx imagetools inspect \
+            ghcr.io/obmondo/kubeaid-core:${{ github.ref_name }}
 
   build_and_publish_kubeaid_cli_binaries:
     name: Build and publish KubeAid CLI binaries

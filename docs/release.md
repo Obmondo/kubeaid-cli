@@ -48,5 +48,5 @@ Four jobs run in parallel from `.github/workflows/release.yaml`:
 |---|---|
 | **Security scan** (`scan_sourcecode`) | Trivy scans the source tree. Findings are appended to the workflow run summary. |
 | **Release notes** (`create-release`) | Generates release notes from the tag range with `cog changelog --at <tag>`, then creates the GitHub release via `softprops/action-gh-release`. |
-| **Container images** (`build_and_push_kubeaid_core_container_images`) | Builds KubeAid Core for `linux/amd64` and `linux/arm64` (QEMU-emulated), pushes to `ghcr.io/obmondo/kubeaid-core:<tag>`. |
+| **Container images** (`build_kubeaid_core_per_arch` + `publish_kubeaid_core_manifest`) | Builds KubeAid Core natively on per-arch runners (`ubuntu-24.04` for amd64, `ubuntu-24.04-arm` for arm64), pushes each by digest, then stitches them into a multi-arch manifest at `ghcr.io/obmondo/kubeaid-core:<tag>`. |
 | **Binaries + packages** (`build_and_publish_kubeaid_cli_binaries`) | `goreleaser -f .goreleaser-github.yaml` produces `kubeaid-cli` and `kubeaid-storagectl` for darwin/linux × amd64/arm64, packages them as `.deb` / `.rpm` / `.apk` / `archlinux` via `nfpms`, and attaches everything to the release. |
