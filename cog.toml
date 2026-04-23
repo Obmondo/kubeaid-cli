@@ -12,6 +12,9 @@ pre_bump_hooks = [
   # "nix-update --flake --version=skip default"
 ]
 
-post_bump_hooks = ["git push origin {{version_tag}}"]
+post_bump_hooks = [
+  "git push origin {{version_tag}}",
+  "git push github {{version_tag}}",
+]
 
 ignore_merge_commits = true
