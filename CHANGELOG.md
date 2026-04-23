@@ -1,4 +1,13 @@
 - - -
+## v0.22.1 - 2026-04-23
+#### Bug Fixes
+- (**ci**) pin trivy-action to v0.36.0 (existing tag) - (f27be6d) - Ashish Jaiswal
+- (**ci**) pin actions/setup-go to go.mod so goreleaser finds go - (954abd1) - Ashish Jaiswal
+- (**cog**) push main alongside tag, and restrict bumps to main - (e2dbc55) - Ashish Jaiswal
+- (**gitea**) restore Set up Go step for goreleaser - (362b20e) - Ashish Jaiswal
+
+- - -
+
 ## v0.22.0 - 2026-04-23
 #### Features
 - (**e2e**) wire obmondo.monitoring to deploy kubeaid-agent via ArgoCD - (e222cd9) - Ashish Jaiswal
