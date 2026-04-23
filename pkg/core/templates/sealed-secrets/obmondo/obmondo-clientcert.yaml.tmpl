@@ -6,5 +6,5 @@ metadata:
 type: kubernetes.io/tls
 
 data:
-  tls.crt: {{ .ObmondoCertFileContents | b64enc }}
-  tls.key: {{ .ObmondoKeyFileContents | b64enc }}
+  tls.crt: {{ .ObmondoCertFileContents | base64Encode }}
+  tls.key: {{ .ObmondoKeyFileContents | base64Encode }}

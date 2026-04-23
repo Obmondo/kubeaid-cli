@@ -82,9 +82,10 @@ type TemplateValues struct {
 
 	// Raw file contents of ObmondoConfig.CertPath / KeyPath, populated when
 	// Obmondo.Monitoring is true. Base64-encoded into the obmondo-clientcert
-	// sealed-secret templates (one per consuming namespace).
-	ObmondoCertFileContents []byte
-	ObmondoKeyFileContents  []byte
+	// sealed-secret templates (one per consuming namespace). Stored as strings
+	// because go-sprout's base64Encode takes a string, not []byte.
+	ObmondoCertFileContents string
+	ObmondoKeyFileContents  string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -135,13 +136,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		assert.AssertErrNil(ctx, err,
 			"Failed reading Obmondo cert file",
 			slog.String("path", obmondo.CertPath))
-		templateValues.ObmondoCertFileContents = cert
+		templateValues.ObmondoCertFileContents = string(cert)
 
 		key, err := os.ReadFile(obmondo.KeyPath)
 		assert.AssertErrNil(ctx, err,
 			"Failed reading Obmondo key file",
 			slog.String("path", obmondo.KeyPath))
-		templateValues.ObmondoKeyFileContents = key
+		templateValues.ObmondoKeyFileContents = string(key)
 	}
 
 	// Set cloud provider specific values.
