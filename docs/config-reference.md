@@ -573,7 +573,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | url | `string` |  | KubeAid repository SSH URL.<br> |
-| version | `string` |  | KubeAid tag.<br> |
+| version | `string` |  | KubeAid git ref (tag, branch, or commit).<br> |
 
 ## KubePrometheusConfig
 
