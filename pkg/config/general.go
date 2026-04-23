@@ -82,7 +82,7 @@ type (
 		URL       string `yaml:"url" validate:"required"`
 		ParsedURL gogiturl.IGitURL
 
-		// KubeAid tag.
+		// KubeAid git ref (tag / branch / commit).
 		Version string `yaml:"version"`
 	}
 

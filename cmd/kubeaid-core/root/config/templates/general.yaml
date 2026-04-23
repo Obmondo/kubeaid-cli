@@ -20,7 +20,7 @@ forkURLs:
   kubeaid:
     # KubeAid repository SSH URL.
     url:
-    # KubeAid tag.
+    # KubeAid git ref (tag / branch / commit).
     version:
   # KubeAid Config repository specific details.
   kubeaidConfig:

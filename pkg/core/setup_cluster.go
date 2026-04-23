@@ -47,8 +47,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			args.GitAuthMethod,
 		)
 
-		// Hard reset to the KubeAid tag mentioned in the KubeAid Bootstrap Script general config file.
-		gitUtils.HardResetRepoToTag(ctx,
+		// Hard reset to the KubeAid git ref (tag / branch / commit) from the general config.
+		gitUtils.HardResetRepoToRef(ctx,
 			kubeAidRepo,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
 		)

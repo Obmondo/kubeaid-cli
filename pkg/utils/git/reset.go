@@ -14,32 +14,24 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func HardResetRepoToTag(ctx context.Context, repo *git.Repository, tag string) {
-	if tag == "" || tag == plumbing.HEAD.String() {
+func HardResetRepoToRef(ctx context.Context, repo *git.Repository, ref string) {
+	if ref == "" || ref == plumbing.HEAD.String() {
 		return
 	}
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("tag", tag),
+		slog.String("ref", ref),
 	})
 
-	slog.InfoContext(ctx, "Hard resetting repo to tag")
+	slog.InfoContext(ctx, "Hard resetting repo to git ref")
 
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
 
-	tagReference, err := repo.Reference(plumbing.NewTagReferenceName(tag), true)
+	targetCommitHash, err := resolveGitRefToCommitHash(repo, ref)
 	assert.AssertErrNil(ctx, err,
-		"Failed resolving reference for provided tag",
+		"Failed resolving provided git ref",
 	)
-
-	targetCommitHash := tagReference.Hash()
-
-	tagObject, err := repo.TagObject(tagReference.Hash())
-	if err == nil {
-		// Resolve the tag reference hash to the tag object / corresponding commit hash.
-		targetCommitHash = tagObject.Target
-	}
 
 	/*
 		workTree.Reset errors out when we try to checkout to tag 20.1.1 for Obmondo's KubeAid, with
@@ -53,5 +45,15 @@ func HardResetRepoToTag(ctx context.Context, repo *git.Repository, tag string) {
 		Force: true,
 		Keep:  false,
 	})
-	assert.AssertErrNil(ctx, err, "Failed hard resetting to tag")
+	assert.AssertErrNil(ctx, err, "Failed hard resetting to git ref")
+}
+
+func resolveGitRefToCommitHash(repo *git.Repository, ref string) (plumbing.Hash, error) {
+	revision := plumbing.Revision(ref)
+	targetCommitHash, err := repo.ResolveRevision(revision)
+	if err != nil {
+		return plumbing.ZeroHash, err
+	}
+
+	return *targetCommitHash, nil
 }
