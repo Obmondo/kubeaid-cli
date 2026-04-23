@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: obmondo-clientcert
+  namespace: obmondo
+type: kubernetes.io/tls
+
+data:
+  tls.crt: {{ .ObmondoCertFileContents | b64enc }}
+  tls.key: {{ .ObmondoKeyFileContents | b64enc }}
