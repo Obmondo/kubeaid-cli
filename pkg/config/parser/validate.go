@@ -91,6 +91,12 @@ func validateConfigs(ctx context.Context) error {
 		)
 	}
 
+	// Validate git.knownHosts entries. Each line must parse as an SSH
+	// known_hosts entry — garbage here would otherwise land in
+	// argocd-ssh-known-hosts-cm and silently break ArgoCD's first clone.
+	err = validateKnownHostsEntries(ctx, config.ParsedGeneralConfig.Git.KnownHosts)
+	assert.AssertErrNil(ctx, err, "git.knownHosts validation failed")
+
 	// When Obmondo monitoring is requested, the customer must supply the mTLS
 	// cert + private key pair issued by Obmondo. kubeaid-agent uses this pair
 	// to authenticate to the Obmondo API, and kube-prometheus's Alertmanager
@@ -627,4 +633,36 @@ matrix here :
 
     https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility
   `)
+}
+
+// validateKnownHostsEntries returns an error describing the first invalid
+// entry, or nil if every entry parses as a valid SSH known_hosts line.
+// One entry = one line; multi-line block scalars are rejected so the user
+// splits them into separate slice elements (otherwise ParseKnownHosts would
+// only check the first line and silently pass garbage after it).
+// Extracted from validateConfigs so it can be unit-tested directly — the
+// call site uses assert.AssertErrNil on the returned error.
+func validateKnownHostsEntries(ctx context.Context, entries []string) error {
+	for i, entry := range entries {
+		trimmed := strings.TrimSpace(entry)
+		if trimmed == "" {
+			return fmt.Errorf("git.knownHosts entry %d is empty", i)
+		}
+		if strings.Contains(trimmed, "\n") {
+			return fmt.Errorf(
+				"git.knownHosts entry %d contains multiple lines — "+
+					"split each host into its own list element",
+				i,
+			)
+		}
+		// ParseKnownHosts wants a newline-terminated line.
+		if _, _, _, _, _, err := ssh.ParseKnownHosts([]byte(trimmed + "\n")); err != nil {
+			return fmt.Errorf("git.knownHosts entry %d (%q) is invalid: %w", i, trimmed, err)
+		}
+		slog.DebugContext(ctx, "git.knownHosts entry validated",
+			slog.Int("index", i),
+			slog.String("entry", trimmed),
+		)
+	}
+	return nil
 }
