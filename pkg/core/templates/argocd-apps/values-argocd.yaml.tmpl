@@ -1,9 +1,10 @@
 ---
 {{- if (gt (len .ExtraKnownHosts) 0) }}
-configs:
-  ssh:
-    knownHosts: |
+argo-cd:
+  configs:
+    ssh:
+      extraHosts: |
 {{- range $i, $extraKnownHost := $.ExtraKnownHosts }}
-{{- $extraKnownHost | nindent 6 }}
+{{- $extraKnownHost | nindent 8 }}
 {{- end }}
 {{- end }}
