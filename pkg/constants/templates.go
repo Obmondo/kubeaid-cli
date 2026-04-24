@@ -232,6 +232,11 @@ var (
 		"sealed-secrets/obmondo/obmondo-clientcert.yaml.tmpl",
 		"sealed-secrets/monitoring/obmondo-clientcert.yaml.tmpl",
 	}
+
+	// Alertmanager's main config Secret, with the runtime alertmanager.yaml
+	// routing alerts to Obmondo's alert receiver. Included whenever
+	// obmondo.monitoring is true.
+	AlertmanagerMainSecretTemplateName = "sealed-secrets/monitoring/alertmanager-main.yaml.tmpl"
 )
 
 // Config template names.

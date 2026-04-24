@@ -367,6 +367,11 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.ObmondoClientCertSecretTemplateNames...,
 		)
 
+		// alertmanager-main: Alertmanager's runtime config Secret.
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.AlertmanagerMainSecretTemplateName,
+		)
+
 		// teleport-kube-agent join-token. Paired with
 		// TeleportKubeAgentNonSecretTemplateNames — toggled together.
 		if teleportAgentEnabled() {
