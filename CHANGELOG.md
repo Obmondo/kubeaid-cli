@@ -1,4 +1,10 @@
 - - -
+## v0.22.3 - 2026-04-24
+#### Bug Fixes
+- (**monitoring**) render alertmanager-main Secret to prevent pod deadlock - (57c5009) - Ashish Jaiswal
+
+- - -
+
 ## v0.22.2 - 2026-04-23
 #### Bug Fixes
 - (**argocd**) render extraHosts under argo-cd subchart prefix - (8ad8124) - Ashish Jaiswal
