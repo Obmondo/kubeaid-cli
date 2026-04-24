@@ -1,4 +1,14 @@
 - - -
+## v0.22.2 - 2026-04-23
+#### Bug Fixes
+- (**argocd**) render extraHosts under argo-cd subchart prefix - (8ad8124) - Ashish Jaiswal
+- (**obmondo-clientcert**) render with base64Encode, not b64enc - (7789813) - Ashish Jaiswal
+- create the namespace for monitoring, to apply the secret before hand - (74c6fc6) - Ashish Jaiswal
+#### Refactoring
+- migrate from survey to huh for interactive prompts and improve input handling - (297bbfb) - Shubham Gupta
+
+- - -
+
 ## v0.22.1 - 2026-04-23
 #### Bug Fixes
 - (**ci**) pin trivy-action to v0.36.0 (existing tag) - (f27be6d) - Ashish Jaiswal
