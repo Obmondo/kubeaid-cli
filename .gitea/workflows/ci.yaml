@@ -39,3 +39,6 @@ jobs:
 
       - name: Show total coverage
         run: go tool cover -func=coverage.out
+
+      - name: Check test coverage
+        run: go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml

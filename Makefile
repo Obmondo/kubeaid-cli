@@ -47,6 +47,18 @@ lint: ## Run Go linters
 addlicense: ## Add AGPL3 headers to Go files
 	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
 
+.PHONY: test
+test: ## Run unit tests and write coverage.out
+	@go test -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+
+.PHONY: coverage
+coverage: test ## Open the per-file HTML coverage report in a browser
+	@go tool cover -html=coverage.out
+
+.PHONY: check-coverage
+check-coverage: test ## Enforce testcoverage.yaml thresholds
+	@go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
+
 .PHONY: run-generators
 run-generators: ## Generate config artifacts
 	@go run ./tools/generators/cmd \

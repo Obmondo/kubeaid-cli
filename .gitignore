@@ -16,3 +16,5 @@ temp/
 robot_id_rsa*
 
 testcmd
+
+coverage.out
