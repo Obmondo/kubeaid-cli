@@ -64,7 +64,9 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	repo, err := goGit.PlainClone(path, false, opts)
+	repo, err := retryGitOperationWithResult(ctx, "clone repository", func() (*goGit.Repository, error) {
+		return goGit.PlainCloneContext(ctx, path, false, opts)
+	})
 
 	if isHTTPURL(url) &&
 		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
@@ -132,10 +134,12 @@ func initRepo(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
 
-	err = repo.Push(&goGit.PushOptions{
-		RemoteName: goGit.DefaultRemoteName,
-		Auth:       authMethod,
-		CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+	err = retryGitOperation(ctx, "push init commit", func() error {
+		return repo.PushContext(ctx, &goGit.PushOptions{
+			RemoteName: goGit.DefaultRemoteName,
+			Auth:       authMethod,
+			CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+		})
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 

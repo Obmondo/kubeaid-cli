@@ -52,13 +52,15 @@ func AddCommitAndPushChanges(ctx context.Context,
 	commitObject, err := repo.CommitObject(commit)
 	assert.AssertErrNil(ctx, err, "Failed getting commit object")
 
-	err = repo.Push(&goGit.PushOptions{
-		RemoteName: "origin",
-		Auth:       authMethod,
-		CABundle:   config.ParsedGeneralConfig.Git.CABundle,
-		RefSpecs: []goGitConfig.RefSpec{
-			goGitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
-		},
+	err = retryGitOperation(ctx, "push branch to origin", func() error {
+		return repo.PushContext(ctx, &goGit.PushOptions{
+			RemoteName: "origin",
+			Auth:       authMethod,
+			CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+			RefSpecs: []goGitConfig.RefSpec{
+				goGitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
+			},
+		})
 	})
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
@@ -82,10 +84,6 @@ func AddCommitAndPushChanges(ctx context.Context,
 	return commitObject.Hash
 }
 
-// TODO : Sometimes we get this error while trying to detect whether the branch has been merged
-// or not : `unexpected EOF`. In that case, just retry instead of erroring out.
-//
-//nolint:godox
 func WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,
@@ -98,14 +96,20 @@ func WaitUntilPRMerged(ctx context.Context,
 			slog.String("from-branch", branchToBeMerged),
 			slog.String("to-branch", defaultBranchName),
 		)
-		time.Sleep(10 * time.Second)
+		select {
+		case <-ctx.Done():
+			assert.AssertErrNil(ctx, ctx.Err(), "Stopped waiting for PR merge")
+		case <-time.After(10 * time.Second):
+		}
 
-		err := repo.Fetch(&goGit.FetchOptions{
-			Auth:     auth,
-			RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
-			CABundle: config.ParsedGeneralConfig.Git.CABundle,
+		err := retryGitOperation(ctx, "fetch refs while waiting for PR merge", func() error {
+			return repo.FetchContext(ctx, &goGit.FetchOptions{
+				Auth:     auth,
+				RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
+				CABundle: config.ParsedGeneralConfig.Git.CABundle,
+			})
 		})
-		if !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
+		if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")
 		}
 

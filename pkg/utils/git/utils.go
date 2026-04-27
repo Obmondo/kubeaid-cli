@@ -50,10 +50,16 @@ func GetDefaultBranchName(ctx context.Context,
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
-	refs, err := remote.List(&goGit.ListOptions{
-		Auth:     authMethod,
-		CABundle: config.ParsedGeneralConfig.Git.CABundle,
-	})
+	refs, err := retryGitOperationWithResult(
+		ctx,
+		"list refs for origin remote",
+		func() ([]*plumbing.Reference, error) {
+			return remote.ListContext(ctx, &goGit.ListOptions{
+				Auth:     authMethod,
+				CABundle: config.ParsedGeneralConfig.Git.CABundle,
+			})
+		},
+	)
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
 	for _, ref := range refs {
