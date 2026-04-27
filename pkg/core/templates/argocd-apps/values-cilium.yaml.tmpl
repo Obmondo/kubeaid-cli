@@ -28,6 +28,6 @@ cilium:
   */}}
   {{- if .HetznerConfig }}
   extraArgs:
-    - "--devices=eth0,enp+,eno+"
+    - "--devices=eth+,enp+,eno+"
   {{- end }}
 {{- end }}

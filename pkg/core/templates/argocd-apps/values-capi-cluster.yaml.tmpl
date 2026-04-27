@@ -87,8 +87,10 @@ hetzner:
 
   {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
   hcloud:
-    sshKeyPairName: {{ .HetznerConfig.SSHKeyPair.Name }}
-{{ .HetznerConfig.HCloud | toIndentYAML 2 | nindent 4 }}
+    zone: {{ .HetznerConfig.HCloud.Zone }}
+    imageName: {{ .HetznerConfig.HCloud.ImageName }}
+    cidrBlock: {{ .HetznerConfig.HCloud.HetznerNetwork.CIDR }}
+    subnetCidrBlock: {{ .HetznerConfig.HCloud.HetznerNetwork.HCloudServersSubnetCIDR }}
   {{- end }}
 
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
