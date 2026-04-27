@@ -5,6 +5,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"path"
 	"strings"
@@ -26,16 +27,14 @@ func GetRepoDir(parsedURL gogiturl.IGitURL) string {
 	)
 }
 
-func MustParseURL(ctx context.Context, url string) gogiturl.IGitURL {
+// ParseURL parses a Git repository URL into its component parts.
+// Expected format: https://gitserver.com/org/repo.git or git@gitserver.com:org/repo.git.
+func ParseURL(url string) (gogiturl.IGitURL, error) {
 	parsedURL, err := gogiturl.NewGitURL(url)
-	assert.AssertErrNil(
-		ctx,
-		err,
-		"Failed parsing Git repository URL. Expected format : https://gitserver.com/org/repo.git or git@gitserver.com:org/repo.git",
-		slog.String("url", url),
-	)
-
-	return parsedURL
+	if err != nil {
+		return nil, fmt.Errorf("parsing Git repository URL %q: %w", url, err)
+	}
+	return parsedURL, nil
 }
 
 // Returns whether the URL uses HTTP scheme.

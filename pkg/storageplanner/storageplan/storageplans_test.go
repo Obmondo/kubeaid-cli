@@ -10,32 +10,83 @@ import (
 )
 
 func TestAreStoragePlansAlike(t *testing.T) {
-	mkPlan := func(names ...string) *StoragePlan {
-		disks := make([]*Disk, len(names))
-		for i, n := range names {
-			disks[i] = &Disk{Name: n}
+	mkPlan := func(zfsDiskNames ...string) *StoragePlan {
+		disks := make([]*Disk, len(zfsDiskNames))
+		for i, name := range zfsDiskNames {
+			disks[i] = &Disk{Name: name}
 		}
 		return &StoragePlan{ZFS: disks}
 	}
 
-	assert.True(t, AreStoragePlansAlike([]*StoragePlan{
-		mkPlan("nvme0n1", "nvme1n1"),
-	}))
+	tests := []struct {
+		name  string
+		plans []*StoragePlan
+		want  bool
+	}{
+		{
+			name:  "empty input",
+			plans: nil,
+			want:  true,
+		},
+		{
+			name:  "single plan",
+			plans: []*StoragePlan{mkPlan("nvme0n1", "nvme1n1")},
+			want:  true,
+		},
+		{
+			name: "all plans share the same ZFS disks",
+			plans: []*StoragePlan{
+				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("nvme0n1", "nvme1n1"),
+			},
+			want: true,
+		},
+		{
+			name: "first disk diverges",
+			plans: []*StoragePlan{
+				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("sda", "sdb"),
+			},
+			want: false,
+		},
+		{
+			name: "second disk diverges",
+			plans: []*StoragePlan{
+				mkPlan("sda", "sdb"),
+				mkPlan("sda", "sdc"),
+			},
+			want: false,
+		},
+		{
+			name: "later plan has more ZFS disks than the first",
+			plans: []*StoragePlan{
+				mkPlan("nvme0n1"),
+				mkPlan("nvme0n1", "nvme1n1"),
+			},
+			want: false,
+		},
+		{
+			name: "later plan has fewer ZFS disks than the first",
+			plans: []*StoragePlan{
+				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("nvme0n1"),
+			},
+			want: false,
+		},
+		{
+			name: "all plans have no ZFS disks",
+			plans: []*StoragePlan{
+				mkPlan(),
+				mkPlan(),
+			},
+			want: true,
+		},
+	}
 
-	assert.True(t, AreStoragePlansAlike([]*StoragePlan{
-		mkPlan("nvme0n1", "nvme1n1"),
-		mkPlan("nvme0n1", "nvme1n1"),
-		mkPlan("nvme0n1", "nvme1n1"),
-	}))
-
-	assert.False(t, AreStoragePlansAlike([]*StoragePlan{
-		mkPlan("nvme0n1", "nvme1n1"),
-		mkPlan("sda", "sdb"),
-	}))
-
-	// first disk matches, second doesn't
-	assert.False(t, AreStoragePlansAlike([]*StoragePlan{
-		mkPlan("sda", "sdb"),
-		mkPlan("sda", "sdc"),
-	}))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, AreStoragePlansAlike(tc.plans))
+		})
+	}
 }

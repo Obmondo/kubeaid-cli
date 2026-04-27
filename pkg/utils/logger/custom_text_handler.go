@@ -25,11 +25,11 @@ func NewCustomTextHandler(writer io.Writer, options *slog.HandlerOptions) *Custo
 	}
 }
 
-func (c *CustomTextHandler) Enabled(_ context.Context, logLevel slog.Level) bool {
+func (c *CustomTextHandler) Enabled(ctx context.Context, logLevel slog.Level) bool {
 	return (logLevel >= c.options.Level.Level())
 }
 
-func (c *CustomTextHandler) Handle(_ context.Context, record slog.Record) error {
+func (c *CustomTextHandler) Handle(ctx context.Context, record slog.Record) error {
 	logSections := []string{}
 
 	// Time.

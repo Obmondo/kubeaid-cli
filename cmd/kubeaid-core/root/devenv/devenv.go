@@ -32,7 +32,10 @@ var DevenvCmd = &cobra.Command{
 		cobra.OnFinalize(cleanup)
 
 		// Initialize temp directory.
-		utils.InitTempDir(ctx)
+		if err := utils.InitTempDir(ctx); err != nil {
+			slog.ErrorContext(ctx, "Failed initializing temp dir", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 
 		// Ensure required runtime dependencies are installed.
 		utils.EnsureRuntimeDependenciesInstalled(ctx)

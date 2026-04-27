@@ -113,7 +113,5 @@ func runProxy(ctx context.Context, command *cobra.Command) error {
 		generalConfig:         config.ParsedGeneralConfig,
 		commandArgs:           os.Args[1:],
 	}
-	kubeAidCoreContainer.Run(ctx)
-
-	return nil
+	return kubeAidCoreContainer.Run(ctx)
 }

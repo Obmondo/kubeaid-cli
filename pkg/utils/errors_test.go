@@ -5,6 +5,7 @@ package utils
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,11 +13,53 @@ import (
 )
 
 func TestWrapError(t *testing.T) {
-	inner := errors.New("connection refused")
-	wrapped := WrapError("failed to reach API", inner)
+	sentinel := errors.New("connection refused")
 
-	assert.Equal(t, "failed to reach API : connection refused", wrapped.Error())
+	tests := []struct {
+		name        string
+		contextual  string
+		inner       error
+		wantMessage string
+		wantTarget  error
+	}{
+		{
+			name:        "happy path joins context and inner",
+			contextual:  "failed to reach API",
+			inner:       sentinel,
+			wantMessage: "failed to reach API : connection refused",
+			wantTarget:  sentinel,
+		},
+		{
+			name:        "empty contextual message still produces a valid wrap",
+			contextual:  "",
+			inner:       sentinel,
+			wantMessage: " : connection refused",
+			wantTarget:  sentinel,
+		},
+		{
+			name:        "double-wrap preserves the chain",
+			contextual:  "outer",
+			inner:       fmt.Errorf("middle : %w", sentinel),
+			wantMessage: "outer : middle : connection refused",
+			wantTarget:  sentinel,
+		},
+		{
+			name:        "fmt verbs in contextual message stay literal",
+			contextual:  "boom %s %w",
+			inner:       sentinel,
+			wantMessage: "boom %s %w : connection refused",
+			wantTarget:  sentinel,
+		},
+	}
 
-	// the original error should be unwrappable
-	require.True(t, errors.Is(wrapped, inner))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := WrapError(tc.contextual, tc.inner)
+			require.Error(t, err)
+			assert.Equal(t, tc.wantMessage, err.Error())
+			if tc.wantTarget != nil {
+				assert.True(t, errors.Is(err, tc.wantTarget))
+			}
+		})
+	}
 }

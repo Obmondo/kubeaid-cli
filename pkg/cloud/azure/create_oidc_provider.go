@@ -109,7 +109,8 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 
 		// Create required intermediate directories,
 		// to save the JWKS document locally.
-		utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathJWKSDocument)
+		err := utils.CreateIntermediateDirsForFile(constants.OutputPathJWKSDocument)
+		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs for JWKS document")
 
 		// Generate the JWKS document.
 
@@ -121,7 +122,7 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 			"--output-file",
 			constants.OutputPathJWKSDocument,
 		})
-		err := jwksCmd.ExecuteContext(ctx)
+		err = jwksCmd.ExecuteContext(ctx)
 		assert.AssertErrNil(ctx, err, "Failed generating JWKS document")
 
 		jwksDocument, err := os.ReadFile(constants.OutputPathJWKSDocument)

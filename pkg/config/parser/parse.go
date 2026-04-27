@@ -74,8 +74,10 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// Parse Git repository URLs, and store the result in the config.
 		// This will later come handy in a lot of places.
 		// Both URLs are required by the config schema (validate:"required").
-		forks.KubeaidFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidFork.URL)
-		forks.KubeaidConfigFork.ParsedURL = git.MustParseURL(ctx, forks.KubeaidConfigFork.URL)
+		forks.KubeaidFork.ParsedURL, err = git.ParseURL(forks.KubeaidFork.URL)
+		assert.AssertErrNil(ctx, err, "Failed parsing KubeAid fork URL")
+		forks.KubeaidConfigFork.ParsedURL, err = git.ParseURL(forks.KubeaidConfigFork.URL)
+		assert.AssertErrNil(ctx, err, "Failed parsing KubeAid Config fork URL")
 
 		// When the user has provided a custom CA certificate path,
 		// read and store the custom CA certificate in config.
@@ -88,7 +90,8 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		hydrateWithAuditLoggingOptions()
 
 		// Default KubePrometheus version when not explicitly provided.
-		hydrateKubePrometheusVersion(ctx)
+		err = hydrateKubePrometheusVersion(ctx)
+		assert.AssertErrNil(ctx, err, "Failed defaulting KubePrometheus version")
 	}
 
 	// Read contents of the secrets config file into ParsedSecretsConfig.
@@ -137,59 +140,73 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 // If the user hasn't specified KubePrometheus version, select the latest
 // KubePrometheus version that's officially compatible with the configured K8s version.
-func hydrateKubePrometheusVersion(ctx context.Context) {
+func hydrateKubePrometheusVersion(ctx context.Context) error {
 	if config.ParsedGeneralConfig.KubePrometheus != nil &&
 		len(config.ParsedGeneralConfig.KubePrometheus.Version) > 0 {
-		return
+		return nil
 	}
 
 	parsedK8sVersion, err := version.ParseGeneric(config.ParsedGeneralConfig.Cluster.K8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing Kubernetes semantic version")
+	if err != nil {
+		return fmt.Errorf(
+			"parsing Kubernetes semantic version %q: %w",
+			config.ParsedGeneralConfig.Cluster.K8sVersion, err,
+		)
+	}
 
 	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
-	compatibleKubePrometheusVersions, ok := constants.KubernetesKubePrometheusVersionCompatibilityMatrix[k8sMajorMinorVersion]
-	assert.Assert(
-		ctx,
-		ok,
-		fmt.Sprintf(
-			"Unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
+	matrix := constants.KubernetesKubePrometheusVersionCompatibilityMatrix
+	compatibleKubePrometheusVersions, ok := matrix[k8sMajorMinorVersion]
+	if !ok {
+		return fmt.Errorf(
+			"unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
 			k8sMajorMinorVersion,
-		),
-	)
-
-	assert.Assert(
-		ctx,
-		len(compatibleKubePrometheusVersions) > 0,
-		fmt.Sprintf(
-			"No compatible KubePrometheus versions found for Kubernetes version %s",
+		)
+	}
+	if len(compatibleKubePrometheusVersions) == 0 {
+		return fmt.Errorf(
+			"no compatible KubePrometheus versions found for Kubernetes version %s",
 			k8sMajorMinorVersion,
-		),
-	)
+		)
+	}
 
 	sortedCompatibleKubePrometheusVersions := slices.Clone(compatibleKubePrometheusVersions)
+	var sortErr error
 	slices.SortFunc(sortedCompatibleKubePrometheusVersions, func(a, b string) int {
+		if sortErr != nil {
+			return 0
+		}
 		parsedA, err := version.ParseGeneric(a)
-		assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
-
+		if err != nil {
+			sortErr = fmt.Errorf("parsing KubePrometheus version %q: %w", a, err)
+			return 0
+		}
 		parsedB, err := version.ParseGeneric(b)
-		assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
-
-		// Compare in this version of apimachinery returns (int, error)
+		if err != nil {
+			sortErr = fmt.Errorf("parsing KubePrometheus version %q: %w", b, err)
+			return 0
+		}
 		cmp, err := parsedA.Compare(parsedB.String())
-		assert.AssertErrNil(ctx, err, "Failed comparing KubePrometheus versions")
-
+		if err != nil {
+			sortErr = fmt.Errorf("comparing KubePrometheus versions %q vs %q: %w", a, b, err)
+			return 0
+		}
 		return cmp
 	})
+	if sortErr != nil {
+		return sortErr
+	}
 
-	selectedKubePrometheusVersion := sortedCompatibleKubePrometheusVersions[len(sortedCompatibleKubePrometheusVersions)-1]
+	selected := sortedCompatibleKubePrometheusVersions[len(sortedCompatibleKubePrometheusVersions)-1]
 	config.ParsedGeneralConfig.KubePrometheus = &config.KubePrometheusConfig{
-		Version: selectedKubePrometheusVersion,
+		Version: selected,
 	}
 
 	slog.InfoContext(ctx, "Auto-selected KubePrometheus version",
 		slog.String("k8s_version", k8sMajorMinorVersion),
-		slog.String("selected_version", selectedKubePrometheusVersion),
+		slog.String("selected_version", selected),
 	)
+	return nil
 }
 
 // Based on the parsed config, detects the underlying cloud-provider name.

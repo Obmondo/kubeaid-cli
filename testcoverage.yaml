@@ -9,10 +9,20 @@ threshold:
   total: 0
 
 override:
+  - path: "^pkg/utils$"
+    threshold: 37
+  - path: "^pkg/utils/git$"
+    threshold: 16
   - path: "^pkg/utils/kubernetes$"
     threshold: 65
   - path: "^pkg/utils/kubernetes/k3d$"
     threshold: 65
+  - path: "^pkg/storageplanner/storageplan$"
+    threshold: 67
+  - path: "^pkg/config/parser$"
+    threshold: 50
+  - path: "^pkg/config/prompt$"
+    threshold: 18
 
 exclude:
   paths: []

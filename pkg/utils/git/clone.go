@@ -26,7 +26,9 @@ import (
 // changes.
 func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod) *goGit.Repository {
 	// Determine the path, where this repository will be / is cloned.
-	path := GetRepoDir(MustParseURL(ctx, url))
+	parsed, err := ParseURL(url)
+	assert.AssertErrNil(ctx, err, "Failed parsing Git repository URL", slog.String("url", url))
+	path := GetRepoDir(parsed)
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("repo", url), slog.String("path", path),

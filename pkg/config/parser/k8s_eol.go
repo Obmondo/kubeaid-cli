@@ -74,7 +74,7 @@ func parseK8sLifecycles(data []byte) (map[string]k8sLifecycle, error) {
 	return byCycle, nil
 }
 
-func latestStableK8sRelease(ctx context.Context) (string, error) {
+func latestStableK8sRelease() (string, error) {
 	body, err := utils.FetchURLBytes(k8sReleaseAPIURL)
 	if err != nil {
 		return "", utils.WrapError("fetching latest stable K8s release", err)
@@ -82,8 +82,8 @@ func latestStableK8sRelease(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(body)), nil
 }
 
-func checkK8sNotReleased(ctx context.Context, k8sVersion string) error {
-	latestRaw, err := latestStableK8sReleaseFn(ctx)
+func checkK8sNotReleased(k8sVersion string) error {
+	latestRaw, err := latestStableK8sReleaseFn()
 	if err != nil {
 		return utils.WrapError("fetching latest stable K8s release", err)
 	}

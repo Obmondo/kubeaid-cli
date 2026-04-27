@@ -8,7 +8,10 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -31,12 +34,11 @@ func TestCheckK8sLifecycle(t *testing.T) {
 		name      string
 		now       time.Time
 		version   string
-		wantError bool     // true → checkK8sLifecycle must return non-nil error
-		contains  []string // wantError → substrings expected in err.Error(); else in slog buffer
-		absent    []string // substrings that must NOT appear in slog buffer
+		wantError bool
+		contains  []string
+		absent    []string
 	}{
 		{
-			// 9.0 EOL was 2000-01-01; "now" of 2025-01-01 is well past.
 			name:      "past_eol",
 			now:       date(2025, 1, 1),
 			version:   "v9.0.0",
@@ -44,7 +46,6 @@ func TestCheckK8sLifecycle(t *testing.T) {
 			contains:  []string{"K8s 9.0 reached EOL on 2000-01-01"},
 		},
 		{
-			// 9.1 active support ends 2030-03-01 (~45d after now); EOL 2030-12-01 (~320d, outside window).
 			name:     "near_support_end",
 			now:      date(2030, 1, 15),
 			version:  "v9.1.0",
@@ -52,7 +53,6 @@ func TestCheckK8sLifecycle(t *testing.T) {
 			absent:   []string{"reaches EOL"},
 		},
 		{
-			// 9.2 support 2030-01-01 (already past); EOL 2030-03-01 (~28d ahead).
 			name:     "near_eol",
 			now:      date(2030, 2, 1),
 			version:  "v9.2.0",
@@ -60,15 +60,13 @@ func TestCheckK8sLifecycle(t *testing.T) {
 			absent:   []string{"leaves active support"},
 		},
 		{
-			// checkK8sLifecycle logs the info message and returns an error for unknown cycles.
 			name:      "unknown_cycle",
 			now:       date(2030, 1, 1),
-			version:   "v8.0.0", // not in fixture
+			version:   "v8.0.0",
 			wantError: true,
 			contains:  []string{"not supported by kubeaid-cli"},
 		},
 		{
-			// 9.3 support 2030-12-01 (>10 months); EOL 2031-06-01 (>17 months). Silent pass.
 			name:    "healthy",
 			now:     date(2030, 1, 1),
 			version: "v9.3.0",
@@ -174,7 +172,7 @@ func TestCheckK8sNotReleased(t *testing.T) {
 		},
 		{
 			name:            "stub fetch returns error — propagated",
-			k8sLatest:       "", // signals error
+			k8sLatest:       "",
 			userVersion:     "v1.35.0",
 			wantErr:         true,
 			wantErrContains: "stub network error",
@@ -186,17 +184,17 @@ func TestCheckK8sNotReleased(t *testing.T) {
 			resetLatestStableK8sReleaseFn(t)
 
 			if tc.k8sLatest == "" {
-				latestStableK8sReleaseFn = func(ctx context.Context) (string, error) {
+				latestStableK8sReleaseFn = func() (string, error) {
 					return "", fmt.Errorf("stub network error")
 				}
 			} else {
 				latest := tc.k8sLatest
-				latestStableK8sReleaseFn = func(ctx context.Context) (string, error) {
+				latestStableK8sReleaseFn = func() (string, error) {
 					return latest, nil
 				}
 			}
 
-			err := checkK8sNotReleased(context.Background(), tc.userVersion)
+			err := checkK8sNotReleased(tc.userVersion)
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -206,6 +204,91 @@ func TestCheckK8sNotReleased(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestParseK8sLifecycles(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    []byte
+		want    map[string]k8sLifecycle
+		wantErr bool
+	}{
+		{
+			name: "fixture parses into a cycle map",
+			data: k8sEOLFixtureData,
+			want: map[string]k8sLifecycle{
+				"9.0": {Cycle: "9.0", EOL: "2000-01-01", Support: ""},
+				"9.1": {Cycle: "9.1", EOL: "2030-12-01", Support: "2030-03-01"},
+				"9.2": {Cycle: "9.2", EOL: "2030-03-01", Support: "2030-01-01"},
+				"9.3": {Cycle: "9.3", EOL: "2031-06-01", Support: "2030-12-01"},
+			},
+		},
+		{
+			name:    "malformed JSON returns wrapped error",
+			data:    []byte("{not json"),
+			wantErr: true,
+		},
+		{
+			name: "empty array yields empty map",
+			data: []byte("[]"),
+			want: map[string]k8sLifecycle{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseK8sLifecycles(tc.data)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestLatestStableK8sRelease(t *testing.T) {
+	tests := []struct {
+		name        string
+		handler     http.HandlerFunc
+		wantVersion string
+		wantErr     bool
+	}{
+		{
+			name: "trims surrounding whitespace from response body",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, "  v1.34.2\n")
+			},
+			wantVersion: "v1.34.2",
+		},
+		{
+			name: "non-200 response surfaces as error",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(tc.handler)
+			t.Cleanup(server.Close)
+
+			origURL := k8sReleaseAPIURL
+			t.Cleanup(func() { k8sReleaseAPIURL = origURL })
+			k8sReleaseAPIURL = server.URL
+
+			got, err := latestStableK8sRelease()
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantVersion, got)
 		})
 	}
 }

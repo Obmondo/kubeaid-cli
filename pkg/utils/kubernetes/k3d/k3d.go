@@ -148,7 +148,9 @@ func createK3DClusterWithParams(ctx context.Context, name string, params *create
 	}
 
 	// Ensure existence of the directory which'll contain the kubeconfig file.
-	utils.CreateIntermediateDirsForFile(ctx, params.HostKubeconfigPath)
+	if err := utils.CreateIntermediateDirsForFile(params.HostKubeconfigPath); err != nil {
+		return fmt.Errorf("creating intermediate dirs for k3d kubeconfig: %w", err)
+	}
 
 	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
@@ -206,15 +208,21 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
 
+		sshKeys := workloadIdentityConfig.OpenIDProviderSSHKeyPair
+		pubKeyPath, err := utils.ToAbsolutePath(sshKeys.PublicKeyFilePath)
+		if err != nil {
+			return fmt.Errorf("canonicalizing OpenID provider SSH public key path: %w", err)
+		}
+		privKeyPath, err := utils.ToAbsolutePath(sshKeys.PrivateKeyFilePath)
+		if err != nil {
+			return fmt.Errorf("canonicalizing OpenID provider SSH private key path: %w", err)
+		}
+
 		k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
 			ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
 
-			SSHPublicKeyFilePath: utils.ToAbsolutePath(ctx,
-				workloadIdentityConfig.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
-			),
-			SSHPrivateKeyFilePath: utils.ToAbsolutePath(ctx,
-				workloadIdentityConfig.OpenIDProviderSSHKeyPair.PrivateKeyFilePath,
-			),
+			SSHPublicKeyFilePath:  pubKeyPath,
+			SSHPrivateKeyFilePath: privKeyPath,
 		}
 	}
 

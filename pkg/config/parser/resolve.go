@@ -20,6 +20,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
+var stdinReader io.Reader = os.Stdin
+
 // ResolveConfigsDirectory resolves the configs directory from a local path or stdin ("-").
 // For stdin, it writes the received YAML to a temp directory and updates
 // globals.ConfigsDirectory to point there.
@@ -31,12 +33,12 @@ func ResolveConfigsDirectory(ctx context.Context) error {
 	return nil
 }
 
-// resolveFromStdin reads YAML from stdin and writes it as general.yaml to a temp directory.
+// resolveFromStdin reads YAML from stdinReader and writes it as general.yaml to a temp directory.
 // An empty secrets.yaml is also created so ParseConfigFiles doesn't fail.
 func resolveFromStdin(ctx context.Context) error {
 	slog.InfoContext(ctx, "Reading config from stdin")
 
-	data, err := io.ReadAll(os.Stdin)
+	data, err := io.ReadAll(stdinReader)
 	if err != nil {
 		return fmt.Errorf("reading from stdin: %w", err)
 	}

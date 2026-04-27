@@ -5,6 +5,7 @@ package parser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -26,375 +27,352 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Validates the parsed general and secrets config.
+// validateConfigs validates the parsed general and secrets config.
 func validateConfigs(ctx context.Context) error {
 	if strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".") {
-		return fmt.Errorf("cluster name cannot contain any dots")
+		return errors.New("cluster name cannot contain any dots")
 	}
 
-	// Cluster type VPN is supported only for the Hetzner provider as of now.
-	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
-		assert.Assert(ctx, (globals.CloudProviderName == constants.CloudProviderHetzner),
-			"Cluster type VPN is supported only for the Hetzner provider as of now")
+	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN &&
+		globals.CloudProviderName != constants.CloudProviderHetzner {
+		return errors.New("cluster type VPN is supported only for the Hetzner provider as of now")
 	}
-
-	// Validate based on struct tags.
 
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank)
-	assert.AssertErrNil(ctx, err, "Failed registering notblank validator")
-
-	err = validator.Struct(config.ParsedGeneralConfig)
-	assert.AssertErrNil(ctx, err, "Struct validation failed for general config")
-
-	err = validator.Struct(config.ParsedSecretsConfig)
-	assert.AssertErrNil(ctx, err, "Struct validation failed for secrets config")
-
-	// Validate K8s version.
-	validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion)
-
-	// Validate KubeAid fork version for non-local providers.
-	if globals.CloudProviderName != constants.CloudProviderLocal {
-		assert.Assert(ctx,
-			config.ParsedGeneralConfig.Forks.KubeaidFork.Version != "",
-			"KubeAid fork version is required for non-local providers",
-		)
+	if err := validator.RegisterValidation(
+		"notblank", goNonStandardValidators.NotBlank,
+	); err != nil {
+		return fmt.Errorf("registering notblank validator: %w", err)
 	}
 
-	// Validate KubePrometheus version.
+	if err := validator.Struct(config.ParsedGeneralConfig); err != nil {
+		return fmt.Errorf("struct validation failed for general config: %w", err)
+	}
+	if err := validator.Struct(config.ParsedSecretsConfig); err != nil {
+		return fmt.Errorf("struct validation failed for secrets config: %w", err)
+	}
+
+	if err := validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion); err != nil {
+		return fmt.Errorf("validating K8s version: %w", err)
+	}
+
+	if globals.CloudProviderName != constants.CloudProviderLocal &&
+		config.ParsedGeneralConfig.Forks.KubeaidFork.Version == "" {
+		return errors.New("KubeAid fork version is required for non-local providers")
+	}
+
 	if config.ParsedGeneralConfig.KubePrometheus != nil &&
 		config.ParsedGeneralConfig.KubePrometheus.Version != "" {
-		validateKubePrometheusVersion(ctx,
+		if err := validateKubePrometheusVersion(
 			config.ParsedGeneralConfig.KubePrometheus.Version,
 			config.ParsedGeneralConfig.Cluster.K8sVersion,
-		)
+		); err != nil {
+			return fmt.Errorf("validating KubePrometheus version: %w", err)
+		}
 	}
 
-	// Validate additional users.
 	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
-		// Additional user name cannot be ubuntu.
-		assert.Assert(ctx, additionalUser.Name != "ubuntu", "Additional user name cannot be ubuntu")
-
-		// Validate the public SSH key.
-		_, _, _, _, err = ssh.ParseAuthorizedKey([]byte(additionalUser.SSHPublicKey))
-		assert.AssertErrNil(ctx, err,
-			"SSH public key is invalid : failed parsing",
-			slog.String("additional-user", additionalUser.Name),
-		)
+		if additionalUser.Name == "ubuntu" {
+			return errors.New("additional user name cannot be 'ubuntu'")
+		}
+		if _, _, _, _, err := ssh.ParseAuthorizedKey(
+			[]byte(additionalUser.SSHPublicKey),
+		); err != nil {
+			return fmt.Errorf(
+				"SSH public key for additional user %q is invalid: %w",
+				additionalUser.Name, err,
+			)
+		}
 	}
 
 	// Validate git.knownHosts entries. Each line must parse as an SSH
 	// known_hosts entry — garbage here would otherwise land in
 	// argocd-ssh-known-hosts-cm and silently break ArgoCD's first clone.
-	err = validateKnownHostsEntries(ctx, config.ParsedGeneralConfig.Git.KnownHosts)
-	assert.AssertErrNil(ctx, err, "git.knownHosts validation failed")
+	if err := validateKnownHostsEntries(
+		ctx, config.ParsedGeneralConfig.Git.KnownHosts,
+	); err != nil {
+		return fmt.Errorf("git.knownHosts validation failed: %w", err)
+	}
 
-	// When Obmondo monitoring is requested, the customer must supply the mTLS
-	// cert + private key pair issued by Obmondo. kubeaid-agent uses this pair
-	// to authenticate to the Obmondo API, and kube-prometheus's Alertmanager
-	// uses it to push alerts to Obmondo's alert-receiver endpoint.
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
-		obmondo := config.ParsedGeneralConfig.Obmondo
-
-		assert.Assert(ctx, obmondo.CertPath != "",
-			"obmondo.monitoring is true but obmondo.certPath is empty"+
-				" — an Obmondo-issued mTLS cert is required")
-		assert.Assert(ctx, obmondo.KeyPath != "",
-			"obmondo.monitoring is true but obmondo.keyPath is empty"+
-				" — the private key paired with obmondo.certPath is required")
-
-		_, err := os.Stat(obmondo.CertPath)
-		assert.AssertErrNil(ctx, err,
-			"obmondo.certPath does not exist",
-			slog.String("path", obmondo.CertPath),
-		)
-		_, err = os.Stat(obmondo.KeyPath)
-		assert.AssertErrNil(ctx, err,
-			"obmondo.keyPath does not exist",
-			slog.String("path", obmondo.KeyPath),
-		)
-
-		// teleport-kube-agent defaults on when monitoring is on. If it's not
-		// explicitly disabled, require the join token — the templated
-		// sealed-secret references it and ArgoCD will crash-loop without.
-		teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
-		if teleportEnabled {
-			assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Obmondo,
-				"obmondo.monitoring is true and obmondo.teleportAgent isn't false"+
-					" — secrets.obmondo.teleportAuthToken is required"+
-					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)")
-			assert.Assert(ctx, config.ParsedSecretsConfig.Obmondo.TeleportAuthToken != "",
-				"obmondo.monitoring is true and obmondo.teleportAgent isn't false"+
-					" — secrets.obmondo.teleportAuthToken is required"+
-					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)")
+		if err := validateObmondoMonitoringConfig(); err != nil {
+			return fmt.Errorf("validating obmondo monitoring config: %w", err)
 		}
 	}
 
-	// Validate provider specific configurations.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		validateAWSConfig(ctx)
-
+		return validateAWSConfig()
 	case constants.CloudProviderAzure:
-		validateAzureConfig(ctx)
-
+		return validateAzureConfig()
 	case constants.CloudProviderHetzner:
-		validateHetznerConfig(ctx)
-
+		return validateHetznerConfig()
 	case constants.CloudProviderBareMetal:
-		validateBareMetalConfig(ctx)
-
+		return validateBareMetalConfig(ctx)
 	case constants.CloudProviderLocal:
-		break
+		return nil
 	}
-
 	return nil
 }
 
-// Checks whether the given string represents a valid and supported Kubernetes version.
-func validateK8sVersion(ctx context.Context, k8sVersion string) {
-	hasPrefixV := strings.HasPrefix(k8sVersion, "v")
-	assert.Assert(ctx, hasPrefixV, "K8s version must start with 'v' (for e.g.: v1.35.0)")
+func validateObmondoMonitoringConfig() error {
+	obmondo := config.ParsedGeneralConfig.Obmondo
 
-	// Determine the min and max K8s versions supported by KubeAid CLI,
-	// considering the provider being used.
-
-	var (
-		minSupportedK8sVersion string
-		maxSupportedK8sVersion string
-		err                    error
-	)
-
-	_, err = version.ParseSemantic(k8sVersion)
-	assert.AssertErrNil(ctx, err, "Invalid K8s version")
-
-	switch globals.CloudProviderName {
-	// For the Bare Metal provider, we use KubeOne under the hood.
-	// And we need to ensure that the provided K8s version is officially supported by KubeOne.
-	case constants.CloudProviderBareMetal:
-		minSupportedK8sVersion = constants.MinKubeOneSupportedK8sVersion
-		maxSupportedK8sVersion = constants.MaxKubeOneSupportedK8sVersion
-
-	// When using the Local provider, we create a K3s cluster, where the user can try out KubeAid.
-	// Ensure that the given K8s version is supported by K3s,
-	// and compatible with the CGroup version on the host system.
-	case constants.CloudProviderLocal:
-		minSupportedK8sVersion = constants.MinSupportedK8sVersion
-
-		maxSupportedK8sVersion, err = k3d.GetMaxK3sSupportedK8sVersion(ctx)
-		assert.AssertErrNil(ctx, err, "Failed getting max K3s supported K8s version")
-		if utils.IsCGroupV2() {
-			maxSupportedK8sVersion = constants.MaxCGroupV1CompatibleK8sVersion
-		}
-
-	default:
-		minSupportedK8sVersion = constants.MinSupportedK8sVersion
-		maxSupportedK8sVersion, err = latestStableK8sRelease(ctx)
-		assert.AssertErrNil(ctx, err, "Failed getting latest stable K8s version")
+	if obmondo.CertPath == "" {
+		return errors.New(
+			"obmondo.monitoring is true but obmondo.certPath is empty" +
+				" — an Obmondo-issued mTLS cert is required",
+		)
+	}
+	if obmondo.KeyPath == "" {
+		return errors.New(
+			"obmondo.monitoring is true but obmondo.keyPath is empty" +
+				" — the private key paired with obmondo.certPath is required",
+		)
+	}
+	if _, err := os.Stat(obmondo.CertPath); err != nil {
+		return fmt.Errorf("obmondo.certPath %s: %w", obmondo.CertPath, err)
+	}
+	if _, err := os.Stat(obmondo.KeyPath); err != nil {
+		return fmt.Errorf("obmondo.keyPath %s: %w", obmondo.KeyPath, err)
 	}
 
-	_, err = version.ParseMajorMinor(minSupportedK8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing min supported K8s version")
+	teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
+	if teleportEnabled {
+		if config.ParsedSecretsConfig.Obmondo == nil {
+			return errors.New(
+				"obmondo.monitoring is true and obmondo.teleportAgent isn't false" +
+					" — secrets.obmondo.teleportAuthToken is required" +
+					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)",
+			)
+		}
+		if config.ParsedSecretsConfig.Obmondo.TeleportAuthToken == "" {
+			return errors.New(
+				"obmondo.monitoring is true and obmondo.teleportAgent isn't false" +
+					" — secrets.obmondo.teleportAuthToken is required" +
+					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)",
+			)
+		}
+	}
+	return nil
+}
 
-	_, err = version.ParseMajorMinor(maxSupportedK8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing max supported K8s version")
+// validateK8sVersion checks whether the given string represents a valid and
+// supported Kubernetes version.
+func validateK8sVersion(ctx context.Context, k8sVersion string) error {
+	if !strings.HasPrefix(k8sVersion, "v") {
+		return errors.New("K8s version must start with 'v' (for e.g.: v1.35.0)")
+	}
 
-	// Strip the patch version so that any patch (e.g. v1.34.6) within a
-	// supported minor release is accepted.
-	semver := version.MustParseSemantic(k8sVersion)
-	parsedK8sVersion, err := version.ParseMajorMinor(fmt.Sprintf("v%d.%d", semver.Major(), semver.Minor()))
-	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
+	semver, err := version.ParseSemantic(k8sVersion)
+	if err != nil {
+		return fmt.Errorf("parsing K8s semantic version %q: %w", k8sVersion, err)
+	}
 
-	err = checkK8sNotReleased(ctx, k8sVersion)
-	assert.AssertErrNil(ctx, err, "K8s version is not released")
+	// Strip the patch so any patch (e.g. v1.34.6) within a supported minor
+	// release is accepted by the inclusive major.minor range check below.
+	parsedK8sVersion, err := version.ParseMajorMinor(
+		fmt.Sprintf("v%d.%d", semver.Major(), semver.Minor()),
+	)
+	if err != nil {
+		return fmt.Errorf("parsing K8s major.minor version %q: %w", k8sVersion, err)
+	}
+
+	if err := checkK8sNotReleased(k8sVersion); err != nil {
+		return fmt.Errorf("K8s version is not released: %w", err)
+	}
 
 	if globals.CloudProviderName == constants.CloudProviderBareMetal {
-
 		parsedMin, err := version.ParseMajorMinor(constants.MinKubeOneSupportedK8sVersion)
-		assert.AssertErrNil(ctx, err, "Failed parsing min KubeOne supported K8s version")
-
+		if err != nil {
+			return fmt.Errorf("parsing min KubeOne supported K8s version: %w", err)
+		}
 		parsedMax, err := version.ParseMajorMinor(constants.MaxKubeOneSupportedK8sVersion)
-		assert.AssertErrNil(ctx, err, "Failed parsing max KubeOne supported K8s version")
+		if err != nil {
+			return fmt.Errorf("parsing max KubeOne supported K8s version: %w", err)
+		}
 
 		inRange := parsedK8sVersion.AtLeast(parsedMin) &&
 			(parsedK8sVersion.LessThan(parsedMax) || parsedK8sVersion.EqualTo(parsedMax))
-		assert.Assert(
-			ctx,
-			inRange,
-			fmt.Sprintf(
+		if !inRange {
+			return fmt.Errorf(
 				"K8s version must be in the range (inclusive) : %s - %s for the Bare Metal (KubeOne) provider",
 				constants.MinKubeOneSupportedK8sVersion,
 				constants.MaxKubeOneSupportedK8sVersion,
-			),
-		)
-
+			)
+		}
 	}
 
-	err = checkK8sLifecycle(ctx, k8sVersion)
-	assert.AssertErrNil(ctx, err, "K8s version is not supported")
+	if err := checkK8sLifecycle(ctx, k8sVersion); err != nil {
+		return fmt.Errorf("K8s version is not supported: %w", err)
+	}
+	return nil
 }
 
-func validateAWSConfig(ctx context.Context) {
-	// Ensure that the user has provided AWS specific credentials.
-	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.AWS, "AWS credentials not provided")
+func validateAWSConfig() error {
+	if config.ParsedSecretsConfig.AWS == nil {
+		return errors.New("AWS credentials not provided")
+	}
 
 	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
-
-	// Validate auto-scalable node-groups.
 	for _, awsAutoScalableNodeGroup := range awsConfig.NodeGroups {
-		validateAutoScalableNodeGroup(ctx, &awsAutoScalableNodeGroup.AutoScalableNodeGroup)
+		if err := validateAutoScalableNodeGroup(
+			&awsAutoScalableNodeGroup.AutoScalableNodeGroup,
+		); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func validateAzureConfig(ctx context.Context) {
-	// Ensure that the user has provided Azure specific credentials.
-	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Azure, "Azure credentials not provided")
+func validateAzureConfig() error {
+	if config.ParsedSecretsConfig.Azure == nil {
+		return errors.New("azure credentials not provided")
+	}
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
-
-	// Validate auto-scalable node-groups.
 	for _, azureAutoScalableNodeGroup := range azureConfig.NodeGroups {
-		validateAutoScalableNodeGroup(ctx, &azureAutoScalableNodeGroup.AutoScalableNodeGroup)
+		if err := validateAutoScalableNodeGroup(
+			&azureAutoScalableNodeGroup.AutoScalableNodeGroup,
+		); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func validateHetznerConfig(ctx context.Context) {
-	// Ensure that the user has provided Hetzner specific credentials.
-	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner, "Hetzner credentials not provided")
+func validateHetznerConfig() error {
+	if config.ParsedSecretsConfig.Hetzner == nil {
+		return errors.New("hetzner credentials not provided")
+	}
 
-	// When provisioning a VPN cluster,
 	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
-		// We must use the Hetzner's hcloud provider.
-		assert.Assert(ctx,
-			(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeHCloud),
-			"VPN cluster can only exist in HCloud. So use the hcloud mode of the Hetzner provider")
-
-		// Nil the .cloud.hetzner.hcloudVPNCluster option, if specified.
+		if config.ParsedGeneralConfig.Cloud.Hetzner.Mode != constants.HetznerModeHCloud {
+			return errors.New(
+				"VPN cluster can only exist in HCloud — set Hetzner mode to hcloud",
+			)
+		}
 		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
 	if config.UsingHCloud() {
-		validateHCloudConfig(ctx)
+		if err := validateHCloudConfig(); err != nil {
+			return err
+		}
 	}
-
 	if config.UsingHetznerBareMetal() {
-		validateHetznerBareMetalConfig(ctx)
+		if err := validateHetznerBareMetalConfig(); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func validateHCloudConfig(ctx context.Context) {
+func validateHCloudConfig() error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-	// HCloud specific options must be provided.
-	assert.AssertNotNil(ctx, hetznerConfig.HCloud, "HCloud specific details not provided")
-
-	// When the control-plane is in HCloud,
-	// then HCloud specific control-plane options must be provided.
-	if config.ControlPlaneInHCloud() {
-		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.HCloud,
-			"HCloud specific control-plane details not provided")
+	if hetznerConfig.HCloud == nil {
+		return errors.New("HCloud specific details not provided")
+	}
+	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
+		return errors.New("HCloud specific control-plane details not provided")
 	}
 
-	// Validate auto-scalable node-groups in HCloud.
 	for _, hCloudNodeGroup := range hetznerConfig.NodeGroups.HCloud {
-		validateAutoScalableNodeGroup(ctx, &hCloudNodeGroup.AutoScalableNodeGroup)
+		if err := validateAutoScalableNodeGroup(&hCloudNodeGroup.AutoScalableNodeGroup); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func validateHetznerBareMetalConfig(ctx context.Context) {
-	// Hetzner Robot username and password must be provided.
-	assert.AssertNotNil(ctx, config.ParsedSecretsConfig.Hetzner.Robot,
-		"Hetzner robot user and password not provided")
+func validateHetznerBareMetalConfig() error {
+	if config.ParsedSecretsConfig.Hetzner.Robot == nil {
+		return errors.New("hetzner robot user and password not provided")
+	}
 
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-	// Hetzner bare-metal specific options must be provided.
-	assert.AssertNotNil(ctx, hetznerConfig.BareMetal,
-		"Hetzner bare metal specific details not provided")
-
-	// When the cluster is going to be in a Hetzner Network, the user must provide details about
-	// the VSwitch : which'll be used to connect the Hetzner Bare Metal servers with that Hetzner
-	// Network.
-	// TODO : We need this when mode = bare-metal and there is a VPN cluster.
-	if hetznerConfig.Mode == constants.HetznerModeHybrid {
-		assert.AssertNotNil(ctx, hetznerConfig.BareMetal.VSwitch, "VSwitch details not provided")
+	if hetznerConfig.BareMetal == nil {
+		return errors.New("hetzner bare metal specific details not provided")
 	}
 
-	// When the control-plane is in Hetzner bare-metal.
-	if config.ControlPlaneInHetznerBareMetal() {
-		// Then Hetzner bare-metal specific control-plane options must be provided.
-		assert.AssertNotNil(ctx, hetznerConfig.ControlPlane.BareMetal,
-			"Hetzner bare metal specific control-plane details not provided")
+	if hetznerConfig.Mode == constants.HetznerModeHybrid && hetznerConfig.BareMetal.VSwitch == nil {
+		return errors.New("VSwitch details not provided")
 	}
 
-	// Validate node-groups in Hetzner bare-metal.
+	if config.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
+		return errors.New("hetzner bare metal specific control-plane details not provided")
+	}
+
 	for _, hetznerBaremetalNodeGroup := range hetznerConfig.NodeGroups.BareMetal {
-		validateNodeGroup(ctx, &hetznerBaremetalNodeGroup.NodeGroup)
+		if err := validateNodeGroup(&hetznerBaremetalNodeGroup.NodeGroup); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func validateBareMetalConfig(ctx context.Context) {
+func validateBareMetalConfig(ctx context.Context) error {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
 	connector := kubeonessh.NewConnector(ctx)
 
-	// Validate bare-metal hosts.
-
 	for _, host := range bareMetalConfig.ControlPlane.Hosts {
-		validateBareMetalHost(ctx, host, connector)
-	}
-
-	for _, nodeGroup := range bareMetalConfig.NodeGroups {
-		for _, host := range nodeGroup.Hosts {
-			validateBareMetalHost(ctx, host, connector)
+		if err := validateBareMetalHost(ctx, host, connector); err != nil {
+			return err
 		}
 	}
-}
-
-func validateAutoScalableNodeGroup(ctx context.Context,
-	autoScalableNodeGroup *config.AutoScalableNodeGroup,
-) {
-	validateNodeGroup(ctx, &autoScalableNodeGroup.NodeGroup)
-
-	// Validate auto-scaling options.
-	assert.Assert(ctx,
-		autoScalableNodeGroup.MinSize <= autoScalableNodeGroup.Maxsize,
-		"replica count should be <= its max-size",
-		slog.String("node-group", autoScalableNodeGroup.Name),
-	)
-}
-
-func validateNodeGroup(ctx context.Context, nodeGroup *config.NodeGroup) {
-	// Validate labels and taints.
-	validateLabelsAndTaints(ctx, nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
-}
-
-func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector) {
-	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
-
-	// At least one of public or private IP address must be provided.
-	if host.PublicAddress == nil && host.PrivateAddress == nil {
-		slog.ErrorContext(ctx, "Neither public, nor private IP address provided for a Bare Metal host")
-		os.Exit(1)
+	for _, nodeGroup := range bareMetalConfig.NodeGroups {
+		for _, host := range nodeGroup.Hosts {
+			if err := validateBareMetalHost(ctx, host, connector); err != nil {
+				return err
+			}
+		}
 	}
+	return nil
+}
 
-	// Validate privateAddress format if provided.
-	if host.PrivateAddress != nil {
-		parsedPrivateIP := net.ParseIP(*host.PrivateAddress)
-		assert.AssertNotNil(ctx, parsedPrivateIP,
-			"Invalid private IP address provided for Bare Metal host",
-			slog.String("address", *host.PrivateAddress),
+func validateAutoScalableNodeGroup(
+	autoScalableNodeGroup *config.AutoScalableNodeGroup,
+) error {
+	if err := validateNodeGroup(&autoScalableNodeGroup.NodeGroup); err != nil {
+		return err
+	}
+	if autoScalableNodeGroup.MinSize > autoScalableNodeGroup.Maxsize {
+		return fmt.Errorf(
+			"node-group %q: replica count should be <= its max-size",
+			autoScalableNodeGroup.Name,
 		)
 	}
+	return nil
+}
 
-	// Build list of addresses to try for SSH.
-	// Prefer publicAddress (matching KubeOne behavior), fall back to privateAddress.
+func validateNodeGroup(nodeGroup *config.NodeGroup) error {
+	return validateLabelsAndTaints(nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
+}
+
+func validateBareMetalHost(
+	ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector,
+) error {
+	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
+
+	if host.PublicAddress == nil && host.PrivateAddress == nil {
+		return errors.New("neither public, nor private IP address provided for a Bare Metal host")
+	}
+
+	if host.PrivateAddress != nil {
+		if parsedPrivateIP := net.ParseIP(*host.PrivateAddress); parsedPrivateIP == nil {
+			return fmt.Errorf(
+				"invalid private IP address %q provided for Bare Metal host",
+				*host.PrivateAddress,
+			)
+		}
+	}
+
 	var sshAddresses []string
 	if host.PublicAddress != nil {
 		sshAddresses = append(sshAddresses, *host.PublicAddress)
@@ -407,39 +385,15 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		slog.Any("addresses", sshAddresses),
 	)
 
-	/*
-		We need to SSH into the host, and ensure the following :
-
-		  (1) We can SSH into the server, as the root user.
-
-		  (2) The server's hostname (stored in /etc/hostname) doesn't contain any uppercase letters.
-
-		  (3) Docker isn't installed there. Otherwise, KubeOne will error out.
-
-		  (4) conntrack and socat packages are installed there. Otherwise, KubeOne will fail during the
-		    pre-flight checks.
-
-		  (5) pigz package is installed there. Otherwise ContainerD will fail pulling the OpenEBS
-		    dynamic LocalPV Provisioner container image.
-	*/
-
-	// Determine the SSH private key to use.
 	privateKey := ""
 	switch {
-	// Use the server sepcific SSH private key, if specified.
-	case (host.SSH != nil) && (host.SSH.SSHKeyPairConfig != nil):
+	case host.SSH != nil && host.SSH.SSHKeyPairConfig != nil:
 		privateKey = host.SSH.PrivateKey
-
-	// Otherwise, use the common SSH private key.
 	case bareMetalConfig.SSH.SSHKeyPairConfig != nil:
 		privateKey = bareMetalConfig.SSH.PrivateKey
-
-	// Otherwise, either the SSH_AUTH_SOCK environment variable is set,
-	// or no private key authentication is required (highly unlikely).
 	default:
 	}
 
-	// Try SSH connection using each address, preferring publicAddress.
 	var connection executor.Interface
 	for _, address := range sshAddresses {
 		ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
@@ -447,14 +401,12 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 		})
 
 		opts := kubeonessh.Opts{
-			Context: ctx,
-
+			Context:    ctx,
 			Hostname:   address,
 			Port:       22,
 			Username:   "root",
 			PrivateKey: []byte(privateKey),
-
-			Timeout: time.Second * 10,
+			Timeout:    time.Second * 10,
 		}
 		if len(privateKey) == 0 {
 			opts.AgentSocket = os.Getenv(constants.EnvNameSSHAuthSock)
@@ -466,43 +418,32 @@ func validateBareMetalHost(ctx context.Context, host *config.BareMetalHost, conn
 			slog.InfoContext(ctx, "SSH connection established")
 			break
 		}
-
-		slog.WarnContext(ctx, "SSH connection failed, trying next address",
-			logger.Error(err),
-		)
+		slog.WarnContext(ctx, "SSH connection failed, trying next address", logger.Error(err))
 	}
 
 	if connection == nil {
-		slog.ErrorContext(ctx, "Failed to SSH into server using any address")
-		os.Exit(1)
+		return errors.New("failed to SSH into server using any address")
 	}
 	defer connection.Close()
 
 	slog.DebugContext(ctx, "Opened an SSH connection to the server")
 
-	// Ensure that the server's hostname (stored in /etc/hostname) doesn't contain any uppercase
-	// letters.
-
-	command := "cat /etc/hostname"
-	slog.DebugContext(ctx, "Executing command", slog.String("command", command))
-
-	hostname, _, _, err := connection.Exec(command)
-	assert.AssertErrNil(ctx, err, "Failed determining the server's hostname")
-
+	hostname, _, _, err := connection.Exec("cat /etc/hostname")
+	if err != nil {
+		return fmt.Errorf("determining server hostname: %w", err)
+	}
 	for _, letter := range hostname {
-		assert.Assert(ctx, !unicode.IsUpper(letter),
-			"Server's hostname must not contain any uppercase letters",
-			slog.String("hostname", hostname),
-		)
+		if unicode.IsUpper(letter) {
+			return fmt.Errorf(
+				"server's hostname %q must not contain any uppercase letters",
+				hostname,
+			)
+		}
 	}
 
-	// Ensure that the Docker APT repository isn't added using commands which aren't used by KubeOne.
-	{
-		command = "[ ! -f /etc/apt/sources.list.d/docker.sources ] && [ ! -f /etc/apt/keyrings/docker.asc ]"
-		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
-
-		_, _, _, err = connection.Exec(command)
-		assert.AssertErrNil(ctx, err, `
+	dockerCheckCmd := "[ ! -f /etc/apt/sources.list.d/docker.sources ] && [ ! -f /etc/apt/keyrings/docker.asc ]"
+	if _, _, _, err := connection.Exec(dockerCheckCmd); err != nil {
+		return fmt.Errorf(`docker APT repository not installed using KubeOne's commands.
 Please install the Docker APT repository using commands which KubeOne use :
 
   		sudo apt-get update
@@ -517,24 +458,23 @@ Please install the Docker APT repository using commands which KubeOne use :
 
 REFER : https://github.com/kubermatic/kubeone/blob/225825f44bf38f4c5eca33c76343aed9319413ca/pkg/scripts/render.go#L55.
 
-And remove /etc/apt/sources.list.d/docker.sources and /etc/apt/keyrings/docker.asc.
-    `)
+And remove /etc/apt/sources.list.d/docker.sources and /etc/apt/keyrings/docker.asc: %w`, err)
 	}
 
-	// Ensure that socat, conntrack and pigz are installed.
 	packages := []string{"socat", "conntrack", "pigz"}
 	for _, p := range packages {
-		command := fmt.Sprintf("which %s &> /dev/null", p)
-		slog.DebugContext(ctx, "Executing command", slog.String("command", command))
-
-		_, _, _, err := connection.Exec(command)
-		assert.AssertErrNil(ctx, err, "All required packages must be installed on the server",
-			slog.Any("packages", packages),
-		)
+		if _, _, _, err := connection.Exec(fmt.Sprintf("which %s &> /dev/null", p)); err != nil {
+			return fmt.Errorf(
+				"required package %q missing on server (need: %v): %w",
+				p, packages, err,
+			)
+		}
 	}
+	return nil
 }
 
-// A user defined NodeGroup label key should belong to one of these domains.
+// validNodeGroupLabelDomains lists the label-key prefixes ClusterAPI allows
+// to be propagated from MachinePool to Node.
 // REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.
 var validNodeGroupLabelDomains = []string{
 	"node.cluster.x-k8s.io/",
@@ -542,38 +482,32 @@ var validNodeGroupLabelDomains = []string{
 	"node-restriction.kubernetes.io/",
 }
 
-// Validates node-group labels and taints.
-func validateLabelsAndTaints(ctx context.Context,
+// validateLabelsAndTaints validates node-group labels and taints.
+func validateLabelsAndTaints(
 	nodeGroupName string,
 	labels map[string]string,
 	taints []*coreV1.Taint,
-) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("node-group", nodeGroupName),
-	})
+) error {
+	if err := labelsPkg.Validate(labels); err != nil {
+		return fmt.Errorf(
+			"MachinePool labels validation failed for node-group %q: %w",
+			nodeGroupName, err,
+		)
+	}
 
-	// Validate labels.
-	//
-	// (1) according to Kubernetes specifications.
-	err := labelsPkg.Validate(labels)
-	assert.AssertErrNil(ctx, err, "MachinePool labels validation failed")
-	//
-	// (2) according to ClusterAPI specifications.
 	for key := range labels {
-		// Check if the label belongs to a domain considered valid by ClusterAPI.
-		isValidNodeGroupLabelDomain := false
-		for _, nodeGroupLabelDomains := range validNodeGroupLabelDomains {
-			if strings.HasPrefix(key, nodeGroupLabelDomains) {
-				isValidNodeGroupLabelDomain = true
+		isValid := false
+		for _, prefix := range validNodeGroupLabelDomains {
+			if strings.HasPrefix(key, prefix) {
+				isValid = true
 				break
 			}
 		}
-		if !isValidNodeGroupLabelDomain {
-			slog.ErrorContext(ctx,
-				"NodeGroup label key should belong to one of these domains",
-				slog.Any("domains", validNodeGroupLabelDomains),
+		if !isValid {
+			return fmt.Errorf(
+				"NodeGroup label key %q should belong to one of these domains: %v",
+				key, validNodeGroupLabelDomains,
 			)
-			os.Exit(1)
 		}
 	}
 
@@ -581,60 +515,66 @@ func validateLabelsAndTaints(ctx context.Context,
 	for _, taint := range taints {
 		taintsAsKVPairs[taint.Key] = fmt.Sprintf("%s:%s", taint.Value, taint.Effect)
 	}
-	//
-	// Validate taints.
-	err = labelsPkg.ValidateTaints(taintsAsKVPairs)
-	assert.AssertErrNil(ctx, err, "NodeGroup taints validation failed")
+	if err := labelsPkg.ValidateTaints(taintsAsKVPairs); err != nil {
+		return fmt.Errorf(
+			"NodeGroup taints validation failed for node-group %q: %w",
+			nodeGroupName, err,
+		)
+	}
+	return nil
 }
 
-func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion, k8sVersion string) {
-	// Ensure that the KubePrometheus version is a valid semantic version.
-
-	hasPrefixV := strings.HasPrefix(kubePrometheusVersion, "v")
-	assert.Assert(ctx, hasPrefixV, "KubePrometheus version must start with 'v' (for e.g.: v0.15.0)")
+func validateKubePrometheusVersion(kubePrometheusVersion, k8sVersion string) error {
+	if !strings.HasPrefix(kubePrometheusVersion, "v") {
+		return errors.New("KubePrometheus version must start with 'v' (for e.g.: v0.15.0)")
+	}
 
 	parsedKubePrometheusVersion, err := version.ParseGeneric(kubePrometheusVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing KubePrometheus semantic version")
-
-	// Ensure that the KubePrometheus and K8s versions are officially compatible.
+	if err != nil {
+		return fmt.Errorf("parsing KubePrometheus semantic version: %w", err)
+	}
 
 	parsedK8sVersion, err := version.ParseGeneric(k8sVersion)
-	assert.AssertErrNil(ctx, err, "Failed parsing Kubernetes semantic version")
+	if err != nil {
+		return fmt.Errorf("parsing Kubernetes semantic version: %w", err)
+	}
 
 	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
-
 	compatibleKubePrometheusVersions, ok := constants.KubernetesKubePrometheusVersionCompatibilityMatrix[k8sMajorMinorVersion]
-	assert.Assert(
-		ctx,
-		ok,
-		fmt.Sprintf(
-			"Unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
+	if !ok {
+		return fmt.Errorf(
+			"unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
 			k8sMajorMinorVersion,
-		),
-	)
+		)
+	}
 
-	kubePrometheusVersionSupported := slices.ContainsFunc(
+	var sentinelErr error
+	supported := slices.ContainsFunc(
 		compatibleKubePrometheusVersions,
 		func(compatibleVersion string) bool {
+			if sentinelErr != nil {
+				return false
+			}
 			parsedCompatibleVersion, err := version.ParseGeneric(compatibleVersion)
-			assert.AssertErrNil(
-				ctx,
-				err,
-				"Failed parsing KubePrometheus semantic version from compatibility matrix",
-			)
-
-			// Match major + minor only (patch versions are backward compatible)
-			return (parsedCompatibleVersion.Major() == parsedKubePrometheusVersion.Major()) &&
-				(parsedCompatibleVersion.Minor() == parsedKubePrometheusVersion.Minor())
+			if err != nil {
+				sentinelErr = fmt.Errorf(
+					"parsing KubePrometheus semantic version %q from compatibility matrix: %w",
+					compatibleVersion, err,
+				)
+				return false
+			}
+			return parsedCompatibleVersion.Major() == parsedKubePrometheusVersion.Major() &&
+				parsedCompatibleVersion.Minor() == parsedKubePrometheusVersion.Minor()
 		},
 	)
-
-	assert.Assert(ctx, kubePrometheusVersionSupported, `
-KubePrometheus and K8s versions aren't officially compatible! You can check the compatibility
-matrix here :
-
-    https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility
-  `)
+	if sentinelErr != nil {
+		return sentinelErr
+	}
+	if !supported {
+		return errors.New(`KubePrometheus and K8s versions aren't officially compatible. See:
+    https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility`)
+	}
+	return nil
 }
 
 // validateKnownHostsEntries returns an error describing the first invalid
@@ -642,8 +582,6 @@ matrix here :
 // One entry = one line; multi-line block scalars are rejected so the user
 // splits them into separate slice elements (otherwise ParseKnownHosts would
 // only check the first line and silently pass garbage after it).
-// Extracted from validateConfigs so it can be unit-tested directly — the
-// call site uses assert.AssertErrNil on the returned error.
 func validateKnownHostsEntries(ctx context.Context, entries []string) error {
 	for i, entry := range entries {
 		trimmed := strings.TrimSpace(entry)
@@ -657,7 +595,6 @@ func validateKnownHostsEntries(ctx context.Context, entries []string) error {
 				i,
 			)
 		}
-		// ParseKnownHosts wants a newline-terminated line.
 		if _, _, _, _, _, err := ssh.ParseKnownHosts([]byte(trimmed + "\n")); err != nil {
 			return fmt.Errorf("git.knownHosts entry %d (%q) is invalid: %w", i, trimmed, err)
 		}
