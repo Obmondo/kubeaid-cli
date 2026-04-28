@@ -212,6 +212,7 @@ const (
 const (
 	// Namespaces.
 	NamespaceArgoCD        = "argocd"
+	NamespaceObmondo       = "obmondo"
 	NamespaceVelero        = "velero"
 	NamespaceSealedSecrets = "sealed-secrets"
 	NamespaceCrossPlane    = "crossplane"
