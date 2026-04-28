@@ -1,4 +1,12 @@
 - - -
+## v0.22.4 - 2026-04-28
+#### Bug Fixes
+- (**kubeaid-agent**) create ArgoCD project-role Secret in obmondo namespace - (ffb9cc3) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**ci**) add ci to validate bad commit message - (7ddfd73) - Sanskar Bhushan
+
+- - -
+
 ## v0.22.3 - 2026-04-24
 #### Bug Fixes
 - (**monitoring**) render alertmanager-main Secret to prevent pod deadlock - (57c5009) - Ashish Jaiswal
