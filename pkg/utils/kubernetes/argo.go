@@ -521,12 +521,16 @@ func setupKubeAgentArgoCDProjectRole(ctx context.Context,
 		"Failed generating KubeAid project token for KubeAid Agent role",
 	)
 
-	// Store it in the 'argocd-project-role-kubeaid-agent' Kubernetes Secret.
-	// We adding a label to identify the secret was created by 'kubeaid-bootstrap-script'.
+	// Store it in the 'argocd-project-role-kubeaid-agent' Kubernetes Secret in
+	// the agent's own namespace (obmondo). The agent reads this Secret at
+	// startup to authenticate against the ArgoCD API; ArgoCD itself doesn't
+	// need to read it (it only validates the JWT signature when the token is
+	// presented), so the Secret legitimately belongs where its consumer runs.
+	// Pairs with the kubeaid chart's secret-reader Role in templates/rbac.yaml.
 	secretObj := &coreV1.Secret{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      constants.ArgoCDProjectRoleSecretName,
-			Namespace: constants.NamespaceArgoCD,
+			Namespace: constants.NamespaceObmondo,
 			Labels: map[string]string{
 				constants.ArgoCDLabelKeyManagedBy: constants.ArgoCDProjectKubeAid,
 			},
