@@ -3,6 +3,35 @@ on:
   pull_request:
 
 jobs:
+  commit-message-check:
+    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Install Cocogitto
+        uses: https://gitea.obmondo.com/Obmondo/cocogitto-action@v4
+        with:
+          command: --version
+
+      - name: Validate commit messages in PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          commits=$(git rev-list --reverse --no-merges "${BASE_SHA}..${HEAD_SHA}")
+
+          if [ -z "${commits}" ]; then
+            echo "No non-merge commits found in PR range ${BASE_SHA}..${HEAD_SHA}."
+            exit 0
+          fi
+
+          cog check "${BASE_SHA}..${HEAD_SHA}"
+
   golangci-lint:
     runs-on: ubuntu-24.04-htzhel1-ax42-a
     needs: [security-code-scan]
