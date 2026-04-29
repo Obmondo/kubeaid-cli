@@ -4,19 +4,16 @@
 package prompt
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
@@ -156,7 +153,7 @@ func detectKubeAidVersion() string {
 	url := constants.KubeAidReleasesAPIURL + "?per_page=10"
 
 	var releases []releaseInfo
-	if err := fetchJSON(url, &releases); err != nil {
+	if err := utils.FetchJSON(url, &releases); err != nil {
 		slog.Warn("Failed fetching KubeAid releases", slog.Any("error", err))
 		return ""
 	}
@@ -203,38 +200,9 @@ func detectSSHAgent() bool {
 
 // fetchURL performs an HTTP GET and returns the response body as a string.
 func fetchURL(url string) (string, error) {
-	body, err := fetchURLBytes(url)
+	body, err := utils.FetchURLBytes(url)
 	if err != nil {
 		return "", err
 	}
 	return string(body), nil
-}
-
-// fetchJSON performs an HTTP GET and decodes the JSON response into the provided destination.
-func fetchJSON(url string, dest any) error {
-	body, err := fetchURLBytes(url)
-	if err != nil {
-		return err
-	}
-	return json.Unmarshal(body, dest)
-}
-
-// fetchURLBytes performs an HTTP GET and returns the raw response body bytes.
-func fetchURLBytes(url string) ([]byte, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
 }

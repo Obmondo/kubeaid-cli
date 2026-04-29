@@ -5,8 +5,11 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
@@ -54,4 +57,33 @@ func WithRetry(delay time.Duration, attempts uint8, fn func() error) error {
 	}
 
 	return err
+}
+
+// FetchJSON performs an HTTP GET and decodes the JSON response into the provided destination.
+func FetchJSON(url string, dest any) error {
+	body, err := FetchURLBytes(url)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(body, dest)
+}
+
+// fetchURLBytes performs an HTTP GET and returns the raw response body bytes.
+func FetchURLBytes(url string) ([]byte, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
 }

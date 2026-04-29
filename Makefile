@@ -64,6 +64,23 @@ run-generators: ## Generate config artifacts
 	@go run ./tools/generators/cmd \
 		./pkg/config/general.go ./pkg/config/secrets.go
 
+.PHONY: fetch-k8s-eol
+fetch-k8s-eol: ## Refresh embedded K8s EOL data from endoflife.date
+	@./tools/generators/cmd/fetch-k8s-eol.sh
+
+.PHONY: check-k8s-eol
+check-k8s-eol: ## Check that pkg/config/parser/k8s-eol.json is up to date with endoflife.date
+	@./tools/generators/cmd/fetch-k8s-eol.sh
+	@if ! git diff --quiet -- pkg/config/parser/k8s-eol.json; then \
+		echo ""; \
+		echo "pkg/config/parser/k8s-eol.json is out of date relative to endoflife.date."; \
+		echo "Run 'make fetch-k8s-eol' locally and commit the refreshed file."; \
+		echo ""; \
+		git --no-pager diff -- pkg/config/parser/k8s-eol.json; \
+		exit 1; \
+	fi
+	@echo "pkg/config/parser/k8s-eol.json is up to date with endoflife.date"
+
 .PHONY: build-kubeaid-core
 build-kubeaid-core: ## Build kubeaid-core binary
 	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-core ./cmd/kubeaid-core
