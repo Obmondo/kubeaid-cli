@@ -44,15 +44,16 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	// If 'clusterctl move' wasn't executed, then we need to communicate with the management
 	// cluster instead.
 	if !kubernetes.IsClusterctlMoveExecuted(ctx) {
-		utils.MustSetEnv(
-			constants.EnvNameKubeconfig, kubernetes.GetManagementClusterKubeconfigPath(ctx),
-		)
+		mgmtKubeconfig, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+		utils.MustSetEnv(constants.EnvNameKubeconfig, mgmtKubeconfig)
 	}
 
 	// Construct the Kubernetes cluster client.
-	clusterClient := kubernetes.MustCreateClusterClient(ctx,
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		utils.MustGetEnv(constants.EnvNameKubeconfig),
 	)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Construct the clusterctl client.
 	clusterctlClient, err := clusterctlClientLib.New(ctx, "")
@@ -60,7 +61,8 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 
 	{
 		// Port-forward ArgoCD and create ArgoCD client.
-		argoCDClient := kubernetes.NewArgoCDClient(ctx, clusterClient)
+		argoCDClient, argoCDErr := kubernetes.NewArgoCDClient(ctx, clusterClient)
+		assert.AssertErrNil(ctx, argoCDErr, "Failed creating ArgoCD client")
 
 		// Create ArgoCD application client.
 		globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
@@ -220,7 +222,7 @@ func upgradeControlPlane(ctx context.Context,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
 	// We'll do this, by syncing it specifically, in the capi-cluster ArgoCD App.
 	if len(args.NewKubernetesVersion) > 0 {
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
 					Group: "controlplane.cluster.x-k8s.io",
@@ -229,6 +231,7 @@ func upgradeControlPlane(ctx context.Context,
 				},
 			},
 		)
+		assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app for control plane upgrade")
 	}
 
 	// Rollout the control-plane, immediately
@@ -281,7 +284,7 @@ func upgradeNodeGroup(ctx context.Context,
 		       replica count.
 	*/
 	if len(args.NewKubernetesVersion) > 0 {
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
 					Group: "bootstrap.cluster.x-k8s.io",
@@ -295,6 +298,7 @@ func upgradeNodeGroup(ctx context.Context,
 				},
 			},
 		)
+		assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app for node-group upgrade")
 	}
 
 	// Rollout the node-group, immediately.

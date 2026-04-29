@@ -11,6 +11,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -23,9 +24,10 @@ func TestCluster(ctx context.Context) {
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
 
 	// Construct a client to the main cluster.
-	mainClusterClient := kubernetes.MustCreateClusterClient(ctx,
+	mainClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Run minimal Cilium network connectivity tests.
 	runCiliumNetworkConnectivityTests(ctx, mainClusterClient)
@@ -35,7 +37,9 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	slog.InfoContext(ctx, "🧪 Running minimal Cilium network connectivity tests")
 
 	// Create the cilium-test namespace.
-	kubernetes.CreateNamespace(ctx, constants.NamespaceCiliumTest, clusterClient)
+	err := kubernetes.CreateNamespace(ctx, constants.NamespaceCiliumTest, clusterClient)
+	assert.AssertErrNil(ctx, err, "Failed creating namespace",
+		slog.String("namespace", constants.NamespaceCiliumTest))
 	//
 	// Pods spun up during the network connectivity tests, need to do DNS lookups and tcpdumps.
 	// So they need to run in privileged mode.

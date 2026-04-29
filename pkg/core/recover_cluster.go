@@ -96,10 +96,12 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 	)
 
 	// Identify the latest Velero Backup.
-	latestVeleroBackup := kubernetes.GetLatestVeleroBackup(ctx, clusterClient)
+	latestVeleroBackup, err := kubernetes.GetLatestVeleroBackup(ctx, clusterClient)
+	assert.AssertErrNil(ctx, err, "Failed identifying latest Velero backup")
 
 	// Restore the latest Velero Backup.
-	kubernetes.RestoreVeleroBackup(ctx, clusterClient, latestVeleroBackup)
+	err = kubernetes.RestoreVeleroBackup(ctx, clusterClient, latestVeleroBackup)
+	assert.AssertErrNil(ctx, err, "Failed restoring Velero backup")
 
 	slog.InfoContext(ctx, "Cluster recovered successfully 🎊")
 }

@@ -31,6 +31,8 @@ func (a *Azure) SetupDisasterRecovery(ctx context.Context) {
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		err := kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
+			slog.String("app", argoCDApp))
 	}
 }

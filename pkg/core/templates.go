@@ -179,7 +179,9 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 	default:
 		// For local/dev clusters, the main cluster endpoint may not be available yet.
-		if endpoint := kubernetes.GetMainClusterEndpoint(ctx); endpoint != nil {
+		endpoint, endpointErr := kubernetes.GetMainClusterEndpoint(ctx)
+		assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
+		if endpoint != nil {
 			templateValues.ControlPlaneEndpoint = endpoint.Hostname()
 		}
 	}

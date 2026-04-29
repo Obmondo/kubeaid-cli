@@ -26,7 +26,9 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -160,7 +162,53 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) {
 	hasPrefixV := strings.HasPrefix(k8sVersion, "v")
 	assert.Assert(ctx, hasPrefixV, "K8s version must start with 'v' (for e.g.: v1.35.0)")
 
-	parsedK8sVersion, err := version.ParseSemantic(k8sVersion)
+	// Determine the min and max K8s versions supported by KubeAid CLI,
+	// considering the provider being used.
+
+	var (
+		minSupportedK8sVersion string
+		maxSupportedK8sVersion string
+		err                    error
+	)
+
+	_, err = version.ParseSemantic(k8sVersion)
+	assert.AssertErrNil(ctx, err, "Invalid K8s version")
+
+	switch globals.CloudProviderName {
+	// For the Bare Metal provider, we use KubeOne under the hood.
+	// And we need to ensure that the provided K8s version is officially supported by KubeOne.
+	case constants.CloudProviderBareMetal:
+		minSupportedK8sVersion = constants.MinKubeOneSupportedK8sVersion
+		maxSupportedK8sVersion = constants.MaxKubeOneSupportedK8sVersion
+
+	// When using the Local provider, we create a K3s cluster, where the user can try out KubeAid.
+	// Ensure that the given K8s version is supported by K3s,
+	// and compatible with the CGroup version on the host system.
+	case constants.CloudProviderLocal:
+		minSupportedK8sVersion = constants.MinSupportedK8sVersion
+
+		maxSupportedK8sVersion, err = k3d.GetMaxK3sSupportedK8sVersion(ctx)
+		assert.AssertErrNil(ctx, err, "Failed getting max K3s supported K8s version")
+		if utils.IsCGroupV2() {
+			maxSupportedK8sVersion = constants.MaxCGroupV1CompatibleK8sVersion
+		}
+
+	default:
+		minSupportedK8sVersion = constants.MinSupportedK8sVersion
+		maxSupportedK8sVersion, err = latestStableK8sRelease(ctx)
+		assert.AssertErrNil(ctx, err, "Failed getting latest stable K8s version")
+	}
+
+	_, err = version.ParseMajorMinor(minSupportedK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing min supported K8s version")
+
+	_, err = version.ParseMajorMinor(maxSupportedK8sVersion)
+	assert.AssertErrNil(ctx, err, "Failed parsing max supported K8s version")
+
+	// Strip the patch version so that any patch (e.g. v1.34.6) within a
+	// supported minor release is accepted.
+	semver := version.MustParseSemantic(k8sVersion)
+	parsedK8sVersion, err := version.ParseMajorMinor(fmt.Sprintf("v%d.%d", semver.Major(), semver.Minor()))
 	assert.AssertErrNil(ctx, err, "Failed parsing K8s semantic version")
 
 	err = checkK8sNotReleased(ctx, k8sVersion)

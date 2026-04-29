@@ -11,6 +11,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
@@ -51,13 +52,16 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	}
 
 	// Set KUBECONFIG env and create the K3D management cluster.
-	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	managementClusterKubeconfigPath, err := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	assert.AssertErrNil(ctx, err, "Failed getting management cluster kubeconfig path")
 	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 
 	// Ensure that the K3D management cluster is created.
-	k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
+	err = k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
+	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
 
-	managementClusterClient := kubernetes.MustCreateClusterClient(ctx, managementClusterKubeconfigPath)
+	managementClusterClient, err := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Setup the management cluster.
 	SetupCluster(ctx, SetupClusterArgs{

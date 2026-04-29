@@ -5,6 +5,8 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -14,12 +16,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Creates a Velero Backup with the given name.
-func CreateBackup(ctx context.Context, name string, clusterClient client.Client) {
+// CreateBackup creates a Velero Backup with the given name.
+func CreateBackup(ctx context.Context, name string, clusterClient client.Client) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("backup-name", name),
 	})
@@ -33,14 +34,16 @@ func CreateBackup(ctx context.Context, name string, clusterClient client.Client)
 		Spec: veleroV1.BackupSpec{},
 	}
 
-	err := clusterClient.Create(ctx, &backup, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed creating Velero Backup")
+	if err := clusterClient.Create(ctx, &backup, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed creating velero backup: %w", err)
+	}
 
 	slog.InfoContext(ctx, "Created Velero Backup")
+	return nil
 }
 
-// Identifies and returns the latest / most recent Velero Backup.
-func GetLatestVeleroBackup(ctx context.Context, clusterClient client.Client) *veleroV1.Backup {
+// GetLatestVeleroBackup identifies and returns the latest / most recent Velero Backup.
+func GetLatestVeleroBackup(ctx context.Context, clusterClient client.Client) (*veleroV1.Backup, error) {
 	// List all Velero Backups.
 
 	veleroBackupList := veleroV1.BackupList{}
@@ -50,9 +53,13 @@ func GetLatestVeleroBackup(ctx context.Context, clusterClient client.Client) *ve
 	err := clusterClient.List(ctx, &veleroBackupList, &client.ListOptions{
 		Namespace: constants.NamespaceVelero,
 	})
-	assert.AssertErrNil(ctx, err, "Failed listing Velero backups")
+	if err != nil {
+		return nil, fmt.Errorf("failed listing velero backups: %w", err)
+	}
 
-	assert.Assert(ctx, len(veleroBackupList.Items) > 0, "No Backups found")
+	if len(veleroBackupList.Items) == 0 {
+		return nil, errors.New("no backups found")
+	}
 
 	// Identify the latest / most recent Backup,
 	// based on the status.startTimestamp field.
@@ -74,14 +81,14 @@ func GetLatestVeleroBackup(ctx context.Context, clusterClient client.Client) *ve
 		slog.String("backup-name", latestVeleroBackup.Name),
 	)
 
-	return &latestVeleroBackup
+	return &latestVeleroBackup, nil
 }
 
-// Creates a Velero Restore object for the given Velero Backup.
+// RestoreVeleroBackup creates a Velero Restore object for the given Velero Backup.
 func RestoreVeleroBackup(ctx context.Context,
 	clusterClient client.Client,
 	latestVeleroBackup *veleroV1.Backup,
-) {
+) error {
 	veleroRestore := veleroV1.Restore{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      latestVeleroBackup.Name,
@@ -94,8 +101,10 @@ func RestoreVeleroBackup(ctx context.Context,
 		},
 	}
 
-	err := clusterClient.Create(ctx, &veleroRestore, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed listing Velero backups")
+	if err := clusterClient.Create(ctx, &veleroRestore, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed creating velero restore: %w", err)
+	}
 
 	slog.InfoContext(ctx, "Created Velero Restore", slog.String("restore-name", veleroRestore.Name))
+	return nil
 }

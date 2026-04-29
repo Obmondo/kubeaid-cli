@@ -29,7 +29,8 @@ import (
 func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 	// Create Composite Resource (XR) Claims,
 	// to provision the Azure Workload Identity and Disaster Recovery infrastructure.
-	kubernetes.SyncArgoCDApp(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
+	err := kubernetes.SyncArgoCDApp(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
+	assert.AssertErrNil(ctx, err, "Failed syncing infrastructure ArgoCD app")
 
 	// Wait until the infrastructure is provisioned.
 	// This can be done, by waiting until all the created XRClaims, have their status marked as
@@ -40,7 +41,7 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		xrClaims = append(xrClaims, "disasterrecoveryinfrastructure/default")
 	}
 
-	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
+	err = wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (done bool, err error) {
 			for _, xrClaim := range xrClaims {
 				output, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,

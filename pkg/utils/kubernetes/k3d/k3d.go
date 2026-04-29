@@ -16,14 +16,13 @@ import (
 	"github.com/k3d-io/k3d/v5/cmd/cluster"
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
-	"github.com/k3d-io/k3d/v5/pkg/types"
+	k3dTypes "github.com/k3d-io/k3d/v5/pkg/types"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
@@ -49,16 +48,69 @@ type (
 	}
 )
 
+type K3DRuntime interface {
+	ClusterList(ctx context.Context) ([]*k3dTypes.Cluster, error)
+	ClusterCreate(configPath string) error
+	ClusterDelete(configPath string) error
+	WriteKubeconfig(ctx context.Context, clusterName, outputPath string) error
+}
+
+type dockerK3DRuntime struct{}
+
+func (dockerK3DRuntime) ClusterList(ctx context.Context) ([]*k3dTypes.Cluster, error) {
+	return k3dClient.ClusterList(ctx, runtimes.Docker)
+}
+
+func (dockerK3DRuntime) ClusterCreate(configPath string) error {
+	cmd := cluster.NewCmdClusterCreate()
+	cmd.SetArgs([]string{"--config", configPath})
+
+	// k3d's cluster create command prints help text (e.g. "kubectl cluster-info")
+	// directly to stdout via fmt.Println, bypassing logrus. Temporarily redirect
+	// stdout to suppress this output.
+	origStdout := os.Stdout
+	os.Stdout, _ = os.Open(os.DevNull)
+	err := cmd.Execute()
+	os.Stdout = origStdout
+	return err
+}
+
+func (dockerK3DRuntime) ClusterDelete(configPath string) error {
+	cmd := cluster.NewCmdClusterDelete()
+	cmd.SetArgs([]string{"--config", configPath})
+	return cmd.Execute()
+}
+
+func (dockerK3DRuntime) WriteKubeconfig(ctx context.Context, clusterName, outputPath string) error {
+	_, err := k3dClient.KubeconfigGetWrite(ctx, runtimes.Docker,
+		&k3dTypes.Cluster{Name: clusterName},
+		outputPath,
+		&k3dClient.WriteKubeConfigOptions{OverwriteExisting: true},
+	)
+	return err
+}
+
+// DockerRuntime is the singleton production K3DRuntime.
+var DockerRuntime K3DRuntime = dockerK3DRuntime{}
+
+type createK3DClusterParams struct {
+	Runtime                 K3DRuntime
+	Executor                commandexecutor.CommandExecutor
+	ConfigPath              string
+	HostKubeconfigPath      string
+	ContainerKubeconfigPath string
+}
+
 /*
 Does the following :
 
 	(1) Creates a K3D cluster with the given name, if it doesn't already exist.
 
 	(2) Creates 2 kubeconfig files, which can be used to access the cluster, from inside the
-			KubeAid Bootstrap Script container, or from the user's host machine.
+	    KubeAid Bootstrap Script container, or from the user's host machine.
 
 	(3) Ensures that each master node has the node-role.kubernetes.io/control-plane= label,
-			just like it is for a Vanilla Kubernetes cluster.
+	    just like it is for a Vanilla Kubernetes cluster.
 
 Keep in mind :
 
@@ -66,45 +118,55 @@ Keep in mind :
 	Otherwise, access to the K3D cluster will break.
 
 	(1) From inside the container, we can access the K3D cluster's API server using
-			https://k3d-management-cluster-server-0:6443.
+	    https://k3d-management-cluster-server-0:6443.
 
 	(2) And from outside the container, we can use https://0.0.0.0:<whatever the random port is>.
 */
-func CreateK3DCluster(ctx context.Context, name string) {
+func CreateK3DCluster(ctx context.Context, name string) error {
+	return createK3DClusterWithParams(ctx, name, &createK3DClusterParams{
+		Runtime:                 DockerRuntime,
+		Executor:                commandexecutor.NewLocalCommandExecutor(false),
+		ConfigPath:              constants.OutputPathManagementClusterK3DConfig,
+		HostKubeconfigPath:      constants.OutputPathManagementClusterHostKubeconfig,
+		ContainerKubeconfigPath: constants.OutputPathManagementClusterContainerKubeconfig,
+	})
+}
+
+func createK3DClusterWithParams(ctx context.Context, name string, params *createK3DClusterParams) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("cluster-name", name),
 	})
 
 	// Generate the K3D cluster config file.
-	generateK3DClusterConfigFile(ctx, name)
+	if err := generateK3DClusterConfigFile(ctx, name, params.ConfigPath); err != nil {
+		return fmt.Errorf("generating k3d cluster config file: %w", err)
+	}
 
 	// Ensure that the K3D cluster is created.
-	createK3DCluster(ctx, name)
+	if err := createK3DCluster(ctx, name, params.ConfigPath, params.Runtime); err != nil {
+		return fmt.Errorf("creating k3d cluster: %w", err)
+	}
 
 	// Ensure existence of the directory which'll contain the kubeconfig file.
-	utils.CreateIntermediateDirsForFile(ctx, constants.OutputPathManagementClusterHostKubeconfig)
+	utils.CreateIntermediateDirsForFile(ctx, params.HostKubeconfigPath)
 
 	// Create the K3D management cluster's host kubeconfig.
 	// Use https://0.0.0.0:<whatever the random port is> as the API server address.
-	_, err := k3dClient.KubeconfigGetWrite(ctx, runtimes.Docker,
-		&types.Cluster{Name: name},
-
-		constants.OutputPathManagementClusterHostKubeconfig,
-		&k3dClient.WriteKubeConfigOptions{OverwriteExisting: true},
-	)
-	assert.AssertErrNil(ctx, err, "Failed getting and persisting K3D cluster's kubeconfig")
+	if err := params.Runtime.WriteKubeconfig(ctx, name, params.HostKubeconfigPath); err != nil {
+		return fmt.Errorf("writing k3d cluster kubeconfig: %w", err)
+	}
 
 	// For management cluster's in-container kubeconfig, use
 	// https://k3d-management-cluster-server-0:6443 as the API server address.
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+	params.Executor.MustExecute(ctx,
 		fmt.Sprintf(
 			`
         cp %s %s
         KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443
       `,
-			constants.OutputPathManagementClusterHostKubeconfig,
-			constants.OutputPathManagementClusterContainerKubeconfig,
-			constants.OutputPathManagementClusterContainerKubeconfig,
+			params.HostKubeconfigPath,
+			params.ContainerKubeconfigPath,
+			params.ContainerKubeconfigPath,
 			name,
 			name,
 		))
@@ -117,9 +179,9 @@ func CreateK3DCluster(ctx context.Context, name string) {
 		on this label to get scheduled to the master node.
 
 		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
-					 The cluster won't even startup.
+			     The cluster won't even startup.
 	*/
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
+	params.Executor.MustExecute(ctx, `
 		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
 
 		for node in $master_nodes; do
@@ -127,13 +189,19 @@ func CreateK3DCluster(ctx context.Context, name string) {
 			kubectl label $node node-role.kubernetes.io/control-plane=""
 		done
 	`)
+
+	return nil
 }
 
-// Generates the K3D cluster config file.
-func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
+func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath string) error {
+	k3sVersion, err := getK3sVersion()
+	if err != nil {
+		return fmt.Errorf("getting k3s version: %w", err)
+	}
+
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
-		K3sVersion: getK3sVersion(ctx),
+		K3sVersion: k3sVersion,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
@@ -154,116 +222,123 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName string) {
 		&templates, constants.TemplateNameK3DConfig, k3dConfigTemplateValues,
 	)
 
-	k3dConfigFile, err := os.OpenFile(constants.OutputPathManagementClusterK3DConfig,
+	k3dConfigFile, err := os.OpenFile(configPath,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600,
 	)
-	assert.AssertErrNil(ctx, err,
-		"Failed opening management cluster K3D config file",
-		slog.String("path", constants.OutputPathManagementClusterK3DConfig),
-	)
+	if err != nil {
+		return fmt.Errorf("opening k3d config file %s: %w", configPath, err)
+	}
 	defer k3dConfigFile.Close()
 
-	_, err = k3dConfigFile.Write(k3dConfigAsBytes)
-	assert.AssertErrNil(ctx, err, "Failed writing K3D config to file")
+	if _, err = k3dConfigFile.Write(k3dConfigAsBytes); err != nil {
+		return fmt.Errorf("writing k3d config to file: %w", err)
+	}
+
+	return nil
 }
 
-// Create the K3D cluster, if it doesn't already exist.
-func createK3DCluster(ctx context.Context, name string) {
-	if doesK3dClusterExist(ctx, name) {
+// createK3DCluster creates the K3D cluster if it doesn't already exist.
+func createK3DCluster(ctx context.Context, name, configPath string, rt K3DRuntime) error {
+	exists, err := doesK3dClusterExist(ctx, name, rt)
+	if err != nil {
+		return fmt.Errorf("checking if k3d cluster exists: %w", err)
+	}
+
+	if exists {
 		slog.InfoContext(ctx, "Skipped creating the K3D management cluster")
-		return
+		return nil
 	}
 
 	slog.InfoContext(ctx, "Creating the K3D management cluster")
 
-	clusterCreateCmd := cluster.NewCmdClusterCreate()
-	clusterCreateCmd.SetArgs([]string{
-		"--config",
-		constants.OutputPathManagementClusterK3DConfig,
-	})
+	if err := rt.ClusterCreate(configPath); err != nil {
+		return fmt.Errorf("creating k3d cluster: %w", err)
+	}
 
-	// k3d's cluster create command prints help text (e.g. "kubectl cluster-info")
-	// directly to stdout via fmt.Println, bypassing logrus. Temporarily redirect
-	// stdout to suppress this output.
-	origStdout := os.Stdout
-	os.Stdout, _ = os.Open(os.DevNull)
-	err := clusterCreateCmd.ExecuteContext(ctx)
-	os.Stdout = origStdout
-
-	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
+	return nil
 }
 
-// Returns whether the given K3D cluster exists or not.
-func doesK3dClusterExist(ctx context.Context, name string) bool {
-	clusters, err := k3dClient.ClusterList(ctx, runtimes.Docker)
-	assert.AssertErrNil(ctx, err, "Failed listing K3d clusters")
+// doesK3dClusterExist returns whether the given K3D cluster exists.
+func doesK3dClusterExist(ctx context.Context, name string, rt K3DRuntime) (bool, error) {
+	clusters, err := rt.ClusterList(ctx)
+	if err != nil {
+		return false, fmt.Errorf("listing k3d clusters: %w", err)
+	}
 
-	for _, cluster := range clusters {
-		if cluster.Name == name {
-			return true
+	for _, c := range clusters {
+		if c.Name == name {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
-func DeleteK3DCluster(ctx context.Context) {
+// DeleteK3DCluster deletes the K3D management cluster.
+func DeleteK3DCluster(ctx context.Context) error {
+	return deleteK3DClusterWithRuntime(ctx, constants.OutputPathManagementClusterK3DConfig, DockerRuntime)
+}
+
+func deleteK3DClusterWithRuntime(ctx context.Context, configPath string, rt K3DRuntime) error {
 	slog.InfoContext(ctx, "Deleting the K3D management cluster")
 
-	clusterDeleteCmd := cluster.NewCmdClusterDelete()
-	clusterDeleteCmd.SetArgs([]string{
-		"--config",
-		constants.OutputPathManagementClusterK3DConfig,
-	})
-	err := clusterDeleteCmd.ExecuteContext(ctx)
-	assert.AssertErrNil(ctx, err, "Failed deleting K3D cluster")
+	if err := rt.ClusterDelete(configPath); err != nil {
+		return fmt.Errorf("deleting k3d cluster: %w", err)
+	}
+
+	return nil
 }
 
 // Returns K3s version to be used for the cluster being spunup using K3D.
-func getK3sVersion(ctx context.Context) string {
+func getK3sVersion() (string, error) {
 	// As you know : for the Local provider, we spinup a local K3s cluster, where the user can try
 	// out KubeAid.
 	// Just use the K8s version specified in the general.yaml file.
 	if globals.CloudProviderName == constants.CloudProviderLocal {
-		return fmt.Sprintf("%s-k3s1", config.ParsedGeneralConfig.Cluster.K8sVersion)
+		return fmt.Sprintf("%s-k3s1", config.ParsedGeneralConfig.Cluster.K8sVersion), nil
 	}
 
 	// Otherwise, just use the latest K3s version.
-	return getLatestK3sVersion(ctx)
+	return getLatestK3sVersion()
 }
 
-// Returns the max K8s version supported by K3s.
-func GetMaxK3sSupportedK8sVersion(ctx context.Context) string {
-	// Get the latest K3s version.
-	latestK3sVersion := getLatestK3sVersion(ctx)
+// GetMaxK3sSupportedK8sVersion returns the max K8s version supported by K3s.
+func GetMaxK3sSupportedK8sVersion(ctx context.Context) (string, error) {
+	latestK3sVersion, err := getLatestK3sVersion()
+	if err != nil {
+		return "", fmt.Errorf("getting latest k3s version: %w", err)
+	}
 
-	// Extract the corresponding K8s version from that.
-	// Extract Kubernetes version (before '+k3s')
+	// Extract the corresponding K8s version (before '-k3s').
 	i := strings.Index(latestK3sVersion, "-")
-	assert.Assert(ctx, (i > 0),
-		fmt.Sprintf("Failed extracting K8s version from latest K3s version : %s", latestK3sVersion))
-	maxSupportedK8sVersion := latestK3sVersion[:i]
+	if i <= 0 {
+		return "", fmt.Errorf("extracting k8s version from k3s version %q: no '-' separator found", latestK3sVersion)
+	}
 
-	return maxSupportedK8sVersion
+	return latestK3sVersion[:i], nil
 }
 
 type GitHubRelease struct {
 	TagName string `json:"tag_name"`
 }
 
-// Returns the latest K3s version.
-func getLatestK3sVersion(ctx context.Context) string {
-	response, err := http.Get(constants.K3sReleasesAPIURL)
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusOK)),
-		"Faile getting latest K3s version",
-		logger.Error(err), slog.Any("response", response),
-	)
+var k3sReleasesURL = constants.K3sReleasesAPIURL
+
+// getLatestK3sVersion returns the latest K3s version.
+func getLatestK3sVersion() (string, error) {
+	response, err := http.Get(k3sReleasesURL)
+	if err != nil {
+		return "", fmt.Errorf("fetching latest k3s release: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		return "", fmt.Errorf("fetching latest k3s release: unexpected status %d", response.StatusCode)
+	}
 	defer response.Body.Close()
 
 	var release GitHubRelease
-	err = json.NewDecoder(response.Body).Decode(&release)
-	assert.AssertErrNil(ctx, err,
-		"Failed JSON unmarshalling GitHub release data for K3s latest version")
+	if err = json.NewDecoder(response.Body).Decode(&release); err != nil {
+		return "", fmt.Errorf("decoding k3s release JSON: %w", err)
+	}
 
-	return strings.ReplaceAll(release.TagName, "+", "-")
+	return strings.ReplaceAll(release.TagName, "+", "-"), nil
 }
