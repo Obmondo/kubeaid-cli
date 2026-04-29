@@ -363,6 +363,7 @@ type (
 
 	SSHKeyPairConfig struct {
 		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
+		//nolint:gosec // This struct intentionally stores hydrated SSH key material.
 		PrivateKey,
 
 		PublicKey,

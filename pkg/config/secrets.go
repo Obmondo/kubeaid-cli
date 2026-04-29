@@ -39,17 +39,20 @@ type (
 	}
 
 	AzureCredentials struct {
-		ClientID     string `yaml:"clientID"     validate:"notblank"`
+		ClientID string `yaml:"clientID" validate:"notblank"`
+		//nolint:gosec // This struct intentionally models user-provided Azure credentials.
 		ClientSecret string `yaml:"clientSecret" validate:"notblank"`
 	}
 
 	HetznerCredentials struct {
+		//nolint:gosec // This struct intentionally models user-provided Hetzner credentials.
 		APIToken string                   `yaml:"apiToken" validate:"notblank"`
 		Robot    *HetznerRobotCredentials `yaml:"robot"`
 	}
 
 	HetznerRobotCredentials struct {
-		User     string `yaml:"user"     validate:"notblank"`
+		User string `yaml:"user" validate:"notblank"`
+		//nolint:gosec // This struct intentionally models user-provided Hetzner Robot credentials.
 		Password string `yaml:"password" validate:"notblank"`
 	}
 )

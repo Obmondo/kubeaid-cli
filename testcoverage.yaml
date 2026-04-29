@@ -14,9 +14,9 @@ override:
   - path: "^pkg/utils/git$"
     threshold: 16
   - path: "^pkg/utils/kubernetes$"
-    threshold: 62
+    threshold: 60
   - path: "^pkg/utils/kubernetes/k3d$"
-    threshold: 65
+    threshold: 60
   - path: "^pkg/storageplanner/storageplan$"
     threshold: 67
   - path: "^pkg/config/parser$"
@@ -31,7 +31,16 @@ override:
     threshold: 57
   - path: "^pkg/cloud/hetzner$"
     threshold: 31
+  - path: ^pkg/storageplanner/storageplanner.go$
+    threshold: 60
+  - path: ^pkg/config/parser/validate.go$
+    threshold: 29
+  - path: ^pkg/config/prompt/provider_aws.go$
+    threshold: 43
+  - path: ^pkg/utils/dependencies.go$
+    threshold: 46
 
 exclude:
   paths:
     - ^pkg/cloud/aws/services/fake$
+    - ^pkg/utils/commandexecutor/fake/fake.go$

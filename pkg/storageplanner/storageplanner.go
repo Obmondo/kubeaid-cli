@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"slices"
 	"strconv"
@@ -14,7 +15,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 )
 
@@ -29,75 +29,42 @@ func GenerateStoragePlan(ctx context.Context, serverID string,
 	slog.InfoContext(ctx, "Generating storage plan")
 
 	// Get the server's disks.
-	disks := getDisks(ctx, commandExecutor)
+	disks, err := getDisks(ctx, commandExecutor)
+	if err != nil {
+		return nil, err
+	}
 
+	return allocateStoragePlan(serverID, disks, osSize, zfsPoolSize)
+}
+
+func allocateStoragePlan(
+	serverID string,
+	disks []*storageplan.Disk,
+	osSize,
+	zfsPoolSize int,
+) (*storageplan.StoragePlan, error) {
 	s := &storageplan.StoragePlan{ServerID: serverID, Disks: disks}
 
-	// Allocate storage space for OS installation.
-	{
-		// Sort the disks slice based on priority score for OS installation, in descending order.
-		// Disks with the same priority score, will be sorted alphabetically.
-		slices.SortFunc(disks, func(a *storageplan.Disk, b *storageplan.Disk) int {
-			priorityScoreDifference := b.PriorityScores.OS - a.PriorityScores.OS
-			if priorityScoreDifference != 0 {
-				return priorityScoreDifference
-			}
-
-			// Same priority score. So, sort alphabetically.
-			return strings.Compare(a.Name, b.Name)
-		})
-
-		// Select first 2 disks with available storage space.
-
-		targetDisks := []*storageplan.Disk{}
-		for _, disk := range disks {
-			if (len(targetDisks) >= 2) || (disk.Unallocated() < osSize) {
-				continue
-			}
-
-			disk.Allocations.OS += osSize
-			targetDisks = append(targetDisks, disk)
-		}
-		if len(targetDisks) != 2 {
-			return nil, errors.New("couldn't find 2 disks suitable for OS installation")
-		}
-		s.OS = targetDisks
+	osDisks, err := allocateTwoDisks(disks, osSize, func(d *storageplan.Disk) int {
+		return d.PriorityScores.OS
+	}, func(d *storageplan.Disk) {
+		d.Allocations.OS += osSize
+	})
+	if err != nil {
+		return nil, errors.New("couldn't find 2 disks suitable for OS installation")
 	}
+	s.OS = osDisks
 
-	// Allocate storage space for ZFS pool.
-	{
-		// Sort the disks slice based on priority score for ZFS pool installation, in descending order.
-		// Disks with the same priority score, will be sorted alphabetically.
-		slices.SortFunc(disks, func(a *storageplan.Disk, b *storageplan.Disk) int {
-			priorityScoreDifference := b.PriorityScores.ZFS - a.PriorityScores.ZFS
-			if priorityScoreDifference != 0 {
-				return priorityScoreDifference
-			}
-
-			// Same priority score. So, sort alphabetically.
-			return strings.Compare(a.Name, b.Name)
-		})
-
-		// Select first 2 disks with available storage space.
-
-		targetDisks := []*storageplan.Disk{}
-		for _, disk := range disks {
-			unallocated := disk.Unallocated()
-			if (len(targetDisks) >= 2) || (unallocated < zfsPoolSize) {
-				continue
-			}
-
-			disk.Allocations.ZFS += zfsPoolSize
-			targetDisks = append(targetDisks, disk)
-		}
-		if len(targetDisks) != 2 {
-			return nil, errors.New("couldn't find 2 disks suitable for ZFS pool installation")
-		}
-		s.ZFS = targetDisks
+	zfsDisks, err := allocateTwoDisks(disks, zfsPoolSize, func(d *storageplan.Disk) int {
+		return d.PriorityScores.ZFS
+	}, func(d *storageplan.Disk) {
+		d.Allocations.ZFS += zfsPoolSize
+	})
+	if err != nil {
+		return nil, errors.New("couldn't find 2 disks suitable for ZFS pool installation")
 	}
+	s.ZFS = zfsDisks
 
-	// Any disk having >= 50GB of storage space, will get allocated to the CEPH cluster.
-	targetDisks := []*storageplan.Disk{}
 	for _, disk := range disks {
 		unallocated := disk.Unallocated()
 		if unallocated < constants.CEPHNodeMinSize {
@@ -105,11 +72,41 @@ func GenerateStoragePlan(ctx context.Context, serverID string,
 		}
 
 		disk.Allocations.CEPH = unallocated
-		targetDisks = append(targetDisks, disk)
+		s.CEPH = append(s.CEPH, disk)
 	}
-	s.CEPH = targetDisks
 
 	return s, nil
+}
+
+func allocateTwoDisks(
+	disks []*storageplan.Disk,
+	allocationSize int,
+	priorityScore func(*storageplan.Disk) int,
+	allocate func(*storageplan.Disk),
+) ([]*storageplan.Disk, error) {
+	slices.SortFunc(disks, func(a *storageplan.Disk, b *storageplan.Disk) int {
+		priorityScoreDifference := priorityScore(b) - priorityScore(a)
+		if priorityScoreDifference != 0 {
+			return priorityScoreDifference
+		}
+
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	targetDisks := []*storageplan.Disk{}
+	for _, disk := range disks {
+		if (len(targetDisks) >= 2) || (disk.Unallocated() < allocationSize) {
+			continue
+		}
+
+		allocate(disk)
+		targetDisks = append(targetDisks, disk)
+	}
+	if len(targetDisks) != 2 {
+		return nil, errors.New("couldn't find 2 suitable disks")
+	}
+
+	return targetDisks, nil
 }
 
 type (
@@ -117,7 +114,7 @@ type (
 		BlockDevices []LSBLKOutputRow `json:"blockdevices"`
 	}
 
-	// REFER : https://github.com/util-linux/util-linux/blob/4a4eb88f263bfffeee75cfcabcb6e364ef5900a3/misc-utils/lsblk.c#L174.
+	// REFER: util-linux lsblk source.
 	LSBLKOutputRow struct {
 		Name string `json:"name"`
 		WWN  string `json:"wwn"`
@@ -152,7 +149,10 @@ func (l *LSBLKOutputRow) GetDiskType() string {
 }
 
 // Fetches disk details for the intended server, by leveraging the provided shell command executor.
-func getDisks(ctx context.Context, commandExecutor commandexecutor.CommandExecutor) []*storageplan.Disk {
+func getDisks(
+	ctx context.Context,
+	commandExecutor commandexecutor.CommandExecutor,
+) ([]*storageplan.Disk, error) {
 	slog.InfoContext(ctx, "Getting the server's disks")
 
 	// Determine whether the server has a high speed NIC (bandwidth >= 5 GBPS) attached or not.
@@ -162,12 +162,16 @@ func getDisks(ctx context.Context, commandExecutor commandexecutor.CommandExecut
       do [ -e "$i/device" ] && cat "$i/speed" 2>/dev/null;
     done || true
   `)
-	assert.AssertErrNil(ctx, err, "Failed listing NIC speeds")
+	if err != nil {
+		return nil, fmt.Errorf("listing NIC speeds: %w", err)
+	}
 
 	maxNICSpeed := 0
 	for nicSpeed := range strings.FieldsSeq(stdout) {
 		parsedNICSpeed, err := strconv.Atoi(nicSpeed)
-		assert.AssertErrNil(ctx, err, "Failed parsing NIC speed", slog.String("nic-speed", nicSpeed))
+		if err != nil {
+			return nil, fmt.Errorf("parsing NIC speed %q: %w", nicSpeed, err)
+		}
 
 		maxNICSpeed = max(maxNICSpeed, parsedNICSpeed)
 	}
@@ -175,11 +179,14 @@ func getDisks(ctx context.Context, commandExecutor commandexecutor.CommandExecut
 	// List hardware disks, using lsblk.
 
 	stdout, err = commandExecutor.Execute(ctx, "lsblk -dn -o NAME,TRAN,ROTA,WWN,SIZE,PTTYPE -J --bytes")
-	assert.AssertErrNil(ctx, err, "Failed listing hardware disks")
+	if err != nil {
+		return nil, fmt.Errorf("listing hardware disks: %w", err)
+	}
 
 	var lsblkOutput LSBLKOutput
-	err = json.Unmarshal([]byte(stdout), &lsblkOutput)
-	assert.AssertErrNil(ctx, err, "Failed unmarshalling lsblk output")
+	if err := json.Unmarshal([]byte(stdout), &lsblkOutput); err != nil {
+		return nil, fmt.Errorf("unmarshalling lsblk output: %w", err)
+	}
 
 	// Filter out rows which correspond to unknown disk types.
 	lsblkOutput.BlockDevices = slices.DeleteFunc(lsblkOutput.BlockDevices, func(row LSBLKOutputRow) bool {
@@ -188,9 +195,9 @@ func getDisks(ctx context.Context, commandExecutor commandexecutor.CommandExecut
 
 	disks := make([]*storageplan.Disk, len(lsblkOutput.BlockDevices))
 	for i, row := range lsblkOutput.BlockDevices {
-		assert.Assert(ctx, (len(row.PartitionTableType) > 0), "Empty partition table type",
-			slog.String("disk", row.Name),
-		)
+		if len(row.PartitionTableType) == 0 {
+			return nil, fmt.Errorf("empty partition table type for disk %q", row.Name)
+		}
 
 		disks[i] = &storageplan.Disk{
 			Name:               row.Name,
@@ -205,5 +212,5 @@ func getDisks(ctx context.Context, commandExecutor commandexecutor.CommandExecut
 		}
 		disks[i].AssignPriorityScores()
 	}
-	return disks
+	return disks, nil
 }
