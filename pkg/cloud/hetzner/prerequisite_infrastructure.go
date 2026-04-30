@@ -5,10 +5,12 @@ package hetzner
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 // Provisions infrastructure required before CAPH starts spinning up the cluster.
@@ -88,15 +90,37 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 		}
 
 		// Ensure that the LoadBalancer corresponding to the Kubernetes API server is created and
-		// attached to the Hetzner Network. The private IP of that LoadBalancer will be specified as
-		// the control-plane endpoint to CAPI.
+		// attached to the Hetzner Network. Without a configured hostname, the private IP of this
+		// LoadBalancer is rendered as the CAPI/Cilium endpoint. With a configured hostname,
+		// kubeaid-cli renders the hostname and uses the public LB IP only as temporary bootstrap
+		// DNS resolution.
 
+		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Hostname
 		loadBalancer := h.CreateLB(ctx,
 			config.ParsedGeneralConfig.Cluster.Name,
 			network,
 			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Region,
+			controlPlaneHostname != "",
 		)
 
-		globals.PreProvisionedControlPlaneLBIP = loadBalancer.PrivateNet[0].IP.String()
+		globals.ControlPlaneLBPrivateIP = loadBalancer.PrivateNet[0].IP.String()
+		globals.ControlPlaneHostname = controlPlaneHostname
+
+		// During the bootstrap window the LB is publicly reachable
+		// at loadBalancer.PublicNet.IPv4.IP — operators hit that
+		// IP directly until NetBird is up, after which kube-api is
+		// reached via the LB's private IP through the mesh. DNS
+		// resolution for the configured hostname (cert SAN, kubeconfig
+		// server) is the operator's responsibility — kubeaid-cli does
+		// not modify /etc/hosts.
+		if controlPlaneHostname != "" {
+			assert.Assert(ctx,
+				loadBalancer.PublicNet.Enabled && loadBalancer.PublicNet.IPv4.IP != nil,
+				"Control-plane LB hostname requires a bootstrap public LB IP, but the LB has no public IPv4",
+				slog.String("hostname", controlPlaneHostname),
+			)
+
+			globals.ControlPlaneLBBootstrapPublicIP = loadBalancer.PublicNet.IPv4.IP.String()
+		}
 	}
 }

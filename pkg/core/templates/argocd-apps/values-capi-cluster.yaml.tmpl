@@ -81,6 +81,7 @@ provider:
 
 hetzner:
   mode: {{ .HetznerConfig.Mode }}
+  multipleSubnets: {{ .HetznerConfig.MultipleSubnets }}
 
   sshKeyPair:
     name: {{ .HetznerConfig.SSHKeyPair.Name }}
@@ -110,9 +111,10 @@ hetzner:
   controlPlane:
     regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
-    {{/* When provisioning an HCloud / Hetzner hybrid cluster, and we have a VPN cluster,
-         we create the control-plane LB before spinning up the main cluster.
-         So, let's specify that prescient control-plane endpoint to CAPI. */}}
+    {{/* When provisioning an HCloud / Hetzner hybrid cluster with a VPN cluster,
+         kubeaid-cli creates the control-plane LB before CAPI starts. Without a hostname,
+         endpoint.host is the private LB IP. With a hostname, endpoint.host remains the
+         hostname while bootstrapHostsEntry/privateHostsEntry control node-side resolution. */}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     endpoint:

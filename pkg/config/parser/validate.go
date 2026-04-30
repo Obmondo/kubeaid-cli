@@ -41,6 +41,10 @@ func validateConfigs(ctx context.Context) error {
 		return errors.New("cluster type VPN is supported only for the Hetzner provider as of now")
 	}
 
+	if err := validateHCloudControlPlaneLoadBalancerHostnameNotIP(); err != nil {
+		return err
+	}
+
 	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
 	if err := validator.RegisterValidation(
 		"notblank", goNonStandardValidators.NotBlank,
@@ -287,11 +291,27 @@ func validateHCloudConfig() error {
 	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}
+	if err := validateHCloudControlPlaneLoadBalancerHostnameNotIP(); err != nil {
+		return err
+	}
 
 	for _, hCloudNodeGroup := range hetznerConfig.NodeGroups.HCloud {
 		if err := validateAutoScalableNodeGroup(&hCloudNodeGroup.AutoScalableNodeGroup); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func validateHCloudControlPlaneLoadBalancerHostnameNotIP() error {
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	if hetznerConfig == nil || hetznerConfig.ControlPlane.HCloud == nil {
+		return nil
+	}
+
+	hostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Hostname
+	if hostname != "" && net.ParseIP(hostname) != nil {
+		return errors.New("control-plane HCloud load-balancer hostname must be a DNS name, not an IP address")
 	}
 	return nil
 }

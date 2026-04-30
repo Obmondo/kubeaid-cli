@@ -37,6 +37,9 @@ type (
 		K8sVersion,
 		K3sVersion string
 
+		ControlPlaneHostname,
+		ControlPlaneLBBootstrapPublicIP string
+
 		WorkloadIdentity *WorkloadIdentity
 	}
 
@@ -204,6 +207,9 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 	k3dConfigTemplateValues := &K3DConfigTemplateValues{
 		Name:       clusterName,
 		K3sVersion: k3sVersion,
+
+		ControlPlaneHostname:    globals.ControlPlaneHostname,
+		ControlPlaneLBBootstrapPublicIP: globals.ControlPlaneLBBootstrapPublicIP,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity

@@ -17,10 +17,13 @@ var (
 	CloudProviderName string
 	CloudProvider cloud.CloudProvider
 
-	// When using a VPN cluster, we pre-provision an internal LB : LB with just private IP.
-	// That LB IP is then specified as the control-plane endpoint to CAPI and Cilium.
-	// This way, the control-plane endpoint isn't exposed to the public internet.
-	PreProvisionedControlPlaneLBIP string
+	// When using a VPN cluster, we pre-provision the HCloud control-plane LB.
+	// Without a configured hostname, its private IP is rendered as the control-plane endpoint.
+	// With a configured hostname, the hostname is rendered as the endpoint and temporarily
+	// resolves to this LB's public IP during bootstrap, then to this private IP afterward.
+	ControlPlaneLBPrivateIP  string
+	ControlPlaneHostname    string
+	ControlPlaneLBBootstrapPublicIP string
 
 	ArgoCDApplicationClientCloser io.Closer
 	ArgoCDApplicationClient       application.ApplicationServiceClient

@@ -473,6 +473,9 @@ type (
 		// Details about the VPN cluster you have in HCloud.
 		HCloudVPNCluster *HCloudVPNClusterConfig `yaml:"hcloudVPNCluster"`
 
+		// Enables CAPH image variant with multi-subnet support.
+		MultipleSubnets bool `yaml:"multipleSubnets" default:"false"`
+
 		// Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner
 		// Bare Metal server.
 		// KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,
@@ -576,6 +579,11 @@ type (
 	HCloudControlPlaneLoadBalancer struct {
 		Enabled bool   `yaml:"enabled" validate:"required"`
 		Region  string `yaml:"region"  validate:"notblank"`
+
+		// Stable DNS name used as the Kubernetes API server endpoint.
+		// When set for a workload cluster using hcloudVPNCluster, kubeaid-cli maps it to the
+		// temporary public LB IP during bootstrap and renders the hostname into CAPI/Cilium config.
+		Hostname string `yaml:"hostname,omitempty" validate:"omitempty,fqdn"`
 	}
 
 	// Details about node-groups in Hetzner.

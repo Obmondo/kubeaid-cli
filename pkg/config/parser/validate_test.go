@@ -128,6 +128,112 @@ func TestValidateConfigs(t *testing.T) {
 	}
 }
 
+func TestValidateConfigsHetznerControlPlaneLoadBalancerHostname(t *testing.T) {
+	stubK8sVersionDeps(t)
+
+	tests := []struct {
+		name       string
+		hostname   string
+		wantErr    bool
+		wantErrSub string
+	}{
+		{
+			name:     "empty hostname passes",
+			hostname: "",
+		},
+		{
+			name:     "fqdn hostname passes",
+			hostname: "api.example.com",
+		},
+		{
+			name:       "short hostname is rejected",
+			hostname:   "api",
+			wantErr:    true,
+			wantErrSub: "Hostname",
+		},
+		{
+			name:       "hostname with scheme is rejected",
+			hostname:   "https://api.example.com",
+			wantErr:    true,
+			wantErrSub: "Hostname",
+		},
+		{
+			name:       "hostname with port is rejected",
+			hostname:   "api.example.com:6443",
+			wantErr:    true,
+			wantErrSub: "Hostname",
+		},
+		{
+			name:       "hostname with whitespace is rejected",
+			hostname:   "api example.com",
+			wantErr:    true,
+			wantErrSub: "Hostname",
+		},
+		{
+			name:       "ip address is rejected",
+			hostname:   "1.2.3.4",
+			wantErr:    true,
+			wantErrSub: "must be a DNS name, not an IP address",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			general := minimalLocalConfig("demo")
+			general.ImagePullPolicy = "IfNotPresent"
+			general.Cloud = config.CloudConfig{
+				Hetzner: &config.HetznerConfig{
+					Mode: constants.HetznerModeHCloud,
+					SSHKeyPair: config.HetznerSSHKeyPair{
+						Name: "demo",
+						SSHKeyPairConfig: config.SSHKeyPairConfig{
+							PrivateKeyFilePath: "hetzner-key",
+						},
+					},
+					HCloud: &config.HCloudConfig{
+						Zone:      "eu-central",
+						ImageName: "ubuntu-24.04",
+						HetznerNetwork: config.HetznerNetworkConfig{
+							CIDR:                    "10.0.0.0/16",
+							HCloudServersSubnetCIDR: "10.0.0.0/24",
+						},
+					},
+					ControlPlane: config.HetznerControlPlane{
+						Regions: []string{"hel1"},
+						HCloud: &config.HCloudControlPlane{
+							MachineType: "cax11",
+							Replicas:    1,
+							LoadBalancer: config.HCloudControlPlaneLoadBalancer{
+								Enabled:  true,
+								Region:   "hel1",
+								Hostname: tc.hostname,
+							},
+						},
+					},
+				},
+			}
+			secrets := &config.SecretsConfig{
+				Hetzner: &config.HetznerCredentials{
+					APIToken: "token",
+				},
+			}
+			withParsedConfig(t, general, secrets)
+
+			origProvider := globals.CloudProviderName
+			t.Cleanup(func() { globals.CloudProviderName = origProvider })
+			globals.CloudProviderName = constants.CloudProviderHetzner
+
+			err := validateConfigs(context.Background())
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestValidateLabelsAndTaints(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -512,6 +618,26 @@ func TestValidateHCloudConfig(t *testing.T) {
 					},
 				},
 			},
+		},
+		{
+			name: "HCloud control-plane load-balancer hostname cannot be an IP address",
+			general: &config.GeneralConfig{
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{
+						Mode:   constants.HetznerModeHCloud,
+						HCloud: &config.HCloudConfig{},
+						ControlPlane: config.HetznerControlPlane{
+							HCloud: &config.HCloudControlPlane{
+								LoadBalancer: config.HCloudControlPlaneLoadBalancer{
+									Hostname: "1.2.3.4",
+								},
+							},
+						},
+					},
+				},
+			},
+			wantErr:    true,
+			wantErrSub: "must be a DNS name, not an IP address",
 		},
 	}
 

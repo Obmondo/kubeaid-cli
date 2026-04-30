@@ -8,6 +8,13 @@ metadata:
 
 network: k3d-{{ .Name }}
 
+{{- if and .ControlPlaneHostname .ControlPlaneLBBootstrapPublicIP }}
+hostAliases:
+  - ip: {{ .ControlPlaneLBBootstrapPublicIP }}
+    hostnames:
+      - {{ .ControlPlaneHostname }}
+{{- end }}
+
 # By default, K3D creates its own container registry (inside one of those containers spun up by
 # K3D).
 # The problem is, when we delete the K3D cluster, that container registry (along with the pulled
