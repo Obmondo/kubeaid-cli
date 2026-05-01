@@ -9,25 +9,27 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 )
 
-/*
-Installs and sets up CrossPlane.
+// InstallAndSetupCrossplane syncs the crossplane, crossplane-providers-and-functions and
+// crossplane-compositions ArgoCD Apps one by one.
+//
+// The three apps must be synced in order: crossplane first, then providers/functions, then
+// compositions. ArgoCD sync waves inside a single chart were attempted but did not produce the
+// required ordering — hence the sequential calls below.
+func InstallAndSetupCrossplane(ctx context.Context) error {
+	mgr := newGlobalArgoCDAppManager()
+	return mgr.installAndSetupCrossplane(ctx)
+}
 
-	Syncs the crossplane, crossplane-providers-and-functions and crossplane-compositions ArgoCD
-	Apps one by one.
-
-
-	NOTE : We need to sync crossplane deployment itself, then the crossplane providers and functions,
-	       and finally the crossplane compositions.
-	       I tried packaging everything in a single Helm chart, and using ArgoCD sync waves. But,
-	       that didn't work. I'll retry later,
-*/
-func InstallAndSetupCrossplane(ctx context.Context) {
-	argoCDAppsToBeSynced := []string{
+// installAndSetupCrossplane is the testable core of InstallAndSetupCrossplane.
+func (m *ArgoCDAppManager) installAndSetupCrossplane(ctx context.Context) error {
+	for _, argoCDApp := range []string{
 		"crossplane",
 		"crossplane-providers-and-functions",
 		"crossplane-compositions",
+	} {
+		if err := m.syncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{}); err != nil {
+			return err
+		}
 	}
-	for _, argoCDApp := range argoCDAppsToBeSynced {
-		SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
-	}
+	return nil
 }

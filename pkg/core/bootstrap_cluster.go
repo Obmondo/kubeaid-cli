@@ -68,8 +68,9 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	})
 
 	// Construct main cluster client.
-	mainClusterClient := kubernetes.MustCreateClusterClient(ctx,
+	mainClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		utils.MustGetEnv(constants.EnvNameKubeconfig))
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
@@ -85,7 +86,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	// Sync all ArgoCD Apps.
 	bar.Describe("Syncing ArgoCD applications")
-	kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
+	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
+	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
@@ -93,16 +95,19 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		bar.Describe("Creating initial backups")
 
 		// Create the first Velero backup.
-		kubernetes.CreateBackup(ctx, "init", mainClusterClient)
+		if err := kubernetes.CreateBackup(ctx, "init", mainClusterClient); err != nil {
+			assert.AssertErrNil(ctx, err, "Failed creating initial Velero backup")
+		}
 
 		// Create first Sealed Secrets backup.
-		kubernetes.TriggerCRONJob(ctx,
+		err = kubernetes.TriggerCRONJob(ctx,
 			types.NamespacedName{
 				Name:      constants.CRONJobNameBackupSealedSecrets,
 				Namespace: constants.NamespaceSealedSecrets,
 			},
 			mainClusterClient,
 		)
+		assert.AssertErrNil(ctx, err, "Failed triggering Sealed Secrets backup CRONJob")
 	}
 
 	bar.Finish()
@@ -139,20 +144,23 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
-	provisionedClusterClient := kubernetes.MustCreateClusterClient(ctx,
+	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Ensure that application workloads can be scheduled.
 	switch kubernetes.IsNodeGroupCountZero(ctx) {
 	// When there are 0 node-groups, then we need to remove the NoSchedule taint from the master
 	// nodes.
 	case true:
-		kubernetes.RemoveNoScheduleTaintsFromMasterNodes(ctx, provisionedClusterClient)
+		err = kubernetes.RemoveNoScheduleTaintsFromMasterNodes(ctx, provisionedClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed removing no-schedule taints from master nodes")
 
 	// Otherwise, wait for atleast 1 worker node to be initialized.
 	default:
-		kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+		err = kubernetes.WaitForMainClusterToBeReady(ctx, provisionedClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed waiting for atleast 1 worker node to be initialized")
 	}
 
 	/*
@@ -190,18 +198,20 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	if !((globals.CloudProviderName == constants.CloudProviderHetzner) &&
 		(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeBareMetal)) {
 
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		assert.AssertErrNil(ctx, err, "Failed syncing cluster-autoscaler ArgoCD app")
 	}
 
 	// Sync the external-snapshotter ArgoCD App,
 	// if not using Hetzner (since currently we don't support setting up disaster recovery for
 	// Hetzner 🥴).
 	if globals.CloudProviderName != constants.CloudProviderHetzner {
-		kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		assert.AssertErrNil(ctx, err, "Failed syncing external-snapshotter ArgoCD app")
 	}
 }
 
@@ -213,14 +223,17 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 		return
 	}
 
-	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
-		kubernetes.GetManagementClusterKubeconfigPath(ctx),
-	)
+	mgmtKubeconfig, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+	managementClusterClient, clientErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfig)
+	assert.AssertErrNil(ctx, clientErr, "Failed constructing Kubernetes cluster client")
 
 	// Sync the complete capi-cluster ArgoCD App.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+	syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{},
 	)
+	assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app")
 
 	if config.UsingHetznerBareMetal() {
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
@@ -237,10 +250,14 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	}
 
 	// Wait for the main cluster to be provisioned.
-	kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient)
+	if err := kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
+		assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
+	}
 
 	// Save kubeconfig locally.
-	kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient)
+	if err := kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient); err != nil {
+		assert.AssertErrNil(ctx, err, "Failed saving provisioned cluster kubeconfig")
+	}
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
@@ -277,9 +294,12 @@ func pivotCluster(ctx context.Context) {
 	clusterctlClient, err := client.New(ctx, "")
 	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
 
+	pivotMgmtKubeconfig, pivotErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	assert.AssertErrNil(ctx, pivotErr, "Failed getting management cluster kubeconfig path")
+
 	err = clusterctlClient.Move(ctx, client.MoveOptions{
 		FromKubeconfig: client.Kubeconfig{
-			Path: kubernetes.GetManagementClusterKubeconfigPath(ctx),
+			Path: pivotMgmtKubeconfig,
 		},
 
 		ToKubeconfig: client.Kubeconfig{

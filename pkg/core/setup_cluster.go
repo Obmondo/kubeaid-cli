@@ -73,13 +73,17 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		namespacesToBeCreated = append(namespacesToBeCreated, "monitoring")
 	}
 	for _, namespace := range namespacesToBeCreated {
-		kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
+		err := kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed creating namespace",
+			slog.String("namespace", namespace))
 	}
 
 	// When recovering a cluster, restore the Sealed Secrets controller private keys.
 	if args.IsPartOfDisasterRecovery {
 		// Create the sealed-secrets namespace.
-		kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
+		err := kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed creating namespace",
+			slog.String("namespace", constants.NamespaceSealedSecrets))
 
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
@@ -103,7 +107,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// Install Sealed Secrets.
-	kubernetes.InstallSealedSecrets(ctx)
+	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
+		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
+	}
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
@@ -111,13 +117,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	})
 
 	// Install and setup ArgoCD.
-	kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
+	err := kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
+	assert.AssertErrNil(ctx, err, "Failed installing and setting up ArgoCD")
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 	// Kubernetes Secret will get created.
 	// Not needed for the local provider, since there is no CAPI cluster.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
-		kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
+		err := kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed creating namespace",
+			slog.String("namespace", kubernetes.GetCapiClusterNamespace()))
 	}
 
 	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
@@ -127,7 +136,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"secrets",
 	}
 	for _, argoCDApp := range argoCDAppsToBeSynced {
-		kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
+			slog.String("app", argoCDApp))
 	}
 
 	// Any cloud provider specific tasks.
@@ -136,7 +147,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Install CrossPlane.
 		// Then set it up, by installing required Providers, Functions, Compositions and
 		// Composite Resource Definitions (XRDs).
-		kubernetes.InstallAndSetupCrossplane(ctx)
+		err = kubernetes.InstallAndSetupCrossplane(ctx)
+		assert.AssertErrNil(ctx, err, "Failed installing and setting up Crossplane")
 
 		// Doing the following once (i.e., while being in the management cluster) is enough.
 		if args.ClusterType == constants.ClusterTypeManagement {
@@ -163,9 +175,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// When using ClusterAPI to provision the main cluster.
 	if kubernetes.UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
-		kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
+		err = kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		assert.AssertErrNil(ctx, err, "Failed syncing cluster-api-operator ArgoCD app")
 
 		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
@@ -181,7 +194,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 // infrastructure specific CRDs to be installed and pod to be running.
 func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client) {
 	// Sync the Infrastructure Provider component.
-	kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+	err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
 				Group: "operator.cluster.x-k8s.io",
@@ -190,6 +203,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 			},
 		},
 	)
+	assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster infrastructure provider ArgoCD app")
 
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
@@ -200,7 +214,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		slog.String("namespace", capiClusterNamespace),
 	})
 
-	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
+	err = wait.PollUntilContextCancel(ctx, time.Minute, false,
 		func(ctx context.Context) (bool, error) {
 			podList := &coreV1.PodList{}
 			err := clusterClient.List(ctx, podList, &client.ListOptions{

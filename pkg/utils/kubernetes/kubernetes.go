@@ -31,44 +31,46 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
+var (
+	amContainerizedFn        = amContainerized
+	loadKubeConfigFromFileFn = clientcmd.LoadFromFile
+	createKubernetesClientFn = CreateKubernetesClient
+	pingKubernetesClusterFn  = pingKubernetesCluster
+	dockerEnvPathFn          = func() string { return "/.dockerenv" }
+	newClientFn              = client.New
+)
+
 // Returns the management cluster kubeconfig file path, based on whether the script is running
 // inside a container or not.
-func GetManagementClusterKubeconfigPath(ctx context.Context) string {
-	if amContainerized(ctx) {
-		return constants.OutputPathManagementClusterContainerKubeconfig
+func GetManagementClusterKubeconfigPath(ctx context.Context) (string, error) {
+	containerized, err := amContainerizedFn()
+	if err != nil {
+		return "", fmt.Errorf("failed determining management cluster kubeconfig path: %w", err)
 	}
 
-	return constants.OutputPathManagementClusterHostKubeconfig
+	if containerized {
+		return constants.OutputPathManagementClusterContainerKubeconfig, nil
+	}
+
+	return constants.OutputPathManagementClusterHostKubeconfig, nil
 }
 
-// Detetcs whether the KubeAid Bootstrap Script is running inside a container or not.
+// Detects whether the KubeAid Bootstrap Script is running inside a container or not.
 // If the /.dockerenv file exists, then that means, it's running inside a container.
 // Only compatible with the Docker container engine for now.
-func amContainerized(ctx context.Context) bool {
-	_, err := os.Stat("/.dockerenv")
+func amContainerized() (bool, error) {
+	_, err := os.Stat(dockerEnvPathFn())
 	if errors.Is(err, os.ErrNotExist) {
-		return false
+		return false, nil
 	}
-
-	assert.AssertErrNil(ctx, err, "Failed detecting whether running inside a container or not")
-	return true
-}
-
-// Creates a Kubernetes Go client using the Kubeconfig file present at the given path.
-func MustCreateClusterClient(ctx context.Context, kubeconfigPath string) client.Client {
-	clusterClient, err := CreateKubernetesClient(ctx, kubeconfigPath)
-	assert.AssertErrNil(ctx, err,
-		"Failed constructing Kubernetes cluster client",
-		slog.String("kubeconfig", kubeconfigPath),
-	)
-
-	return clusterClient
+	if err != nil {
+		return false, fmt.Errorf("failed detecting whether running inside a container: %w", err)
+	}
+	return true, nil
 }
 
 // Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
@@ -80,105 +82,90 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, utils.WrapError("Failed building config from kubeconfig file", err)
+		return nil, fmt.Errorf("failed building config from kubeconfig file: %w", err)
 	}
 
 	scheme := runtime.NewScheme()
 
-	err = coreV1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding Core v1 scheme")
+	for _, addScheme := range []struct {
+		name string
+		fn   func(*runtime.Scheme) error
+	}{
+		{"Core v1", coreV1.AddToScheme},
+		{"Apps v1", appsV1.AddToScheme},
+		{"Batch v1", batchV1.AddToScheme},
+		{"ClusterAPI v1beta1", clusterAPIV1Beta1.AddToScheme},
+		{"KCP (Kubeadm Control plane Provider) v1beta1", kcpV1Beta1.AddToScheme},
+		{"CAPA (ClusterAPI Provider AWS) v1beta2", capaV1Beta2.AddToScheme},
+		{"CAPZ (ClusterAPI Provider Azure) v1beta1", capzV1Beta1.AddToScheme},
+		{"CAPH (ClusterAPI Provider Hetzner) v1beta1", caphV1Beta1.AddToScheme},
+		{"Velero v1", veleroV1.AddToScheme},
+	} {
+		if err := addScheme.fn(scheme); err != nil {
+			return nil, fmt.Errorf("failed adding %s scheme: %w", addScheme.name, err)
+		}
+	}
 
-	err = appsV1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding Apps v1 scheme")
-
-	err = batchV1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding Batch v1 scheme")
-
-	err = clusterAPIV1Beta1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding ClusterAPI v1beta1 scheme")
-
-	err = kcpV1Beta1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err,
-		"Failed adding KCP (Kubeadm Control plane Providerr) v1beta1 scheme",
-	)
-
-	err = capaV1Beta2.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding CAPA (ClusterAPI Provider AWS) v1beta2 scheme")
-
-	err = capzV1Beta1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding CAPZ (ClusterAPI Provider Azure) v1beta1 scheme")
-
-	err = caphV1Beta1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding CAPH (ClusterAPI Provider Hetzner) v1beta1 scheme")
-
-	err = veleroV1.AddToScheme(scheme)
-	assert.AssertErrNil(ctx, err, "Failed adding Velero v1 scheme")
-
-	clusterClient, err := client.New(kubeconfig, client.Options{
+	clusterClient, err := newClientFn(kubeconfig, client.Options{
 		Scheme: scheme,
 	})
-	assert.AssertErrNil(ctx, err, "Failed creating kube client from kubeconfig")
+	if err != nil {
+		return nil, fmt.Errorf("failed creating kube client from kubeconfig: %w", err)
+	}
 
-	err = pingKubernetesCluster(ctx, clusterClient)
+	err = pingKubernetesClusterFn(ctx, clusterClient)
 	return clusterClient, err
 }
 
-// Checks whether the Kubernetes cluster is reachable or not, by trying to list the Deployments in
-// the default namespace.
 func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) error {
 	deployments := &appsV1.DeploymentList{}
 	err := clusterClient.List(ctx, deployments, &client.ListOptions{
 		Namespace: "default",
 	})
 	if err != nil {
-		return utils.WrapError(
-			"Failed pinging the Kubernetes cluster by trying to list Deployments in the default namespace : %w",
-			err,
-		)
+		return fmt.Errorf("failed pinging the kubernetes cluster by listing deployments in the default namespace: %w", err)
 	}
 	return nil
 }
 
-// Returns the main cluster's control-plane endpoint, if provisioned.
-// Otherwise returns nil.
-func GetMainClusterEndpoint(ctx context.Context) *url.URL {
-	kubeConfig, err := clientcmd.LoadFromFile(constants.OutputPathMainClusterKubeconfig)
-	switch os.IsNotExist(err) {
-	// The kubeconfig file doesn't exist,
-	// which means the main cluster hasn't been provisioned yet.
-	case true:
-		return nil
-
-	default:
-		assert.AssertErrNil(ctx, err, "Failed reading main cluster's kubeconfig file")
+func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
+	kubeConfig, err := loadKubeConfigFromFileFn(constants.OutputPathMainClusterKubeconfig)
+	if errors.Is(err, os.ErrNotExist) {
+		// The kubeconfig file doesn't exist,
+		// which means the main cluster hasn't been provisioned yet.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed reading main cluster's kubeconfig file: %w", err)
 	}
 
 	mainCluster, ok := kubeConfig.Clusters[config.ParsedGeneralConfig.Cluster.Name]
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	endpoint, err := url.Parse(mainCluster.Server)
-	assert.AssertErrNil(ctx, err, "Failed parsing main cluster's API server endpoint",
-		slog.String("endpoint", mainCluster.Server))
+	if err != nil {
+		return nil, fmt.Errorf("failed parsing main cluster's API server endpoint %q: %w", mainCluster.Server, err)
+	}
 
 	// Ping the K8s API server once.
 
-	clusterClient, err := CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig)
+	clusterClient, err := createKubernetesClientFn(ctx, constants.OutputPathMainClusterKubeconfig)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
-	err = pingKubernetesCluster(ctx, clusterClient)
+	err = pingKubernetesClusterFn(ctx, clusterClient)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 
-	return endpoint
+	return endpoint, nil
 }
 
 // Creates the given namespace (if it doesn't already exist).
-func CreateNamespace(ctx context.Context, namespaceName string, clusterClient client.Client) {
+func CreateNamespace(ctx context.Context, namespaceName string, clusterClient client.Client) error {
 	namespace := &coreV1.Namespace{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name: namespaceName,
@@ -187,19 +174,16 @@ func CreateNamespace(ctx context.Context, namespaceName string, clusterClient cl
 
 	err := clusterClient.Create(ctx, namespace)
 	if k8sAPIErrors.IsAlreadyExists(err) {
-		return
+		return nil
 	}
-	assert.AssertErrNil(ctx, err,
-		"Failed creating namespace",
-		slog.String("namespace", namespaceName),
-	)
+	if err != nil {
+		return fmt.Errorf("failed creating namespace %q: %w", namespaceName, err)
+	}
+	return nil
 }
 
 // Tries to fetch the given Kubernetes resource using the given Kubernetes cluster client.
-func GetKubernetesResource(ctx context.Context,
-	clusterClient client.Client,
-	resource client.Object,
-) error {
+func GetKubernetesResource(ctx context.Context, clusterClient client.Client, resource client.Object) error {
 	return clusterClient.Get(ctx,
 		types.NamespacedName{
 			Name:      resource.GetName(),
@@ -220,7 +204,7 @@ func isControlPlaneNode(node *coreV1.Node) bool {
 }
 
 // Triggers the given CRONJob, by creating a Job from its Job template.
-func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClient client.Client) {
+func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClient client.Client) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("cronjob", objectKey.Name),
 		slog.String("namespace", objectKey.Namespace),
@@ -233,8 +217,9 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 			Namespace: objectKey.Namespace,
 		},
 	}
-	err := GetKubernetesResource(ctx, clusterClient, &cronJob)
-	assert.AssertErrNil(ctx, err, "Failed getting CRONJob")
+	if err := GetKubernetesResource(ctx, clusterClient, &cronJob); err != nil {
+		return fmt.Errorf("failed getting CRONJob %q: %w", objectKey.Name, err)
+	}
 
 	// Create a Job using the CRONJob's Job template.
 	job := &batchV1.Job{
@@ -245,10 +230,12 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 
 		Spec: cronJob.Spec.JobTemplate.Spec,
 	}
-	err = clusterClient.Create(ctx, job, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed creating Job", slog.String("job", job.Name))
+	if err := clusterClient.Create(ctx, job, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("failed creating Job from CRONJob %q: %w", objectKey.Name, err)
+	}
 
 	slog.InfoContext(ctx, "Triggered CRONJob", slog.String("job", job.Name))
+	return nil
 }
 
 // Returns whether there are zero node-groups or not.
@@ -273,24 +260,29 @@ func IsNodeGroupCountZero(ctx context.Context) bool {
 	return false
 }
 
-// Removes the 'node-role.kubernetes.io/control-plane:NoSchedule' taint from master nodes.
-func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client) {
+// RemoveNoScheduleTaintsFromMasterNodes removes the
+// 'node-role.kubernetes.io/control-plane:NoSchedule' taint from master nodes.
+func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client) error {
+	return removeNoScheduleTaintsFromMasterNodes(ctx, clusterClient, commandexecutor.NewLocalCommandExecutor(false))
+}
+
+func removeNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client, exec commandexecutor.CommandExecutor) error {
 	slog.InfoContext(ctx, "Removing no-schedule taints from master nodes")
 
-	// List the master nodes.
 	var masterNodeList coreV1.NodeList
 	err := clusterClient.List(ctx, &masterNodeList, client.MatchingLabels{
 		kubeadmConstants.LabelNodeRoleControlPlane: "",
 	})
-	assert.AssertErrNil(ctx, err, "Failed listing master nodes")
+	if err != nil {
+		return fmt.Errorf("failed listing master nodes: %w", err)
+	}
 
-	// For each master node.
 	for _, masterNode := range masterNodeList.Items {
 		for _, taint := range masterNode.Spec.Taints {
-			// If the taint exists, then remove it.
-			// NOTE : We're assuming that the taint effect is 'NoSchedule'.
+			// We only remove the taint whose key matches the control-plane role label;
+			// the effect is always NoSchedule by kubeadm convention.
 			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
-				commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+				exec.MustExecute(ctx,
 					fmt.Sprintf(
 						"kubectl taint node %s node-role.kubernetes.io/control-plane:NoSchedule-",
 						masterNode.Name,
@@ -299,4 +291,5 @@ func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient cl
 			}
 		}
 	}
+	return nil
 }

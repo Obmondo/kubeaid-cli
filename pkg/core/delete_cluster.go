@@ -32,7 +32,8 @@ func DeleteCluster(ctx context.Context) {
 		},
 	}
 
-	managementClusterKubeconfigPath := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	managementClusterKubeconfigPath, err := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	assert.AssertErrNil(ctx, err, "Failed getting management cluster kubeconfig path")
 
 	//nolint:godox
 	/*
@@ -64,13 +65,18 @@ func DeleteCluster(ctx context.Context) {
 			clusterctlClient, err := clusterctlClientLib.New(ctx, "")
 			assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
 
+			mgmtKubeconfig, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+			if mgmtErr != nil {
+				return mgmtErr
+			}
+
 			err = clusterctlClient.Move(ctx, clusterctlClientLib.MoveOptions{
 				FromKubeconfig: clusterctlClientLib.Kubeconfig{
 					Path: constants.OutputPathMainClusterKubeconfig,
 				},
 
 				ToKubeconfig: clusterctlClientLib.Kubeconfig{
-					Path: kubernetes.GetManagementClusterKubeconfigPath(ctx),
+					Path: mgmtKubeconfig,
 				},
 
 				Namespace: kubernetes.GetCapiClusterNamespace(),
@@ -80,12 +86,13 @@ func DeleteCluster(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed reverting pivoting by executing 'clusterctl move'")
 	}
 
-	managementClusterClient := kubernetes.MustCreateClusterClient(ctx,
+	managementClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		managementClusterKubeconfigPath,
 	)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	// Get the Cluster resource from the management cluster.
-	err := kubernetes.GetKubernetesResource(ctx, managementClusterClient, cluster)
+	err = kubernetes.GetKubernetesResource(ctx, managementClusterClient, cluster)
 	assert.AssertErrNil(ctx, err,
 		"Cluster resource was suppossed to be present in the management cluster",
 	)

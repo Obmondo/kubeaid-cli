@@ -8,7 +8,11 @@ threshold:
   package: 0
   total: 0
 
-override: []
+override:
+  - path: "^pkg/utils/kubernetes$"
+    threshold: 65
+  - path: "^pkg/utils/kubernetes/k3d$"
+    threshold: 65
 
 exclude:
   paths: []

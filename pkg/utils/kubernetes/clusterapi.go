@@ -22,7 +22,14 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+)
+
+const defaultCapiClusterNamespace = "capi-cluster"
+
+var (
+	waitForProvisioningPollInterval = time.Minute
+	saveKubeconfigPollInterval      = 2 * time.Second
+	outputPathMainClusterKubeconfig = constants.OutputPathMainClusterKubeconfig
 )
 
 // Returns whether we're using Clusterapi or not.
@@ -41,19 +48,19 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 // Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
 // with the underlying cloud provider.
 func GetCapiClusterNamespace() string {
-	capiClusterNamespace := "capi-cluster"
+	capiClusterNamespace := defaultCapiClusterNamespace
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.CustomerID != "" {
 		capiClusterNamespace = fmt.Sprintf(
-			"capi-cluster-%s",
+			defaultCapiClusterNamespace+"-%s",
 			config.ParsedGeneralConfig.Obmondo.CustomerID,
 		)
 	}
 	return capiClusterNamespace
 }
 
-// Waits for the main cluster to be provisioned.
-func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) {
-	err := wait.PollUntilContextCancel(ctx, time.Minute, false,
+// WaitForMainClusterToBeProvisioned waits for the main cluster to be provisioned.
+func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
+	err := wait.PollUntilContextCancel(ctx, waitForProvisioningPollInterval, false,
 		func(ctx context.Context) (bool, error) {
 			slog.InfoContext(ctx, "Waiting for the main cluster to be provisioned")
 
@@ -78,11 +85,16 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 			return false, nil
 		},
 	)
-	assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
+	if err != nil {
+		return fmt.Errorf("failed waiting for the main cluster to be provisioned: %w", err)
+	}
+	return nil
 }
 
-// Waits for the main cluster to be ready to run our application workloads.
-func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) {
+// WaitForMainClusterToBeReady waits for the main cluster to be ready to run
+// application workloads. It polls until at least one initialized worker node
+// exists or the context is cancelled.
+func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) error {
 	for {
 		slog.InfoContext(
 			ctx,
@@ -92,7 +104,12 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 		// List the nodes.
 		nodes := &coreV1.NodeList{}
 		if err := kubeClient.List(ctx, nodes); err != nil {
-			continue
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				continue
+			}
 		}
 
 		initializedWorkerNodeCount := 0
@@ -117,15 +134,19 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 		}
 
 		if initializedWorkerNodeCount > 0 {
-			return
+			return nil
 		}
 
-		time.Sleep(time.Minute)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(waitForProvisioningPollInterval):
+		}
 	}
 }
 
-// Saves kubeconfig of the provisioned cluster locally.
-func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Client) {
+// SaveProvisionedClusterKubeconfig saves kubeconfig of the provisioned cluster locally.
+func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Client) error {
 	secret := &coreV1.Secret{}
 	// Seldom, after the cluster has been provisioned, Cluster API takes some time to create the
 	// Kubernetes secret containing the kubeconfig.
@@ -141,15 +162,21 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 			break
 		}
 
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(saveKubeconfigPollInterval):
+		}
 	}
 
 	kubeConfig := secret.Data["value"]
 
-	err := os.WriteFile(constants.OutputPathMainClusterKubeconfig, kubeConfig, 0o600)
-	assert.AssertErrNil(ctx, err, "Failed saving kubeconfig to file")
+	if err := os.WriteFile(outputPathMainClusterKubeconfig, kubeConfig, 0o600); err != nil {
+		return fmt.Errorf("failed saving kubeconfig to file: %w", err)
+	}
 
 	slog.InfoContext(ctx, "kubeconfig has been saved locally")
+	return nil
 }
 
 // Looks for and returns the Cluster resource in the given Kubernetes cluster.
@@ -171,8 +198,8 @@ func GetClusterResource(ctx context.Context,
 
 // Returns whether the 'clusterctl move' command has already been executed or not.
 func IsClusterctlMoveExecuted(ctx context.Context) bool {
-	mainClusterClient, err := CreateKubernetesClient(ctx,
-		constants.OutputPathMainClusterKubeconfig,
+	mainClusterClient, err := createKubernetesClientFn(ctx,
+		outputPathMainClusterKubeconfig,
 	)
 	// Main cluster isn't reachable,
 	// which means 'clusterctl move' hasn't been executed.

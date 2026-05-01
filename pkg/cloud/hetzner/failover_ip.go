@@ -93,7 +93,8 @@ func (h *Hetzner) getActiveServerIP(ctx context.Context, failoverIP string) stri
 func getInitMasterNodeIP(ctx context.Context) string {
 	// Construct cluster client.
 	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
-	clusterClient := kubernetes.MustCreateClusterClient(ctx, kubeconfig)
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
+	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
 	var initMasterNodeIP string
 

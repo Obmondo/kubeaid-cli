@@ -80,7 +80,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	clusterDir := utils.GetClusterDir()
 
 	// Determine whether the main cluster has already been provisioned.
-	mainClusterEndpoint := kubernetes.GetMainClusterEndpoint(ctx)
+	mainClusterEndpoint, endpointErr := kubernetes.GetMainClusterEndpoint(ctx)
+	assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
 	mainClusterProvisioned := (mainClusterEndpoint != nil)
 
 	// Determine whether this is part of setting up the main cluster.
@@ -217,7 +218,9 @@ func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *Templa
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 
 		// Encrypt the Secret to a Sealed Secret.
-		kubernetes.GenerateSealedSecret(ctx, destinationFilePath)
+		if err := kubernetes.GenerateSealedSecret(ctx, destinationFilePath); err != nil {
+			assert.AssertErrNil(ctx, err, "Failed generating sealed secret")
+		}
 	}
 }
 
