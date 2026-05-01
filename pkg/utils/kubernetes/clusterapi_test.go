@@ -18,7 +18,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
-	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"

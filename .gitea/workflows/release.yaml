@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   goreleaser:
-    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
     steps:
       - name: Checkout
         uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2

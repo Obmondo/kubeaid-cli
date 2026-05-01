@@ -26,12 +26,10 @@ jobs:
       - name: Run Trivy security scan against the sourcecode
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          scan-type: fs
-          vuln-type: library
-          scan-ref: .
           trivy-config: trivy.yaml
-          format: table
           output: security-scan-result.txt
+          exit-code: 0
+          version: v0.70.0
 
       - name: Append the security scan result to the job summary
         run: |

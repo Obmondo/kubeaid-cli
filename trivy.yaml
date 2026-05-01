@@ -1,21 +1,33 @@
-# Trivy is a comprehensive security scanner. It can scan container images, filesystems, git
-# repositories, SBOMs and Kubernetes clusters (targets) and look for vulnerabilities, IaC
-# misconfigurations and exposed sensitive secrets (scanners). It can also generate SBOMs (Software
-# Bill Of Materials).
+# yaml-language-server: $schema=https://raw.githubusercontent.com/aquasecurity/trivy/v0.70.0/schema/trivy-config.json
 
+## Global options
 cache-dir: $HOME/.cache/trivy
+debug: false
+insecure: false
+quiet: false
+exit-code: 1
 
-security-checks:
-  - vuln
+format: table
+table-mode:
+  - summary
+  - detailed
+severity:
+  - MEDIUM
+  - HIGH
+  - CRITICAL
 
-  # Trivy scans any container image, filesystem and git repository to detect exposed secrets like
-  # passwords, api keys, and tokens.
-  - secret
-
-  # Trivy provides built-in policies to detect configuration issues in Docker, Kubernetes,
-  # Terraform and CloudFormation. Also, you can write your own policies in Rego to scan JSON, YAML,
-  # etc.
-  - config
+scan:
+  scanners:
+    - vuln
+    - secret
+    - misconfig
+  skip-dirs:
+    - e2e/compose/configs
 
 vulnerability:
   ignore-unfixed: true
+
+pkg:
+  types:
+    - os
+    - library

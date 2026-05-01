@@ -7,8 +7,8 @@ import (
 	"context"
 	"log/slog"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/errdefs"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
@@ -18,7 +18,7 @@ func (d *Docker) CreateNetwork(ctx context.Context, name string) {
 	_, err := d.client.NetworkCreate(ctx, name, network.CreateOptions{})
 
 	// The network already exists.
-	if errdefs.IsConflict(err) {
+	if cerrdefs.IsConflict(err) {
 		return
 	}
 
