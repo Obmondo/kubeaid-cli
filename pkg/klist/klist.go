@@ -19,6 +19,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ErrClusterNotFound is the sentinel returned (wrapped) by Load when
+// the requested clusterName.yaml does not exist in the registry. Use
+// errors.Is to detect it — callers then have the option to surface a
+// "did you mean …" list of available clusters.
+var ErrClusterNotFound = errors.New("cluster file not found in klist registry")
+
 // OIDCConfig holds OIDC settings for a cluster. Fields may be populated from
 // _customer.yaml (defaults) or the cluster YAML (per-cluster overrides), with
 // the cluster YAML winning on conflict.
@@ -117,10 +123,7 @@ func Load(registryPath, clusterName, customerID string) (*ClusterConfig, error) 
 	clusterData, err := os.ReadFile(clusterPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf(
-				"cluster file %q not found (check registry path and certname)",
-				clusterPath,
-			)
+			return nil, fmt.Errorf("%w: %s", ErrClusterNotFound, clusterPath)
 		}
 
 		return nil, fmt.Errorf("reading cluster config %q: %w", clusterPath, err)

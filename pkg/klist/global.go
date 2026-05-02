@@ -33,6 +33,12 @@ const (
 // GlobalConfig is the parsed shape of klist/global.yaml.
 type GlobalConfig struct {
 	NetBird NetBirdSettings `yaml:"netbird"`
+	// ContextPrefix is prepended to every cluster/context/user name
+	// kubeaid-cli writes into the user's kubeconfig. Empty by default
+	// (no prefix). Useful in merge mode so kubeaid-managed entries are
+	// distinguishable from entries added by other tools — for example,
+	// setting "kubeaid-" gives contexts like "kubeaid-staging.acme".
+	ContextPrefix string `yaml:"contextPrefix,omitempty"`
 }
 
 // NetBirdSettings declares the NetBird deployment that hosts a cluster's

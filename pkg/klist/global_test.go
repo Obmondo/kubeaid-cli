@@ -49,6 +49,29 @@ netbird:
 		assert.Equal(t, DefaultClusterPeerPrefix, got.NetBird.Prefix())
 	})
 
+	t.Run("contextPrefix is parsed and defaults to empty", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, GlobalConfigFile), `
+contextPrefix: kubeaid-
+netbird:
+  managementUrl: https://netbird.example.com
+`)
+
+		got, err := LoadGlobal(dir)
+		require.NoError(t, err)
+		assert.Equal(t, "kubeaid-", got.ContextPrefix)
+	})
+
+	t.Run("contextPrefix omitted defaults to empty string", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := LoadGlobal(t.TempDir())
+		require.NoError(t, err)
+		assert.Empty(t, got.ContextPrefix)
+	})
+
 	t.Run("explicit empty prefix is preserved (not overridden by default)", func(t *testing.T) {
 		t.Parallel()
 

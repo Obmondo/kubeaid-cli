@@ -129,10 +129,10 @@ func TestExpandTilde(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// buildKubeconfig
+// upsertCluster
 // --------------------------------------------------------------------------
 
-func TestBuildKubeconfig(t *testing.T) {
+func TestUpsertCluster_IntoEmptyKubeconfig(t *testing.T) {
 	t.Parallel()
 
 	cfg := &klist.ClusterConfig{
@@ -140,18 +140,13 @@ func TestBuildKubeconfig(t *testing.T) {
 		Server:   "https://k8s-demo01.netbird:6443",
 		CABundle: "FAKE-CA-CERT",
 		OIDC: klist.OIDCConfig{
-			IssuerURL:     "https://keycloak.example.com/realms/clusters",
-			ClientID:      "kubernetes-demo01",
-			GroupsClaim:   "groups",
-			UsernameClaim: "email",
+			IssuerURL: "https://keycloak.example.com/realms/clusters",
+			ClientID:  "kubernetes-demo01",
 		},
 	}
 
-	data, err := buildKubeconfig(cfg, "demo01", "samplec5t9")
-	require.NoError(t, err)
-
-	var kc kubeconfig
-	require.NoError(t, yaml.Unmarshal(data, &kc))
+	kc := &kubeconfig{APIVersion: "v1", Kind: "Config"}
+	upsertCluster(kc, cfg, "", "demo01", "samplec5t9")
 
 	contextName := "demo01.samplec5t9"
 
@@ -168,23 +163,190 @@ func TestBuildKubeconfig(t *testing.T) {
 	require.Len(t, kc.Contexts, 1)
 	assert.Equal(t, contextName, kc.Contexts[0].Name)
 	assert.Equal(t, contextName, kc.Contexts[0].Context.Cluster)
-	assert.Equal(t, "oidc", kc.Contexts[0].Context.User)
+	// User name now matches context name (so two clusters don't share
+	// a single "oidc" user that would let one stomp the other's exec
+	// args).
+	assert.Equal(t, contextName, kc.Contexts[0].Context.User)
 
 	require.Len(t, kc.Users, 1)
-	assert.Equal(t, "oidc", kc.Users[0].Name)
+	assert.Equal(t, contextName, kc.Users[0].Name)
 
 	exec := kc.Users[0].User.Exec
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", exec.APIVersion)
 	assert.Equal(t, "kubelogin", exec.Command)
-	// The exec args must be exactly what kubeloginArgs returns — runLogin
-	// invokes kubelogin with the same list to warm the cache, and any drift
-	// would produce different tokens depending on which path triggered auth.
 	assert.Equal(t, kubeloginArgs(cfg), exec.Args)
 
-	// No client cert or client key data anywhere in the output.
-	rawYAML := string(data)
+	// Round-trip through YAML to verify no client cert / key fields slip in.
+	out, err := yaml.Marshal(kc)
+	require.NoError(t, err)
+	rawYAML := string(out)
 	assert.NotContains(t, rawYAML, "client-certificate-data")
 	assert.NotContains(t, rawYAML, "client-key-data")
+}
+
+func TestUpsertCluster_PreservesOtherEntries(t *testing.T) {
+	t.Parallel()
+
+	// Existing kubeconfig has an unrelated context (e.g. the user's
+	// kind cluster). Our upsert must leave it untouched.
+	kc := &kubeconfig{
+		APIVersion: "v1",
+		Kind:       "Config",
+		CurrentContext: "kind-local",
+		Clusters: []namedCluster{
+			{Name: "kind-local", Cluster: clusterInfo{Server: "https://localhost:6443"}},
+		},
+		Contexts: []namedContext{
+			{Name: "kind-local", Context: contextInfo{Cluster: "kind-local", User: "kind"}},
+		},
+		Users: []namedUser{
+			{Name: "kind", User: userInfo{}},
+		},
+	}
+
+	cfg := &klist.ClusterConfig{
+		Server:   "https://k8s-staging.netbird:6443",
+		CABundle: "CA",
+		OIDC:     klist.OIDCConfig{IssuerURL: "https://kc.example/realms", ClientID: "k8s"},
+	}
+
+	upsertCluster(kc, cfg, "", "staging", "acme")
+
+	// Existing entry survives.
+	require.Len(t, kc.Clusters, 2)
+	assert.Equal(t, "kind-local", kc.Clusters[0].Name)
+	assert.Equal(t, "staging.acme", kc.Clusters[1].Name)
+
+	require.Len(t, kc.Contexts, 2)
+	require.Len(t, kc.Users, 2)
+
+	// current-context switches to the new entry.
+	assert.Equal(t, "staging.acme", kc.CurrentContext)
+}
+
+func TestUpsertCluster_ReplacesExistingSameName(t *testing.T) {
+	t.Parallel()
+
+	// Re-running login for a cluster that already has an entry must
+	// update in place, not append a duplicate.
+	kc := &kubeconfig{APIVersion: "v1", Kind: "Config"}
+
+	first := &klist.ClusterConfig{
+		Server:   "https://old.example:6443",
+		CABundle: "OLD-CA",
+		OIDC:     klist.OIDCConfig{IssuerURL: "https://old.example/realms", ClientID: "old"},
+	}
+	upsertCluster(kc, first, "", "staging", "acme")
+	require.Len(t, kc.Clusters, 1)
+
+	second := &klist.ClusterConfig{
+		Server:   "https://new.example:6443",
+		CABundle: "NEW-CA",
+		OIDC:     klist.OIDCConfig{IssuerURL: "https://new.example/realms", ClientID: "new"},
+	}
+	upsertCluster(kc, second, "", "staging", "acme")
+
+	require.Len(t, kc.Clusters, 1)
+	require.Len(t, kc.Contexts, 1)
+	require.Len(t, kc.Users, 1)
+	assert.Equal(t, "https://new.example:6443", kc.Clusters[0].Cluster.Server)
+	assert.Equal(t, kubeloginArgs(second), kc.Users[0].User.Exec.Args)
+}
+
+func TestUpsertCluster_AppliesContextPrefix(t *testing.T) {
+	t.Parallel()
+
+	kc := &kubeconfig{APIVersion: "v1", Kind: "Config"}
+	cfg := &klist.ClusterConfig{
+		Server:   "https://k8s-staging.netbird:6443",
+		CABundle: "CA",
+		OIDC:     klist.OIDCConfig{IssuerURL: "https://kc.example/realms", ClientID: "k8s"},
+	}
+
+	upsertCluster(kc, cfg, "kubeaid-", "staging", "acme")
+
+	const want = "kubeaid-staging.acme"
+
+	require.Len(t, kc.Clusters, 1)
+	assert.Equal(t, want, kc.Clusters[0].Name)
+	require.Len(t, kc.Contexts, 1)
+	assert.Equal(t, want, kc.Contexts[0].Name)
+	assert.Equal(t, want, kc.Contexts[0].Context.Cluster)
+	assert.Equal(t, want, kc.Contexts[0].Context.User)
+	require.Len(t, kc.Users, 1)
+	assert.Equal(t, want, kc.Users[0].Name)
+	assert.Equal(t, want, kc.CurrentContext)
+}
+
+// --------------------------------------------------------------------------
+// loadKubeconfig
+// --------------------------------------------------------------------------
+
+func TestLoadKubeconfig(t *testing.T) {
+	t.Parallel()
+
+	t.Run("missing file returns empty Config", func(t *testing.T) {
+		t.Parallel()
+
+		kc, err := loadKubeconfig(filepath.Join(t.TempDir(), "nope"))
+		require.NoError(t, err)
+		assert.Equal(t, "v1", kc.APIVersion)
+		assert.Equal(t, "Config", kc.Kind)
+		assert.Empty(t, kc.Clusters)
+		assert.Empty(t, kc.Contexts)
+		assert.Empty(t, kc.Users)
+	})
+
+	t.Run("empty file returns empty Config", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "empty")
+		require.NoError(t, os.WriteFile(path, []byte(""), 0o600))
+
+		kc, err := loadKubeconfig(path)
+		require.NoError(t, err)
+		assert.Equal(t, "v1", kc.APIVersion)
+		assert.Equal(t, "Config", kc.Kind)
+	})
+
+	t.Run("existing file is parsed", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "config")
+		require.NoError(t, os.WriteFile(path, []byte(`apiVersion: v1
+kind: Config
+current-context: foo
+clusters:
+  - name: foo
+    cluster:
+      server: https://foo.example:6443
+contexts:
+  - name: foo
+    context:
+      cluster: foo
+      user: foo
+users:
+  - name: foo
+    user: {}
+`), 0o600))
+
+		kc, err := loadKubeconfig(path)
+		require.NoError(t, err)
+		assert.Equal(t, "foo", kc.CurrentContext)
+		require.Len(t, kc.Clusters, 1)
+		assert.Equal(t, "https://foo.example:6443", kc.Clusters[0].Cluster.Server)
+	})
+
+	t.Run("malformed YAML returns parse error", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "bad")
+		require.NoError(t, os.WriteFile(path, []byte("not: yaml: at: all"), 0o600))
+
+		_, err := loadKubeconfig(path)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "parsing kubeconfig")
+	})
 }
 
 // --------------------------------------------------------------------------
@@ -438,6 +600,90 @@ func TestPickClusterWithin_AutoSelectsSingleCluster(t *testing.T) {
 		[]klist.ClusterRef{{Customer: "acme", ClusterName: "prod"}})
 	require.NoError(t, err)
 	assert.Equal(t, "prod", got)
+}
+
+func TestNotFoundWithSuggestions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("includes available cluster list", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "clusters/acme"), 0o750))
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "clusters/zeta"), 0o750))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, "clusters/acme/staging.yaml"), []byte("name: staging"), 0o600))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, "clusters/zeta/dev.yaml"), []byte("name: dev"), 0o600))
+
+		err := notFoundWithSuggestions(klist.ErrClusterNotFound, dir, "bogus", "acme")
+		require.Error(t, err)
+
+		msg := err.Error()
+		assert.Contains(t, msg, "bogus.acme")
+		assert.Contains(t, msg, "staging.acme")
+		assert.Contains(t, msg, "dev.zeta")
+	})
+
+	t.Run("registry empty falls back to original error", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "clusters"), 0o750))
+
+		err := notFoundWithSuggestions(klist.ErrClusterNotFound, dir, "bogus", "acme")
+		require.Error(t, err)
+		// No "available in" line because there's nothing to suggest.
+		assert.NotContains(t, err.Error(), "clusters available")
+		assert.Contains(t, err.Error(), "bogus.acme")
+	})
+
+	t.Run("ListClusters error falls back to original error", func(t *testing.T) {
+		t.Parallel()
+
+		// Registry path that doesn't exist → ListClusters errors → we
+		// fall through to the plain wrapped error.
+		err := notFoundWithSuggestions(klist.ErrClusterNotFound,
+			"/nonexistent/path", "bogus", "acme")
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), "clusters available")
+	})
+}
+
+func TestParsePositional(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in         string
+		wantClus   string
+		wantCust   string
+		wantErrSub string
+	}{
+		{in: "staging.acme", wantClus: "staging", wantCust: "acme"},
+		{in: "atat.empire", wantClus: "atat", wantCust: "empire"},
+		// Multi-dot customer half is preserved (matches cert.SplitCN).
+		{in: "prod.acme.eu", wantClus: "prod", wantCust: "acme.eu"},
+		{in: "no-dot-here", wantErrSub: "no '.'"},
+		{in: "", wantErrSub: "no '.'"},
+		{in: ".trailing", wantErrSub: "empty cluster"},
+		{in: "leading.", wantErrSub: "empty cluster or customer"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			cl, cu, err := parsePositional(tc.in)
+			if tc.wantErrSub != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantClus, cl)
+			assert.Equal(t, tc.wantCust, cu)
+		})
+	}
 }
 
 func TestPlural(t *testing.T) {

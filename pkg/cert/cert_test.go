@@ -137,9 +137,9 @@ func TestSplitCN(t *testing.T) {
 	}{
 		{
 			name:         "normal certname",
-			cn:           "autosuse15x1.abbnoa6nlk",
-			wantCluster:  "autosuse15x1",
-			wantCustomer: "abbnoa6nlk",
+			cn:           "staging.acme",
+			wantCluster:  "staging",
+			wantCustomer: "acme",
 		},
 		{
 			name:         "cluster with multiple dots in customer is fine — only first dot splits",

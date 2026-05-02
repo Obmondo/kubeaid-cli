@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -65,19 +66,29 @@ var flags struct {
 
 // LoginCmd is the cobra command for `kubeaid-cli login`.
 var LoginCmd = &cobra.Command{
-	Use:   "login",
+	Use:   "login [<cluster>.<customer>]",
 	Short: "Pick a cluster you can reach over NetBird and write its kubeconfig",
-	Long: `login asks the local NetBird daemon which clusters you can currently
-reach, intersects that with the clusters in your local klist clone, and
-shows an interactive picker. The chosen cluster's YAML is rendered into
-a kubeconfig that uses kubelogin for OIDC authentication; kubelogin is
-then invoked to warm the token cache (skip with --no-authenticate).
+	Long: `login resolves a cluster identity in one of three ways:
 
-For non-interactive use (CI, scripts), pass --cert: login then reads the
-cluster identity from the puppet cert's Subject CN and skips the picker.
+  - With no argument, it queries the local NetBird daemon for the
+    clusters you can currently reach, intersects that with your local
+    klist clone, and shows an interactive customer/cluster picker.
+
+  - With a "<cluster>.<customer>" positional argument, it skips the
+    picker and goes straight to that entry in klist (useful when
+    re-entering a cluster you've used recently — kubelogin's cached
+    token avoids a fresh browser flow).
+
+  - With --cert (or KUBEAID_CERT), it reads the puppet cert's Subject
+    CN and uses that — non-interactive, intended for CI / scripts.
+
+In all three modes, the resolved cluster's YAML is merged into your
+kubeconfig (other contexts preserved), kubelogin is invoked to warm
+the token cache (skip with --no-authenticate), and current-context is
+switched to the new entry.
 
 No Docker, no general.yaml, no secrets.yaml needed.`,
-
+	Args: cobra.MaximumNArgs(1),
 	RunE: runLogin,
 }
 
@@ -105,7 +116,7 @@ func init() {
 		"skip the kubelogin OIDC step and only write the kubeconfig")
 }
 
-func runLogin(cmd *cobra.Command, _ []string) error {
+func runLogin(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	certPath := resolveInput(flags.cert, envCert, defaultCert)
@@ -116,7 +127,12 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	registryPath = expandTilde(registryPath)
 	kubeconfigPath = expandTilde(kubeconfigPath)
 
-	clusterName, customerID, err := identifyCluster(ctx, certPath, registryPath)
+	if certPath != "" && len(args) > 0 {
+		return fmt.Errorf("--%s and a positional <cluster>.<customer> argument are mutually exclusive",
+			flagCert)
+	}
+
+	clusterName, customerID, err := identifyCluster(ctx, certPath, registryPath, args)
 	if err != nil {
 		return err
 	}
@@ -128,6 +144,10 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 
 	cfg, err := klist.Load(registryPath, clusterName, customerID)
 	if err != nil {
+		if errors.Is(err, klist.ErrClusterNotFound) {
+			return notFoundWithSuggestions(err, registryPath, clusterName, customerID)
+		}
+
 		return fmt.Errorf("loading cluster config from registry: %w", err)
 	}
 
@@ -135,9 +155,21 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	kubeconfigBytes, err := buildKubeconfig(cfg, clusterName, customerID)
+	existing, err := loadKubeconfig(kubeconfigPath)
 	if err != nil {
-		return fmt.Errorf("building kubeconfig: %w", err)
+		return fmt.Errorf("reading existing kubeconfig at %s: %w", kubeconfigPath, err)
+	}
+
+	contextPrefix, err := loadContextPrefix(registryPath)
+	if err != nil {
+		return err
+	}
+
+	upsertCluster(existing, cfg, contextPrefix, clusterName, customerID)
+
+	kubeconfigBytes, err := yaml.Marshal(existing)
+	if err != nil {
+		return fmt.Errorf("marshalling kubeconfig: %w", err)
 	}
 
 	if err := writeKubeconfig(kubeconfigPath, kubeconfigBytes); err != nil {
@@ -294,12 +326,13 @@ func firstNonEmptyLine(s string) string {
 	return ""
 }
 
-// identifyCluster decides which cluster the user wants. With certPath
-// set, it reads the puppet cert (non-interactive — useful for CI). With
-// certPath empty, it queries the local NetBird daemon for accessible
-// peers and shows an interactive picker filtered against the klist
-// registry.
-func identifyCluster(ctx context.Context, certPath, registryPath string) (string, string, error) {
+// identifyCluster decides which cluster the user wants. Three modes,
+// in priority order:
+//   - --cert: read the puppet cert (non-interactive; CI).
+//   - positional `<cluster>.<customer>`: skip the picker entirely
+//     (fast re-entry to a cluster the user already knows).
+//   - neither: query the local NetBird daemon and show the picker.
+func identifyCluster(ctx context.Context, certPath, registryPath string, args []string) (string, string, error) {
 	if certPath != "" {
 		slog.InfoContext(ctx, "reading cert", slog.String("path", certPath))
 
@@ -311,7 +344,56 @@ func identifyCluster(ctx context.Context, certPath, registryPath string) (string
 		return cert.SplitCN(cn)
 	}
 
+	if len(args) == 1 {
+		return parsePositional(args[0])
+	}
+
 	return pickCluster(ctx, registryPath)
+}
+
+// notFoundWithSuggestions takes the raw klist.ErrClusterNotFound error
+// and augments it with a list of every cluster in the registry, so a
+// user who typed `kubeaid-cli login bogus.acme` gets pointed at the
+// names that do exist. ListClusters' own errors (e.g. registry path
+// invalid) are silently swallowed in favour of the original miss
+// error — the caller still sees the actionable cluster-not-found
+// message.
+func notFoundWithSuggestions(origErr error, registryPath, askedCluster, askedCustomer string) error {
+	refs, listErr := klist.ListClusters(registryPath)
+	if listErr != nil || len(refs) == 0 {
+		return fmt.Errorf("%w: asked for %s.%s",
+			origErr, askedCluster, askedCustomer)
+	}
+
+	var b strings.Builder
+
+	fmt.Fprintf(&b, "%s\n\nasked for: %s.%s\nclusters available in %s:",
+		origErr, askedCluster, askedCustomer, registryPath)
+
+	for _, r := range refs {
+		fmt.Fprintf(&b, "\n  - %s.%s", r.ClusterName, r.Customer)
+	}
+
+	return errors.New(b.String())
+}
+
+// parsePositional bisects "<cluster>.<customer>" on the first '.' and
+// validates both halves are non-empty. Mirrors cert.SplitCN's split
+// rule so the two non-interactive paths behave identically.
+func parsePositional(arg string) (string, string, error) {
+	cluster, customer, ok := strings.Cut(arg, ".")
+	if !ok {
+		return "", "", fmt.Errorf(
+			"argument %q has no '.' — expected <cluster>.<customer>", arg)
+	}
+
+	if cluster == "" || customer == "" {
+		return "", "", fmt.Errorf(
+			"argument %q has empty cluster or customer half — expected <cluster>.<customer>",
+			arg)
+	}
+
+	return cluster, customer, nil
 }
 
 // pickCluster runs the interactive flow: read klist's global.yaml, ask
@@ -565,48 +647,132 @@ type execConfig struct {
 	Args       []string `yaml:"args"`
 }
 
-func buildKubeconfig(cfg *klist.ClusterConfig, clusterName, customerID string) ([]byte, error) {
-	contextName := clusterName + "." + customerID
-
-	caData := base64.StdEncoding.EncodeToString([]byte(cfg.CABundle))
-
-	kc := kubeconfig{
-		APIVersion: "v1",
-		Kind:       "Config",
-		Clusters: []namedCluster{
-			{
-				Name: contextName,
-				Cluster: clusterInfo{
-					Server:                   cfg.Server,
-					CertificateAuthorityData: caData,
-				},
-			},
-		},
-		Contexts: []namedContext{
-			{
-				Name: contextName,
-				Context: contextInfo{
-					Cluster: contextName,
-					User:    "oidc",
-				},
-			},
-		},
-		CurrentContext: contextName,
-		Users: []namedUser{
-			{
-				Name: "oidc",
-				User: userInfo{
-					Exec: execConfig{
-						APIVersion: "client.authentication.k8s.io/v1beta1",
-						Command:    kubeloginBinary,
-						Args:       kubeloginArgs(cfg),
-					},
-				},
-			},
-		},
+// loadKubeconfig reads an existing kubeconfig from disk or returns an
+// empty (apiVersion + kind set) one if the file is missing. Callers
+// then pass this to upsertCluster so we merge our cluster's entries
+// into the user's existing config rather than overwriting it.
+//
+// Unknown YAML fields (preferences, extensions, …) are dropped on
+// re-marshal because our local kubeconfig struct only models the four
+// standard sections. For typical kubectl-managed configs that's
+// indistinguishable from a no-op.
+func loadKubeconfig(path string) (*kubeconfig, error) {
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return &kubeconfig{APIVersion: "v1", Kind: "Config"}, nil
 	}
 
-	return yaml.Marshal(kc)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(strings.TrimSpace(string(data))) == 0 {
+		return &kubeconfig{APIVersion: "v1", Kind: "Config"}, nil
+	}
+
+	var kc kubeconfig
+	if err := yaml.Unmarshal(data, &kc); err != nil {
+		return nil, fmt.Errorf("parsing kubeconfig: %w", err)
+	}
+
+	if kc.APIVersion == "" {
+		kc.APIVersion = "v1"
+	}
+
+	if kc.Kind == "" {
+		kc.Kind = "Config"
+	}
+
+	return &kc, nil
+}
+
+// upsertCluster modifies kc in place: it adds (or replaces, by name)
+// the cluster, context, and user entries for clusterName.customerID,
+// and switches current-context to that entry. Any other entries in
+// the kubeconfig are preserved untouched.
+//
+// The cluster, context, and user entries all share the same name
+// ("<cluster>.<customer>") so a re-run for the same cluster simply
+// updates the entry, and a run for a different cluster appends a
+// distinct one without colliding on user names.
+// loadContextPrefix reads klist/global.yaml just to extract the
+// ContextPrefix field. It silently swallows the not-found / parse
+// errors that LoadGlobal handles (returning the empty default) — only
+// genuine I/O errors propagate.
+func loadContextPrefix(registryPath string) (string, error) {
+	g, err := klist.LoadGlobal(registryPath)
+	if err != nil {
+		return "", fmt.Errorf("loading klist global config for context prefix: %w", err)
+	}
+
+	return g.ContextPrefix, nil
+}
+
+func upsertCluster(kc *kubeconfig, cfg *klist.ClusterConfig, contextPrefix, clusterName, customerID string) {
+	contextName := contextPrefix + clusterName + "." + customerID
+	caData := base64.StdEncoding.EncodeToString([]byte(cfg.CABundle))
+
+	kc.Clusters = upsertNamedCluster(kc.Clusters, namedCluster{
+		Name: contextName,
+		Cluster: clusterInfo{
+			Server:                   cfg.Server,
+			CertificateAuthorityData: caData,
+		},
+	})
+
+	kc.Contexts = upsertNamedContext(kc.Contexts, namedContext{
+		Name: contextName,
+		Context: contextInfo{
+			Cluster: contextName,
+			User:    contextName,
+		},
+	})
+
+	kc.Users = upsertNamedUser(kc.Users, namedUser{
+		Name: contextName,
+		User: userInfo{
+			Exec: execConfig{
+				APIVersion: "client.authentication.k8s.io/v1beta1",
+				Command:    kubeloginBinary,
+				Args:       kubeloginArgs(cfg),
+			},
+		},
+	})
+
+	kc.CurrentContext = contextName
+}
+
+func upsertNamedCluster(items []namedCluster, in namedCluster) []namedCluster {
+	for i, x := range items {
+		if x.Name == in.Name {
+			items[i] = in
+			return items
+		}
+	}
+
+	return append(items, in)
+}
+
+func upsertNamedContext(items []namedContext, in namedContext) []namedContext {
+	for i, x := range items {
+		if x.Name == in.Name {
+			items[i] = in
+			return items
+		}
+	}
+
+	return append(items, in)
+}
+
+func upsertNamedUser(items []namedUser, in namedUser) []namedUser {
+	for i, x := range items {
+		if x.Name == in.Name {
+			items[i] = in
+			return items
+		}
+	}
+
+	return append(items, in)
 }
 
 // writeKubeconfig creates intermediate directories and atomically writes
