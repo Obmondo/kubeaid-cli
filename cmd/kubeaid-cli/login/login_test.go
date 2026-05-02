@@ -4,9 +4,11 @@
 package login
 
 import (
+	"context"
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -173,11 +175,10 @@ func TestBuildKubeconfig(t *testing.T) {
 	exec := kc.Users[0].User.Exec
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", exec.APIVersion)
 	assert.Equal(t, "kubelogin", exec.Command)
-	assert.Contains(t, exec.Args, "get-token")
-	assert.Contains(t, exec.Args, "--oidc-issuer-url=https://keycloak.example.com/realms/clusters")
-	assert.Contains(t, exec.Args, "--oidc-client-id=kubernetes-demo01")
-	assert.Contains(t, exec.Args, "--oidc-extra-scope=email")
-	assert.Contains(t, exec.Args, "--oidc-extra-scope=groups")
+	// The exec args must be exactly what kubeloginArgs returns — runLogin
+	// invokes kubelogin with the same list to warm the cache, and any drift
+	// would produce different tokens depending on which path triggered auth.
+	assert.Equal(t, kubeloginArgs(cfg), exec.Args)
 
 	// No client cert or client key data anywhere in the output.
 	rawYAML := string(data)
@@ -223,4 +224,201 @@ func TestWriteKubeconfig(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []byte("new"), got)
 	})
+}
+
+// --------------------------------------------------------------------------
+// kubeloginArgs
+// --------------------------------------------------------------------------
+
+func TestKubeloginArgs(t *testing.T) {
+	t.Parallel()
+
+	cfg := &klist.ClusterConfig{
+		OIDC: klist.OIDCConfig{
+			IssuerURL: "https://keycloak.example.com/realms/clusters",
+			ClientID:  "kubernetes-demo01",
+		},
+	}
+
+	want := []string{
+		"get-token",
+		"--oidc-issuer-url=https://keycloak.example.com/realms/clusters",
+		"--oidc-client-id=kubernetes-demo01",
+		"--oidc-extra-scope=email",
+		"--oidc-extra-scope=groups",
+	}
+
+	assert.Equal(t, want, kubeloginArgs(cfg))
+}
+
+// --------------------------------------------------------------------------
+// lookupKubelogin
+// --------------------------------------------------------------------------
+
+func TestLookupKubelogin_NotFound(t *testing.T) {
+	// t.Setenv is incompatible with t.Parallel; run sequentially.
+	t.Setenv("PATH", "")
+
+	path, err := lookupKubelogin()
+	require.Error(t, err)
+	assert.Empty(t, path)
+	assert.Contains(t, err.Error(), kubeloginBinary)
+	assert.Contains(t, err.Error(), kubeloginRepo)
+	assert.Contains(t, err.Error(), flagNoAuthenticate)
+}
+
+func TestLookupKubelogin_Found(t *testing.T) {
+	// Stage a fake kubelogin binary in a temp dir and point PATH at it.
+	dir := t.TempDir()
+	fake := filepath.Join(dir, kubeloginBinary)
+	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+
+	t.Setenv("PATH", dir)
+
+	got, err := lookupKubelogin()
+	require.NoError(t, err)
+	assert.Equal(t, fake, got)
+}
+
+// --------------------------------------------------------------------------
+// runKubelogin
+// --------------------------------------------------------------------------
+
+func TestRunKubelogin(t *testing.T) {
+	t.Parallel()
+
+	t.Run("success path forwards exit 0", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		fake := filepath.Join(dir, kubeloginBinary)
+		require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+
+		err := runKubelogin(context.Background(), fake, []string{"get-token"})
+		assert.NoError(t, err)
+	})
+
+	t.Run("failure surfaces the exit error", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		fake := filepath.Join(dir, kubeloginBinary)
+		require.NoError(t, os.WriteFile(fake,
+			[]byte("#!/bin/sh\necho boom >&2\nexit 7\n"), 0o755))
+
+		err := runKubelogin(context.Background(), fake, []string{"get-token"})
+		require.Error(t, err)
+		// exec.ExitError stringifies with the non-zero status — make sure we
+		// do not swallow it.
+		assert.True(t, strings.Contains(err.Error(), "7") ||
+			strings.Contains(err.Error(), "exit"),
+			"want exit-status info in error, got %q", err.Error())
+	})
+}
+
+// --------------------------------------------------------------------------
+// intersectClusters
+// --------------------------------------------------------------------------
+
+func TestIntersectClusters(t *testing.T) {
+	t.Parallel()
+
+	refs := []klist.ClusterRef{
+		{Customer: "acme", ClusterName: "staging"},
+		{Customer: "acme", ClusterName: "prod"},
+		{Customer: "bigcorp", ClusterName: "staging"}, // same name, different customer
+		{Customer: "zeta", ClusterName: "dev"},
+	}
+
+	tests := []struct {
+		name       string
+		accessible []string
+		want       []klist.ClusterRef
+	}{
+		{
+			name:       "intersects on cluster name and keeps every matching customer copy",
+			accessible: []string{"staging", "dev"},
+			want: []klist.ClusterRef{
+				{Customer: "acme", ClusterName: "staging"},
+				{Customer: "bigcorp", ClusterName: "staging"},
+				{Customer: "zeta", ClusterName: "dev"},
+			},
+		},
+		{
+			name:       "empty accessible → empty result",
+			accessible: nil,
+			want:       []klist.ClusterRef{},
+		},
+		{
+			name:       "no overlap → empty result",
+			accessible: []string{"unknown"},
+			want:       []klist.ClusterRef{},
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := intersectClusters(refs, tc.accessible)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// --------------------------------------------------------------------------
+// groupByCustomer
+// --------------------------------------------------------------------------
+
+func TestGroupByCustomer(t *testing.T) {
+	t.Parallel()
+
+	refs := []klist.ClusterRef{
+		{Customer: "acme", ClusterName: "staging"},
+		{Customer: "acme", ClusterName: "prod"},
+		{Customer: "bigcorp", ClusterName: "staging"},
+		{Customer: "zeta", ClusterName: "dev"},
+	}
+
+	got := groupByCustomer(refs)
+
+	assert.Equal(t, []klist.ClusterRef{
+		{Customer: "acme", ClusterName: "staging"},
+		{Customer: "acme", ClusterName: "prod"},
+	}, got["acme"])
+	assert.Equal(t, []klist.ClusterRef{
+		{Customer: "bigcorp", ClusterName: "staging"},
+	}, got["bigcorp"])
+	assert.Equal(t, []klist.ClusterRef{
+		{Customer: "zeta", ClusterName: "dev"},
+	}, got["zeta"])
+	assert.Len(t, got, 3)
+}
+
+func TestPickCustomer_AutoSelectsSingleCustomer(t *testing.T) {
+	// When only one customer is reachable, the picker must not prompt.
+	// We exercise the non-stubbed path; if huh tried to prompt, the test
+	// would hang.
+	byCustomer := map[string][]klist.ClusterRef{
+		"acme": {{Customer: "acme", ClusterName: "staging"}},
+	}
+
+	got, err := pickCustomer(byCustomer)
+	require.NoError(t, err)
+	assert.Equal(t, "acme", got)
+}
+
+func TestPickClusterWithin_AutoSelectsSingleCluster(t *testing.T) {
+	// Same auto-select shortcut for the within-customer step.
+	got, err := pickClusterWithin("acme",
+		[]klist.ClusterRef{{Customer: "acme", ClusterName: "prod"}})
+	require.NoError(t, err)
+	assert.Equal(t, "prod", got)
+}
+
+func TestPlural(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "", plural(1))
+	assert.Equal(t, "s", plural(0))
+	assert.Equal(t, "s", plural(2))
 }
