@@ -6,6 +6,7 @@ package login
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -298,22 +299,45 @@ func TestRunKubelogin(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("failure surfaces the exit error", func(t *testing.T) {
+	t.Run("failure surfaces a stderr-derived clue (uncategorised path)", func(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
 		fake := filepath.Join(dir, kubeloginBinary)
+		// stderr "boom" doesn't match any classifyKubeloginErr pattern,
+		// so the fallback path that includes the first stderr line
+		// fires. The user gets "boom" instead of the cryptic
+		// "exit status 7".
 		require.NoError(t, os.WriteFile(fake,
 			[]byte("#!/bin/sh\necho boom >&2\nexit 7\n"), 0o755))
 
 		err := runKubelogin(context.Background(), fake, []string{"get-token"})
 		require.Error(t, err)
-		// exec.ExitError stringifies with the non-zero status — make sure we
-		// do not swallow it.
-		assert.True(t, strings.Contains(err.Error(), "7") ||
-			strings.Contains(err.Error(), "exit"),
-			"want exit-status info in error, got %q", err.Error())
+		assert.Equal(t, "kubelogin: boom", err.Error())
 	})
+}
+
+func TestFirstNonEmptyLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"  \n\t\n", ""},
+		{"hello\n", "hello"},
+		{"\n\n  hello world  \n\n", "hello world"},
+		{"first\nsecond\n", "first"},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, firstNonEmptyLine(tc.in))
+		})
+	}
 }
 
 // --------------------------------------------------------------------------
@@ -421,4 +445,82 @@ func TestPlural(t *testing.T) {
 	assert.Equal(t, "", plural(1))
 	assert.Equal(t, "s", plural(0))
 	assert.Equal(t, "s", plural(2))
+}
+
+// --------------------------------------------------------------------------
+// classifyKubeloginErr
+// --------------------------------------------------------------------------
+
+func TestClassifyKubeloginErr(t *testing.T) {
+	t.Parallel()
+
+	// stderrText snippets are taken (or shaped to match) what kubelogin
+	// actually emits. The exact format may shift across kubelogin
+	// releases — these substrings are what we observed against v1.36.1
+	// and have been stable for several years.
+	tests := []struct {
+		name        string
+		stderr      string
+		wantContain string
+	}{
+		{
+			name:        "DNS no-such-host",
+			stderr:      `error: get-token: oidc discovery error: Get "...": dial tcp: lookup foo: no such host`,
+			wantContain: "issuer hostname is not resolvable",
+		},
+		{
+			name:        "DNS server misbehaving (the live demo case)",
+			stderr:      `oidc discovery error: Get "...": dial tcp: lookup keycloak.demo.example on 127.0.0.53:53: server misbehaving`,
+			wantContain: "DNS lookup failed",
+		},
+		{
+			name:        "connection refused",
+			stderr:      `oidc discovery error: Get "...": dial tcp 1.2.3.4:443: connect: connection refused`,
+			wantContain: "is not listening",
+		},
+		{
+			name:        "timeout",
+			stderr:      `oidc discovery error: Get "...": context deadline exceeded`,
+			wantContain: "did not respond in time",
+		},
+		{
+			name:        "TLS error",
+			stderr:      `oidc discovery error: Get "...": tls: failed to verify certificate: x509: certificate signed by unknown authority`,
+			wantContain: "TLS error",
+		},
+		{
+			name:        "discovery error of an unknown shape falls back to generic",
+			stderr:      `oidc discovery error: something we have not categorised yet`,
+			wantContain: "failed to reach issuer",
+		},
+		{
+			name:        "context canceled mid-flow",
+			stderr:      `error: get-token: ... context canceled`,
+			wantContain: "cancelled before authentication completed",
+		},
+		{
+			name:        "uncategorised stderr surfaces the first line as a clue",
+			stderr:      "some unrelated kubelogin error",
+			wantContain: "kubelogin: some unrelated kubelogin error",
+		},
+		{
+			name:        "empty stderr falls back to plain wrap with exit status",
+			stderr:      "",
+			wantContain: "kubelogin authentication failed",
+		},
+	}
+
+	upstream := errors.New("exit status 1")
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := classifyKubeloginErr(upstream, tc.stderr)
+			require.Error(t, err)
+			assert.True(t, strings.Contains(err.Error(), tc.wantContain),
+				"want error to contain %q, got %q", tc.wantContain, err.Error())
+		})
+	}
 }

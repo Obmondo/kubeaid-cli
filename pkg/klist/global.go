@@ -38,6 +38,11 @@ type GlobalConfig struct {
 // NetBirdSettings declares the NetBird deployment that hosts a cluster's
 // kube-api endpoint. Per-customer files may override individual fields;
 // missing fields fall back to the global file or to baked-in defaults.
+//
+// ClusterPeerPrefix and ClusterPeerSuffix are *string so we can tell
+// "field omitted" (use default) apart from "field explicitly empty"
+// (use empty). A plain string can't carry that distinction — the zero
+// value is indistinguishable from `field: ""`.
 type NetBirdSettings struct {
 	// ManagementURL is the expected `management.url` reported by the
 	// local netbird daemon. Used for sanity-checking; mismatch is a
@@ -45,15 +50,37 @@ type NetBirdSettings struct {
 	ManagementURL string `yaml:"managementUrl"`
 	// ClusterPeerPrefix and ClusterPeerSuffix bracket the cluster name
 	// in the NetBird peer FQDN, e.g. prefix "k8s-" + cluster name
-	// "staging" + suffix ".netbird.selfhosted".
-	ClusterPeerPrefix string `yaml:"clusterPeerPrefix"`
-	ClusterPeerSuffix string `yaml:"clusterPeerSuffix"`
+	// "staging" + suffix ".netbird.selfhosted". Use the Prefix() and
+	// Suffix() accessors instead of dereferencing — they apply
+	// baked-in defaults when the field is nil.
+	ClusterPeerPrefix *string `yaml:"clusterPeerPrefix,omitempty"`
+	ClusterPeerSuffix *string `yaml:"clusterPeerSuffix,omitempty"`
+}
+
+// Prefix returns the configured ClusterPeerPrefix, or the baked-in
+// default when the field was omitted from YAML. Explicit empty string
+// in YAML is preserved as "".
+func (n *NetBirdSettings) Prefix() string {
+	if n.ClusterPeerPrefix == nil {
+		return DefaultClusterPeerPrefix
+	}
+
+	return *n.ClusterPeerPrefix
+}
+
+// Suffix is the same as Prefix, for ClusterPeerSuffix.
+func (n *NetBirdSettings) Suffix() string {
+	if n.ClusterPeerSuffix == nil {
+		return DefaultClusterPeerSuffix
+	}
+
+	return *n.ClusterPeerSuffix
 }
 
 // LoadGlobal reads registryPath/global.yaml (optional). If the file is
-// missing, returns a GlobalConfig populated entirely with defaults — no
-// error. Field-level defaults are also applied so callers always get a
-// usable config.
+// missing, returns a GlobalConfig with everything unset — call Prefix()
+// and Suffix() on the embedded NetBirdSettings to get values that fall
+// back to baked-in defaults.
 func LoadGlobal(registryPath string) (*GlobalConfig, error) {
 	out := &GlobalConfig{}
 
@@ -62,8 +89,8 @@ func LoadGlobal(registryPath string) (*GlobalConfig, error) {
 	data, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		// File optional — fall through with zero value, defaults applied
-		// below.
+		// File optional — fall through with zero value (Prefix()/Suffix()
+		// will return the baked-in defaults).
 	case err != nil:
 		return nil, fmt.Errorf("reading %q: %w", path, err)
 	default:
@@ -72,22 +99,7 @@ func LoadGlobal(registryPath string) (*GlobalConfig, error) {
 		}
 	}
 
-	out.applyDefaults()
-
 	return out, nil
-}
-
-// applyDefaults fills in any unset NetBird settings with the baked-in
-// values. Called by LoadGlobal so callers always receive a fully
-// populated config.
-func (g *GlobalConfig) applyDefaults() {
-	if g.NetBird.ClusterPeerPrefix == "" {
-		g.NetBird.ClusterPeerPrefix = DefaultClusterPeerPrefix
-	}
-
-	if g.NetBird.ClusterPeerSuffix == "" {
-		g.NetBird.ClusterPeerSuffix = DefaultClusterPeerSuffix
-	}
 }
 
 // ClusterRef points at one entry in the klist registry: the directory

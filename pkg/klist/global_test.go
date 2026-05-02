@@ -26,12 +26,12 @@ func TestLoadGlobal(t *testing.T) {
 
 		got, err := LoadGlobal(dir)
 		require.NoError(t, err)
-		assert.Equal(t, DefaultClusterPeerPrefix, got.NetBird.ClusterPeerPrefix)
-		assert.Equal(t, DefaultClusterPeerSuffix, got.NetBird.ClusterPeerSuffix)
+		assert.Equal(t, DefaultClusterPeerPrefix, got.NetBird.Prefix())
+		assert.Equal(t, DefaultClusterPeerSuffix, got.NetBird.Suffix())
 		assert.Empty(t, got.NetBird.ManagementURL)
 	})
 
-	t.Run("present file is parsed and defaults fill in empty fields", func(t *testing.T) {
+	t.Run("present file is parsed and defaults fill in omitted fields", func(t *testing.T) {
 		t.Parallel()
 
 		dir := t.TempDir()
@@ -44,9 +44,28 @@ netbird:
 		got, err := LoadGlobal(dir)
 		require.NoError(t, err)
 		assert.Equal(t, "https://netbird.example.com", got.NetBird.ManagementURL)
-		assert.Equal(t, ".netbird.selfhosted", got.NetBird.ClusterPeerSuffix)
+		assert.Equal(t, ".netbird.selfhosted", got.NetBird.Suffix())
 		// Prefix wasn't set, so default kicks in.
-		assert.Equal(t, DefaultClusterPeerPrefix, got.NetBird.ClusterPeerPrefix)
+		assert.Equal(t, DefaultClusterPeerPrefix, got.NetBird.Prefix())
+	})
+
+	t.Run("explicit empty prefix is preserved (not overridden by default)", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		write(t, filepath.Join(dir, GlobalConfigFile), `
+netbird:
+  clusterPeerPrefix: ""
+  clusterPeerSuffix: .netbird.selfhosted
+`)
+
+		got, err := LoadGlobal(dir)
+		require.NoError(t, err)
+		// Explicit empty must stay empty — this is the bug `*string`
+		// fixes: with `string` the YAML zero value would have triggered
+		// the default "k8s-".
+		assert.Equal(t, "", got.NetBird.Prefix())
+		assert.Equal(t, ".netbird.selfhosted", got.NetBird.Suffix())
 	})
 
 	t.Run("malformed YAML returns parse error", func(t *testing.T) {

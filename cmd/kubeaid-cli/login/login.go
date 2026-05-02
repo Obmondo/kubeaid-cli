@@ -14,6 +14,7 @@
 package login
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -81,6 +82,17 @@ No Docker, no general.yaml, no secrets.yaml needed.`,
 }
 
 func init() {
+	// RunE-returned errors are real runtime failures (kubelogin can't
+	// reach Keycloak, picker aborted, etc.) — printing the full flag
+	// usage after them just adds noise. Cobra still prints the usage
+	// block for genuine flag errors (unknown flag, parse error, etc.).
+	LoginCmd.SilenceUsage = true
+
+	// kubeaid-cli main.go logs RunE errors via slog.Error already, so
+	// suppressing cobra's own "Error: ..." print avoids the duplicate
+	// line (cobra would print it once, slog would print it again).
+	LoginCmd.SilenceErrors = true
+
 	LoginCmd.Flags().StringVar(&flags.cert, flagCert, "",
 		fmt.Sprintf("path to puppet cert PEM for non-interactive mode "+
 			"(env: %s; if unset, login is interactive and discovers "+
@@ -149,8 +161,17 @@ func runLogin(cmd *cobra.Command, _ []string) error {
 	)
 
 	if err := runKubelogin(ctx, kubeloginPath, kubeloginArgs(cfg)); err != nil {
-		return fmt.Errorf("kubelogin failed: %w (rerun with --%s to skip)",
-			err, flagNoAuthenticate)
+		// kubelogin printed its verbose error to stderr already (we
+		// teed it through). The slog ERROR line below this prose will
+		// be the categorised message classifyKubeloginErr produced.
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintln(os.Stderr, "The kubeconfig is on disk, so you can:")
+		fmt.Fprintf(os.Stderr,
+			"  • run `kubectl <cmd>` — kubectl will retry kubelogin\n"+
+				"  • rerun `kubeaid-cli login --%s` to skip OIDC entirely\n\n",
+			flagNoAuthenticate)
+
+		return err
 	}
 
 	fmt.Println("authenticated; token cached")
@@ -187,19 +208,90 @@ var lookupKubelogin = func() (string, error) {
 	return path, nil
 }
 
-// runKubelogin executes the kubelogin binary so it performs the OIDC PKCE
-// flow and writes its token to its on-disk cache. stderr is forwarded to
-// the user (kubelogin prints the "Open the following URL in your browser"
-// prompt there); stdout (the ExecCredential JSON) is discarded — that
-// payload is for kubectl, not for human eyes. Defined as a variable so
-// tests can stub it.
+// runKubelogin executes the kubelogin binary so it performs the OIDC
+// PKCE flow and writes its token to the on-disk cache. stderr is teed
+// to the user (so kubelogin's "Open the following URL" prompt and any
+// error are visible) and to a buffer; on failure classifyKubeloginErr
+// inspects the buffer to surface a categorised slog ERROR alongside
+// kubelogin's own message. stdout (the ExecCredential JSON) is
+// discarded — for kubectl only. Defined as a variable so tests can
+// stub it.
 var runKubelogin = func(ctx context.Context, path string, args []string) error {
+	var stderrCapture bytes.Buffer
+
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Stdin = os.Stdin
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrCapture)
 	cmd.Stdout = io.Discard
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return classifyKubeloginErr(err, stderrCapture.String())
+	}
+
+	return nil
+}
+
+// classifyKubeloginErr converts kubelogin's verbose multi-layer stderr
+// ("error: get-token: authentication error: oidc error: oidc discovery
+// error: Get \"…\": dial tcp: lookup …") into a single-line, action-
+// oriented error suitable for the slog ERROR line. The full kubelogin
+// output is still visible to the user inline (we tee it through), so
+// the wrapping error is just a categorisation hint.
+func classifyKubeloginErr(err error, stderrText string) error {
+	if strings.Contains(stderrText, "oidc discovery error") {
+		switch {
+		case strings.Contains(stderrText, "no such host"):
+			return fmt.Errorf(
+				"OIDC discovery: issuer hostname is not resolvable — check oidc.issuerUrl in the cluster's klist YAML")
+
+		case strings.Contains(stderrText, "server misbehaving"):
+			return fmt.Errorf(
+				"OIDC discovery: DNS lookup failed (server misbehaving) — check your DNS / NetBird mesh")
+
+		case strings.Contains(stderrText, "connection refused"):
+			return fmt.Errorf(
+				"OIDC discovery: issuer is not listening on that address — Keycloak down, or wrong port?")
+
+		case strings.Contains(stderrText, "i/o timeout"),
+			strings.Contains(stderrText, "context deadline exceeded"):
+			return fmt.Errorf(
+				"OIDC discovery: issuer reachable but did not respond in time — network or NetBird path slow?")
+
+		case strings.Contains(stderrText, "x509"):
+			return fmt.Errorf(
+				"OIDC discovery: TLS error reaching issuer — check Keycloak's certificate / system trust store")
+
+		default:
+			return fmt.Errorf(
+				"OIDC discovery: failed to reach issuer (see kubelogin output above)")
+		}
+	}
+
+	if strings.Contains(stderrText, "context canceled") {
+		return fmt.Errorf("kubelogin: cancelled before authentication completed")
+	}
+
+	// Uncategorised — include the first non-empty stderr line so the
+	// ERROR slog line still has a clue (we suppressed kubelogin's
+	// verbose chain to stderr, so without this the user would only see
+	// "exit status 1").
+	if first := firstNonEmptyLine(stderrText); first != "" {
+		return fmt.Errorf("kubelogin: %s", first)
+	}
+
+	return fmt.Errorf("kubelogin authentication failed: %w", err)
+}
+
+// firstNonEmptyLine returns the first non-blank line of s, trimmed of
+// leading/trailing whitespace. Returns "" if no such line exists.
+func firstNonEmptyLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			return t
+		}
+	}
+
+	return ""
 }
 
 // identifyCluster decides which cluster the user wants. With certPath
@@ -255,7 +347,7 @@ var pickCluster = func(ctx context.Context, registryPath string) (string, string
 	}
 
 	accessible := netbird.AccessibleClusters(status,
-		global.NetBird.ClusterPeerPrefix, global.NetBird.ClusterPeerSuffix)
+		global.NetBird.Prefix(), global.NetBird.Suffix())
 
 	refs, err := klist.ListClusters(registryPath)
 	if err != nil {
