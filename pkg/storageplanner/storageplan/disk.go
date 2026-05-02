@@ -36,6 +36,21 @@ type (
 	}
 )
 
+// NewDisk constructs a Disk with all identification + sizing fields set and
+// allocations / priority scores zero-initialised.
+func NewDisk(name, wwn, diskType, partitionTableType string, size int, withHighSpeedNIC bool) *Disk {
+	return &Disk{
+		Name:               name,
+		WWN:                wwn,
+		Type:               diskType,
+		PartitionTableType: partitionTableType,
+		Size:               size,
+		WithHighSpeedNIC:   withHighSpeedNIC,
+		PriorityScores:     PriorityScores{OS: 0, ZFS: 0},
+		Allocations:        struct{ OS, ZFS, CEPH int }{OS: 0, ZFS: 0, CEPH: 0},
+	}
+}
+
 // Returns the total amount of storage space allocated until now.
 func (d *Disk) Allocated() int {
 	allocations := d.Allocations

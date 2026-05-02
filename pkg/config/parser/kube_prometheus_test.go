@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -71,7 +72,7 @@ func TestHydrateKubePrometheusVersion(t *testing.T) {
 				},
 			}
 
-			hydrateKubePrometheusVersion(ctx)
+			require.NoError(t, hydrateKubePrometheusVersion(ctx))
 			assert.Equal(t, tt.expectedKPVersion, config.ParsedGeneralConfig.KubePrometheus.Version)
 		})
 	}
@@ -122,8 +123,6 @@ func TestValidateKubePrometheusVersion_CompatibleCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := context.Background()
-
 			originalConfig := config.ParsedGeneralConfig
 			originalCloudProvider := globals.CloudProviderName
 			t.Cleanup(func() {
@@ -138,7 +137,7 @@ func TestValidateKubePrometheusVersion_CompatibleCases(t *testing.T) {
 			}
 			globals.CloudProviderName = constants.CloudProviderLocal
 
-			validateKubePrometheusVersion(ctx, tt.kpVersion, tt.k8sVersion)
+			require.NoError(t, validateKubePrometheusVersion(tt.kpVersion, tt.k8sVersion))
 		})
 	}
 }

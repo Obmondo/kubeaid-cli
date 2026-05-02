@@ -109,7 +109,8 @@ func downloadS3Object(ctx context.Context,
 
 	// Create intermediate directories (if required).
 	if strings.Contains(*objectKey, "/") {
-		utils.CreateIntermediateDirsForFile(ctx, filePath)
+		err := utils.CreateIntermediateDirsForFile(filePath)
+		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs", slog.String("path", filePath))
 	}
 
 	// Create the file where the contents of the given S3 object will be stored.

@@ -94,7 +94,8 @@ func downloadBlobContent(ctx context.Context, args *DownloadBlobContentArgs) {
 
 	// Create intermediate directories (if required).
 	if strings.Contains(filePath, "/") {
-		utils.CreateIntermediateDirsForFile(ctx, filePath)
+		err := utils.CreateIntermediateDirsForFile(filePath)
+		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs", slog.String("path", filePath))
 	}
 
 	// Create the file where the contents of the given blob will be stored.

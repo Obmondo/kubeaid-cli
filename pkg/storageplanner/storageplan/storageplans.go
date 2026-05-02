@@ -82,6 +82,9 @@ func AreStoragePlansAlike(storagePlans []*StoragePlan) bool {
 			continue
 		}
 
+		if len(storagePlan.ZFS) != len(referenceDisks) {
+			return false
+		}
 		for j, disk := range storagePlan.ZFS {
 			if referenceDisks[j].Name != disk.Name {
 				return false

@@ -372,8 +372,10 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		       since those files exist on separate drives.
 	*/
 	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
-	utils.MustMoveFile(ctx,
-		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig)
+	err = utils.MoveFile(
+		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
+	)
+	assert.AssertErrNil(ctx, err, "Failed moving KubeOne-generated kubeconfig")
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",

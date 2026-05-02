@@ -5,6 +5,7 @@ package utils
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -14,31 +15,28 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Creates a temp dir inside /tmp, where KubeAid Bootstrap Script will clone repos.
-// Then sets the value of constants.TempDir as the temp dir path.
-// If the temp dir already exists, then that gets reused.
-func InitTempDir(ctx context.Context) {
+// InitTempDir creates the temp dir where KubeAid Bootstrap Script will clone
+// repos. If the dir already exists it is reused.
+func InitTempDir(ctx context.Context) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("path", constants.TempDirectory),
 	})
 
-	// Check if a temp dir already exists for KubeAid Bootstrap Script.
-	// If yes, then reuse that.
 	if info, err := os.Stat(constants.TempDirectory); err == nil && info.IsDir() {
 		slog.InfoContext(ctx, "Skipped creating temp dir, since it already exists")
-		return
+		return nil
 	}
 
-	// Otherwise, create it.
-	err := os.MkdirAll(constants.TempDirectory, 0o750)
-	assert.AssertErrNil(ctx, err, "Failed creating temp dir")
+	if err := os.MkdirAll(constants.TempDirectory, 0o750); err != nil {
+		return fmt.Errorf("creating temp dir %s: %w", constants.TempDirectory, err)
+	}
 
 	slog.InfoContext(ctx, "Created temp dir")
+	return nil
 }
 
 // Returns path to the parent dir of the given file.
@@ -46,15 +44,14 @@ func GetParentDirPath(filePath string) string {
 	return filepath.Dir(filePath)
 }
 
-// Creates intermediate directories which don't exist for the given file path.
-func CreateIntermediateDirsForFile(ctx context.Context, filePath string) {
+// CreateIntermediateDirsForFile creates intermediate directories which don't
+// exist for the given file path.
+func CreateIntermediateDirsForFile(filePath string) error {
 	parentDir := filepath.Dir(filePath)
-
-	err := os.MkdirAll(parentDir, 0o750)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating intermediate directories for file",
-		slog.String("path", filePath),
-	)
+	if err := os.MkdirAll(parentDir, 0o750); err != nil {
+		return fmt.Errorf("creating intermediate dirs for %s: %w", filePath, err)
+	}
+	return nil
 }
 
 // Returns path to the directory where the KubeAid repository is cloned.
@@ -82,57 +79,68 @@ func GetDownloadedStorageBucketContentsDir(bucketName string) string {
 	return path.Join(constants.TempDirectory, "buckets", bucketName)
 }
 
-// Returns canonical version of the given path.
-func ToAbsolutePath(ctx context.Context, path string) string {
-	// When the path starts with "~/", we need to expand "~" to the user's home directory path.
-	// REFER : https://www.gnu.org/software/bash/manual/html_node/Tilde-Expansion.html.
-	if strings.HasPrefix(path, "~/") {
+// ToAbsolutePath returns the canonical version of the given path. A bare "~"
+// or a "~/" prefix is expanded to the user's home directory.
+// REFER : https://www.gnu.org/software/bash/manual/html_node/Tilde-Expansion.html.
+func ToAbsolutePath(p string) (string, error) {
+	if p == "~" || strings.HasPrefix(p, "~/") {
 		homeDir, err := os.UserHomeDir()
-		assert.AssertErrNil(ctx, err, "Failed getting home directory")
-
-		path = homeDir + path[1:]
-		return path
+		if err != nil {
+			return "", fmt.Errorf("getting home directory: %w", err)
+		}
+		if p == "~" {
+			return homeDir, nil
+		}
+		return filepath.Join(homeDir, p[2:]), nil
 	}
 
-	absolutePath, err := filepath.Abs(path)
-	assert.AssertErrNil(ctx, err, "Failed canonicalizing given path", slog.String("path", path))
-
-	return absolutePath
+	absolutePath, err := filepath.Abs(p)
+	if err != nil {
+		return "", fmt.Errorf("canonicalizing path %s: %w", p, err)
+	}
+	return filepath.Clean(absolutePath), nil
 }
 
-// Moves the source file to the destination file.
-//
-// But unlike os.Rename( ), it doesn't error out when the source and destination files are present
-// on different drives.
-func MustMoveFile(ctx context.Context, sourceFilePath, destinationFilePath string) {
-	sourceFile, err := os.Open(sourceFilePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed opening source file",
-		slog.String("path", sourceFilePath),
-	)
+var renameFn = os.Rename
+
+// MoveFile moves the source file to the destination file. It first tries
+// os.Rename (atomic on the same filesystem); on failure it falls back to
+// copy + delete, which works across filesystems too.
+func MoveFile(src, dst string) (err error) {
+	// Fast path: atomic rename when src and dst share a filesystem.
+	if err = renameFn(src, dst); err == nil {
+		return nil
+	}
+
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("opening source file %s: %w", src, err)
+	}
 	defer sourceFile.Close()
 
-	destinationFile, err := os.OpenFile(
-		destinationFilePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600,
-	)
-	assert.AssertErrNil(ctx, err,
-		"Failed opening destination file",
-		slog.String("path", destinationFilePath),
-	)
-	defer destinationFile.Close()
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return fmt.Errorf("opening destination file %s: %w", dst, err)
+	}
+	defer func() {
+		destFile.Close()
+		if err != nil {
+			// On any failure past this point, remove the partial dst.
+			_ = os.Remove(dst)
+		}
+	}()
 
-	// Copy contents of the source file to the destination file.
-	_, err = io.Copy(destinationFile, sourceFile)
-	assert.AssertErrNil(ctx, err,
-		"Failed copying contents of source file to destination file",
-		slog.String("source", sourceFilePath),
-		slog.String("destination", destinationFilePath),
-	)
+	if _, err = io.Copy(destFile, sourceFile); err != nil {
+		return fmt.Errorf("copying %s to %s: %w", src, dst, err)
+	}
 
-	// Delete the source file.
-	err = os.Remove(sourceFilePath)
-	assert.AssertErrNil(ctx, err,
-		"Failed removing source file",
-		slog.String("path", sourceFilePath),
-	)
+	if err = destFile.Sync(); err != nil {
+		return fmt.Errorf("syncing destination file %s: %w", dst, err)
+	}
+
+	if err = os.Remove(src); err != nil {
+		return fmt.Errorf("removing source file %s: %w", src, err)
+	}
+
+	return nil
 }

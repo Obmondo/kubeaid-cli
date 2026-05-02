@@ -230,7 +230,11 @@ func createFileFromTemplate(ctx context.Context,
 	embeddedTemplateName string,
 	templateValues *TemplateValues,
 ) {
-	utils.CreateIntermediateDirsForFile(ctx, destinationFilePath)
+	err := utils.CreateIntermediateDirsForFile(destinationFilePath)
+	assert.AssertErrNil(ctx, err,
+		"Failed creating intermediate dirs",
+		slog.String("path", destinationFilePath),
+	)
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("path", destinationFilePath),
