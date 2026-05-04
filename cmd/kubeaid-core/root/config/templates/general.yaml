@@ -53,19 +53,42 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
-    # Optional. When set, kube-apiserver is configured to validate JWTs
-    # issued by an external OIDC provider (typically Keycloak) and the
-    # bootstrap aborts early if the issuer URL is unreachable.
-    #
-    # oidc:
-    #   issuerUrl:     https://keycloak.example/realms/clusters
-    #   clientId:      kubernetes-<cluster>
-    #   usernameClaim: email      # default: email
-    #   groupsClaim:   groups     # default: groups
-    #   usernamePrefix:           # optional, e.g. "oidc:"
-    #   groupsPrefix:             # optional
-    #   caBundlePath:             # optional, abs host path; auto-mounted
+    # OIDC configures kube-apiserver to validate JWTs issued by an
+    # external OpenID Connect provider (typically Keycloak). When
+    # set, the parser translates this block into the corresponding
+    # `--oidc-*` flags on APIServerConfig.ExtraArgs and, when
+    # CABundlePath is set, mounts the CA file via ExtraVolumes.
+    # Skipping this block leaves kube-apiserver without OIDC.
     oidc:
+      # IssuerURL is the Keycloak realm URL (e.g.
+      # https://keycloak.<vpn-server>/realms/clusters). kube-apiserver
+      # validates JWTs against this issuer's JWKS.
+      issuerUrl:
+      # ClientID is the per-cluster OIDC client created in Keycloak
+      # (e.g. kubernetes-staging). Must match the `aud` claim in
+      # tokens kube-apiserver should accept.
+      clientId:
+      # UsernameClaim is the JWT claim kube-apiserver maps to the
+      # user's identity. Defaults to "email" — what the architecture
+      # doc recommends — but can be overridden per Keycloak setup.
+      usernameClaim: email
+      # GroupsClaim is the JWT claim kube-apiserver reads to
+      # populate the user's groups for RBAC. Defaults to "groups".
+      groupsClaim: groups
+      # UsernamePrefix is prepended to usernames extracted from the
+      # token (e.g. "oidc:"). Empty by default — useful when you
+      # want to avoid collisions with non-OIDC users in RBAC bindings.
+      usernamePrefix:
+      # GroupsPrefix is prepended to groups extracted from the token
+      # (e.g. "oidc:"). Empty by default.
+      groupsPrefix:
+      # CABundlePath is an absolute host path to a PEM file
+      # containing the CA that signed the issuer's TLS certificate.
+      # Set this only when the issuer's cert is not chainable to a
+      # publicly-trusted CA. When set, the parser mounts the file
+      # into the apiserver pod and adds --oidc-ca-file pointing at
+      # the mount path.
+      caBundlePath:
   # Other than the root user, addtional users that you would like to be created in each node.
   # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
   additionalUsers:
