@@ -271,6 +271,7 @@ To access the ArgoCD admin dashboard :
         echo "ArgoCD admin password : "
         kubectl get secret argocd-initial-admin-secret --namespace argocd \
           -o jsonpath="{.data.password}" | base64 -d
+        echo
 
   (3) Port forward ArgoCD server :
 

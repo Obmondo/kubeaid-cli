@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
+	_ "github.com/Obmondo/kubeaid-bootstrap-script/internal/termsetup"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	configSetup "github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"

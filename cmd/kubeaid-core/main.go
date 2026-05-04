@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
+	_ "github.com/Obmondo/kubeaid-bootstrap-script/internal/termsetup"
 )
 
 func main() {
