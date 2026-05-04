@@ -151,6 +151,59 @@ type (
 		ExtraArgs    map[string]string     `yaml:"extraArgs"    default:"{}"`
 		ExtraVolumes []HostPathMountConfig `yaml:"extraVolumes" default:"[]"`
 		Files        []FileConfig          `yaml:"files"        default:"[]"`
+
+		// OIDC configures kube-apiserver to validate JWTs issued by an
+		// external OpenID Connect provider (typically Keycloak). When
+		// set, the parser translates this block into the corresponding
+		// `--oidc-*` flags on APIServerConfig.ExtraArgs and, when
+		// CABundlePath is set, mounts the CA file via ExtraVolumes.
+		// Skipping this block leaves kube-apiserver without OIDC.
+		OIDC *OIDCConfig `yaml:"oidc"`
+	}
+
+	// OIDCConfig is the typed kube-apiserver OIDC configuration.
+	//
+	// Required fields (IssuerURL + ClientID) must be present when the
+	// block is set; the rest carry sensible defaults. The IssuerURL is
+	// also probed at bootstrap time (see parser.ValidateOIDCDiscovery)
+	// so an unreachable / mistyped issuer fails fast — before we
+	// provision infrastructure.
+	OIDCConfig struct {
+		// IssuerURL is the Keycloak realm URL (e.g.
+		// https://keycloak.<vpn-server>/realms/clusters). kube-apiserver
+		// validates JWTs against this issuer's JWKS.
+		IssuerURL string `yaml:"issuerUrl" validate:"notblank,url"`
+
+		// ClientID is the per-cluster OIDC client created in Keycloak
+		// (e.g. kubernetes-staging). Must match the `aud` claim in
+		// tokens kube-apiserver should accept.
+		ClientID string `yaml:"clientId" validate:"notblank"`
+
+		// UsernameClaim is the JWT claim kube-apiserver maps to the
+		// user's identity. Defaults to "email" — what the architecture
+		// doc recommends — but can be overridden per Keycloak setup.
+		UsernameClaim string `yaml:"usernameClaim" default:"email"`
+
+		// GroupsClaim is the JWT claim kube-apiserver reads to
+		// populate the user's groups for RBAC. Defaults to "groups".
+		GroupsClaim string `yaml:"groupsClaim" default:"groups"`
+
+		// UsernamePrefix is prepended to usernames extracted from the
+		// token (e.g. "oidc:"). Empty by default — useful when you
+		// want to avoid collisions with non-OIDC users in RBAC bindings.
+		UsernamePrefix string `yaml:"usernamePrefix"`
+
+		// GroupsPrefix is prepended to groups extracted from the token
+		// (e.g. "oidc:"). Empty by default.
+		GroupsPrefix string `yaml:"groupsPrefix"`
+
+		// CABundlePath is an absolute host path to a PEM file
+		// containing the CA that signed the issuer's TLS certificate.
+		// Set this only when the issuer's cert is not chainable to a
+		// publicly-trusted CA. When set, the parser mounts the file
+		// into the apiserver pod and adds --oidc-ca-file pointing at
+		// the mount path.
+		CABundlePath string `yaml:"caBundlePath"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount

@@ -53,6 +53,19 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
+    # Optional. When set, kube-apiserver is configured to validate JWTs
+    # issued by an external OIDC provider (typically Keycloak) and the
+    # bootstrap aborts early if the issuer URL is unreachable.
+    #
+    # oidc:
+    #   issuerUrl:     https://keycloak.example/realms/clusters
+    #   clientId:      kubernetes-<cluster>
+    #   usernameClaim: email      # default: email
+    #   groupsClaim:   groups     # default: groups
+    #   usernamePrefix:           # optional, e.g. "oidc:"
+    #   groupsPrefix:             # optional
+    #   caBundlePath:             # optional, abs host path; auto-mounted
+    oidc:
   # Other than the root user, addtional users that you would like to be created in each node.
   # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
   additionalUsers:
