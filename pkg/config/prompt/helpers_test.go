@@ -13,6 +13,68 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestHTTPSURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		wantErr  bool
+		errParts []string
+	}{
+		{
+			name:    "valid https URL with path passes",
+			input:   "https://keycloak.example/realms/clusters",
+			wantErr: false,
+		},
+		{
+			name:    "valid https URL with port passes",
+			input:   "https://keycloak.example:8443/realms/x",
+			wantErr: false,
+		},
+		{
+			name:     "empty string is required",
+			input:    "",
+			wantErr:  true,
+			errParts: []string{"required"},
+		},
+		{
+			name:     "http (not https) is rejected",
+			input:    "http://keycloak.example/realms/x",
+			wantErr:  true,
+			errParts: []string{"https"},
+		},
+		{
+			name:     "no scheme is rejected",
+			input:    "keycloak.example/realms/x",
+			wantErr:  true,
+			errParts: []string{"https"},
+		},
+		{
+			name:     "https without host is rejected",
+			input:    "https:///realms/x",
+			wantErr:  true,
+			errParts: []string{"host"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := httpsURL(tc.input)
+
+			if !tc.wantErr {
+				assert.NoError(t, err)
+				return
+			}
+
+			require.Error(t, err)
+
+			for _, part := range tc.errParts {
+				assert.Contains(t, err.Error(), part,
+					"want error to mention %q, got %q", part, err.Error())
+			}
+		})
+	}
+}
+
 func TestNonEmpty(t *testing.T) {
 	tests := []struct {
 		name    string
