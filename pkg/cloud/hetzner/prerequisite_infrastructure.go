@@ -15,7 +15,27 @@ import (
 func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-	// We won't be using Hetzner Network when cluster is purely on Hetzner Bare Metal.
+	// HBMS-specific steps (SSH key registration with HRobot, OS install, storage plans) must
+	// run for any mode that includes bare-metal hosts: pure "bare-metal" and "hybrid". They
+	// don't depend on Hetzner Network / VSwitch.
+	if config.UsingHetznerBareMetal() {
+		sshKeyPair := hetznerConfig.SSHKeyPair
+		h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig)
+
+		// Install the OS on each HBMS (if not already installed).
+		// This activates a Linux installation via the HRobot API, triggers a hardware
+		// reset, and waits until the HBMS is reachable via SSH.
+		h.InstallOSOnAllHBMS(ctx)
+
+		// Generate storage plan for the control-plane and each node-group.
+		h.GenerateStoragePlans(ctx, hetznerConfig)
+
+		// Apply node labels derived from the storage plan
+		hydrateNodeGroupLabels(hetznerConfig)
+	}
+
+	// Hetzner Network / VSwitch are only needed when HCloud is in the picture (mode = hcloud
+	// or hybrid). In pure bare-metal mode there is no Hetzner Network
 	if hetznerConfig.Mode == constants.HetznerModeBareMetal {
 		return
 	}
@@ -36,10 +56,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 	}
 
 	if config.UsingHetznerBareMetal() {
-		// Create the SSH key in Hetzner Bare Metal, if it doesn't already exist.
-		sshKeyPair := hetznerConfig.SSHKeyPair
-		h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig)
-
 		// Ensure that the required VSwitch is created.
 		vswitchID := h.CreateVSwitch(ctx)
 
@@ -59,15 +75,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 				h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID)
 			}
 		}
-
-		// TODO : Boot each Hetzner Bare Metal server into rescue mode,
-		//        so that KubeAid CLI can access them using the above Hetzner Bare Metal server.
-
-		// Generate storage plan for the control-plane and each node-group.
-		h.GenerateStoragePlans(ctx, hetznerConfig)
-
-		// Apply node labels derived from the storage plan (e.g. disk=nvme).
-		hydrateNodeGroupLabels(hetznerConfig)
 	}
 
 	if hetznerConfig.HCloudVPNCluster != nil {

@@ -207,6 +207,14 @@ const (
 	HCloudLocationHel1 = "hel1"
 
 	HCloudLBTypeLB11 = "lb11"
+
+	// Hetzner Bare Metal Server (HBMS) OS installation via Hetzner Robot (HRobot).
+	HRobotResetTypeHardware = "hw"
+	// Pinned to the latest Ubuntu LTS so that every new HBMS receives current security patches.
+	// Bump this constant when a newer LTS becomes available in the HRobot catalogue.
+	HBMSInstallDistributionLatestUbuntu = "Ubuntu 24.04 LTS base"
+	HBMSOSInstallationPollInterval      = 20 * time.Second
+	HBMSOSInstallationMaxWaitTime       = 12 * time.Minute
 )
 
 const (
