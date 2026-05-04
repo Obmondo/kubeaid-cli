@@ -101,8 +101,10 @@ hetzner:
       vg0:
         size: {{ .HetznerConfig.BareMetal.InstallImage.VG0.Size }}
         rootVolumeSize: {{ .HetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize }}
+    {{- if .HetznerConfig.BareMetal.VSwitch }}
     vSwitch:
       vlanID: {{ .HetznerConfig.BareMetal.VSwitch.VLANID }}
+    {{- end }}
   {{- end }}
 
   controlPlane:
