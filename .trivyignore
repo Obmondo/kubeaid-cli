@@ -1,0 +1,7 @@
+# Vulnerabilities accepted with documented justification.
+#
+# Format: `<CVE-ID>  # <reason>` — one per line. Trivy ignores anything after '#'.
+
+CVE-2026-34040  # docker/docker: Moby authorization bypass (HIGH)
+CVE-2026-33997  # docker/docker: Moby plugin privilege validation bypass (MEDIUM)
+CVE-2025-15558  # docker/cli: Windows-only plugin priv-esc (HIGH; not reachable on our Linux-only runtime)

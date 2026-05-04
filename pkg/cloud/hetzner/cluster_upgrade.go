@@ -14,8 +14,8 @@ import (
 
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	kubeadmControlPlaneV1Beta1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1beta1"
+	kubeadmControlPlaneV1Beta1 "sigs.k8s.io/cluster-api/api/controlplane/kubeadm/v1beta1"
+	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 

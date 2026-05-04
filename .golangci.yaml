@@ -6,6 +6,7 @@ issues:
   # Maximum count of issues with the same text.
   max-same-issues: 50
 
+
 formatters:
   enable:
     # checks if the code and import statements are formatted according to the 'goimports' command
@@ -120,6 +121,11 @@ linters:
 
     # inspects source code for security problems.
     - gosec
+
+  exclusions:
+    rules:
+      - linters: [staticcheck]
+        text: "SA1019.*sigs.k8s.io/cluster-api/api/"
 
   # All settings can be found here :
   # https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml

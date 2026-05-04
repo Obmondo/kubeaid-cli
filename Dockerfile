@@ -51,4 +51,9 @@ RUN apk add --no-cache bash jq git
 COPY --from=builder /usr/local/bin/kubeaid-core /usr/local/bin/kubeaid-core
 COPY --from=runtime-dependencies-installer /usr/local/bin /usr/local/bin
 
+RUN addgroup -S kubeaid && adduser -S -G kubeaid -h /home/kubeaid kubeaid \
+  && chown -R kubeaid:kubeaid /home/kubeaid
+WORKDIR /home/kubeaid
+USER kubeaid
+
 ENTRYPOINT [ "kubeaid-core" ]

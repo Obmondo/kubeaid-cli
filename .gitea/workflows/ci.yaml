@@ -4,7 +4,7 @@ on:
 
 jobs:
   commit-message-check:
-    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
     steps:
       - name: Checkout code
         uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
@@ -32,9 +32,27 @@ jobs:
 
           cog check "${BASE_SHA}..${HEAD_SHA}"
 
+  security-code-scan:
+    name: Trivy security scan
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Run Trivy security scan against the sourcecode
+        uses:  https://gitea.obmondo.com/Obmondo/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          trivy-config: trivy.yaml
+          skip-setup-trivy: false
+          version: v0.70.0
+
   golangci-lint:
     runs-on: ubuntu-24.04-htzhel1-ax42-a
-    needs: [security-code-scan]
+    needs: [go-build]
     steps:
       - name: Checkout code
         uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
@@ -52,7 +70,8 @@ jobs:
           args: --timeout=5m --config=.golangci.yaml
 
   unit-tests:
-    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
+    needs: [go-build]
     steps:
       - name: Checkout code
         uses: https://gitea.obmondo.com/Obmondo/checkout@v4.2.2
@@ -72,8 +91,44 @@ jobs:
       - name: Check test coverage
         run: go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
 
+  go-build:
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
+
+      - name: Setup Go
+        uses: https://gitea.obmondo.com/Obmondo/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Build
+        run: CGO_ENABLED=0 go build -v ./...
+
+  docker-build:
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
+    needs: [go-build]
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: https://gitea.obmondo.com/Obmondo/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: https://gitea.obmondo.com/Obmondo/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.pull_request.updated_at }}
+
   check-k8s-eol-fresh:
-    runs-on: ubuntu-22.04-htzhel1-ax42-a
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
     continue-on-error: true
     steps:
       - name: Checkout code
