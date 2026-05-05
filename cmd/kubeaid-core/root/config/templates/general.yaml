@@ -55,10 +55,10 @@ cluster:
     files: []
     # OIDC configures kube-apiserver to validate JWTs issued by an
     # external OpenID Connect provider (typically Keycloak). When
-    # set, the parser translates this block into the corresponding
-    # `--oidc-*` flags on APIServerConfig.ExtraArgs and, when
-    # CABundlePath is set, mounts the CA file via ExtraVolumes.
-    # Skipping this block leaves kube-apiserver without OIDC.
+    # set, the parser renders a structured AuthenticationConfiguration
+    # YAML, writes it via APIServerConfig.Files, and points
+    # kube-apiserver at it with --authentication-config. Skipping
+    # this block leaves kube-apiserver without OIDC.
     oidc:
       # IssuerURL is the Keycloak realm URL (e.g.
       # https://keycloak.<vpn-server>/realms/clusters). kube-apiserver
@@ -85,10 +85,40 @@ cluster:
       # CABundlePath is an absolute host path to a PEM file
       # containing the CA that signed the issuer's TLS certificate.
       # Set this only when the issuer's cert is not chainable to a
-      # publicly-trusted CA. When set, the parser mounts the file
-      # into the apiserver pod and adds --oidc-ca-file pointing at
-      # the mount path.
+      # publicly-trusted CA. When set, the parser reads the file
+      # at config-render time and embeds its contents inline in the
+      # AuthenticationConfiguration YAML.
       caBundlePath:
+  # Keycloak declares the Keycloak instance this cluster hosts.
+  # Only meaningful when cluster.type=vpn — VPN clusters host
+  # Keycloak; workload clusters do not, and must leave this
+  # block unset. A workload cluster's kube-apiserver instead
+  # authenticates against an existing Keycloak by setting
+  # apiServer.oidc (issuer URL + client ID) directly in its own
+  # general.yaml; kubeaid-cli prompts for those values during
+  # workload-cluster setup. There is no automatic inheritance
+  # between clusters — every cluster's OIDC config is explicit
+  # in its own general.yaml.
+  keycloak:
+    # Mode is "managed" (kubeaid-cli installs Keycloak via the
+    # keycloakx Helm chart on this cluster) or "external" (Keycloak
+    # is already running elsewhere; supply DNS only). Only managed
+    # is supported by the current bootstrap flow; external is
+    # reserved for a future branch.
+    mode:
+    # DNS is the public hostname Keycloak is reachable at, e.g.
+    # "keycloak.vpn.acme.com". Required. Used to derive the OIDC
+    # issuer URL the apiserver and kubelogin trust, and (when
+    # Realm is unset) to default the realm name.
+    dns:
+    # Realm is the Keycloak realm name. Optional — when empty,
+    # kubeaid-cli derives it from DNS via
+    # `golang.org/x/net/publicsuffix.EffectiveTLDPlusOne` and the
+    # first dot-separated segment of the result. Examples:
+    #   keycloak.vpn.acme.com  → "acme"
+    #   keycloak.foo.co.uk     → "foo"
+    # Set this explicitly to override the derivation.
+    realm:
   # Other than the root user, addtional users that you would like to be created in each node.
   # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
   additionalUsers:

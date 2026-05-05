@@ -74,7 +74,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 	// On VPN clusters with managed Keycloak, kubeaid-cli pre-creates the
 	// keycloak-admin Secret before ArgoCD's first sync, so the keycloakx
-	// namespace must already exist. cnpg-system is paired here because the
+	// namespace must already exist. cnpg-operator is paired here because the
 	// keycloakx chart instantiates a CNPG Cluster CR in that namespace.
 	if managedKeycloakEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,

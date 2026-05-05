@@ -46,6 +46,7 @@
 - [HetznerSSHKeyPair](#hetznersshkeypair)
 - [HostPathMountConfig](#hostpathmountconfig)
 - [InstallImageConfig](#installimageconfig)
+- [KeycloakConfig](#keycloakconfig)
 - [KubeAidForkConfig](#kubeaidforkconfig)
 - [KubePrometheusConfig](#kubeprometheusconfig)
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
@@ -95,7 +96,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | extraArgs | `map[string]string` | {} |  |
 | extraVolumes | [][`HostPathMountConfig`](#hostpathmountconfig) | [] |  |
 | files | [][`FileConfig`](#fileconfig) | [] |  |
-| oidc | [`OIDCConfig`](#oidcconfig) |  | OIDC configures kube-apiserver to validate JWTs issued by an<br>external OpenID Connect provider (typically Keycloak). When<br>set, the parser translates this block into the corresponding<br>`--oidc-*` flags on APIServerConfig.ExtraArgs and, when<br>CABundlePath is set, mounts the CA file via ExtraVolumes.<br>Skipping this block leaves kube-apiserver without OIDC.<br> |
+| oidc | [`OIDCConfig`](#oidcconfig) |  | OIDC configures kube-apiserver to validate JWTs issued by an<br>external OpenID Connect provider (typically Keycloak). When<br>set, the parser renders a structured AuthenticationConfiguration<br>YAML, writes it via APIServerConfig.Files, and points<br>kube-apiserver at it with --authentication-config. Skipping<br>this block leaves kube-apiserver without OIDC.<br> |
 
 ## AWSAutoScalableNodeGroup
 
@@ -175,11 +176,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -309,6 +310,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | k8sVersion | `string` |  | Kubernetes version (>= 1.30.0).<br> |
 | enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
+| keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster hosts.<br>Only meaningful when cluster.type=vpn — VPN clusters host<br>Keycloak; workload clusters do not, and must leave this<br>block unset. A workload cluster's kube-apiserver instead<br>authenticates against an existing Keycloak by setting<br>apiServer.oidc (issuer URL + client ID) directly in its own<br>general.yaml; kubeaid-cli prompts for those values during<br>workload-cluster setup. There is no automatic inheritance<br>between clusters — every cluster's OIDC config is explicit<br>in its own general.yaml.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
 | argoCD | [`ArgoCDConfig`](#argocdconfig) |  | ArgoCD specific details.<br> |
 
@@ -384,11 +386,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -568,6 +570,21 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | imagePath | `string` | /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz |  |
 | vg0 | [`VG0Config`](#vg0config) |  |  |
 
+## KeycloakConfig
+
+<p>KeycloakConfig declares the OIDC provider for this cluster. The
+parser hydrates derived fields (Realm from DNS, the apiServer.oidc
+block) and validates the combination against cluster.type. The
+admin password is generated by kubeaid-cli at bootstrap and never
+lives in this struct or in secrets.yaml; only Mode/DNS/Realm are
+user-facing.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| mode | `string` |  | Mode is "managed" (kubeaid-cli installs Keycloak via the<br>keycloakx Helm chart on this cluster) or "external" (Keycloak<br>is already running elsewhere; supply DNS only). Only managed<br>is supported by the current bootstrap flow; external is<br>reserved for a future branch.<br> |
+| dns | `string` |  | DNS is the public hostname Keycloak is reachable at, e.g.<br>"keycloak.vpn.acme.com". Required. Used to derive the OIDC<br>issuer URL the apiserver and kubelogin trust, and (when<br>Realm is unset) to default the realm name.<br> |
+| realm | `string` |  | Realm is the Keycloak realm name. Optional — when empty,<br>kubeaid-cli derives it from DNS via<br>`golang.org/x/net/publicsuffix.EffectiveTLDPlusOne` and the<br>first dot-separated segment of the result. Examples:<br>  keycloak.vpn.acme.com  → "acme"<br>  keycloak.foo.co.uk     → "foo"<br>Set this explicitly to override the derivation.<br> |
+
 ## KubeAidForkConfig
 
 <p>KubeAid repository specific details.</p>
@@ -630,7 +647,7 @@ provision infrastructure.</p>
 | groupsClaim | `string` | groups | GroupsClaim is the JWT claim kube-apiserver reads to<br>populate the user's groups for RBAC. Defaults to "groups".<br> |
 | usernamePrefix | `string` |  | UsernamePrefix is prepended to usernames extracted from the<br>token (e.g. "oidc:"). Empty by default — useful when you<br>want to avoid collisions with non-OIDC users in RBAC bindings.<br> |
 | groupsPrefix | `string` |  | GroupsPrefix is prepended to groups extracted from the token<br>(e.g. "oidc:"). Empty by default.<br> |
-| caBundlePath | `string` |  | CABundlePath is an absolute host path to a PEM file<br>containing the CA that signed the issuer's TLS certificate.<br>Set this only when the issuer's cert is not chainable to a<br>publicly-trusted CA. When set, the parser mounts the file<br>into the apiserver pod and adds --oidc-ca-file pointing at<br>the mount path.<br> |
+| caBundlePath | `string` |  | CABundlePath is an absolute host path to a PEM file<br>containing the CA that signed the issuer's TLS certificate.<br>Set this only when the issuer's cert is not chainable to a<br>publicly-trusted CA. When set, the parser reads the file<br>at config-render time and embeds its contents inline in the<br>AuthenticationConfiguration YAML.<br> |
 
 ## ObmondoConfig
 

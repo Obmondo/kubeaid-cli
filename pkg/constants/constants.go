@@ -70,13 +70,13 @@ const (
 	KubeAPIServerFlagAuditPolicyFile = "audit-policy-file"
 	KubeAPIServerFlagAuditLogPath    = "audit-log-path"
 
-	KubeAPIServerFlagOIDCIssuerURL      = "oidc-issuer-url"
-	KubeAPIServerFlagOIDCClientID       = "oidc-client-id"
-	KubeAPIServerFlagOIDCUsernameClaim  = "oidc-username-claim"
-	KubeAPIServerFlagOIDCUsernamePrefix = "oidc-username-prefix"
-	KubeAPIServerFlagOIDCGroupsClaim    = "oidc-groups-claim"
-	KubeAPIServerFlagOIDCGroupsPrefix   = "oidc-groups-prefix"
-	KubeAPIServerFlagOIDCCAFile         = "oidc-ca-file"
+	// AuthenticationConfiguration delivery (k8s 1.30+). The OIDC
+	// block in cluster.apiServer.oidc is rendered into this YAML
+	// file and kube-apiserver is pointed at it via the
+	// --authentication-config flag. The legacy --oidc-* flags are
+	// no longer emitted.
+	KubeAPIServerFlagAuthenticationConfig = "authentication-config"
+	KubeAPIServerAuthenticationConfigPath = "/etc/kubernetes/auth-config.yaml"
 )
 
 // Cloud providers.
@@ -234,8 +234,8 @@ const (
 	NamespaceCrossPlane    = "crossplane"
 	NamespaceCilium        = "cilium"
 	NamespaceCiliumTest    = "cilium-test"
-	NamespaceKeycloak       = "keycloakx"
-	NamespaceCloudNativePG  = "cnpg-system"
+	NamespaceKeycloak      = "keycloakx"
+	NamespaceCloudNativePG = "cnpg-operator"
 
 	// Keycloak admin Secret keys. Names match what the keycloakx
 	// chart's pre-install hook reads.
