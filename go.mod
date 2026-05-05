@@ -85,6 +85,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
+	github.com/Nerzal/gocloak/v13 v13.9.0 // indirect
 	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/Zxilly/go-size-analyzer v1.11.0 // indirect
 	github.com/ZxillyFork/gore v0.0.0-20260213142603-6d34e9fbcd04 // indirect
@@ -307,6 +308,7 @@ require (
 	github.com/nikolaydubina/treemap v1.2.5 // indirect
 	github.com/onsi/gomega v1.39.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
@@ -334,6 +336,7 @@ require (
 	github.com/sanathkr/yaml v0.0.0-20170819201035-0056894fa522 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sasha-s/go-deadlock v0.3.5 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/siderolabs/crypto v0.6.0 // indirect
