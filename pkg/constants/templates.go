@@ -224,12 +224,16 @@ var KeycloakManagedNonSecretTemplateNames = []string{
 	"argocd-apps/values-keycloakx.yaml.tmpl",
 }
 
-// keycloak-admin SealedSecret. The keycloakx chart's pre-install
-// hook reads the resulting Secret (after sealed-secrets controller
-// decrypts the SealedSecret) to seed Keycloak's initial admin
-// password.
+// Managed-Keycloak SealedSecrets. keycloak-admin seeds Keycloak's
+// initial admin password (consumed by the keycloakx chart's
+// pre-install hook). netbird-keycloak carries the netbird-backend
+// OIDC client secret, kubeaid-cli pre-generates and templates the
+// same plaintext into both the SealedSecret here AND the
+// ReconcileClient call so Keycloak stores what NetBird's chart
+// already expects to envFrom.
 var KeycloakManagedSecretTemplateNames = []string{
 	"sealed-secrets/keycloakx/keycloak-admin.yaml.tmpl",
+	"sealed-secrets/netbird/netbird-keycloak.yaml.tmpl",
 }
 
 // Obmondo customer specific template names.

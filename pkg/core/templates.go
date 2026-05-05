@@ -91,6 +91,15 @@ type TemplateValues struct {
 	// the keycloak-admin SealedSecret. Populated only when
 	// managedKeycloakEnabled.
 	KeycloakAdminPassword string
+
+	// NetBirdBackendClientSecret is the pre-generated OIDC client
+	// secret for the `netbird-backend` confidential client. The
+	// same value is templated into the netbird-keycloak
+	// SealedSecret AND passed through to ReconcileClient as
+	// spec.Secret so Keycloak stores what NetBird's chart already
+	// expects in the cluster Secret — single git push, single
+	// sync.
+	NetBirdBackendClientSecret string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -154,9 +163,32 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	if managedKeycloakEnabled() {
-		password, err := keycloak.GenerateAdminPassword()
-		assert.AssertErrNil(ctx, err, "Failed generating Keycloak admin password")
-		templateValues.KeycloakAdminPassword = password
+		// Both secrets are read-or-generate: regenerating on a
+		// re-run would drift the in-cluster Secret from the value
+		// Keycloak still holds (the chart's pre-install hook bakes
+		// the admin password once; gocloak ignores spec.Secret on
+		// existing clients). Cluster client is nil pre-bootstrap,
+		// in which case both calls fall back to a fresh value and
+		// the first SealedSecret sync establishes the stable one.
+		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+		)
+
+		adminPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+			constants.NamespaceKeycloak,
+			constants.SecretNameKeycloakAdmin,
+			constants.SecretKeyKeycloakPassword,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating Keycloak admin password")
+		templateValues.KeycloakAdminPassword = adminPwd
+
+		nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+			constants.NamespaceNetBird,
+			constants.SecretNameNetBirdKeycloak,
+			constants.SecretKeyNetBirdSecret,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
+		templateValues.NetBirdBackendClientSecret = nbSecret
 	}
 
 	// Set cloud provider specific values.

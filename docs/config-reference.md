@@ -51,6 +51,7 @@
 - [KubePrometheusConfig](#kubeprometheusconfig)
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
 - [LocalConfig](#localconfig)
+- [NetBirdConfig](#netbirdconfig)
 - [NodeGroup](#nodegroup)
 - [OIDCConfig](#oidcconfig)
 - [ObmondoConfig](#obmondoconfig)
@@ -108,11 +109,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -311,6 +312,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
 | keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster hosts.<br>Only meaningful when cluster.type=vpn — VPN clusters host<br>Keycloak; workload clusters do not, and must leave this<br>block unset. A workload cluster's kube-apiserver instead<br>authenticates against an existing Keycloak by setting<br>apiServer.oidc (issuer URL + client ID) directly in its own<br>general.yaml; kubeaid-cli prompts for those values during<br>workload-cluster setup. There is no automatic inheritance<br>between clusters — every cluster's OIDC config is explicit<br>in its own general.yaml.<br> |
+| netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
 | argoCD | [`ArgoCDConfig`](#argocdconfig) |  | ArgoCD specific details.<br> |
 
@@ -386,11 +388,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -618,6 +620,17 @@ user-facing.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+
+## NetBirdConfig
+
+<p>NetBirdConfig declares the NetBird Management instance this
+VPN cluster hosts. Used to render the redirect URI and
+audience claim for the netbird-client / netbird-backend OIDC
+clients in Keycloak.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| dns | `string` |  | DNS is the public hostname NetBird Management is<br>reachable at, e.g. "netbird.vpn.acme.com". Required.<br> |
 
 ## NodeGroup
 
