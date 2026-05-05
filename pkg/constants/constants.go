@@ -77,6 +77,15 @@ const (
 	// no longer emitted.
 	KubeAPIServerFlagAuthenticationConfig = "authentication-config"
 	KubeAPIServerAuthenticationConfigPath = "/etc/kubernetes/auth-config.yaml"
+
+	// Obmondo's central Keycloak for SRE access. Trust is added
+	// to customer kube-apiservers as a SECOND jwt: entry in the
+	// AuthenticationConfiguration when obmondo.monitoring is on,
+	// so Obmondo SRE users can kubectl into a customer cluster
+	// without the customer issuing them an account in their own
+	// Keycloak. One-way: customer's Keycloak is unaware of
+	// Obmondo's, no IdP federation.
+	ObmondoKeycloakIssuerURL = "https://keycloak.obmondo.com/realms/obmondo"
 )
 
 // Cloud providers.

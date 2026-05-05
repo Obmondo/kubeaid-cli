@@ -15,21 +15,27 @@ import (
 )
 
 // hydrateWithOIDCOptions translates the typed cluster.apiServer.oidc
-// block in general.yaml into a structured AuthenticationConfiguration
-// YAML body delivered via apiServer.Files (CAPI's KubeadmControlPlane
-// writes the file via cloud-init), plus the matching
-// `--authentication-config` flag and a host-path mount.
+// block (and, when obmondo.monitoring is true, an additional Obmondo
+// SRE issuer) into a structured AuthenticationConfiguration YAML body
+// delivered via apiServer.Files (CAPI's KubeadmControlPlane writes
+// the file via cloud-init), plus the matching --authentication-config
+// flag and a host-path mount.
+//
+// No-op when neither the customer's OIDC block nor obmondo.monitoring
+// is set — kube-apiserver runs without OIDC trust in that case.
 //
 // When --authentication-config is set, kube-apiserver ignores the
-// legacy --oidc-* flags entirely, so any stale ExtraArgs from
-// previous configurations are inert (no need to scrub them).
+// legacy --oidc-* flags entirely, so any stale ExtraArgs from previous
+// configurations are inert (no need to scrub them).
 func hydrateWithOIDCOptions() {
-	cfg := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
-	if cfg == nil {
+	customer := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
+	obmondo := config.ParsedGeneralConfig.Obmondo
+	obmondoSRE := obmondo != nil && obmondo.Monitoring
+	if customer == nil && !obmondoSRE {
 		return
 	}
 
-	body, err := renderAuthenticationConfig(cfg)
+	body, err := renderAuthenticationConfig(customer, obmondoSRE)
 	if err != nil {
 		// CABundlePath is the only failure path (file unreadable);
 		// re-surface with the field name so the user can fix it.
@@ -85,14 +91,18 @@ type authenticationConfigPrefixedClaim struct {
 	Prefix string `json:"prefix"`
 }
 
-// renderAuthenticationConfig builds the structured YAML body for one
-// JWT issuer. Multi-issuer support (Obmondo SRE access) is captured
-// in the design doc as future work.
-func renderAuthenticationConfig(cfg *config.OIDCConfig) (string, error) {
+// renderAuthenticationConfig builds the structured YAML body. Up to
+// two jwt: entries — the customer's (when cfg is non-nil) and
+// Obmondo's (when obmondoSRE is true). Either may be present alone;
+// callers gate the no-issuer case earlier.
+func renderAuthenticationConfig(cfg *config.OIDCConfig, obmondoSRE bool) (string, error) {
 	doc := authenticationConfig{
 		APIVersion: "apiserver.config.k8s.io/v1",
 		Kind:       "AuthenticationConfiguration",
-		JWT: []authenticationConfigJWT{{
+	}
+
+	if cfg != nil {
+		entry := authenticationConfigJWT{
 			Issuer: authenticationConfigIssuer{
 				URL:       cfg.IssuerURL,
 				Audiences: []string{cfg.ClientID},
@@ -107,18 +117,33 @@ func renderAuthenticationConfig(cfg *config.OIDCConfig) (string, error) {
 					Prefix: cfg.GroupsPrefix,
 				},
 			},
-		}},
+		}
+
+		if cfg.CABundlePath != "" {
+			ca, err := os.ReadFile(cfg.CABundlePath)
+			if err != nil {
+				return "", fmt.Errorf(
+					"reading apiServer.oidc.caBundlePath %q: %w",
+					cfg.CABundlePath, err,
+				)
+			}
+			entry.Issuer.CertificateAuthority = string(ca)
+		}
+
+		doc.JWT = append(doc.JWT, entry)
 	}
 
-	if cfg.CABundlePath != "" {
-		ca, err := os.ReadFile(cfg.CABundlePath)
-		if err != nil {
-			return "", fmt.Errorf(
-				"reading apiServer.oidc.caBundlePath %q: %w",
-				cfg.CABundlePath, err,
-			)
-		}
-		doc.JWT[0].Issuer.CertificateAuthority = string(ca)
+	if obmondoSRE {
+		doc.JWT = append(doc.JWT, authenticationConfigJWT{
+			Issuer: authenticationConfigIssuer{
+				URL:       constants.ObmondoKeycloakIssuerURL,
+				Audiences: []string{config.ParsedGeneralConfig.Cluster.Name},
+			},
+			ClaimMappings: authenticationConfigClaimMappings{
+				Username: authenticationConfigPrefixedClaim{Claim: "email"},
+				Groups:   authenticationConfigPrefixedClaim{Claim: "groups"},
+			},
+		})
 	}
 
 	out, err := yaml.Marshal(&doc)
