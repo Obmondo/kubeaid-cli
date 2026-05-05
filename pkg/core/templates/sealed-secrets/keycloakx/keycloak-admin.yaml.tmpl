@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: keycloak-admin
+  namespace: keycloakx
+stringData:
+  username: admin
+  KEYCLOAK_PASSWORD: {{ .KeycloakAdminPassword }}

@@ -72,6 +72,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
 		namespacesToBeCreated = append(namespacesToBeCreated, "monitoring")
 	}
+	// On VPN clusters with managed Keycloak, kubeaid-cli pre-creates the
+	// keycloak-admin Secret before ArgoCD's first sync, so the keycloakx
+	// namespace must already exist. cnpg-system is paired here because the
+	// keycloakx chart instantiates a CNPG Cluster CR in that namespace.
+	if managedKeycloakEnabled() {
+		namespacesToBeCreated = append(namespacesToBeCreated,
+			constants.NamespaceKeycloak,
+			constants.NamespaceCloudNativePG,
+		)
+	}
 	for _, namespace := range namespacesToBeCreated {
 		err := kubernetes.CreateNamespace(ctx, namespace, args.ClusterClient)
 		assert.AssertErrNil(ctx, err, "Failed creating namespace",
