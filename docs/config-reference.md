@@ -51,6 +51,7 @@
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
 - [LocalConfig](#localconfig)
 - [NodeGroup](#nodegroup)
+- [OIDCConfig](#oidcconfig)
 - [ObmondoConfig](#obmondoconfig)
 - [ObmondoCredentials](#obmondocredentials)
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
@@ -94,6 +95,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | extraArgs | `map[string]string` | {} |  |
 | extraVolumes | [][`HostPathMountConfig`](#hostpathmountconfig) | [] |  |
 | files | [][`FileConfig`](#fileconfig) | [] |  |
+| oidc | [`OIDCConfig`](#oidcconfig) |  | OIDC configures kube-apiserver to validate JWTs issued by an<br>external OpenID Connect provider (typically Keycloak). When<br>set, the parser translates this block into the corresponding<br>`--oidc-*` flags on APIServerConfig.ExtraArgs and, when<br>CABundlePath is set, mounts the CA file via ExtraVolumes.<br>Skipping this block leaves kube-apiserver without OIDC.<br> |
 
 ## AWSAutoScalableNodeGroup
 
@@ -105,11 +107,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -609,6 +611,26 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+
+## OIDCConfig
+
+<p>OIDCConfig is the typed kube-apiserver OIDC configuration.
+
+Required fields (IssuerURL + ClientID) must be present when the
+block is set; the rest carry sensible defaults. The IssuerURL is
+also probed at bootstrap time (see parser.ValidateOIDCDiscovery)
+so an unreachable / mistyped issuer fails fast — before we
+provision infrastructure.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| issuerUrl | `string` |  | IssuerURL is the Keycloak realm URL (e.g.<br>https://keycloak.<vpn-server>/realms/clusters). kube-apiserver<br>validates JWTs against this issuer's JWKS.<br> |
+| clientId | `string` |  | ClientID is the per-cluster OIDC client created in Keycloak<br>(e.g. kubernetes-staging). Must match the `aud` claim in<br>tokens kube-apiserver should accept.<br> |
+| usernameClaim | `string` | email | UsernameClaim is the JWT claim kube-apiserver maps to the<br>user's identity. Defaults to "email" — what the architecture<br>doc recommends — but can be overridden per Keycloak setup.<br> |
+| groupsClaim | `string` | groups | GroupsClaim is the JWT claim kube-apiserver reads to<br>populate the user's groups for RBAC. Defaults to "groups".<br> |
+| usernamePrefix | `string` |  | UsernamePrefix is prepended to usernames extracted from the<br>token (e.g. "oidc:"). Empty by default — useful when you<br>want to avoid collisions with non-OIDC users in RBAC bindings.<br> |
+| groupsPrefix | `string` |  | GroupsPrefix is prepended to groups extracted from the token<br>(e.g. "oidc:"). Empty by default.<br> |
+| caBundlePath | `string` |  | CABundlePath is an absolute host path to a PEM file<br>containing the CA that signed the issuer's TLS certificate.<br>Set this only when the issuer's cert is not chainable to a<br>publicly-trusted CA. When set, the parser mounts the file<br>into the apiserver pod and adds --oidc-ca-file pointing at<br>the mount path.<br> |
 
 ## ObmondoConfig
 

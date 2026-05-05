@@ -89,6 +89,10 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// Hydrate with Audit Logging options (if required).
 		hydrateWithAuditLoggingOptions()
 
+		// Translate the typed apiServer.oidc block (if any) into the
+		// corresponding kube-apiserver --oidc-* flags + CA mount.
+		hydrateWithOIDCOptions()
+
 		// Default KubePrometheus version when not explicitly provided.
 		err = hydrateKubePrometheusVersion(ctx)
 		assert.AssertErrNil(ctx, err, "Failed defaulting KubePrometheus version")

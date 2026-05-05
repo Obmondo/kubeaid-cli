@@ -69,6 +69,14 @@ const (
 const (
 	KubeAPIServerFlagAuditPolicyFile = "audit-policy-file"
 	KubeAPIServerFlagAuditLogPath    = "audit-log-path"
+
+	KubeAPIServerFlagOIDCIssuerURL      = "oidc-issuer-url"
+	KubeAPIServerFlagOIDCClientID       = "oidc-client-id"
+	KubeAPIServerFlagOIDCUsernameClaim  = "oidc-username-claim"
+	KubeAPIServerFlagOIDCUsernamePrefix = "oidc-username-prefix"
+	KubeAPIServerFlagOIDCGroupsClaim    = "oidc-groups-claim"
+	KubeAPIServerFlagOIDCGroupsPrefix   = "oidc-groups-prefix"
+	KubeAPIServerFlagOIDCCAFile         = "oidc-ca-file"
 )
 
 // Cloud providers.
