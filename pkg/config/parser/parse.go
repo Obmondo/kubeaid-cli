@@ -93,6 +93,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// corresponding kube-apiserver --oidc-* flags + CA mount.
 		hydrateWithOIDCOptions()
 
+		// Default cluster.keycloak.realm from DNS when unset (uses
+		// publicsuffix). Validation of the typed block happens after
+		// defaults so error messages reference the user-visible value.
+		hydrateKeycloakDefaults()
+
 		// Default KubePrometheus version when not explicitly provided.
 		err = hydrateKubePrometheusVersion(ctx)
 		assert.AssertErrNil(ctx, err, "Failed defaulting KubePrometheus version")

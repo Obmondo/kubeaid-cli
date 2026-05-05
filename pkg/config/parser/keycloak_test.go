@@ -1,0 +1,216 @@
+// Copyright 2025 Obmondo
+// SPDX-License-Identifier: AGPL3
+
+package parser
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+)
+
+func TestDeriveRealm(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{
+			name: "single-segment TLD",
+			host: "keycloak.vpn.acme.com",
+			want: "acme",
+		},
+		{
+			name: "multi-part TLD (.co.uk)",
+			host: "keycloak.client.foo.co.uk",
+			want: "foo",
+		},
+		{
+			name: "another multi-part TLD (.com.au)",
+			host: "kc.bar.com.au",
+			want: "bar",
+		},
+		{
+			name: "two-segment domain",
+			host: "kc.acme.com",
+			want: "acme",
+		},
+		{
+			name: "bare apex domain",
+			host: "acme.com",
+			want: "acme",
+		},
+		{
+			name: "empty host returns empty",
+			host: "",
+			want: "",
+		},
+		{
+			name: "whitespace-only host returns empty",
+			host: "   ",
+			want: "",
+		},
+		{
+			name: "host without a known public suffix returns empty",
+			host: "localhost",
+			want: "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, deriveRealm(tc.host))
+		})
+	}
+}
+
+// withFreshKeycloakConfig swaps ParsedGeneralConfig for the duration of
+// fn so the test never leaks state. Mirrors withFreshConfig from the
+// OIDC tests but lives here to avoid an import cycle.
+func withFreshKeycloakConfig(t *testing.T, fn func()) {
+	t.Helper()
+
+	orig := config.ParsedGeneralConfig
+	config.ParsedGeneralConfig = &config.GeneralConfig{}
+
+	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
+
+	fn()
+}
+
+func TestHydrateKeycloakDefaults(t *testing.T) {
+	t.Run("no-op when keycloak block is unset", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			hydrateKeycloakDefaults()
+			assert.Nil(t, config.ParsedGeneralConfig.Cluster.Keycloak)
+		})
+	})
+
+	t.Run("derives realm from DNS when realm is empty", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode: "managed",
+				DNS:  "keycloak.vpn.acme.com",
+			}
+
+			hydrateKeycloakDefaults()
+			assert.Equal(t, "acme", config.ParsedGeneralConfig.Cluster.Keycloak.Realm)
+		})
+	})
+
+	t.Run("preserves explicit realm override", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "customrealm",
+			}
+
+			hydrateKeycloakDefaults()
+			assert.Equal(t, "customrealm",
+				config.ParsedGeneralConfig.Cluster.Keycloak.Realm)
+		})
+	})
+
+	t.Run("multi-part TLD derives correctly", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode: "managed",
+				DNS:  "kc.foo.co.uk",
+			}
+
+			hydrateKeycloakDefaults()
+			assert.Equal(t, "foo", config.ParsedGeneralConfig.Cluster.Keycloak.Realm)
+		})
+	})
+}
+
+func TestValidateKeycloakConfig(t *testing.T) {
+	t.Run("vpn cluster without keycloak block fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = nil
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "required when cluster.type=vpn")
+		})
+	})
+
+	t.Run("workload cluster without keycloak block is allowed", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = nil
+
+			require.NoError(t, validateKeycloakConfig())
+		})
+	})
+
+	t.Run("vpn cluster with managed keycloak passes", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+
+			require.NoError(t, validateKeycloakConfig())
+		})
+	})
+
+	t.Run("workload cluster with managed keycloak fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "managed is only valid when cluster.type=vpn")
+		})
+	})
+
+	t.Run("missing DNS fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "",
+				Realm: "acme",
+			}
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "dns is required")
+		})
+	})
+
+	t.Run("undeducible realm produces a clear error", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "localhost",
+				Realm: "",
+			}
+
+			// Hydrate first (matches parse.go's order).
+			hydrateKeycloakDefaults()
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "could not be derived from DNS")
+		})
+	})
+}
