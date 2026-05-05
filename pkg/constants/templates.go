@@ -203,6 +203,27 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 }
 
+// Managed Keycloak template names. Included only when
+// cluster.type=vpn AND cluster.keycloak.mode=managed — the VPN
+// cluster provisions Keycloak via the existing keycloakx Helm chart
+// in the kubeaid repo, backed by a CloudNativePG Postgres Cluster
+// (the chart renders the Cluster CR via kubeaid-addons'
+// postgresql-cluster.yaml). cnpg syncs first (sync-order 10) so the
+// CNPG CRDs are in place before keycloakx (sync-order 20) creates
+// its dependent Cluster resource.
+var KeycloakManagedNonSecretTemplateNames = []string{
+	// CloudNativePG operator. Provides the Cluster CRD that the
+	// keycloakx chart instantiates for Keycloak's Postgres backend.
+	"argocd-apps/templates/cloudnative-pg.yaml.tmpl",
+	"argocd-apps/values-cloudnative-pg.yaml.tmpl",
+
+	// Keycloak. Backed by CNPG Postgres; ingress exposes
+	// cluster.keycloak.dns publicly so kubelogin and end-users can
+	// reach the realm endpoints.
+	"argocd-apps/templates/keycloakx.yaml.tmpl",
+	"argocd-apps/values-keycloakx.yaml.tmpl",
+}
+
 // Obmondo customer specific template names.
 var (
 	// For Teleport Kube Agent component.

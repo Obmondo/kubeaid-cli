@@ -122,13 +122,16 @@ type (
 		// Configuration options for the Kubernetes API server.
 		APIServer APIServerConfig `yaml:"apiServer"`
 
-		// Keycloak declares the managed Keycloak instance this cluster
-		// hosts. Required (and only valid) when cluster.type=vpn — the
-		// VPN cluster always provisions its own Keycloak. Workload
-		// clusters do NOT set this block; instead they point
-		// apiServer.oidc at the parent VPN cluster's Keycloak (issuer
-		// URL + client ID), which kubeaid-cli prompts for during
-		// workload-cluster setup. There is no automatic inheritance.
+		// Keycloak declares the Keycloak instance this cluster hosts.
+		// Only meaningful when cluster.type=vpn — VPN clusters host
+		// Keycloak; workload clusters do not, and must leave this
+		// block unset. A workload cluster's kube-apiserver instead
+		// authenticates against an existing Keycloak by setting
+		// apiServer.oidc (issuer URL + client ID) directly in its own
+		// general.yaml; kubeaid-cli prompts for those values during
+		// workload-cluster setup. There is no automatic inheritance
+		// between clusters — every cluster's OIDC config is explicit
+		// in its own general.yaml.
 		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
 		// Other than the root user, addtional users that you would like to be created in each node.
