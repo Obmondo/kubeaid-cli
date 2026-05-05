@@ -267,6 +267,17 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
+	// Managed Keycloak: when this is the VPN cluster and cluster.keycloak.mode
+	// is "managed", render the keycloakx + cloudnative-pg ArgoCD apps so
+	// Keycloak comes up backed by CNPG Postgres on first sync. Realm / client
+	// reconciliation happens later (kubeaid-cli + gocloak via port-forward to
+	// the keycloakx Service).
+	if managedKeycloakEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.KeycloakManagedNonSecretTemplateNames...,
+		)
+	}
+
 	// Obmondo customer: include the KubeAid Agent (and optionally
 	// teleport-kube-agent) ArgoCD Application templates when monitoring is
 	// requested. Teleport defaults on; operators can set
@@ -285,6 +296,24 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	return embeddedTemplateNames
+}
+
+// managedKeycloakEnabled reports whether kubeaid-cli should render
+// the keycloakx + cloudnative-pg ArgoCD Apps for THIS cluster. True
+// only when cluster.type=vpn AND cluster.keycloak.mode=managed —
+// only VPN clusters host Keycloak, and only in managed mode does
+// kubeaid-cli install it (mode=external means an existing Keycloak
+// elsewhere). Workload clusters always return false: they don't host
+// Keycloak; they authenticate kube-apiserver against an existing one
+// via apiServer.oidc (issuer URL + client ID, set in their own
+// general.yaml). Nil-safe — Cluster.Keycloak is absent on workload
+// clusters and on VPN clusters that opt out.
+func managedKeycloakEnabled() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeVPN || cluster.Keycloak == nil {
+		return false
+	}
+	return cluster.Keycloak.Mode == "managed"
 }
 
 // teleportAgentEnabled reports whether the teleport-kube-agent ArgoCD App
