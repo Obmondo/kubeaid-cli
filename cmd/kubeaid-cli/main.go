@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-cli/login"
 	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
 	_ "github.com/Obmondo/kubeaid-bootstrap-script/internal/termsetup"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -42,6 +43,10 @@ func createRootCommand() *cobra.Command {
 	rootCmd := kubeaidCoreRoot.RootCmd
 
 	rootCmd.Use = "kubeaid-cli"
+
+	// login runs entirely locally (no Docker, no config parsing). Add it
+	// directly on the root before the proxy loop so it is never proxied.
+	rootCmd.AddCommand(login.LoginCmd)
 
 	// Proxy cluster and devenv subcommands to containerized KubeAid core.
 	for _, subCommand := range rootCmd.Commands() {

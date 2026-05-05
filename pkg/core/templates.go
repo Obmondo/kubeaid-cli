@@ -5,12 +5,11 @@ package core
 
 import (
 	"context"
-	"crypto/x509"
 	"embed"
-	"encoding/pem"
 	"log/slog"
 	"os"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -130,13 +129,16 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
 		obmondo := config.ParsedGeneralConfig.Obmondo
 
-		templateValues.ObmondoCertCN = readCertCN(ctx, obmondo.CertPath)
+		cn, certErr := cert.ReadCN(obmondo.CertPath)
+		assert.AssertErrNil(ctx, certErr, "Failed reading Obmondo cert CN",
+			slog.String("path", obmondo.CertPath))
+		templateValues.ObmondoCertCN = cn
 
-		cert, err := os.ReadFile(obmondo.CertPath)
+		certData, err := os.ReadFile(obmondo.CertPath)
 		assert.AssertErrNil(ctx, err,
 			"Failed reading Obmondo cert file",
 			slog.String("path", obmondo.CertPath))
-		templateValues.ObmondoCertFileContents = string(cert)
+		templateValues.ObmondoCertFileContents = string(certData)
 
 		key, err := os.ReadFile(obmondo.KeyPath)
 		assert.AssertErrNil(ctx, err,
@@ -187,25 +189,6 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	return templateValues
-}
-
-// readCertCN reads a PEM-encoded X.509 certificate and returns its Subject
-// Common Name. Fatal if the file can't be read or parsed.
-func readCertCN(ctx context.Context, path string) string {
-	data, err := os.ReadFile(path)
-	assert.AssertErrNil(ctx, err,
-		"Failed reading Obmondo cert file", slog.String("path", path))
-
-	block, _ := pem.Decode(data)
-	assert.Assert(ctx, block != nil,
-		"Failed PEM-decoding Obmondo cert file (no PEM block found)",
-		slog.String("path", path))
-
-	cert, err := x509.ParseCertificate(block.Bytes)
-	assert.AssertErrNil(ctx, err,
-		"Failed parsing Obmondo cert", slog.String("path", path))
-
-	return cert.Subject.CommonName
 }
 
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
