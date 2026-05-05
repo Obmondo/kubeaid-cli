@@ -234,6 +234,15 @@ const (
 	NamespaceCrossPlane    = "crossplane"
 	NamespaceCilium        = "cilium"
 	NamespaceCiliumTest    = "cilium-test"
+	NamespaceKeycloak       = "keycloakx"
+	NamespaceCloudNativePG  = "cnpg-system"
+
+	// Keycloak admin Secret keys. Names match what the keycloakx
+	// chart's pre-install hook reads.
+	SecretNameKeycloakAdmin   = "keycloak-admin"
+	SecretKeyKeycloakUsername = "username"
+	SecretKeyKeycloakPassword = "KEYCLOAK_PASSWORD"
+	KeycloakAdminUsername     = "admin"
 
 	// Service Accounts.
 	ServiceAccountCAPZ          = "capz-manager"

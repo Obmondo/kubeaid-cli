@@ -15,6 +15,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/keycloak"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -85,6 +86,11 @@ type TemplateValues struct {
 	// because go-sprout's base64Encode takes a string, not []byte.
 	ObmondoCertFileContents string
 	ObmondoKeyFileContents  string
+
+	// KeycloakAdminPassword is the plaintext password templated into
+	// the keycloak-admin SealedSecret. Populated only when
+	// managedKeycloakEnabled.
+	KeycloakAdminPassword string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -145,6 +151,12 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 			"Failed reading Obmondo key file",
 			slog.String("path", obmondo.KeyPath))
 		templateValues.ObmondoKeyFileContents = string(key)
+	}
+
+	if managedKeycloakEnabled() {
+		password, err := keycloak.GenerateAdminPassword()
+		assert.AssertErrNil(ctx, err, "Failed generating Keycloak admin password")
+		templateValues.KeycloakAdminPassword = password
 	}
 
 	// Set cloud provider specific values.
@@ -393,6 +405,12 @@ func getEmbeddedSecretTemplateNames() []string {
 				constants.TeleportKubeAgentSecretTemplateNames...,
 			)
 		}
+	}
+
+	if managedKeycloakEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.KeycloakManagedSecretTemplateNames...,
+		)
 	}
 
 	return embeddedTemplateNames

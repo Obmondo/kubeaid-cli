@@ -224,6 +224,14 @@ var KeycloakManagedNonSecretTemplateNames = []string{
 	"argocd-apps/values-keycloakx.yaml.tmpl",
 }
 
+// keycloak-admin SealedSecret. The keycloakx chart's pre-install
+// hook reads the resulting Secret (after sealed-secrets controller
+// decrypts the SealedSecret) to seed Keycloak's initial admin
+// password.
+var KeycloakManagedSecretTemplateNames = []string{
+	"sealed-secrets/keycloakx/keycloak-admin.yaml.tmpl",
+}
+
 // Obmondo customer specific template names.
 var (
 	// For Teleport Kube Agent component.
