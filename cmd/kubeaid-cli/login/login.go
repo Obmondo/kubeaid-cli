@@ -251,7 +251,9 @@ var lookupKubelogin = func() (string, error) {
 var runKubelogin = func(ctx context.Context, path string, args []string) error {
 	var stderrCapture bytes.Buffer
 
-	cmd := exec.CommandContext(ctx, path, args...)
+	// path is resolved by lookupKubelogin via exec.LookPath; args are
+	// fixed kubelogin flags built by kubeloginArgs from validated config.
+	cmd := exec.CommandContext(ctx, path, args...) //nolint:gosec // G204
 	cmd.Stdin = os.Stdin
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrCapture)
 	cmd.Stdout = io.Discard
@@ -797,22 +799,22 @@ func writeKubeconfig(path string, content []byte) error {
 	closeErr := tmp.Close()
 
 	if writeErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("writing kubeconfig temp file: %w", writeErr)
 	}
 
 	if closeErr != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("closing kubeconfig temp file: %w", closeErr)
 	}
 
 	if err := os.Chmod(tmpName, 0o600); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("setting permissions on kubeconfig temp file: %w", err)
 	}
 
 	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
+		_ = os.Remove(tmpName)
 		return fmt.Errorf("renaming temp file to %q: %w", path, err)
 	}
 

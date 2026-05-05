@@ -68,12 +68,11 @@ func TestResolveInput(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.envVal != "" {
 				t.Setenv(tc.envKey, tc.envVal)
 			} else {
-				os.Unsetenv(tc.envKey)
+				_ = os.Unsetenv(tc.envKey)
 			}
 
 			got := resolveInput(tc.flagVal, tc.envKey, tc.dflt)
@@ -120,7 +119,6 @@ func TestExpandTilde(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, expandTilde(tc.input))
@@ -190,8 +188,8 @@ func TestUpsertCluster_PreservesOtherEntries(t *testing.T) {
 	// Existing kubeconfig has an unrelated context (e.g. the user's
 	// kind cluster). Our upsert must leave it untouched.
 	kc := &kubeconfig{
-		APIVersion: "v1",
-		Kind:       "Config",
+		APIVersion:     "v1",
+		Kind:           "Config",
 		CurrentContext: "kind-local",
 		Clusters: []namedCluster{
 			{Name: "kind-local", Cluster: clusterInfo{Server: "https://localhost:6443"}},
@@ -434,7 +432,7 @@ func TestLookupKubelogin_Found(t *testing.T) {
 	// Stage a fake kubelogin binary in a temp dir and point PATH at it.
 	dir := t.TempDir()
 	fake := filepath.Join(dir, kubeloginBinary)
-	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+	require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755)) //nolint:gosec // G306: test fixture must be executable.
 
 	t.Setenv("PATH", dir)
 
@@ -455,7 +453,7 @@ func TestRunKubelogin(t *testing.T) {
 
 		dir := t.TempDir()
 		fake := filepath.Join(dir, kubeloginBinary)
-		require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755))
+		require.NoError(t, os.WriteFile(fake, []byte("#!/bin/sh\nexit 0\n"), 0o755)) //nolint:gosec // G306: test fixture must be executable.
 
 		err := runKubelogin(context.Background(), fake, []string{"get-token"})
 		assert.NoError(t, err)
@@ -470,6 +468,7 @@ func TestRunKubelogin(t *testing.T) {
 		// so the fallback path that includes the first stderr line
 		// fires. The user gets "boom" instead of the cryptic
 		// "exit status 7".
+		//nolint:gosec // G306: test fixture must be executable.
 		require.NoError(t, os.WriteFile(fake,
 			[]byte("#!/bin/sh\necho boom >&2\nexit 7\n"), 0o755))
 
@@ -494,7 +493,6 @@ func TestFirstNonEmptyLine(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			assert.Equal(t, tc.want, firstNonEmptyLine(tc.in))
@@ -543,7 +541,6 @@ func TestIntersectClusters(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := intersectClusters(refs, tc.accessible)
@@ -612,9 +609,11 @@ func TestNotFoundWithSuggestions(t *testing.T) {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "clusters/acme"), 0o750))
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, "clusters/zeta"), 0o750))
 		require.NoError(t, os.WriteFile(
-			filepath.Join(dir, "clusters/acme/staging.yaml"), []byte("name: staging"), 0o600))
+			filepath.Join(dir, "clusters/acme/staging.yaml"), []byte("name: staging"), 0o600,
+		))
 		require.NoError(t, os.WriteFile(
-			filepath.Join(dir, "clusters/zeta/dev.yaml"), []byte("name: dev"), 0o600))
+			filepath.Join(dir, "clusters/zeta/dev.yaml"), []byte("name: dev"), 0o600,
+		))
 
 		err := notFoundWithSuggestions(klist.ErrClusterNotFound, dir, "bogus", "acme")
 		require.Error(t, err)
@@ -670,7 +669,6 @@ func TestParsePositional(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.in, func(t *testing.T) {
 			t.Parallel()
 			cl, cu, err := parsePositional(tc.in)
@@ -759,7 +757,6 @@ func TestClassifyKubeloginErr(t *testing.T) {
 	upstream := errors.New("exit status 1")
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

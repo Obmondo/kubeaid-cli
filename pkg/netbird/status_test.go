@@ -120,9 +120,9 @@ func TestAccessibleClusters(t *testing.T) {
 			status: &Status{Peers: PeersInfo{Details: []Peer{
 				{FQDN: "k8s-staging.netbird.selfhosted", Status: "Connected"},
 				{FQDN: "k8s-prod.netbird.selfhosted", Status: "Connected"},
-				{FQDN: "k8s-dev.netbird.selfhosted", Status: "Idle"},      // dropped: not connected
-				{FQDN: "laptop.netbird.selfhosted", Status: "Connected"},  // dropped: no k8s- prefix
-				{FQDN: "k8s-other.netbird.cloud", Status: "Connected"},    // dropped: wrong suffix
+				{FQDN: "k8s-dev.netbird.selfhosted", Status: "Idle"},     // dropped: not connected
+				{FQDN: "laptop.netbird.selfhosted", Status: "Connected"}, // dropped: no k8s- prefix
+				{FQDN: "k8s-other.netbird.cloud", Status: "Connected"},   // dropped: wrong suffix
 			}}},
 			prefix: "k8s-",
 			suffix: ".netbird.selfhosted",
@@ -156,7 +156,6 @@ func TestAccessibleClusters(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			got := AccessibleClusters(tc.status, tc.prefix, tc.suffix)
