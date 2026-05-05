@@ -168,6 +168,62 @@ func TestHydrateWithOIDCOptions_CABundleEmbeddedInline(t *testing.T) {
 	})
 }
 
+func TestHydrateWithOIDCOptions_ObmondoSREAddsSecondIssuer(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.Name = "acme-prod"
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:     "https://keycloak.vpn.acme.com/realms/acme",
+			ClientID:      "kubernetes-acme-prod",
+			UsernameClaim: "email",
+			GroupsClaim:   "groups",
+		}
+		config.ParsedGeneralConfig.Obmondo = &config.ObmondoConfig{Monitoring: true}
+
+		hydrateWithOIDCOptions()
+
+		got := parseRenderedAuthConfig(t, findAuthConfigFile(t).Content)
+		require.Len(t, got.JWT, 2, "customer + Obmondo issuers must both be present")
+
+		assert.Equal(t, "https://keycloak.vpn.acme.com/realms/acme", got.JWT[0].Issuer.URL)
+		assert.Equal(t, []string{"kubernetes-acme-prod"}, got.JWT[0].Issuer.Audiences)
+
+		assert.Equal(t, constants.ObmondoKeycloakIssuerURL, got.JWT[1].Issuer.URL)
+		assert.Equal(t, []string{"acme-prod"}, got.JWT[1].Issuer.Audiences,
+			"Obmondo audience derives from cluster.name")
+	})
+}
+
+func TestHydrateWithOIDCOptions_ObmondoSREOnlyWhenCustomerOIDCAbsent(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.Name = "acme-prod"
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = nil
+		config.ParsedGeneralConfig.Obmondo = &config.ObmondoConfig{Monitoring: true}
+
+		hydrateWithOIDCOptions()
+
+		got := parseRenderedAuthConfig(t, findAuthConfigFile(t).Content)
+		require.Len(t, got.JWT, 1)
+		assert.Equal(t, constants.ObmondoKeycloakIssuerURL, got.JWT[0].Issuer.URL)
+	})
+}
+
+func TestHydrateWithOIDCOptions_ObmondoMonitoringOffSkipsSecondIssuer(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:     "https://keycloak.vpn.acme.com/realms/acme",
+			ClientID:      "kubernetes-acme-prod",
+			UsernameClaim: "email",
+			GroupsClaim:   "groups",
+		}
+		config.ParsedGeneralConfig.Obmondo = &config.ObmondoConfig{Monitoring: false}
+
+		hydrateWithOIDCOptions()
+
+		got := parseRenderedAuthConfig(t, findAuthConfigFile(t).Content)
+		require.Len(t, got.JWT, 1)
+	})
+}
+
 func TestHydrateWithOIDCOptions_ReplacesOwnFileOnReHydrate(t *testing.T) {
 	withFreshConfig(t, func() {
 		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
