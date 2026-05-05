@@ -4,10 +4,13 @@
 package parser
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"sigs.k8s.io/yaml"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -28,108 +31,170 @@ func withFreshConfig(t *testing.T, fn func()) {
 	fn()
 }
 
-func TestHydrateWithOIDCOptions(t *testing.T) {
-	t.Run("no-op when oidc block is unset", func(t *testing.T) {
-		withFreshConfig(t, func() {
-			hydrateWithOIDCOptions()
-			assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs)
-			assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes)
-		})
+// findAPIServerFile returns the rendered AuthenticationConfiguration
+// file from apiServer.Files, or nil if absent. Tests assert against
+// it instead of inspecting the YAML body via string contains.
+func findAPIServerFile(t *testing.T, path string) *config.FileConfig {
+	t.Helper()
+
+	for i, f := range config.ParsedGeneralConfig.Cluster.APIServer.Files {
+		if f.Path == path {
+			return &config.ParsedGeneralConfig.Cluster.APIServer.Files[i]
+		}
+	}
+	return nil
+}
+
+// parseRenderedAuthConfig unmarshals the YAML body kubeaid-cli emits
+// so individual fields can be asserted without depending on whitespace
+// or ordering.
+func parseRenderedAuthConfig(t *testing.T, body string) authenticationConfig {
+	t.Helper()
+
+	var got authenticationConfig
+	require.NoError(t, yaml.Unmarshal([]byte(body), &got))
+	return got
+}
+
+func TestHydrateWithOIDCOptions_NoOpWhenBlockUnset(t *testing.T) {
+	withFreshConfig(t, func() {
+		hydrateWithOIDCOptions()
+
+		assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs)
+		assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.Files)
+		assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes)
 	})
+}
 
-	t.Run("required + defaulted fields land in extraArgs", func(t *testing.T) {
-		withFreshConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
-				IssuerURL:     "https://keycloak.example/realms/clusters",
-				ClientID:      "kubernetes-staging",
-				UsernameClaim: "email",
-				GroupsClaim:   "groups",
-			}
+func TestHydrateWithOIDCOptions_RendersAuthenticationConfig(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:     "https://keycloak.example/realms/clusters",
+			ClientID:      "kubernetes-staging",
+			UsernameClaim: "email",
+			GroupsClaim:   "groups",
+		}
 
-			hydrateWithOIDCOptions()
+		hydrateWithOIDCOptions()
 
-			args := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs
-			assert.Equal(t, "https://keycloak.example/realms/clusters",
-				args[constants.KubeAPIServerFlagOIDCIssuerURL])
-			assert.Equal(t, "kubernetes-staging",
-				args[constants.KubeAPIServerFlagOIDCClientID])
-			assert.Equal(t, "email", args[constants.KubeAPIServerFlagOIDCUsernameClaim])
-			assert.Equal(t, "groups", args[constants.KubeAPIServerFlagOIDCGroupsClaim])
+		// The --authentication-config flag points at the rendered file.
+		args := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs
+		assert.Equal(t,
+			constants.KubeAPIServerAuthenticationConfigPath,
+			args[constants.KubeAPIServerFlagAuthenticationConfig],
+		)
 
-			// Optional prefixes not set → flags absent.
-			_, hasUserPrefix := args[constants.KubeAPIServerFlagOIDCUsernamePrefix]
-			_, hasGroupsPrefix := args[constants.KubeAPIServerFlagOIDCGroupsPrefix]
-			assert.False(t, hasUserPrefix)
-			assert.False(t, hasGroupsPrefix)
+		// File entry exists and parses to the expected structure.
+		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		require.NotNil(t, file)
+		got := parseRenderedAuthConfig(t, file.Content)
 
-			// CABundlePath unset → no volume mount, no --oidc-ca-file.
-			_, hasCAFile := args[constants.KubeAPIServerFlagOIDCCAFile]
-			assert.False(t, hasCAFile)
-			assert.Empty(t, config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes)
-		})
+		assert.Equal(t, "apiserver.config.k8s.io/v1", got.APIVersion)
+		assert.Equal(t, "AuthenticationConfiguration", got.Kind)
+		require.Len(t, got.JWT, 1)
+
+		jwt := got.JWT[0]
+		assert.Equal(t, "https://keycloak.example/realms/clusters", jwt.Issuer.URL)
+		assert.Equal(t, []string{"kubernetes-staging"}, jwt.Issuer.Audiences)
+		assert.Empty(t, jwt.Issuer.CertificateAuthority,
+			"CABundlePath unset → no inline CA")
+
+		assert.Equal(t, "email", jwt.ClaimMappings.Username.Claim)
+		assert.Empty(t, jwt.ClaimMappings.Username.Prefix)
+		assert.Equal(t, "groups", jwt.ClaimMappings.Groups.Claim)
+		assert.Empty(t, jwt.ClaimMappings.Groups.Prefix)
+
+		// Mount entry plumbed through to the apiserver pod.
+		vols := config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes
+		require.Len(t, vols, 1)
+		assert.Equal(t, constants.KubeAPIServerAuthenticationConfigPath, vols[0].HostPath)
+		assert.Equal(t, constants.KubeAPIServerAuthenticationConfigPath, vols[0].MountPath)
+		assert.True(t, vols[0].ReadOnly)
 	})
+}
 
-	t.Run("optional username and groups prefix are emitted when set", func(t *testing.T) {
-		withFreshConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
-				IssuerURL:      "https://kc.example/realms/x",
-				ClientID:       "k8s",
-				UsernameClaim:  "email",
-				GroupsClaim:    "groups",
-				UsernamePrefix: "oidc:",
-				GroupsPrefix:   "oidc:",
-			}
+func TestHydrateWithOIDCOptions_PrefixesPropagated(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:      "https://kc.example/realms/x",
+			ClientID:       "k8s",
+			UsernameClaim:  "email",
+			GroupsClaim:    "groups",
+			UsernamePrefix: "oidc:",
+			GroupsPrefix:   "oidc:",
+		}
 
-			hydrateWithOIDCOptions()
+		hydrateWithOIDCOptions()
 
-			args := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs
-			assert.Equal(t, "oidc:", args[constants.KubeAPIServerFlagOIDCUsernamePrefix])
-			assert.Equal(t, "oidc:", args[constants.KubeAPIServerFlagOIDCGroupsPrefix])
-		})
+		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		require.NotNil(t, file)
+		got := parseRenderedAuthConfig(t, file.Content)
+
+		assert.Equal(t, "oidc:", got.JWT[0].ClaimMappings.Username.Prefix)
+		assert.Equal(t, "oidc:", got.JWT[0].ClaimMappings.Groups.Prefix)
 	})
+}
 
-	t.Run("caBundlePath drives both --oidc-ca-file and an extraVolume mount", func(t *testing.T) {
-		withFreshConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
-				IssuerURL:     "https://kc.example/realms/x",
-				ClientID:      "k8s",
-				UsernameClaim: "email",
-				GroupsClaim:   "groups",
-				CABundlePath:  "/etc/ssl/certs/keycloak-ca.pem",
-			}
+func TestHydrateWithOIDCOptions_CABundleEmbeddedInline(t *testing.T) {
+	withFreshConfig(t, func() {
+		const pem = "-----BEGIN CERTIFICATE-----\nFAKEBYTES\n-----END CERTIFICATE-----\n"
 
-			hydrateWithOIDCOptions()
+		dir := t.TempDir()
+		caPath := filepath.Join(dir, "ca.pem")
+		require.NoError(t, os.WriteFile(caPath, []byte(pem), 0o600))
 
-			args := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs
-			assert.Equal(t, oidcCAFileMountPath, args[constants.KubeAPIServerFlagOIDCCAFile])
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:     "https://kc.example/realms/x",
+			ClientID:      "k8s",
+			UsernameClaim: "email",
+			GroupsClaim:   "groups",
+			CABundlePath:  caPath,
+		}
 
-			vols := config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes
-			require.Len(t, vols, 1)
-			assert.Equal(t, "/etc/ssl/certs/keycloak-ca.pem", vols[0].HostPath)
-			assert.Equal(t, oidcCAFileMountPath, vols[0].MountPath)
-			assert.True(t, vols[0].ReadOnly)
-		})
+		hydrateWithOIDCOptions()
+
+		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		require.NotNil(t, file)
+		got := parseRenderedAuthConfig(t, file.Content)
+
+		assert.Equal(t, pem, got.JWT[0].Issuer.CertificateAuthority,
+			"CABundlePath contents must be embedded inline")
+
+		// CA inlined in the YAML, so the only mount is the
+		// auth-config file itself — no separate CA mount.
+		vols := config.ParsedGeneralConfig.Cluster.APIServer.ExtraVolumes
+		require.Len(t, vols, 1)
+		assert.Equal(t, constants.KubeAPIServerAuthenticationConfigPath, vols[0].HostPath)
 	})
+}
 
-	t.Run("typed OIDC fields override pre-existing ExtraArgs entries", func(t *testing.T) {
-		withFreshConfig(t, func() {
-			// User has stale --oidc-issuer-url in ExtraArgs from
-			// before they switched to the typed block.
-			config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs[constants.KubeAPIServerFlagOIDCIssuerURL] = "https://OLD.example/realms/x"
+func TestHydrateWithOIDCOptions_ReplacesOwnFileOnReHydrate(t *testing.T) {
+	withFreshConfig(t, func() {
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
+			IssuerURL:     "https://first.example/realms/x",
+			ClientID:      "k8s",
+			UsernameClaim: "email",
+			GroupsClaim:   "groups",
+		}
+		hydrateWithOIDCOptions()
 
-			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = &config.OIDCConfig{
-				IssuerURL:     "https://NEW.example/realms/x",
-				ClientID:      "k8s",
-				UsernameClaim: "email",
-				GroupsClaim:   "groups",
+		// Caller flips the issuer and re-runs (e.g. day-2 edit).
+		config.ParsedGeneralConfig.Cluster.APIServer.OIDC.IssuerURL = "https://second.example/realms/x"
+		hydrateWithOIDCOptions()
+
+		// Still exactly one file entry — the second hydrate replaces
+		// content rather than appending a duplicate.
+		var matched int
+		for _, f := range config.ParsedGeneralConfig.Cluster.APIServer.Files {
+			if f.Path == constants.KubeAPIServerAuthenticationConfigPath {
+				matched++
 			}
+		}
+		assert.Equal(t, 1, matched)
 
-			hydrateWithOIDCOptions()
-
-			args := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs
-			// Typed config wins.
-			assert.Equal(t, "https://NEW.example/realms/x",
-				args[constants.KubeAPIServerFlagOIDCIssuerURL])
-		})
+		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		require.NotNil(t, file)
+		got := parseRenderedAuthConfig(t, file.Content)
+		assert.Equal(t, "https://second.example/realms/x", got.JWT[0].Issuer.URL)
 	})
 }

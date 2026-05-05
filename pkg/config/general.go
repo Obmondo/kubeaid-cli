@@ -166,10 +166,10 @@ type (
 
 		// OIDC configures kube-apiserver to validate JWTs issued by an
 		// external OpenID Connect provider (typically Keycloak). When
-		// set, the parser translates this block into the corresponding
-		// `--oidc-*` flags on APIServerConfig.ExtraArgs and, when
-		// CABundlePath is set, mounts the CA file via ExtraVolumes.
-		// Skipping this block leaves kube-apiserver without OIDC.
+		// set, the parser renders a structured AuthenticationConfiguration
+		// YAML, writes it via APIServerConfig.Files, and points
+		// kube-apiserver at it with --authentication-config. Skipping
+		// this block leaves kube-apiserver without OIDC.
 		OIDC *OIDCConfig `yaml:"oidc"`
 	}
 
@@ -212,9 +212,9 @@ type (
 		// CABundlePath is an absolute host path to a PEM file
 		// containing the CA that signed the issuer's TLS certificate.
 		// Set this only when the issuer's cert is not chainable to a
-		// publicly-trusted CA. When set, the parser mounts the file
-		// into the apiserver pod and adds --oidc-ca-file pointing at
-		// the mount path.
+		// publicly-trusted CA. When set, the parser reads the file
+		// at config-render time and embeds its contents inline in the
+		// AuthenticationConfiguration YAML.
 		CABundlePath string `yaml:"caBundlePath"`
 	}
 
