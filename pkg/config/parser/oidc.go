@@ -66,7 +66,7 @@ type authenticationConfig struct {
 
 type authenticationConfigJWT struct {
 	Issuer        authenticationConfigIssuer        `json:"issuer"`
-	ClaimMappings authenticationConfigPrefixedClaims `json:"claimMappings"`
+	ClaimMappings authenticationConfigClaimMappings `json:"claimMappings"`
 }
 
 type authenticationConfigIssuer struct {
@@ -75,7 +75,7 @@ type authenticationConfigIssuer struct {
 	CertificateAuthority string   `json:"certificateAuthority,omitempty"`
 }
 
-type authenticationConfigPrefixedClaims struct {
+type authenticationConfigClaimMappings struct {
 	Username authenticationConfigPrefixedClaim `json:"username"`
 	Groups   authenticationConfigPrefixedClaim `json:"groups"`
 }
@@ -97,7 +97,7 @@ func renderAuthenticationConfig(cfg *config.OIDCConfig) (string, error) {
 				URL:       cfg.IssuerURL,
 				Audiences: []string{cfg.ClientID},
 			},
-			ClaimMappings: authenticationConfigPrefixedClaims{
+			ClaimMappings: authenticationConfigClaimMappings{
 				Username: authenticationConfigPrefixedClaim{
 					Claim:  cfg.UsernameClaim,
 					Prefix: cfg.UsernamePrefix,
