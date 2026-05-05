@@ -19,6 +19,7 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/rbac"
+	"github.com/argoproj/gitops-engine/pkg/health"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -313,6 +314,65 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) error {
 	mgr := newGlobalArgoCDAppManager()
 	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup)
+}
+
+// WaitForArgoCDAppHealthy blocks until the named ArgoCD App
+// reports both Sync=Synced and Health=Healthy. Used by callers
+// that need to do follow-on work against the underlying
+// application (e.g. talk to Keycloak admin API once the
+// keycloakx App is fully up).
+func WaitForArgoCDAppHealthy(ctx context.Context, name string) error {
+	mgr := newGlobalArgoCDAppManager()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		if mgr.isArgoCDAppHealthy(ctx, name) {
+			return nil
+		}
+		slog.InfoContext(ctx, "Waiting for ArgoCD App to be Healthy",
+			slog.String("app", name),
+		)
+		time.Sleep(15 * time.Second)
+	}
+}
+
+// isArgoCDAppHealthy returns true when the named ArgoCD App is
+// both Synced and Healthy. Re-uses the reconnect-on-error retry
+// loop from isArgoCDAppSynced so transient API server unavailable
+// during ArgoCD restarts don't surface as a hard failure here.
+func (m *ArgoCDAppManager) isArgoCDAppHealthy(ctx context.Context, name string) bool {
+	var (
+		argoCDApp *argoCDV1Aplha1.Application
+		err       error
+	)
+	for {
+		argoCDApp, err = m.client.Get(ctx, &application.ApplicationQuery{
+			Name:         &name,
+			Project:      []string{constants.ArgoCDProjectKubeAid},
+			AppNamespace: aws.String(constants.NamespaceArgoCD),
+			Refresh:      aws.String(string(argoCDV1Aplha1.RefreshTypeNormal)),
+		})
+		if err == nil {
+			break
+		}
+
+		slog.ErrorContext(ctx,
+			"Failed getting ArgoCD App. Retrying after 10 seconds....",
+			logger.Error(err),
+		)
+		time.Sleep(10 * time.Second)
+
+		if m.reconnect != nil {
+			m.reconnect(ctx)
+		}
+	}
+
+	return argoCDApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced &&
+		argoCDApp.Status.Health.Status == health.HealthStatusHealthy
 }
 
 // syncAllArgoCDApps is the testable implementation of SyncAllArgoCDApps.

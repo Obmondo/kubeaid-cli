@@ -134,6 +134,13 @@ type (
 		// in its own general.yaml.
 		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
+		// NetBird declares the NetBird Management instance this VPN
+		// cluster hosts. Only meaningful when cluster.type=vpn AND
+		// cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client
+		// is created in the same Keycloak realm; its public DNS is
+		// used for the redirect URI and audience claim.
+		NetBird *NetBirdConfig `yaml:"netbird"`
+
 		// Other than the root user, addtional users that you would like to be created in each node.
 		// NOTE : Currently, we can't register additional SSH key-pairs against the root user.
 		AdditionalUsers []UserConfig `yaml:"additionalUsers"`
@@ -246,6 +253,16 @@ type (
 		//   keycloak.foo.co.uk     → "foo"
 		// Set this explicitly to override the derivation.
 		Realm string `yaml:"realm"`
+	}
+
+	// NetBirdConfig declares the NetBird Management instance this
+	// VPN cluster hosts. Used to render the redirect URI and
+	// audience claim for the netbird-client / netbird-backend OIDC
+	// clients in Keycloak.
+	NetBirdConfig struct {
+		// DNS is the public hostname NetBird Management is
+		// reachable at, e.g. "netbird.vpn.acme.com". Required.
+		DNS string `yaml:"dns" validate:"required"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount

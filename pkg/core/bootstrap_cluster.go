@@ -98,6 +98,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
+	if managedKeycloakEnabled() {
+		bar.Describe("Reconciling NetBird's resources in Keycloak")
+		assert.AssertErrNil(ctx,
+			reconcileNetBirdInKeycloak(ctx, mainClusterClient),
+			"Failed reconciling NetBird in Keycloak",
+		)
+	}
+
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {

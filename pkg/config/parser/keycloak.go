@@ -97,5 +97,17 @@ func validateKeycloakConfig() error {
 		)
 	}
 
+	// Managed Keycloak provisions NetBird's OIDC clients in the
+	// same realm; the netbird block is required so kubeaid-cli
+	// knows the public NetBird Mgmt URL for redirect URIs and the
+	// audience claim.
+	if cfg.Mode == "managed" {
+		if cluster.NetBird == nil || cluster.NetBird.DNS == "" {
+			return errors.New(
+				"cluster.netbird.dns is required when cluster.keycloak.mode=managed — kubeaid-cli renders NetBird's OIDC client against this hostname",
+			)
+		}
+	}
+
 	return nil
 }
