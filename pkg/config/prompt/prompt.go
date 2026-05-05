@@ -30,6 +30,15 @@ type PromptedConfig struct {
 	KubePrometheusVersion string
 	EnableAuditLogging    bool
 
+	// OIDC for kube-apiserver. EnableOIDC gates whether the apiServer
+	// .oidc block is rendered into general.yaml at all; when false,
+	// the template emits a commented-out placeholder so the user can
+	// fill it in by hand later. UsernameClaim/GroupsClaim default to
+	// "email"/"groups" in the schema, so we don't prompt for them.
+	EnableOIDC    bool
+	OIDCIssuerURL string
+	OIDCClientID  string
+
 	// Git.
 	UseSSHAgent bool
 	SSHKeyPath  string
@@ -119,6 +128,10 @@ func ConfigFromPrompt(configsDirectory string) error {
 		return fmt.Errorf("collecting cluster name: %w", err)
 	}
 
+	if err := promptOIDC(cfg); err != nil {
+		return fmt.Errorf("collecting OIDC config: %w", err)
+	}
+
 	// Delegate remaining questions to the provider-specific prompter.
 	prompter := prompterForProvider(cfg.CloudProvider)
 	if err := prompter.PromptConfig(cfg, detected); err != nil {
@@ -142,6 +155,36 @@ func ConfigFromPrompt(configsDirectory string) error {
 
 func promptClusterName(cfg *PromptedConfig) error {
 	return requiredInput("Cluster name:", &cfg.ClusterName)
+}
+
+// promptOIDC asks whether to enable OIDC on kube-apiserver and, if so,
+// collects the issuer URL and client ID — the only two required
+// fields. UsernameClaim and GroupsClaim are defaulted by the schema.
+// Default is "no" so users who don't run Keycloak get a clean
+// non-OIDC config without extra prompts.
+func promptOIDC(cfg *PromptedConfig) error {
+	if err := confirm(
+		"Enable OIDC (Keycloak) authentication on kube-apiserver?",
+		false, &cfg.EnableOIDC,
+	); err != nil {
+		return err
+	}
+
+	if !cfg.EnableOIDC {
+		return nil
+	}
+
+	if err := requiredHTTPSInput(
+		"OIDC issuer URL (e.g. https://keycloak.example/realms/clusters):",
+		&cfg.OIDCIssuerURL,
+	); err != nil {
+		return err
+	}
+
+	return requiredInput(
+		fmt.Sprintf("OIDC client ID for this cluster (e.g. kubernetes-%s):", cfg.ClusterName),
+		&cfg.OIDCClientID,
+	)
 }
 
 // promptHAControlPlane asks whether the user wants a highly available control plane

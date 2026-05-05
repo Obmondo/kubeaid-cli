@@ -22,14 +22,18 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
-    # Uncomment and fill in to enable OIDC on kube-apiserver. The
-    # issuer URL is probed before bootstrap; setup aborts if it's
-    # unreachable.
+{{- if .EnableOIDC }}
+    oidc:
+      issuerUrl: {{ .OIDCIssuerURL }}
+      clientId: {{ .OIDCClientID }}
+{{- else }}
+    # Optional. Set cluster.apiServer.oidc to enable OIDC on
+    # kube-apiserver. Issuer URL is probed at bootstrap.
     #
     # oidc:
     #   issuerUrl: https://keycloak.example/realms/clusters
     #   clientId:  kubernetes-{{ .ClusterName }}
-    oidc:
+{{- end }}
   argoCD:
     deployKeys:
       kubeaid:

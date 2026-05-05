@@ -26,6 +26,9 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-baremetal")
 
+	c.expectString("Enable OIDC")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -80,6 +83,9 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-local")
 
+	c.expectString("Enable OIDC")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -129,6 +135,9 @@ func TestAWS_PromptFlow(t *testing.T) {
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-aws")
+
+	c.expectString("Enable OIDC")
+	c.acceptDefault()
 
 	c.expectString("Access Key ID:")
 	c.sendLine("AKIAIOSFODNN7EXAMPLE")
@@ -215,6 +224,9 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2eazure")
 
+	c.expectString("Enable OIDC")
+	c.acceptDefault()
+
 	c.expectString("Tenant ID:")
 	c.sendLine("tenant-123")
 
@@ -290,6 +302,9 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-hetzner")
+
+	c.expectString("Enable OIDC")
+	c.acceptDefault()
 
 	c.expectString("Mode:")
 	c.acceptDefault()

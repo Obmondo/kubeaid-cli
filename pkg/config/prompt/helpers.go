@@ -6,6 +6,7 @@ package prompt
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path"
 	"strings"
@@ -34,6 +35,46 @@ func nonEmpty(s string) error {
 	if strings.TrimSpace(s) == "" {
 		return errRequired
 	}
+	return nil
+}
+
+// httpsURL validates that s is a non-empty https:// URL with a host.
+// Used for inputs where the protocol matters at bootstrap time
+// (e.g. OIDC issuer URLs — kube-apiserver only fetches JWKS over
+// TLS).
+func httpsURL(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+
+	if u.Scheme != "https" {
+		return errors.New("URL must start with https://")
+	}
+
+	if u.Host == "" {
+		return errors.New("URL must include a host (https://<host>/...)")
+	}
+
+	return nil
+}
+
+// requiredHTTPSInput is requiredInput with httpsURL validation
+// instead of nonEmpty.
+func requiredHTTPSInput(message string, dest *string) error {
+	if err := huh.NewInput().
+		Title(message).
+		Value(dest).
+		Validate(httpsURL).
+		Run(); err != nil {
+		return err
+	}
+	printRecap(message, *dest)
+
 	return nil
 }
 
