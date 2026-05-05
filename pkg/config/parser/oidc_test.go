@@ -31,14 +31,14 @@ func withFreshConfig(t *testing.T, fn func()) {
 	fn()
 }
 
-// findAPIServerFile returns the rendered AuthenticationConfiguration
+// findAuthConfigFile returns the rendered AuthenticationConfiguration
 // file from apiServer.Files, or nil if absent. Tests assert against
 // it instead of inspecting the YAML body via string contains.
-func findAPIServerFile(t *testing.T, path string) *config.FileConfig {
+func findAuthConfigFile(t *testing.T) *config.FileConfig {
 	t.Helper()
 
 	for i, f := range config.ParsedGeneralConfig.Cluster.APIServer.Files {
-		if f.Path == path {
+		if f.Path == constants.KubeAPIServerAuthenticationConfigPath {
 			return &config.ParsedGeneralConfig.Cluster.APIServer.Files[i]
 		}
 	}
@@ -85,7 +85,7 @@ func TestHydrateWithOIDCOptions_RendersAuthenticationConfig(t *testing.T) {
 		)
 
 		// File entry exists and parses to the expected structure.
-		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		file := findAuthConfigFile(t)
 		require.NotNil(t, file)
 		got := parseRenderedAuthConfig(t, file.Content)
 
@@ -126,7 +126,7 @@ func TestHydrateWithOIDCOptions_PrefixesPropagated(t *testing.T) {
 
 		hydrateWithOIDCOptions()
 
-		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		file := findAuthConfigFile(t)
 		require.NotNil(t, file)
 		got := parseRenderedAuthConfig(t, file.Content)
 
@@ -153,7 +153,7 @@ func TestHydrateWithOIDCOptions_CABundleEmbeddedInline(t *testing.T) {
 
 		hydrateWithOIDCOptions()
 
-		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		file := findAuthConfigFile(t)
 		require.NotNil(t, file)
 		got := parseRenderedAuthConfig(t, file.Content)
 
@@ -192,7 +192,7 @@ func TestHydrateWithOIDCOptions_ReplacesOwnFileOnReHydrate(t *testing.T) {
 		}
 		assert.Equal(t, 1, matched)
 
-		file := findAPIServerFile(t, constants.KubeAPIServerAuthenticationConfigPath)
+		file := findAuthConfigFile(t)
 		require.NotNil(t, file)
 		got := parseRenderedAuthConfig(t, file.Content)
 		assert.Equal(t, "https://second.example/realms/x", got.JWT[0].Issuer.URL)

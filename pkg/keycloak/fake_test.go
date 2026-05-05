@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Path segments under /admin/realms/{realm}/... — pulled out as
+// constants since the route table repeats them in two cases each
+// (collection vs item) and goconst would otherwise complain.
+const (
+	pathSegClients      = "clients"
+	pathSegClientScopes = "client-scopes"
+	pathSegUsers        = "users"
+)
+
 // fakeKeycloak is an in-memory mock of just enough of Keycloak's
 // admin API for the reconciler unit tests. It is NOT a faithful
 // Keycloak — only the endpoints exercised by the reconciler are
@@ -115,7 +124,7 @@ func (f *fakeKeycloak) handleRealms(w http.ResponseWriter, r *http.Request) {
 		// gocloak doesn't list realms via this path in the
 		// reconciler, so a 200 with an empty list keeps tests
 		// happy if it ever does.
-		writeJSON(w, http.StatusOK, []any{})
+		writeJSON(w, []any{})
 	case http.MethodPost:
 		var realm gocloak.RealmRepresentation
 		if err := json.NewDecoder(r.Body).Decode(&realm); err != nil {
@@ -152,17 +161,17 @@ func (f *fakeKeycloak) handleRealmsPrefixed(w http.ResponseWriter, r *http.Reque
 	case len(parts) == 1:
 		// /admin/realms/{name}
 		f.handleSingleRealm(w, r, realm)
-	case parts[1] == "clients" && len(parts) == 2:
+	case parts[1] == pathSegClients && len(parts) == 2:
 		f.handleClientsList(w, r, realm)
-	case parts[1] == "clients" && len(parts) >= 3:
+	case parts[1] == pathSegClients && len(parts) >= 3:
 		f.handleClientByID(w, r, realm, parts[2:])
-	case parts[1] == "client-scopes" && len(parts) == 2:
+	case parts[1] == pathSegClientScopes && len(parts) == 2:
 		f.handleClientScopesList(w, r, realm)
-	case parts[1] == "client-scopes" && len(parts) >= 3:
+	case parts[1] == pathSegClientScopes && len(parts) >= 3:
 		f.handleClientScopeByID(w, r, realm, parts[2:])
-	case parts[1] == "users" && len(parts) == 2:
+	case parts[1] == pathSegUsers && len(parts) == 2:
 		f.handleUsersList(w, r, realm)
-	case parts[1] == "users" && len(parts) >= 3:
+	case parts[1] == pathSegUsers && len(parts) >= 3:
 		f.handleUserByID(w, r, realm, parts[2:])
 	default:
 		http.NotFound(w, r)
@@ -181,7 +190,7 @@ func (f *fakeKeycloak) handleSingleRealm(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, gocloak.RealmRepresentation{
+	writeJSON(w, gocloak.RealmRepresentation{
 		Realm:   gocloak.StringP(realm),
 		Enabled: gocloak.BoolP(true),
 	})
@@ -203,7 +212,7 @@ func (f *fakeKeycloak) handleClientsList(w http.ResponseWriter, r *http.Request,
 			}
 			out = append(out, c)
 		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, out)
 	case http.MethodPost:
 		var c gocloak.Client
 		if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
@@ -265,7 +274,7 @@ func (f *fakeKeycloak) handleClientSecret(w http.ResponseWriter, r *http.Request
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, gocloak.CredentialRepresentation{
+	writeJSON(w, gocloak.CredentialRepresentation{
 		Value: c.Secret,
 		Type:  gocloak.StringP("secret"),
 	})
@@ -290,7 +299,7 @@ func (f *fakeKeycloak) handleClientDefaultScopesList(w http.ResponseWriter, r *h
 			out = append(out, gocloak.ClientScope{Name: gocloak.StringP(name)})
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, out)
 }
 
 func (f *fakeKeycloak) handleClientDefaultScope(w http.ResponseWriter, r *http.Request, realm, clientInternalID, scopeID string) {
@@ -364,7 +373,7 @@ func (f *fakeKeycloak) handleClientServiceAccount(w http.ResponseWriter, r *http
 		}
 		f.serviceAccounts[realm][clientInternalID] = userID
 	}
-	writeJSON(w, http.StatusOK, gocloak.User{
+	writeJSON(w, gocloak.User{
 		ID:       gocloak.StringP(userID),
 		Username: f.users[realm][userID].Username,
 	})
@@ -389,7 +398,7 @@ func (f *fakeKeycloak) handleClientRolesList(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		roles = nil
 	}
-	writeJSON(w, http.StatusOK, roles)
+	writeJSON(w, roles)
 }
 
 func (f *fakeKeycloak) handleClientRoleByName(w http.ResponseWriter, r *http.Request, realm, clientInternalID, roleName string) {
@@ -411,7 +420,7 @@ func (f *fakeKeycloak) handleClientRoleByName(w http.ResponseWriter, r *http.Req
 	}
 	for _, role := range roles {
 		if role.Name != nil && *role.Name == roleName {
-			writeJSON(w, http.StatusOK, role)
+			writeJSON(w, role)
 			return
 		}
 	}
@@ -445,7 +454,7 @@ func (f *fakeKeycloak) handleClientScopesList(w http.ResponseWriter, r *http.Req
 		for _, s := range f.scopes[realm] {
 			out = append(out, s)
 		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, out)
 	case http.MethodPost:
 		var s gocloak.ClientScope
 		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
@@ -498,7 +507,7 @@ func (f *fakeKeycloak) handleScopeProtocolMappersList(w http.ResponseWriter, r *
 			out = append(out, &(*scope.ProtocolMappers)[i])
 		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	writeJSON(w, out)
 }
 
 func (f *fakeKeycloak) handleScopeProtocolMapperCreate(w http.ResponseWriter, r *http.Request, realm, scopeID string) {
@@ -546,7 +555,7 @@ func (f *fakeKeycloak) handleUsersList(w http.ResponseWriter, r *http.Request, r
 			}
 			out = append(out, u)
 		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, out)
 	case http.MethodPost:
 		var u gocloak.User
 		if err := json.NewDecoder(r.Body).Decode(&u); err != nil {
@@ -620,7 +629,7 @@ func (f *fakeKeycloak) handleUserClientRoles(w http.ResponseWriter, r *http.Requ
 		// the names + IDs round-trip cleanly.
 		c, ok := f.clients[realm][clientInternalID]
 		if !ok {
-			writeJSON(w, http.StatusOK, out)
+			writeJSON(w, out)
 			return
 		}
 		fixture := clientRolesFixture[derefString(c.ClientID)]
@@ -631,7 +640,7 @@ func (f *fakeKeycloak) handleUserClientRoles(w http.ResponseWriter, r *http.Requ
 				}
 			}
 		}
-		writeJSON(w, http.StatusOK, out)
+		writeJSON(w, out)
 	case http.MethodPost:
 		var roles []gocloak.Role
 		if err := json.NewDecoder(r.Body).Decode(&roles); err != nil {
@@ -664,9 +673,9 @@ func (f *fakeKeycloak) handleUserClientRoles(w http.ResponseWriter, r *http.Requ
 
 // --- helpers ---
 
-func writeJSON(w http.ResponseWriter, status int, body any) {
+func writeJSON(w http.ResponseWriter, body any) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(body)
 }
 
