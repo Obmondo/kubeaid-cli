@@ -59,6 +59,13 @@ func validateConfigs(ctx context.Context) error {
 		return fmt.Errorf("validating K8s version: %w", err)
 	}
 
+	// Cross-field validation for the typed cluster.keycloak block:
+	// VPN clusters must have it; managed-mode is only valid on VPN
+	// clusters; realm must be non-empty after default-derivation.
+	if err := validateKeycloakConfig(); err != nil {
+		return fmt.Errorf("validating cluster.keycloak: %w", err)
+	}
+
 	if globals.CloudProviderName != constants.CloudProviderLocal &&
 		config.ParsedGeneralConfig.Forks.KubeaidFork.Version == "" {
 		return errors.New("KubeAid fork version is required for non-local providers")
