@@ -113,12 +113,28 @@ type TemplateValues struct {
 
 	// NetBirdBackendClientSecret is the pre-generated OIDC client
 	// secret for the `netbird-backend` confidential client. The
-	// same value is templated into the netbird-keycloak
-	// SealedSecret AND passed through to ReconcileClient as
-	// spec.Secret so Keycloak stores what NetBird's chart already
-	// expects in the cluster Secret — single git push, single
-	// sync.
+	// same value is templated into the netbird SealedSecret AND
+	// passed through to ReconcileClient as spec.Secret so Keycloak
+	// stores what NetBird's chart already expects in the cluster
+	// Secret — single git push, single sync.
 	NetBirdBackendClientSecret string
+
+	// Random keys read-or-generated for the netbird Secret on
+	// managed-Keycloak VPN clusters. Each is persisted in the
+	// in-cluster Secret so re-runs converge to the same value.
+	//   DatastoreKey  base64(32 bytes) -> NetBird Mgmt's AES key
+	//   RelayPassword alphanumeric     -> Relay shared secret
+	//   TurnPassword  alphanumeric     -> matches TURN auth on
+	//                                     both Mgmt and Coturn
+	NetBirdDatastoreKey  string
+	NetBirdRelayPassword string
+	NetBirdTurnPassword  string
+
+	// Constant client IDs the gocloak reconciler creates in the
+	// realm. Surfaced to templates so the netbird Secret renders
+	// the same identifiers without hardcoding strings in YAML.
+	NetBirdClientID        string
+	NetBirdBackendClientID string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -203,11 +219,39 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
 			constants.NamespaceNetBird,
-			constants.SecretNameNetBirdKeycloak,
-			constants.SecretKeyNetBirdSecret,
+			constants.SecretNameNetBird,
+			constants.SecretKeyNetBirdIDPMgmtSecret,
 		)
 		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
 		templateValues.NetBirdBackendClientSecret = nbSecret
+
+		datastoreKey, err := keycloak.GetOrGenerateBase64Key(ctx, clusterClient,
+			constants.NamespaceNetBird,
+			constants.SecretNameNetBird,
+			constants.SecretKeyNetBirdDatastoreKey,
+			constants.NetBirdDatastoreKeyByteLen,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird datastore encryption key")
+		templateValues.NetBirdDatastoreKey = datastoreKey
+
+		relayPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+			constants.NamespaceNetBird,
+			constants.SecretNameNetBird,
+			constants.SecretKeyNetBirdRelayPassword,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird relay password")
+		templateValues.NetBirdRelayPassword = relayPwd
+
+		turnPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+			constants.NamespaceNetBird,
+			constants.SecretNameNetBird,
+			constants.SecretKeyNetBirdTurnPassword,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird TURN password")
+		templateValues.NetBirdTurnPassword = turnPwd
+
+		templateValues.NetBirdClientID = constants.NetBirdClientID
+		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID
 	}
 
 	// Set cloud provider specific values.

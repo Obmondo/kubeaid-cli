@@ -65,8 +65,8 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 
 	nbBackendSecret, err := readSecretValue(ctx, clusterClient,
 		constants.NamespaceNetBird,
-		constants.SecretNameNetBirdKeycloak,
-		constants.SecretKeyNetBirdSecret,
+		constants.SecretNameNetBird,
+		constants.SecretKeyNetBirdIDPMgmtSecret,
 	)
 	if err != nil {
 		return err

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: netbird
+  namespace: netbird
+type: Opaque
+stringData:
+  idpClientID: {{ .NetBirdClientID }}
+  idpClientMgmtID: {{ .NetBirdBackendClientID }}
+  idpClientMgmtSecret: {{ .NetBirdBackendClientSecret }}
+  idpServiceAccountUser: service-account-{{ .NetBirdBackendClientID }}
+  datastoreEncryptionKey: {{ .NetBirdDatastoreKey }}
+  relayPassword: {{ .NetBirdRelayPassword }}
+  stunServer: stun:{{ .NetBird.StunDNS }}:3478
+  turnServer: turn:{{ .NetBird.TurnDNS }}:3478
+  turnServerUser: {{ .NetBird.TurnUser }}
+  turnServerPassword: {{ .NetBirdTurnPassword }}
+  postgresDSN: ""

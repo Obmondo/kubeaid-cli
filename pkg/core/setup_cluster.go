@@ -76,8 +76,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// keycloak-admin Secret before ArgoCD's first sync, so the keycloakx
 	// namespace must already exist. cnpg-operator is paired here because the
 	// keycloakx chart instantiates a CNPG Cluster CR in that namespace.
-	// netbird is pre-created so the netbird-keycloak SealedSecret lands
-	// in the right place ahead of the netbird chart's own sync.
+	// netbird is pre-created so the netbird + netbird-turn-credentials
+	// SealedSecrets land in the right place ahead of the netbird
+	// chart's own sync.
 	if managedKeycloakEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceKeycloak,
