@@ -342,6 +342,14 @@ const (
 	// GitHub API URL for listing KubeAid releases (used to pick latest-1).
 	KubeAidReleasesAPIURL = "https://api.github.com/repos/Obmondo/KubeAid/releases"
 
+	// Local docker image tag kubeaid-cli builds on first
+	// buildKubePrometheus invocation. Holds the small jsonnet
+	// toolchain (jsonnet, jb, gojsontoyaml) that runs build.sh
+	// without requiring those binaries on the host. Tag is
+	// stable; the image is built from the embedded Dockerfile in
+	// pkg/core, so docker layer caching makes repeat builds free.
+	KubePromBuilderImage = "kubeaid-cli/kube-prom-builder:latest"
+
 	GzippedFilenameSuffix = ".gz"
 )
 
