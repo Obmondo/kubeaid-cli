@@ -164,6 +164,7 @@ func TestValidateKeycloakConfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
 				DNS: "netbird.vpn.acme.com",
 			}
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
 
 			require.NoError(t, validateKeycloakConfig())
 		})
@@ -182,6 +183,25 @@ func TestValidateKeycloakConfig(t *testing.T) {
 			err := validateKeycloakConfig()
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), "cluster.netbird.dns is required")
+		})
+	})
+
+	t.Run("managed keycloak without ACME email fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "managed",
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
+				DNS: "netbird.vpn.acme.com",
+			}
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = ""
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "cluster.acmeEmail is required")
 		})
 	})
 

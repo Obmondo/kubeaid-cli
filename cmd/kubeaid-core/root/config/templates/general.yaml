@@ -48,6 +48,12 @@ cluster:
   # Suitable Kubernetes API configurations will be done for you automatically. And they can be
   # changed using the apiSever struct field.
   enableAuditLogging: True
+  # ACMEEmail is the contact email used to register with the ACME
+  # CA (Let's Encrypt) when cert-manager's ClusterIssuer is
+  # rendered. Required when cluster.keycloak.mode=managed (the
+  # keycloakx and netbird-mgmt Ingresses both need TLS certs);
+  # optional otherwise. Used as Issuer.spec.acme.email.
+  acmeEmail:
   # Configuration options for the Kubernetes API server.
   apiServer:
     extraArgs: {}

@@ -1,0 +1,14 @@
+{{- /*
+Minimal traefik values for the managed-Keycloak VPN flow. The chart
+defaults already cover most of what we need (HA replicas, web→websecure
+redirect); kubeaid-cli only needs to point traefik's Service at the
+HCloud control-plane LB so external traffic to keycloak.<dns> /
+netbird.<dns> lands on the same LB the apiserver is exposed through.
+
+The cert-manager ClusterIssuer renders an http01 solver against the
+`traefik` ingressClassName — see values-cert-manager.yaml.tmpl. */ -}}
+traefik:
+  service:
+    annotations:
+      load-balancer.hetzner.cloud/use-private-ip: "false"
+      load-balancer.hetzner.cloud/uses-proxyprotocol: "false"

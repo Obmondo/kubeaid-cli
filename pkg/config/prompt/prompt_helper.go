@@ -47,6 +47,15 @@ func printSummaryAndConfirm(cfg *PromptedConfig) error {
 	prompter := prompterForProvider(cfg.CloudProvider)
 	lines = append(lines, prompter.SummaryLines(cfg)...)
 
+	if cfg.ClusterType == "vpn" {
+		lines = append(lines,
+			fmt.Sprintf("  Keycloak DNS:  %s", cfg.KeycloakDNS),
+			fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
+			fmt.Sprintf("  CP endpoint:   %s", cfg.ControlPlaneEndpoint),
+			fmt.Sprintf("  ACME email:    %s", cfg.ACMEEmail),
+		)
+	}
+
 	if cfg.CloudProvider != constants.CloudProviderLocal {
 		gitAuth := "SSH key: " + cfg.SSHKeyPath
 		if cfg.UseSSHAgent {

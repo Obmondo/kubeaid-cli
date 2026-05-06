@@ -39,6 +39,22 @@ type PromptedConfig struct {
 	OIDCIssuerURL string
 	OIDCClientID  string
 
+	// VPN-cluster fields. Populated only when the operator chose
+	// the "VPN cluster" kind at the cluster-kind prompt — i.e.
+	// cluster.type=vpn with managed Keycloak. They render the
+	// cluster.keycloak / cluster.netbird / cluster.acmeEmail blocks
+	// in general.yaml. Empty for workload clusters.
+	KeycloakDNS string
+	NetBirdDNS  string
+	ACMEEmail   string
+
+	// HCloud-VPN control-plane endpoint FQDN — required when
+	// running a VPN cluster on Hetzner HCloud. Rendered into
+	// cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint;
+	// must resolve (post-DNS-setup) to the LB's public IP during
+	// bootstrap and to its private IP afterwards.
+	ControlPlaneEndpoint string
+
 	// Git.
 	UseSSHAgent bool
 	SSHKeyPath  string
@@ -128,7 +144,15 @@ func ConfigFromPrompt(configsDirectory string) error {
 		return fmt.Errorf("collecting cluster name: %w", err)
 	}
 
-	if err := promptOIDC(cfg); err != nil {
+	if err := promptClusterKind(cfg); err != nil {
+		return fmt.Errorf("collecting cluster kind: %w", err)
+	}
+
+	if cfg.ClusterType == "vpn" {
+		if err := promptVPNClusterDetails(cfg); err != nil {
+			return fmt.Errorf("collecting VPN cluster details: %w", err)
+		}
+	} else if err := promptOIDC(cfg); err != nil {
 		return fmt.Errorf("collecting OIDC config: %w", err)
 	}
 
@@ -185,6 +209,89 @@ func promptOIDC(cfg *PromptedConfig) error {
 		fmt.Sprintf("OIDC client ID for this cluster (e.g. kubernetes-%s):", cfg.ClusterName),
 		&cfg.OIDCClientID,
 	)
+}
+
+// promptClusterKind asks the operator whether they're setting up a
+// brand-new VPN cluster (Phase 0 — hosts Keycloak + NetBird mesh) or
+// a regular workload cluster. Maps the choice to cfg.ClusterType.
+//
+// VPN clusters are only supported on Hetzner HCloud today; for any
+// other provider the prompt is skipped and the cluster is treated as
+// workload. (The schema validator rejects vpn-on-non-hcloud at parse
+// time, so the prompt mirrors that constraint up front.)
+func promptClusterKind(cfg *PromptedConfig) error {
+	if cfg.CloudProvider != constants.CloudProviderHetzner {
+		cfg.ClusterType = "workload"
+		return nil
+	}
+
+	const (
+		optVPN      = "A new VPN cluster (Phase 0 — hosts Keycloak + NetBird mesh)"
+		optWorkload = "A workload cluster (no managed Keycloak; OIDC is optional)"
+	)
+
+	var choice string
+	if err := selectOption(
+		"What are you setting up?",
+		[]string{optVPN, optWorkload},
+		optWorkload, &choice,
+	); err != nil {
+		return err
+	}
+
+	if choice == optVPN {
+		cfg.ClusterType = "vpn"
+	} else {
+		cfg.ClusterType = "workload"
+	}
+
+	return nil
+}
+
+// promptVPNClusterDetails collects the public DNS names of Keycloak
+// and NetBird Mgmt and the ACME contact email used to register the
+// Let's Encrypt account. All three are required for a managed-Keycloak
+// VPN bootstrap to succeed — the validator will reject the config if
+// they're empty, and at runtime cert-manager's HTTP-01 challenge will
+// fail if DNS isn't pointing at the LB's bootstrap public IP.
+//
+// Auto-derives apiServer.oidc.{issuerUrl,clientId} from the Keycloak
+// DNS and cluster name so the operator doesn't have to repeat them.
+// The realm name is derived again at parse time via publicsuffix.
+func promptVPNClusterDetails(cfg *PromptedConfig) error {
+	if err := requiredInput(
+		"Keycloak DNS (e.g. keycloak.vpn.acme.com):",
+		&cfg.KeycloakDNS,
+	); err != nil {
+		return err
+	}
+
+	if err := requiredInput(
+		"NetBird Mgmt DNS (e.g. netbird.vpn.acme.com):",
+		&cfg.NetBirdDNS,
+	); err != nil {
+		return err
+	}
+
+	if err := requiredInput(
+		"Control-plane endpoint FQDN (e.g. api.vpn.acme.com):",
+		&cfg.ControlPlaneEndpoint,
+	); err != nil {
+		return err
+	}
+
+	if err := requiredInput(
+		"ACME email for Let's Encrypt (e.g. ops@acme.com):",
+		&cfg.ACMEEmail,
+	); err != nil {
+		return err
+	}
+
+	cfg.EnableOIDC = true
+	cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + deriveRealmFromDNS(cfg.KeycloakDNS)
+	cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
+
+	return nil
 }
 
 // promptHAControlPlane asks whether the user wants a highly available control plane

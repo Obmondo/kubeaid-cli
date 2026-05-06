@@ -1,3 +1,17 @@
 cert-manager:
   prometheus:
     enabled: false
+{{- if .ACMEEmail }}
+issuer:
+  enabled: true
+  name: letsencrypt-prod
+  issuerEmail: {{ .ACMEEmail }}
+  production: true
+  secret: letsencrypt-prod-account-key
+  preferredChain: ""
+  solvers:
+    - type: http
+      http01:
+        ingress:
+          ingressClassName: traefik
+{{- end }}
