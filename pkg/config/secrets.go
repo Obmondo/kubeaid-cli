@@ -5,10 +5,10 @@ package config
 
 type (
 	SecretsConfig struct {
-		AWS     *AWSCredentials      `yaml:"aws"`
-		Azure   *AzureCredentials    `yaml:"azure"`
-		Hetzner *HetznerCredentials  `yaml:"hetzner"`
-		Obmondo *ObmondoCredentials  `yaml:"obmondo"`
+		AWS      *AWSCredentials      `yaml:"aws"`
+		Azure    *AzureCredentials    `yaml:"azure"`
+		Hetzner  *HetznerCredentials  `yaml:"hetzner"`
+		Obmondo  *ObmondoCredentials  `yaml:"obmondo"`
 		Keycloak *KeycloakCredentials `yaml:"keycloak"`
 	}
 

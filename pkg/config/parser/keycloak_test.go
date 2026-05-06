@@ -13,6 +13,11 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
+// testACMEEmail is a stand-in contact for ACME registration in
+// keycloak validator tests. Pulled out as a constant so goconst
+// stops flagging the multi-occurrence literal across test cases.
+const testACMEEmail = "ops@acme.com"
+
 func TestDeriveRealm(t *testing.T) {
 	t.Parallel()
 
@@ -164,7 +169,7 @@ func TestValidateKeycloakConfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
 				DNS: "netbird.vpn.acme.com",
 			}
-			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = testACMEEmail
 
 			require.NoError(t, validateKeycloakConfig())
 		})
@@ -231,7 +236,7 @@ func TestValidateKeycloakConfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
 				DNS: "netbird.vpn.acme.com",
 			}
-			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = testACMEEmail
 			origSecrets := config.ParsedSecretsConfig
 			config.ParsedSecretsConfig = &config.SecretsConfig{
 				Keycloak: &config.KeycloakCredentials{
@@ -255,7 +260,7 @@ func TestValidateKeycloakConfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
 				DNS: "netbird.vpn.acme.com",
 			}
-			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = testACMEEmail
 			origSecrets := config.ParsedSecretsConfig
 			config.ParsedSecretsConfig = &config.SecretsConfig{}
 			t.Cleanup(func() { config.ParsedSecretsConfig = origSecrets })
