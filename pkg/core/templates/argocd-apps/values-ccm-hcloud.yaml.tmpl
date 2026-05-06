@@ -1,5 +1,10 @@
 ---
 hcloud-cloud-controller-manager:
+  additionalTolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+      effect: NoSchedule
+
   env:
     HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:
       value: {{ .HetznerConfig.HCloud.Zone }}
@@ -20,8 +25,12 @@ hcloud-cloud-controller-manager:
       value: "true"
     {{- end }}
 
-  {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
+  {{- if or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
   networking:
     enabled: true
-    network: {{ .ClusterConfig.Name }}
+    network:
+      valueFrom:
+        secretKeyRef:
+          name: cloud-credentials
+          key: network
   {{- end }}

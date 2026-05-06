@@ -127,6 +127,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		assert.AssertErrNil(ctx, err, "Failed triggering Sealed Secrets backup CRONJob")
 	}
 
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+		hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx)
+	}
+
 	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 }

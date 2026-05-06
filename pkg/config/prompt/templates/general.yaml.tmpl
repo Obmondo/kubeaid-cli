@@ -91,6 +91,7 @@ cloud:
         loadBalancer:
           enabled: true
           region: {{ .HetznerLBRegion }}
+          hostname:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:

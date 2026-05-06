@@ -179,9 +179,26 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 
 	_, _, _, err = connection.Exec(fmt.Sprintf(
 		`
-      echo 1 > /proc/sys/net/ipv4/ip_forward
+      echo 'net.ipv4.ip_forward=1' > /etc/sysctl.d/99-nat-gateway.conf
+      sysctl -p /etc/sysctl.d/99-nat-gateway.conf
 
-      iptables -t nat -A POSTROUTING -s '%s' -o eth0 -j MASQUERADE
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y iptables-persistent
+
+      # Egress interface = whichever interface the kernel picks to
+      # reach the public internet. Probed via Hetzner's own
+      # recursive resolver IP (185.12.64.1) — robust against later
+      # NetBird routes since NetBird only handles mesh peers, not
+      # arbitrary public IPs.
+      egress_interface=$(ip route get 185.12.64.1 | awk '{print $5; exit}')
+      iptables -t nat -C POSTROUTING -s %[1]s -o "$egress_interface" -j MASQUERADE 2>/dev/null || \
+      iptables -t nat -A POSTROUTING -s %[1]s -o "$egress_interface" -j MASQUERADE
+
+      mkdir -p /etc/iptables
+      iptables-save > /etc/iptables/rules.v4
+
+      systemctl enable --now netfilter-persistent
     `,
 		hetznerConfig.HCloud.HetznerNetwork.CIDR,
 	))

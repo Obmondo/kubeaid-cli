@@ -57,7 +57,9 @@ type TemplateValues struct {
 
 		  (2) When provisioning a Bare Metal / Hetzner Bare Metal cluster; the user specifies it.
 
-		We specify that pre-provisioned LB IP as the control-plane endpoint to CAPI and Cilium.
+		For Hetzner HCloud / hybrid VPN clusters, the endpoint is either the pre-provisioned
+		LB private IP, or a configured hostname. When a hostname is configured, kubeaid-cli
+		renders the hostname and manages bootstrap/private DNS mapping separately.
 
 		Otherwise, we need to wait until the cluster has been provisioned. Once the cluster is
 		provisioned, we get the control-plane endpoint from the Cluster resource. And then it's
@@ -122,7 +124,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		VeleroUAMIClientID:           globals.VeleroUAMIClientID,
 		AzureStorageAccountAccessKey: globals.AzureStorageAccountAccessKey,
 
-		HetznerConfig:      config.ParsedGeneralConfig.Cloud.Hetzner,
+		HetznerConfig:      sanitizedHetznerConfigForChart(config.ParsedGeneralConfig.Cloud.Hetzner),
 		HetznerCredentials: config.ParsedSecretsConfig.Hetzner,
 
 		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
@@ -203,7 +205,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(ctx)
 	}
 
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerConfig := templateValues.HetznerConfig
 
 	// Set the control-plane endpoint.
 	switch globals.CloudProviderName {
@@ -213,10 +215,16 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case hetznerConfig.Mode == constants.HetznerModeBareMetal:
 			templateValues.ControlPlaneEndpoint = hetznerConfig.ControlPlane.BareMetal.Endpoint.Host
 
-		// HCloud / Hetzner hybrid cluster, when we have a VPN cluster.
-		// We've pre-provisioned the control-plane LB.
+		// HCloud / Hetzner hybrid cluster with a VPN cluster. The
+		// control-plane LB is pre-provisioned; endpoint is the
+		// hostname when configured (clients resolve via CoreDNS to
+		// the LB private IP), else the private IP directly.
 		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && (hetznerConfig.HCloudVPNCluster != nil)):
-			templateValues.ControlPlaneEndpoint = globals.PreProvisionedControlPlaneLBIP
+			if globals.ControlPlaneHostname != "" {
+				templateValues.ControlPlaneEndpoint = globals.ControlPlaneHostname
+				break
+			}
+			templateValues.ControlPlaneEndpoint = globals.ControlPlaneLBPrivateIP
 		}
 
 	// Bare Metal cluster; the user specifies it.
@@ -233,6 +241,21 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	return templateValues
+}
+
+func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config.HetznerConfig {
+	if hetznerConfig == nil {
+		return nil
+	}
+
+	sanitized := *hetznerConfig
+	if hetznerConfig.ControlPlane.HCloud != nil {
+		hcloudControlPlane := *hetznerConfig.ControlPlane.HCloud
+		hcloudControlPlane.LoadBalancer.Hostname = ""
+		sanitized.ControlPlane.HCloud = &hcloudControlPlane
+	}
+
+	return &sanitized
 }
 
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
