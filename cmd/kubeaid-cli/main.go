@@ -79,8 +79,20 @@ func unsetRunners(command *cobra.Command) {
 }
 
 // proxyRun proxies the command execution to the KubeAid Core container.
+//
+// cobra fires PersistentPreRun before deciding which command to
+// actually invoke, so a bare "kubeaid-cli cluster" (no subcommand)
+// would otherwise run the interactive config prompt and then
+// forward "cluster" alone to the container — which has nothing to
+// do and just prints its usage. Detect the parent-group case via
+// HasSubCommands and bail early so cobra falls through to printing
+// usage without side effects (no prompt, no container spawn).
 func proxyRun(command *cobra.Command, _ []string) {
 	ctx := command.Context()
+
+	if command.HasSubCommands() {
+		return
+	}
 
 	slog.InfoContext(ctx, "Proxying command execution to KubeAid Core container")
 
