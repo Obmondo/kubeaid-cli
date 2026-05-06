@@ -107,6 +107,18 @@ func validateKeycloakConfig() error {
 				"cluster.netbird.dns is required when cluster.keycloak.mode=managed — kubeaid-cli renders NetBird's OIDC client against this hostname",
 			)
 		}
+
+		// Managed Keycloak's Ingress is served by traefik with TLS
+		// certs minted by cert-manager via a Let's Encrypt
+		// ClusterIssuer. The ACME account registration needs an
+		// email address so LE can send expiry warnings; without it
+		// the ClusterIssuer never reaches Ready and no certs get
+		// issued.
+		if cluster.ACMEEmail == "" {
+			return errors.New(
+				"cluster.acmeEmail is required when cluster.keycloak.mode=managed — used to register the Let's Encrypt account that issues TLS certs for keycloak/netbird Ingresses",
+			)
+		}
 	}
 
 	return nil
