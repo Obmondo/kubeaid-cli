@@ -154,6 +154,20 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 		case err == nil && response.StatusCode == http.StatusCreated:
 			slog.InfoContext(ctx, "Created NAT Gateway server",
 				slog.String("location", location))
+
+			// Protect the NAT Gateway from accidental deletion.
+			_, response, err = h.serverClient.ChangeProtection(ctx,
+				result.Server,
+				hcloud.ServerChangeProtectionOpts{Delete: ptr.To(true)},
+			)
+			if err != nil {
+				return nil, fmt.Errorf("enabling deletion protection on NAT Gateway server: %w", err)
+			}
+			if response.StatusCode != http.StatusOK {
+				return nil, fmt.Errorf("enabling deletion protection on NAT Gateway server: unexpected status %d", response.StatusCode)
+			}
+			slog.InfoContext(ctx, "Enabled deletion protection on NAT Gateway server")
+
 			return result.Server, nil
 
 		case err != nil && isHCloudResourceUnavailable(err):
