@@ -62,6 +62,7 @@ func resolveFromStdin(ctx context.Context) error {
 		return fmt.Errorf("no YAML documents found on stdin")
 	}
 
+	//nolint:gosec // tmpDir is created by os.MkdirTemp, and the file name is a fixed constant.
 	if err := os.WriteFile(path.Join(tmpDir, "general.yaml"), docs[0], 0o600); err != nil {
 		return fmt.Errorf("writing general.yaml: %w", err)
 	}
@@ -71,6 +72,7 @@ func resolveFromStdin(ctx context.Context) error {
 		secretsContent = docs[1]
 	}
 
+	//nolint:gosec // tmpDir is created by os.MkdirTemp, and the file name is a fixed constant.
 	if err := os.WriteFile(path.Join(tmpDir, "secrets.yaml"), secretsContent, 0o600); err != nil {
 		return fmt.Errorf("writing secrets.yaml: %w", err)
 	}

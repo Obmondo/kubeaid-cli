@@ -1,9 +1,0 @@
-*
-
-!cmd/
-!internal/
-!pkg/
-!go.mod
-!go.sum
-
-!scripts/install-runtime-dependencies.sh

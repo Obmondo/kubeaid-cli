@@ -36,12 +36,6 @@ var DevenvCmd = &cobra.Command{
 			slog.ErrorContext(ctx, "Failed initializing temp dir", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
-
-		// Ensure required runtime dependencies are installed.
-		if err := utils.EnsureRuntimeDependenciesInstalled(); err != nil {
-			slog.ErrorContext(ctx, "Runtime dependency unavailable", slog.String("error", err.Error()))
-			os.Exit(1)
-		}
 	},
 }
 

@@ -47,20 +47,6 @@ func readFileContent(t *testing.T, path string) string {
 	return string(data)
 }
 
-type fakeCommandExecutor struct {
-	commands []string
-}
-
-func (f *fakeCommandExecutor) Execute(_ context.Context, command string) (string, error) {
-	f.commands = append(f.commands, command)
-	return "", nil
-}
-
-func (f *fakeCommandExecutor) MustExecute(_ context.Context, command string) string {
-	f.commands = append(f.commands, command)
-	return ""
-}
-
 type fakeK3DRuntime struct {
 	clusters         []*k3dTypes.Cluster
 	clusterListErr   error
@@ -93,10 +79,31 @@ func (f *fakeK3DRuntime) ClusterDelete(configPath string) error {
 	return f.clusterDeleteErr
 }
 
-func (f *fakeK3DRuntime) WriteKubeconfig(_ context.Context, _ string, outputPath string) error {
+func (f *fakeK3DRuntime) WriteKubeconfig(_ context.Context, clusterName string, outputPath string) error {
 	f.writeKubeconfigCalled = true
 	f.writeKubeconfigPath = outputPath
-	return f.writeKubeconfigErr
+	if f.writeKubeconfigErr != nil {
+		return f.writeKubeconfigErr
+	}
+	// Write a minimal valid kubeconfig so downstream code can load it.
+	content := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    server: https://0.0.0.0:12345
+  name: k3d-%s
+contexts:
+- context:
+    cluster: k3d-%s
+    user: admin
+  name: k3d-%s
+current-context: k3d-%s
+users:
+- name: admin
+  user:
+    token: fake-token
+`, clusterName, clusterName, clusterName, clusterName)
+	return os.WriteFile(outputPath, []byte(content), 0o600)
 }
 
 func TestCreateK3DClusterWithParams(t *testing.T) {
@@ -209,11 +216,14 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 				clusterCreateErr:   tc.clusterCreateErr,
 				writeKubeconfigErr: tc.writeKubeconfigErr,
 			}
-			executor := &fakeCommandExecutor{}
+
+			// Override fixControlPlaneNodeLabelsFn to avoid needing a real cluster.
+			origFixFn := fixControlPlaneNodeLabelsFn
+			fixControlPlaneNodeLabelsFn = func(_ context.Context, _ string) error { return nil }
+			t.Cleanup(func() { fixControlPlaneNodeLabelsFn = origFixFn })
 
 			params := &createK3DClusterParams{
 				Runtime:                 rt,
-				Executor:                executor,
 				ConfigPath:              configPath,
 				HostKubeconfigPath:      hostKubeconfig,
 				ContainerKubeconfigPath: containerKubeconfig,
@@ -229,11 +239,6 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 			assert.Equal(t, tc.wantCreateCalled, rt.createCalled)
 			require.True(t, rt.writeKubeconfigCalled)
 			assert.Equal(t, hostKubeconfig, rt.writeKubeconfigPath)
-			require.Len(t, executor.commands, 2)
-			assert.Contains(t, executor.commands[0], "cp")
-			assert.Contains(t, executor.commands[0], hostKubeconfig)
-			assert.Contains(t, executor.commands[0], containerKubeconfig)
-			assert.Contains(t, executor.commands[1], "kubectl label")
 
 			if len(tc.wantInConfig) > 0 {
 				content := readFileContent(t, configPath)

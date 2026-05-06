@@ -21,7 +21,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services/fake"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
 
 // Mutates config.ParsedGeneralConfig — sequential only.
@@ -101,6 +100,15 @@ func TestCreateS3Bucket(t *testing.T) {
 
 func TestDownloadS3BucketContents(t *testing.T) {
 	t.Parallel()
+
+	downloadRoot := t.TempDir()
+	origGetDownloadedStorageBucketContentsDir := getDownloadedStorageBucketContentsDir
+	getDownloadedStorageBucketContentsDir = func(bucketName string) string {
+		return filepath.Join(downloadRoot, bucketName)
+	}
+	t.Cleanup(func() {
+		getDownloadedStorageBucketContentsDir = origGetDownloadedStorageBucketContentsDir
+	})
 
 	tests := []struct {
 		name       string
@@ -276,9 +284,7 @@ func TestDownloadS3BucketContents(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// DownloadS3BucketContents uses utils.GetDownloadedStorageBucketContentsDir
-			// which resolves to a hardcoded path under /tmp; cannot redirect to t.TempDir().
-			downloadDir := utils.GetDownloadedStorageBucketContentsDir(tc.bucketName)
+			downloadDir := getDownloadedStorageBucketContentsDir(tc.bucketName)
 			t.Cleanup(func() { _ = os.RemoveAll(downloadDir) })
 
 			fake := tc.setupFake(t)

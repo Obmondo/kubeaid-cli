@@ -48,6 +48,8 @@ var listBlobNamesFn = func(ctx context.Context, blobClient *azblob.Client, conta
 	return names, nil
 }
 
+var getDownloadedStorageBucketContentsDir = utils.GetDownloadedStorageBucketContentsDir
+
 // DownloadBlobContainerContents downloads contents of the given Azure Blob Container locally.
 // If the contents are gZip encoded, then you can choose to gZip decode them after download.
 // The download path is decided by utils.GetDownloadedStorageBucketContentsDir.
@@ -59,7 +61,7 @@ func DownloadBlobContainerContents(ctx context.Context,
 		slog.String("blob-container-name", blobContainerName),
 	})
 
-	downloadDir := utils.GetDownloadedStorageBucketContentsDir(blobContainerName)
+	downloadDir := getDownloadedStorageBucketContentsDir(blobContainerName)
 	err := os.MkdirAll(downloadDir, 0o750)
 	if err != nil {
 		return fmt.Errorf("creating directory %s: %w", downloadDir, err)

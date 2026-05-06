@@ -22,7 +22,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -119,8 +118,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		 Because of which, doing kubectl apply for the second time errors out, thus hindering
 		 the script's idempotency.
 		*/
-		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-			fmt.Sprintf("kubectl replace --force -f %s", sealedSecretsKeysDirPath))
+		err = kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
+		assert.AssertErrNil(ctx, err, "Failed restoring sealed secrets private keys")
 
 		slog.InfoContext(ctx,
 			"Restored Sealed Secrets controller private keys",

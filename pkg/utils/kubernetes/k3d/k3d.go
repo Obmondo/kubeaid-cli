@@ -17,13 +17,16 @@ import (
 	k3dClient "github.com/k3d-io/k3d/v5/pkg/client"
 	"github.com/k3d-io/k3d/v5/pkg/runtimes"
 	k3dTypes "github.com/k3d-io/k3d/v5/pkg/types"
+	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
@@ -98,7 +101,6 @@ var DockerRuntime K3DRuntime = dockerK3DRuntime{}
 
 type createK3DClusterParams struct {
 	Runtime                 K3DRuntime
-	Executor                commandexecutor.CommandExecutor
 	ConfigPath              string
 	HostKubeconfigPath      string
 	ContainerKubeconfigPath string
@@ -128,7 +130,6 @@ Keep in mind :
 func CreateK3DCluster(ctx context.Context, name string) error {
 	return createK3DClusterWithParams(ctx, name, &createK3DClusterParams{
 		Runtime:                 DockerRuntime,
-		Executor:                commandexecutor.NewLocalCommandExecutor(false),
 		ConfigPath:              constants.OutputPathManagementClusterK3DConfig,
 		HostKubeconfigPath:      constants.OutputPathManagementClusterHostKubeconfig,
 		ContainerKubeconfigPath: constants.OutputPathManagementClusterContainerKubeconfig,
@@ -161,40 +162,77 @@ func createK3DClusterWithParams(ctx context.Context, name string, params *create
 		return fmt.Errorf("writing k3d cluster kubeconfig: %w", err)
 	}
 
-	// For management cluster's in-container kubeconfig, use
-	// https://k3d-management-cluster-server-0:6443 as the API server address.
-	params.Executor.MustExecute(ctx,
-		fmt.Sprintf(
-			`
-        cp %s %s
-        KUBECONFIG=%s kubectl config set-cluster k3d-%s --server=https://k3d-%s-server-0:6443
-      `,
-			params.HostKubeconfigPath,
-			params.ContainerKubeconfigPath,
-			params.ContainerKubeconfigPath,
-			name,
-			name,
-		))
+	// For management cluster's in-container kubeconfig, copy and modify the
+	// server address to use the container-accessible endpoint.
+	if err := writeContainerKubeconfig(params.HostKubeconfigPath, params.ContainerKubeconfigPath, name); err != nil {
+		return fmt.Errorf("writing container kubeconfig: %w", err)
+	}
 
-	/*
-		Initially the master nodes have label node-role.kubernetes.io/control-plane=true.
+	// Fix control-plane node labels: K3D sets
+	// node-role.kubernetes.io/control-plane=true, but vanilla Kubernetes uses
+	// an empty value. Some ArgoCD Apps rely on this label to get scheduled.
+	if err := fixControlPlaneNodeLabelsFn(ctx, params.HostKubeconfigPath); err != nil {
+		return fmt.Errorf("fixing control-plane node labels: %w", err)
+	}
 
-		We'll remove that (using - at the end of the label key) and then update the value to ""
-		(just like it is, in Vanilla Kubernetes). Some ArgoCD Apps (like capi-cluster) rely
-		on this label to get scheduled to the master node.
+	return nil
+}
 
-		NOTE : Using options.k3s.nodeLabels to set that label for the control-plane nodes doesn't work.
-			     The cluster won't even startup.
-	*/
-	params.Executor.MustExecute(ctx, `
-		master_nodes=$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o name)
+// writeContainerKubeconfig copies the host kubeconfig to a container-accessible
+// path and rewrites the cluster server to the K3D internal address.
+func writeContainerKubeconfig(hostPath, containerPath, clusterName string) error {
+	kubeConfig, err := clientcmd.LoadFromFile(hostPath)
+	if err != nil {
+		return fmt.Errorf("loading host kubeconfig %q: %w", hostPath, err)
+	}
 
-		for node in $master_nodes; do
-			kubectl label $node node-role.kubernetes.io/control-plane-
-			kubectl label $node node-role.kubernetes.io/control-plane=""
-		done
-	`)
+	clusterKey := "k3d-" + clusterName
+	if cluster, ok := kubeConfig.Clusters[clusterKey]; ok {
+		cluster.Server = fmt.Sprintf("https://k3d-%s-server-0:6443", clusterName)
+	}
 
+	if err := utils.CreateIntermediateDirsForFile(containerPath); err != nil {
+		return fmt.Errorf("creating intermediate dirs for container kubeconfig: %w", err)
+	}
+
+	if err := clientcmd.WriteToFile(*kubeConfig, containerPath); err != nil {
+		return fmt.Errorf("writing container kubeconfig to %q: %w", containerPath, err)
+	}
+	return nil
+}
+
+// fixControlPlaneNodeLabelsFn relabels control-plane nodes from
+// "control-plane=true" (K3D default) to "control-plane=" (vanilla K8s).
+var fixControlPlaneNodeLabelsFn = fixControlPlaneNodeLabels
+
+func fixControlPlaneNodeLabels(ctx context.Context, kubeconfigPath string) error {
+	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return fmt.Errorf("building config: %w", err)
+	}
+
+	s := runtime.NewScheme()
+	_ = coreV1.AddToScheme(s)
+
+	clusterClient, err := client.New(kubeconfig, client.Options{Scheme: s})
+	if err != nil {
+		return fmt.Errorf("creating client: %w", err)
+	}
+
+	var nodeList coreV1.NodeList
+	if err := clusterClient.List(ctx, &nodeList, client.MatchingLabels{
+		"node-role.kubernetes.io/control-plane": "true",
+	}); err != nil {
+		return fmt.Errorf("listing control-plane nodes: %w", err)
+	}
+
+	for i := range nodeList.Items {
+		node := &nodeList.Items[i]
+		node.Labels["node-role.kubernetes.io/control-plane"] = ""
+		if err := clusterClient.Update(ctx, node); err != nil {
+			return fmt.Errorf("updating node %q labels: %w", node.Name, err)
+		}
+	}
 	return nil
 }
 

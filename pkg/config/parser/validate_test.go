@@ -182,7 +182,6 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			general := minimalLocalConfig("demo")
-			general.ImagePullPolicy = "IfNotPresent"
 			general.Cloud = config.CloudConfig{
 				Hetzner: &config.HetznerConfig{
 					Mode: constants.HetznerModeHCloud,
