@@ -334,7 +334,7 @@ const (
 	RepoURLObmondoKubeAid = "https://github.com/Obmondo/KubeAid"
 
 	// Public HTTPS URL for KubeAid — used by ArgoCD (read-only, no deploy key needed).
-	KubeAidPublicHTTPSURL = "git@github.com:Obmondo/KubeAid.git"
+	KubeAidPublicHTTPSURL = "https://github.com/Obmondo/KubeAid.git"
 
 	// GitHub API URL for listing KubeAid releases (used to pick latest-1).
 	KubeAidReleasesAPIURL = "https://api.github.com/repos/Obmondo/KubeAid/releases"

@@ -374,8 +374,8 @@ func promptHAControlPlane() (string, error) {
 }
 
 func promptConfigRepo(cfg *PromptedConfig) error {
-	const message = "KubeAid Config fork SSH URL:"
-	cfg.KubeaidConfigForkURL = "git@github.com:Obmondo/kubeaid-config.git"
+	const message = "KubeAid Config fork URL:"
+	cfg.KubeaidConfigForkURL = "https://github.com/Obmondo/kubeaid-config.git"
 	if err := huh.NewInput().
 		Title(message).
 		Value(&cfg.KubeaidConfigForkURL).
