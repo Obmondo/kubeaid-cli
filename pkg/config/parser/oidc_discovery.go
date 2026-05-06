@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 // oidcDiscoveryTimeout caps the pre-bootstrap discovery probe. It's
@@ -43,6 +44,18 @@ const oidcDiscoveryTimeout = 10 * time.Second
 func ValidateOIDCDiscovery(ctx context.Context) error {
 	cfg := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
 	if cfg == nil {
+		return nil
+	}
+
+	// Managed Keycloak is provisioned by THIS bootstrap run — its
+	// realm endpoint isn't reachable yet (the cluster doesn't
+	// exist; the keycloakx chart hasn't synced; cert-manager
+	// hasn't issued the TLS cert that the operator's DNS will
+	// point at). Probing here would always fail with a TLS-name
+	// mismatch (default traefik cert) or NXDOMAIN. Skip — kubeaid-cli
+	// re-probes via the in-cluster port-forward later in the
+	// bootstrap pipeline once Keycloak is actually up.
+	if kc := config.ParsedGeneralConfig.Cluster.Keycloak; kc != nil && kc.Mode == constants.KeycloakModeManaged {
 		return nil
 	}
 
