@@ -5,36 +5,26 @@ package azure
 
 import (
 	"context"
-	"log/slog"
-	"os"
+	"fmt"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) *cloud.VMSpec {
-	vmSizesListPager := a.vmSizesClient.NewListPager(
-		config.ParsedGeneralConfig.Cloud.Azure.Location,
-		nil,
-	)
+func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) (*cloud.VMSpec, error) {
+	vmSizes, err := a.listVMSizes(ctx, config.ParsedGeneralConfig.Cloud.Azure.Location)
+	if err != nil {
+		return nil, fmt.Errorf("fetching VM sizes list: %w", err)
+	}
 
-	for vmSizesListPager.More() {
-		response, err := vmSizesListPager.NextPage(ctx)
-		assert.AssertErrNil(ctx, err, "Failed fetching VM sizes list")
-
-		for _, vmSize := range response.Value {
-			if *vmSize.Name == vmType {
-				return &cloud.VMSpec{
-					CPU:    uint32(*vmSize.NumberOfCores),
-					Memory: uint32(*vmSize.MemoryInMB) / 1024,
-				}
-			}
+	for _, vmSize := range vmSizes {
+		if *vmSize.Name == vmType {
+			return &cloud.VMSpec{
+				CPU:    uint32(*vmSize.NumberOfCores),
+				Memory: uint32(*vmSize.MemoryInMB) / 1024,
+			}, nil
 		}
 	}
 
-	slog.ErrorContext(ctx, "Failed getting VM specs", slog.String("vm-type", vmType))
-	os.Exit(1)
-
-	return nil
+	return nil, fmt.Errorf("VM type %q not found", vmType)
 }

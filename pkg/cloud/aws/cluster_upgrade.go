@@ -13,7 +13,6 @@ import (
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -25,63 +24,62 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
 	name string,
 	updates any,
-) {
+) error {
 	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
-	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
+	if !ok {
+		return fmt.Errorf("wrong type of MachineTemplateUpdates object passed")
+	}
 
-	// Get the AWSMachineTemplate.
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      name,
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate)
-	assert.AssertErrNil(ctx, err, "Failed retrieving the current AWSMachineTemplate")
+	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate); err != nil {
+		return fmt.Errorf("retrieving the current AWSMachineTemplate: %w", err)
+	}
 
-	// Delete that AWSMachineTemplate.
-	err = clusterClient.Delete(ctx, awsMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(ctx, err, "Failed deleting the current AWSMachineTemplate")
+	if err := clusterClient.Delete(ctx, awsMachineTemplate, &client.DeleteOptions{}); err != nil {
+		return fmt.Errorf("deleting the current AWSMachineTemplate: %w", err)
+	}
 	slog.InfoContext(ctx, "Deleted the current AWSMachineTemplate")
-
-	// Recreate the AWSMachineTemplate, with desired updates.
 
 	awsMachineTemplate.Spec.Template.Spec.AMI.ID = &parsedUpdates.AMIID
 	awsMachineTemplate.ResourceVersion = ""
 
-	err = clusterClient.Create(ctx, awsMachineTemplate, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed recreating the AWSMachineTemplate")
+	if err := clusterClient.Create(ctx, awsMachineTemplate, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("recreating the AWSMachineTemplate: %w", err)
+	}
+
+	return nil
 }
 
-func (*AWS) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) {
+func (*AWS) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) error {
 	parsedUpdates, ok := updates.(AWSMachineTemplateUpdates)
-	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
+	if !ok {
+		return fmt.Errorf("wrong type of MachineTemplateUpdates object passed")
+	}
 
-	// Update AMI ID for the Control Plane.
 	yqCmd := yqCmdLib.New()
 	yqCmd.SetArgs([]string{
 		"--in-place", "--yaml-output", "--yaml-roundtrip",
-
 		fmt.Sprintf("(.aws.controlPlane.ami.id) = \"%s\"", parsedUpdates.AMIID),
-
 		path,
 	})
-	err := yqCmd.ExecuteContext(ctx)
-	assert.AssertErrNil(ctx, err,
-		"Failed updating AMI ID for control-plane nodes, in values-capi-cluster.yaml file",
-	)
+	if err := yqCmd.ExecuteContext(ctx); err != nil {
+		return fmt.Errorf("updating AMI ID for control-plane nodes in values-capi-cluster.yaml: %w", err)
+	}
 
-	// Update AMI ID in each node-group definition.
 	yqCmd = yqCmdLib.New()
 	yqCmd.SetArgs([]string{
 		"--in-place", "--yaml-output", "--yaml-roundtrip",
-
 		fmt.Sprintf("(.aws.nodeGroups[].ami.id) = \"%s\"", parsedUpdates.AMIID),
-
 		path,
 	})
-	err = yqCmd.ExecuteContext(ctx)
-	assert.AssertErrNil(ctx, err,
-		"Failed updating AMI ID for nodegroups, in values-capi-cluster.yaml file",
-	)
+	if err := yqCmd.ExecuteContext(ctx); err != nil {
+		return fmt.Errorf("updating AMI ID for nodegroups in values-capi-cluster.yaml: %w", err)
+	}
+
+	return nil
 }

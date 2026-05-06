@@ -16,7 +16,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -43,7 +42,7 @@ type (
 // SSH-reachable are skipped (idempotency). Since each HBMS's OS installation takes ~8-12
 // minutes regardless of others, processing them in parallel bounds total wall-clock time to
 // that of the slowest single host.
-func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
+func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 	fingerprint := hetznerConfig.SSHKeyPair.Fingerprint
@@ -58,7 +57,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 	}
 
 	if len(hosts) == 0 {
-		return
+		return nil
 	}
 
 	slog.InfoContext(ctx, "Installing OS on Hetzner Bare Metal servers in parallel",
@@ -66,17 +65,30 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) {
 		slog.String("distribution", constants.HBMSInstallDistributionLatestUbuntu),
 	)
 
-	var wg sync.WaitGroup
+	var (
+		mu   sync.Mutex
+		errs []error
+		wg   sync.WaitGroup
+	)
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(host *config.HetznerBareMetalHost) {
 			defer wg.Done()
-			h.installOSOnHBMS(ctx, host, fingerprint, privateKey)
+			if err := h.installOSOnHBMS(ctx, host, fingerprint, privateKey); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
 		}(host)
 	}
 	wg.Wait()
 
+	if len(errs) > 0 {
+		return fmt.Errorf("os installation failed on %d server(s): %v", len(errs), errs)
+	}
+
 	slog.InfoContext(ctx, "All Hetzner Bare Metal servers are ready")
+	return nil
 }
 
 // installOSOnHBMS runs the full install flow for a single HBMS: idempotency check, activate
@@ -85,25 +97,35 @@ func (h *Hetzner) installOSOnHBMS(
 	ctx context.Context,
 	host *config.HetznerBareMetalHost,
 	fingerprint, privateKey string,
-) {
+) error {
 	hbmsCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-id", host.ServerID),
 	})
 
-	address := h.getHetznerBareMetalServerIP(hbmsCtx, host.ServerID)
+	address, err := h.getHetznerBareMetalServerIP(host.ServerID)
+	if err != nil {
+		return fmt.Errorf("server %s: %w", host.ServerID, err)
+	}
 
 	if h.isHBMSReachable(hbmsCtx, address, privateKey) {
 		slog.InfoContext(hbmsCtx, "HBMS already reachable via SSH, skipping OS installation")
-		return
+		return nil
 	}
 
 	slog.InfoContext(hbmsCtx, "Installing OS on HBMS")
 
-	h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint)
-	h.resetHBMS(hbmsCtx, host.ServerID)
-	h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey)
+	if err := h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint); err != nil {
+		return fmt.Errorf("server %s: %w", host.ServerID, err)
+	}
+	if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
+		return fmt.Errorf("server %s: %w", host.ServerID, err)
+	}
+	if err := h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey); err != nil {
+		return fmt.Errorf("server %s: %w", host.ServerID, err)
+	}
 
 	slog.InfoContext(hbmsCtx, "OS installation completed, HBMS is reachable")
+	return nil
 }
 
 // activateHRobotLinuxInstallation activates a Linux installation for the given HBMS via the
@@ -112,7 +134,7 @@ func (h *Hetzner) installOSOnHBMS(
 func (h *Hetzner) activateHRobotLinuxInstallation(
 	ctx context.Context,
 	serverID, fingerprint string,
-) {
+) error {
 	distribution := constants.HBMSInstallDistributionLatestUbuntu
 
 	response, err := h.robotClient.NewRequest().
@@ -122,53 +144,52 @@ func (h *Hetzner) activateHRobotLinuxInstallation(
 			"authorized_key[]": []string{fingerprint},
 		}).
 		Post(fmt.Sprintf("/boot/%s/linux", serverID))
-	assert.AssertErrNil(ctx, err, "Failed activating Linux installation")
-	assert.Assert(ctx,
-		response.StatusCode() == http.StatusOK,
-		"Failed activating Linux installation",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return fmt.Errorf("activating Linux installation for server %s: %w", serverID, err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return fmt.Errorf("activating Linux installation for server %s: unexpected status %d", serverID, response.StatusCode())
+	}
 
 	slog.InfoContext(ctx, "Activated Linux installation",
 		slog.String("distribution", distribution),
 	)
+	return nil
 }
 
 // resetHBMS triggers a hardware reset on the given HBMS via the HRobot API.
-func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) {
+func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
 			"type": []string{constants.HRobotResetTypeHardware},
 		}).
 		Post(fmt.Sprintf("/reset/%s", serverID))
-	assert.AssertErrNil(ctx, err, "Failed resetting HBMS")
-	assert.Assert(ctx,
-		response.StatusCode() == http.StatusOK,
-		"Failed resetting HBMS",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return fmt.Errorf("resetting HBMS %s: %w", serverID, err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return fmt.Errorf("resetting HBMS %s: unexpected status %d", serverID, response.StatusCode())
+	}
 
 	slog.InfoContext(ctx, "Triggered hardware reset")
+	return nil
 }
 
 // waitForHBMSReachable polls via SSH until the HBMS becomes reachable after OS installation.
 func (h *Hetzner) waitForHBMSReachable(
 	ctx context.Context,
 	serverID, address, privateKey string,
-) {
+) error {
 	deadline := time.Now().Add(constants.HBMSOSInstallationMaxWaitTime)
 
 	for {
 		if h.isHBMSReachable(ctx, address, privateKey) {
-			return
+			return nil
 		}
 
-		assert.Assert(ctx,
-			time.Now().Before(deadline),
-			"Timed out waiting for HBMS to become reachable after OS installation",
-			slog.String("server-id", serverID),
-			slog.Duration("max-wait", constants.HBMSOSInstallationMaxWaitTime),
-		)
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out waiting for HBMS %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
+		}
 
 		slog.InfoContext(ctx, "HBMS not yet reachable after OS installation, will retry...",
 			slog.Duration("interval", constants.HBMSOSInstallationPollInterval),

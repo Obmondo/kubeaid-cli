@@ -158,10 +158,11 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 
 		// When the user wants to also upgrade the OS,
 		// make necessary cloud provider specific updates.
-		globals.CloudProvider.UpdateCapiClusterValuesFile(ctx,
+		err := globals.CloudProvider.UpdateCapiClusterValuesFile(ctx,
 			capiClusterValuesFilePath,
 			args.CloudSpecificUpdates,
 		)
+		assert.AssertErrNil(ctx, err, "Failed updating cloud provider specific values in values-capi-cluster.yaml")
 	}
 
 	// Add, commit and push the changes.
@@ -214,9 +215,10 @@ func upgradeControlPlane(ctx context.Context,
 	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
 	// immutable, we cannot update it in-place.
 	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	globals.CloudProvider.UpdateMachineTemplate(ctx,
+	err := globals.CloudProvider.UpdateMachineTemplate(ctx,
 		clusterClient, machineTemplateName, args.CloudSpecificUpdates,
 	)
+	assert.AssertErrNil(ctx, err, "Failed updating MachineTemplate for control plane")
 
 	// When the user wants a Kubernetes version upgrade,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
@@ -236,13 +238,13 @@ func upgradeControlPlane(ctx context.Context,
 
 	// Rollout the control-plane, immediately
 
-	err := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+	rolloutErr := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
 		Namespace: kubernetes.GetCapiClusterNamespace(),
 		Resources: []string{
 			fmt.Sprintf("kubeadmcontrolplane/%s", kubeadmControlPlaneName),
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed rolling out KubeadmControlPlane")
+	assert.AssertErrNil(ctx, rolloutErr, "Failed rolling out KubeadmControlPlane")
 }
 
 func upgradeNodeGroup(ctx context.Context,
@@ -268,11 +270,12 @@ func upgradeNodeGroup(ctx context.Context,
 	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
 	// immutable, we cannot update them directly.
 	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	globals.CloudProvider.UpdateMachineTemplate(ctx,
+	err := globals.CloudProvider.UpdateMachineTemplate(ctx,
 		clusterClient,
 		machineTemplateName,
 		args.CloudSpecificUpdates,
 	)
+	assert.AssertErrNil(ctx, err, "Failed updating MachineTemplate for node group")
 
 	/*
 		When the user wants a Kubernetes version upgrade,
@@ -302,11 +305,11 @@ func upgradeNodeGroup(ctx context.Context,
 	}
 
 	// Rollout the node-group, immediately.
-	err := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
+	rolloutErr := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
 		Namespace: kubernetes.GetCapiClusterNamespace(),
 		Resources: []string{
 			fmt.Sprintf("machinedeployment/%s", machineDeploymentName),
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed rolling out MachineDeployment")
+	assert.AssertErrNil(ctx, rolloutErr, "Failed rolling out MachineDeployment")
 }

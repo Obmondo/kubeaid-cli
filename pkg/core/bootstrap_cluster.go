@@ -57,7 +57,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx)
+		assert.AssertErrNil(ctx,
+			hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx),
+			"Failed provisioning prerequisite Hetzner infrastructure",
+		)
 	}
 
 	// Detect git authentication method.
@@ -84,7 +87,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
 		bar.Describe("Setting up disaster recovery")
-		globals.CloudProvider.SetupDisasterRecovery(ctx)
+		err = globals.CloudProvider.SetupDisasterRecovery(ctx)
+		assert.AssertErrNil(ctx, err, "Failed setting up disaster recovery")
 	}
 
 	// When this is part of a disaster recovery, we don't want to progress any further here,
@@ -268,7 +272,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
 
-			hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx)
+			assert.AssertErrNil(ctx, hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx),
+				"Failed pointing failover IP to the init master node")
 		}
 	}
 

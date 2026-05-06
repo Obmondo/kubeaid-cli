@@ -5,6 +5,7 @@ package hetzner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -13,35 +14,15 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) {
+func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) error {
 	allStoragePlans := make(storageplan.StoragePlans)
 
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 
-	/*
-		When the control-plane is in Hetzner bare-metal, we :
-
-		(1) Generate storage plan for the control-plane nodes.
-
-		(2) Check whether the storage plans are alike or not.
-
-		    By alikeness, I mean, on each node, the 2 disks across which the ZFS pool will be running,
-		    must be same. This makes the command to create a ZFS pool to be same across the nodes,
-		    for e.g. :
-
-		                  zpool create primary mirror /dev/nvme0n1 /dev/nvme1n1
-
-		    NOTE : For all the control-plane nodes, we have a single KubeadmControlPlane resource.
-		           And the ZFS pool creation command goes in the postKubeadm section of that resource.
-		           So, it must be same for all the nodes.
-
-		(3) Pretty print the storage plan for each node, and get approval from the user.
-	*/
 	if config.ControlPlaneInHetznerBareMetal() {
 		nodeGroupCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("node-group", "control-plane"),
@@ -56,34 +37,31 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
-			storagePlan := h.generateStoragePlan(nodeCtx,
-
+			sp, err := h.generateStoragePlan(nodeCtx,
 				host,
 				privateKey,
-
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
 				hetznerConfig.BareMetal.ZFS.Size,
 			)
-			storagePlans[i] = storagePlan
+			if err != nil {
+				return fmt.Errorf("control-plane server %s: %w", host.ServerID, err)
+			}
+			storagePlans[i] = sp
 
-			// Store WWNs of the 2 disks across which the OS will be installed,
-			// into the BareMetalHostConfig.
 			host.WWNs = []string{}
-			for _, disk := range storagePlan.OS {
+			for _, disk := range sp.OS {
 				host.WWNs = append(host.WWNs, disk.WWN)
 			}
 		}
 
-		// Check alikeness of storage plans.
-		storagePlansAlike := storageplan.AreStoragePlansAlike(storagePlans)
-		assert.Assert(nodeGroupCtx, storagePlansAlike, "Storage plans aren't alike")
+		if !storageplan.AreStoragePlansAlike(storagePlans) {
+			return fmt.Errorf("control-plane storage plans aren't alike")
+		}
 
 		allStoragePlans["control-plane"] = storagePlans
-
 		hetznerConfig.ControlPlane.BareMetal.StoragePlan = *storagePlans[0]
 	}
 
-	// We do the similar for each Hetzner Bare Metal node-group.
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 		nodeGroupCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("node-group", nodeGroup.Name),
@@ -96,49 +74,46 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
-			storagePlan := h.generateStoragePlan(nodeCtx,
-
+			sp, err := h.generateStoragePlan(nodeCtx,
 				host,
 				privateKey,
-
 				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
 				hetznerConfig.BareMetal.ZFS.Size,
 			)
-			storagePlans[i] = storagePlan
+			if err != nil {
+				return fmt.Errorf("node-group %s server %s: %w", nodeGroup.Name, host.ServerID, err)
+			}
+			storagePlans[i] = sp
 
-			// Store WWNs of the 2 disks across which the OS will be installed,
-			// into the BareMetalHostConfig.
 			host.WWNs = []string{}
-			for _, disk := range storagePlan.OS {
+			for _, disk := range sp.OS {
 				host.WWNs = append(host.WWNs, disk.WWN)
 			}
 		}
 
-		// Check alikeness of storage plans.
-		storagePlansAlike := storageplan.AreStoragePlansAlike(storagePlans)
-		assert.Assert(nodeGroupCtx, storagePlansAlike, "Storage plans aren't alike")
+		if !storageplan.AreStoragePlansAlike(storagePlans) {
+			return fmt.Errorf("node-group %s storage plans aren't alike", nodeGroup.Name)
+		}
 
 		allStoragePlans[nodeGroup.Name] = storagePlans
-
 		nodeGroup.StoragePlan = *storagePlans[0]
 	}
 
 	allStoragePlans.GetApproval(ctx)
+	return nil
 }
 
-// Generates and returns storage-plan for the given Hetzner Bare Metal server.
 func (h *Hetzner) generateStoragePlan(ctx context.Context,
-
 	host *config.HetznerBareMetalHost,
 	privateKey string,
-
 	osSize,
 	zfsPoolSize int,
-) *storageplan.StoragePlan {
-	// Fetch the server's public IPv4 address.
-	address := h.getHetznerBareMetalServerIP(ctx, host.ServerID)
+) (*storageplan.StoragePlan, error) {
+	address, err := h.getHetznerBareMetalServerIP(host.ServerID)
+	if err != nil {
+		return nil, fmt.Errorf("getting server IP: %w", err)
+	}
 
-	// Open an SSH connection to the server.
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
 		Context: ctx,
 
@@ -149,20 +124,22 @@ func (h *Hetzner) generateStoragePlan(ctx context.Context,
 
 		Timeout: time.Second * 10,
 	})
-	assert.AssertErrNil(ctx, err, "Failed opening SSH connection")
+	if err != nil {
+		return nil, fmt.Errorf("opening SSH connection to %s: %w", address, err)
+	}
 	defer connection.Close()
 
 	commandExecutor := commandexecutor.NewSSHCommandExecutor(connection)
 
-	storagePlan, err := storageplanner.GenerateStoragePlan(ctx,
-
+	sp, err := storageplanner.GenerateStoragePlan(ctx,
 		host.ServerID,
 		commandExecutor,
-
 		osSize,
 		zfsPoolSize,
 	)
-	assert.AssertErrNil(ctx, err, "Failed generating storage plan")
+	if err != nil {
+		return nil, fmt.Errorf("generating storage plan: %w", err)
+	}
 
-	return storagePlan
+	return sp, nil
 }

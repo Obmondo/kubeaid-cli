@@ -196,13 +196,18 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	// Set cloud provider specific values.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		templateValues.AWSAccountID = aws.GetAccountID(ctx)
+		accountID, accountErr := aws.GetAccountID(ctx)
+		assert.AssertErrNil(ctx, accountErr, "Failed getting AWS account ID")
+
+		templateValues.AWSAccountID = accountID
 		templateValues.AWSB64EncodedCredentials = os.Getenv(
 			constants.EnvNameAWSB64EcodedCredentials,
 		)
 
 	case constants.CloudProviderAzure:
-		templateValues.ServiceAccountIssuerURL = azure.GetServiceAccountIssuerURL(ctx)
+		saIssuerURL, saErr := azure.GetServiceAccountIssuerURL()
+		assert.AssertErrNil(ctx, saErr, "Failed getting Azure ServiceAccount issuer URL")
+		templateValues.ServiceAccountIssuerURL = saIssuerURL
 	}
 
 	hetznerConfig := templateValues.HetznerConfig

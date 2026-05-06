@@ -21,8 +21,8 @@ var (
 	// Without a configured hostname, its private IP is rendered as the control-plane endpoint.
 	// With a configured hostname, the hostname is rendered as the endpoint and temporarily
 	// resolves to this LB's public IP during bootstrap, then to this private IP afterward.
-	ControlPlaneLBPrivateIP  string
-	ControlPlaneHostname    string
+	ControlPlaneLBPrivateIP         string
+	ControlPlaneHostname            string
 	ControlPlaneLBBootstrapPublicIP string
 
 	ArgoCDApplicationClientCloser io.Closer

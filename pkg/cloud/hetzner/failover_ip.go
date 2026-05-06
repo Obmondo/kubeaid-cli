@@ -6,6 +6,7 @@ package hetzner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -22,12 +23,11 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) {
+func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) error {
 	/*
 		A Failover IP is an additional IP that you can switch from one server to another. You can order
 		it for any Hetzner dedicated root server, and you can switch it to any other Hetzner dedicated
@@ -43,26 +43,30 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) {
 
 	failoverIP := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.Host
 
-	// Get IP address of the server, to which the Failover IP is currently pointing.
-	activeServerIP := h.getActiveServerIP(ctx, failoverIP)
+	activeServerIP, err := h.getActiveServerIP(failoverIP)
+	if err != nil {
+		return fmt.Errorf("getting active server IP for failover IP: %w", err)
+	}
 	slog.InfoContext(ctx,
 		"Detected active server IP for failover IP",
 		slog.String("ip", activeServerIP),
 	)
 
-	// Detect the 'init master node' IP.
-	// 'init master node' is the first master node, where 'kubeadm init' is executed.
-	initMasterNodeIP := getInitMasterNodeIP(ctx)
-
-	// The failover IP is already pointing to the 'init master node'.
-	// So, we don't need to do anything.
-	if activeServerIP == initMasterNodeIP {
-		slog.InfoContext(ctx, "Failover IP is already pointing to the 'init master node'")
-		return
+	initMasterNodeIP, err := getInitMasterNodeIP(ctx)
+	if err != nil {
+		return fmt.Errorf("detecting init master node IP: %w", err)
 	}
 
-	// Otherwise, make the Failover IP point to the 'init master node'.
-	h.pointFailoverIPTo(ctx, failoverIP, initMasterNodeIP)
+	if activeServerIP == initMasterNodeIP {
+		slog.InfoContext(ctx, "Failover IP is already pointing to the 'init master node'")
+		return nil
+	}
+
+	if err := h.pointFailoverIPTo(ctx, failoverIP, initMasterNodeIP); err != nil {
+		return fmt.Errorf("pointing failover IP to init master node: %w", err)
+	}
+
+	return nil
 }
 
 type (
@@ -75,46 +79,45 @@ type (
 	}
 )
 
-// Returns the IP address of the server, the given Failover IP is pointing to.
-func (h *Hetzner) getActiveServerIP(ctx context.Context, failoverIP string) string {
+func (h *Hetzner) getActiveServerIP(failoverIP string) (string, error) {
 	response, err := h.robotClient.NewRequest().Get("/failover/" + failoverIP)
-
-	assert.AssertErrNil(ctx, err, "Failed getting Failover IP details")
-	assert.Assert(ctx, response.StatusCode() == http.StatusOK, "Failed getting Failover IP details")
+	if err != nil {
+		return "", fmt.Errorf("requesting failover IP details: %w", err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return "", fmt.Errorf("unexpected status %d when getting failover IP details", response.StatusCode())
+	}
 
 	var unmarshalledResponse GetFailoverIPDetailsResponse
-	err = json.Unmarshal(response.Body(), &unmarshalledResponse)
-	assert.AssertErrNil(ctx, err, "Failed unmarshalling Failover IP details")
+	if err := json.Unmarshal(response.Body(), &unmarshalledResponse); err != nil {
+		return "", fmt.Errorf("unmarshalling failover IP details: %w", err)
+	}
 
-	return unmarshalledResponse.Failover.ActiveServerIP
+	return unmarshalledResponse.Failover.ActiveServerIP, nil
 }
 
-// Returns the public IP of the 'init master node'.
-func getInitMasterNodeIP(ctx context.Context) string {
-	// Construct cluster client.
+func getInitMasterNodeIP(ctx context.Context) (string, error) {
 	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
 	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
-	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
+	if err != nil {
+		return "", fmt.Errorf("constructing Kubernetes cluster client: %w", err)
+	}
 
 	var initMasterNodeIP string
 
-	_ = wait.PollUntilContextCancel(ctx, 5*time.Second, false,
+	pollErr := wait.PollUntilContextCancel(ctx, 5*time.Second, false,
 		func(ctx context.Context) (bool, error) {
-			// Get the HetznerBareMetalMachines.
 			hetznerBareMetalMachines := &caphV1Beta1.HetznerBareMetalMachineList{}
-			err := clusterClient.List(ctx, hetznerBareMetalMachines, &client.ListOptions{
+			if err := clusterClient.List(ctx, hetznerBareMetalMachines, &client.ListOptions{
 				Namespace: kubernetes.GetCapiClusterNamespace(),
-			})
-			assert.AssertErrNil(ctx, err, "Failed listing HetznerBareMetalMachines")
+			}); err != nil {
+				return false, fmt.Errorf("listing HetznerBareMetalMachines: %w", err)
+			}
 
-			// Any HetznerBareMetalMachine has still not been created.
-			// Wait for sometime and check again.
 			if len(hetznerBareMetalMachines.Items) == 0 {
 				return false, nil
 			}
 
-			// Filter out the HetznerBareMetalMachines corresponding to worker nodes.
-			// They won't have the cluster.x-k8s.io/control-plane label.
 			hetznerBareMetalMachines.Items = slices.DeleteFunc(hetznerBareMetalMachines.Items,
 				func(hetznerBareMetalMachine caphV1Beta1.HetznerBareMetalMachine) bool {
 					_, exists := hetznerBareMetalMachine.Labels[clusterAPIV1Beta1.MachineControlPlaneLabel]
@@ -122,8 +125,6 @@ func getInitMasterNodeIP(ctx context.Context) string {
 				},
 			)
 
-			// Sort the HetznerBareMetalMachines in ascending order, by the time of creation.
-			// The oldest HetznerBareMetalMachine corresponds to the 'init master node'.
 			sort.Slice(hetznerBareMetalMachines.Items, func(i, j int) bool {
 				a := hetznerBareMetalMachines.Items[i]
 				b := hetznerBareMetalMachines.Items[j]
@@ -132,9 +133,6 @@ func getInitMasterNodeIP(ctx context.Context) string {
 			})
 
 			initMasterNodeHetznerBareMetalMachine := hetznerBareMetalMachines.Items[0]
-
-			// Now, that we have detected the HetznerBareMetalMachine that corresponds to the 'init master node',
-			// let's get the corresponding HetznerBareMetalHost.
 
 			hostAnnotation, ok := initMasterNodeHetznerBareMetalMachine.Annotations[caphV1Beta1.HostAnnotation]
 			if !ok {
@@ -149,14 +147,13 @@ func getInitMasterNodeIP(ctx context.Context) string {
 					Name:      hostAnnotationParts[1],
 				},
 			}
-			err = kubernetes.GetKubernetesResource(
+			if err := kubernetes.GetKubernetesResource(
 				ctx,
 				clusterClient,
 				initMasterNodeHetznerBareMetalHost,
-			)
-			assert.AssertErrNil(ctx, err,
-				"Failed getting HetznerBareMetalHost corresponding to the 'init master node'",
-			)
+			); err != nil {
+				return false, fmt.Errorf("getting HetznerBareMetalHost for init master node: %w", err)
+			}
 
 			initMasterNodeIP = initMasterNodeHetznerBareMetalHost.Spec.Status.IPv4
 			if len(initMasterNodeIP) == 0 {
@@ -166,12 +163,18 @@ func getInitMasterNodeIP(ctx context.Context) string {
 			return true, nil
 		},
 	)
+	if pollErr != nil {
+		return "", fmt.Errorf("polling for init master node IP: %w", pollErr)
+	}
 
-	return initMasterNodeIP
+	if initMasterNodeIP == "" {
+		return "", fmt.Errorf("init master node IP is empty after polling completed")
+	}
+
+	return initMasterNodeIP, nil
 }
 
-// Makes the Failover IP point to the given server.
-func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServerIP string) {
+func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServerIP string) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-ip", targetServerIP),
 	})
@@ -181,13 +184,13 @@ func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServe
 			"active_server_ip": targetServerIP,
 		}).
 		Post("/failover/" + failoverIP)
-
-	assert.AssertErrNil(ctx, err, "Failed pointing the Failover IP to the given server IP")
-	assert.Assert(ctx,
-		(response.StatusCode() == http.StatusOK),
-		"Failed pointing the Failover IP to the given server IP",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return fmt.Errorf("posting failover IP switch request: %w", err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return fmt.Errorf("unexpected status %d when pointing failover IP to server %s", response.StatusCode(), targetServerIP)
+	}
 
 	slog.InfoContext(ctx, "Successfully pointed the Failover IP to the given server IP")
+	return nil
 }

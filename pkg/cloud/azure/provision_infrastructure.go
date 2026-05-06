@@ -18,19 +18,24 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-// Installs CrossPlane.
-// And then provisions required infrastructure for Azure Workload Identity and Disaster Recovery,
+var newCommandExecutorFn = func() commandexecutor.CommandExecutor {
+	return commandexecutor.NewLocalCommandExecutor(false)
+}
+
+// ProvisionInfrastructure installs CrossPlane and then provisions
+// required infrastructure for Azure Workload Identity and Disaster Recovery
 // using CrossPlane.
-func (*Azure) ProvisionInfrastructure(ctx context.Context) {
+func (a *Azure) ProvisionInfrastructure(ctx context.Context) error {
 	// Create Composite Resource (XR) Claims,
 	// to provision the Azure Workload Identity and Disaster Recovery infrastructure.
-	err := kubernetes.SyncArgoCDApp(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
-	assert.AssertErrNil(ctx, err, "Failed syncing infrastructure ArgoCD app")
+	err := syncArgoCDAppFn(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
+	if err != nil {
+		return fmt.Errorf("syncing infrastructure ArgoCD app: %w", err)
+	}
 
 	// Wait until the infrastructure is provisioned.
 	// This can be done, by waiting until all the created XRClaims, have their status marked as
@@ -41,10 +46,15 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		xrClaims = append(xrClaims, "disasterrecoveryinfrastructure/default")
 	}
 
-	err = wait.PollUntilContextCancel(ctx, time.Minute, false,
+	pollInterval := a.pollInterval
+	if pollInterval == 0 {
+		pollInterval = time.Minute
+	}
+
+	err = wait.PollUntilContextCancel(ctx, pollInterval, false,
 		func(ctx context.Context) (done bool, err error) {
 			for _, xrClaim := range xrClaims {
-				output, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,
+				output, err := newCommandExecutorFn().Execute(ctx,
 					fmt.Sprintf(
 						`
               kubectl get %s \
@@ -62,7 +72,9 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 			return true, nil
 		},
 	)
-	assert.AssertErrNil(ctx, err, "Failed waiting for infrastructures to be provisioned")
+	if err != nil {
+		return fmt.Errorf("waiting for infrastructures to be provisioned: %w", err)
+	}
 
 	/*
 		Recreate the Role Assignments.
@@ -94,10 +106,11 @@ func (*Azure) ProvisionInfrastructure(ctx context.Context) {
 		  (2) Wait for the proper RoleAssignments to be created.
 	*/
 	slog.InfoContext(ctx, "Recreating UAMI RoleAssignments")
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
+	newCommandExecutorFn().MustExecute(ctx,
 		"kubectl delete roleassignments.authorization.azure.upbound.io -l 'uami in (capi, velero)'")
 
 	slog.InfoContext(ctx, "Required infrastructures have been provisioned using CrossPlane")
+	return nil
 }
 
 /*
@@ -113,10 +126,10 @@ Retrieves details about the infrastructure provisioned using CrossPlane.
 	    REFER : Write connection details requests in CrossPlane Managed Resources, Compositions
 	            and Composite Resource (XR) Claims.
 */
-func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client.Client) {
+func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client.Client) error {
 	// Retrieve resource specific non-secret details.
 
-	globals.CAPIUAMIClientID = commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
+	globals.CAPIUAMIClientID = newCommandExecutorFn().MustExecute(ctx, `
     kubectl get userassignedidentities \
       -l "uami=capi" \
       -n crossplane \
@@ -124,7 +137,7 @@ func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client
   `)
 
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-		globals.VeleroUAMIClientID = commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, `
+		globals.VeleroUAMIClientID = newCommandExecutorFn().MustExecute(ctx, `
       kubectl get userassignedidentities \
         -l "uami=velero" \
         -n crossplane \
@@ -145,12 +158,15 @@ func (*Azure) GetInfrastructureDetails(ctx context.Context, clusterClient client
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient,
 		storageAccountConnectionDetailsSecret,
 	)
-	assert.AssertErrNil(ctx, err,
-		"Failed getting Kubernetes Secret containing storage account connection details",
-	)
+	if err != nil {
+		return fmt.Errorf("getting Kubernetes Secret containing storage account connection details: %w", err)
+	}
 
 	encodedAzureStorageAccountAccessKey, ok := storageAccountConnectionDetailsSecret.Data["attribute.primary_access_key"]
-	assert.Assert(ctx, ok, "Primary access key not found in storage account connection details")
+	if !ok {
+		return fmt.Errorf("primary access key not found in storage account connection details")
+	}
 
 	globals.AzureStorageAccountAccessKey = string(encodedAzureStorageAccountAccessKey)
+	return nil
 }

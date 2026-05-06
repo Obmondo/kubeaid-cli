@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -35,61 +34,83 @@ type (
 	}
 )
 
+type IAMAPI interface {
+	CreatePolicy(ctx context.Context, params *iam.CreatePolicyInput, optFns ...func(*iam.Options)) (*iam.CreatePolicyOutput, error)
+	CreateRole(ctx context.Context, params *iam.CreateRoleInput, optFns ...func(*iam.Options)) (*iam.CreateRoleOutput, error)
+	AttachRolePolicy(ctx context.Context, params *iam.AttachRolePolicyInput, optFns ...func(*iam.Options)) (*iam.AttachRolePolicyOutput, error)
+}
+
 // CreateIAMRoleForPolicy creates an IAM role with the given IAM policy. It also links an IAM trust
 // policy for the IAM role, so it can be assumed by the nodes of the provisioned Kubernetes
 // cluster.
 func CreateIAMRoleForPolicy(ctx context.Context,
 	accountID string,
-	iamClient *iam.Client,
+	iamClient IAMAPI,
 	name string,
 	policyDocument,
 	assumePolicyDocument PolicyDocument,
-) {
+) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("iam-role", name),
 	})
 
 	iamPath := fmt.Sprintf("/%s/", config.ParsedGeneralConfig.Cluster.Name)
 
-	// Create the IAM policy.
-	_, err := iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
+	policyDocStr, err := jsonMarshalIAMPolicyDocument(policyDocument)
+	if err != nil {
+		return fmt.Errorf("marshalling IAM policy document: %w", err)
+	}
+
+	_, err = iamClient.CreatePolicy(ctx, &iam.CreatePolicyInput{
 		PolicyName:     &name,
-		PolicyDocument: jsonMarshalIAMPolicyDocument(ctx, policyDocument),
+		PolicyDocument: policyDocStr,
 		Path:           &iamPath,
 	})
-	if err != nil && strings.Contains(err.Error(), "already exists") {
+	switch {
+	case err != nil && strings.Contains(err.Error(), "already exists"):
 		slog.InfoContext(ctx, "IAM Policy already exists")
-	} else {
-		assert.AssertErrNil(ctx, err, "Failed creating IAM Policy")
+	case err != nil:
+		return fmt.Errorf("creating IAM Policy: %w", err)
+	default:
 		slog.InfoContext(ctx, "Created IAM Policy")
 	}
 
-	// Create IAM Role (with IAM Trust Policy, so it can be assumed).
+	assumePolicyDocStr, err := jsonMarshalIAMPolicyDocument(assumePolicyDocument)
+	if err != nil {
+		return fmt.Errorf("marshalling IAM trust policy document: %w", err)
+	}
+
 	_, err = iamClient.CreateRole(ctx, &iam.CreateRoleInput{
 		RoleName:                 &name,
-		AssumeRolePolicyDocument: jsonMarshalIAMPolicyDocument(ctx, assumePolicyDocument),
+		AssumeRolePolicyDocument: assumePolicyDocStr,
 		Path:                     &iamPath,
 	})
-	if err != nil && strings.Contains(err.Error(), "already exists") {
+	switch {
+	case err != nil && strings.Contains(err.Error(), "already exists"):
 		slog.InfoContext(ctx, "IAM Role already exists")
-	} else {
-		assert.AssertErrNil(ctx, err, "Failed creating IAM Role")
+	case err != nil:
+		return fmt.Errorf("creating IAM Role: %w", err)
+	default:
 		slog.InfoContext(ctx, "Created IAM Role")
 	}
 
-	// Link the IAM Role and Policy
 	_, err = iamClient.AttachRolePolicy(ctx, &iam.AttachRolePolicyInput{
 		RoleName:  &name,
 		PolicyArn: aws.String(fmt.Sprintf("arn:aws:iam::%s:policy%s%s", accountID, iamPath, name)),
 	})
-	assert.AssertErrNil(ctx, err, "Failed attaching IAM Role and Policy")
+	if err != nil {
+		return fmt.Errorf("attaching IAM Role and Policy: %w", err)
+	}
 	slog.InfoContext(ctx, "Attached IAM Role and Policy")
+
+	return nil
 }
 
-// JSON marshals the given IAM Policy document and returns the result.
-func jsonMarshalIAMPolicyDocument(ctx context.Context, policyDocument PolicyDocument) *string {
+func jsonMarshalIAMPolicyDocument(policyDocument PolicyDocument) (*string, error) {
 	policyDocumentAsBytes, err := json.Marshal(policyDocument)
-	assert.AssertErrNil(ctx, err, "Failed JSON marshalling IAM Policy document")
+	if err != nil {
+		return nil, fmt.Errorf("marshalling IAM policy document: %w", err)
+	}
 
-	return aws.String(string(policyDocumentAsBytes))
+	return aws.String(string(policyDocumentAsBytes)), nil
 }

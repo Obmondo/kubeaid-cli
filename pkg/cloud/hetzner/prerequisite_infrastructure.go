@@ -5,6 +5,7 @@ package hetzner
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -13,87 +14,89 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
-// Provisions infrastructure required before CAPH starts spinning up the cluster.
-func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
+// ProvisionPrerequisiteInfrastructure provisions infrastructure required before CAPH starts
+// spinning up the cluster.
+//
+//nolint:gocognit,nestif
+func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
-	// HBMS-specific steps (SSH key registration with HRobot, OS install, storage plans) must
-	// run for any mode that includes bare-metal hosts: pure "bare-metal" and "hybrid". They
-	// don't depend on Hetzner Network / VSwitch.
 	if config.UsingHetznerBareMetal() {
 		sshKeyPair := hetznerConfig.SSHKeyPair
-		h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig)
+		if err := h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
+			return fmt.Errorf("creating Hetzner Bare Metal SSH key: %w", err)
+		}
 
-		// Install the OS on each HBMS (if not already installed).
-		// This activates a Linux installation via the HRobot API, triggers a hardware
-		// reset, and waits until the HBMS is reachable via SSH.
-		h.InstallOSOnAllHBMS(ctx)
+		if err := h.InstallOSOnAllHBMS(ctx); err != nil {
+			return fmt.Errorf("installing OS on HBMS: %w", err)
+		}
 
-		// Generate storage plan for the control-plane and each node-group.
-		h.GenerateStoragePlans(ctx, hetznerConfig)
+		if err := h.GenerateStoragePlans(ctx, hetznerConfig); err != nil {
+			return fmt.Errorf("generating storage plans: %w", err)
+		}
 
-		// Apply node labels derived from the storage plan
 		hydrateNodeGroupLabels(hetznerConfig)
 	}
 
-	// Hetzner Network / VSwitch are only needed when HCloud is in the picture (mode = hcloud
-	// or hybrid). In pure bare-metal mode there is no Hetzner Network
 	if hetznerConfig.Mode == constants.HetznerModeBareMetal {
-		return
+		return nil
 	}
 
-	// From here, mode == "hcloud" || mode == "hybrid".
-	// And, in both the cases, the control-plane will be in HCloud.
-
-	// Ensure that the Hetzner Network is created.
-	network := h.CreateNetwork(ctx)
+	network, err := h.CreateNetwork(ctx)
+	if err != nil {
+		return fmt.Errorf("creating Hetzner Network: %w", err)
+	}
 
 	if config.UsingHCloud() {
-		// Create the SSH key in HCloud, if it doesn't already exist.
 		sshKeyPair := hetznerConfig.SSHKeyPair
-		h.CreateHCloudSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig)
+		if err := h.CreateHCloudSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
+			return fmt.Errorf("creating HCloud SSH key: %w", err)
+		}
 
-		// Ensure that a NAT Gateway exists.
-		h.CreateNATGateway(ctx, network.ID)
+		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
+			return fmt.Errorf("creating NAT gateway: %w", err)
+		}
 	}
 
 	if config.UsingHetznerBareMetal() {
-		// Ensure that the required VSwitch is created.
-		vswitchID := h.CreateVSwitch(ctx)
+		vswitchID, err := h.CreateVSwitch(ctx)
+		if err != nil {
+			return fmt.Errorf("creating VSwitch: %w", err)
+		}
 
-		// Ensure that the VSwitch is connected to that Hetzner Network.
-		h.ConnectVSwitchWithHetznerNetwork(ctx, network)
-
-		// Ensure that the Hetzner Bare Metal servers are attached to the VSwitch.
+		if err := h.ConnectVSwitchWithHetznerNetwork(ctx, network); err != nil {
+			return fmt.Errorf("connecting VSwitch with Hetzner Network: %w", err)
+		}
 
 		if config.ControlPlaneInHetznerBareMetal() {
 			for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
-				h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID)
+				if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
+					return fmt.Errorf("attaching control-plane server %s to VSwitch: %w", host.ServerID, err)
+				}
 			}
 		}
 
 		for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 			for _, host := range nodeGroup.BareMetalHosts {
-				h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID)
+				if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
+					return fmt.Errorf("attaching node-group server %s to VSwitch: %w", host.ServerID, err)
+				}
 			}
 		}
 	}
 
 	if hetznerConfig.HCloudVPNCluster != nil {
-		// Ensure that the HCloud servers corresponding to the VPN cluster are attached to that
-		// Hetzner Network.
-		serverIDs := h.GetHCloudServerIDsForCluster(ctx,
+		serverIDs, err := h.GetHCloudServerIDsForCluster(ctx,
 			hetznerConfig.HCloudVPNCluster.Name,
 		)
-		for _, serverID := range serverIDs {
-			h.AttachHCloudServerToNetwork(ctx, serverID, network.ID)
+		if err != nil {
+			return fmt.Errorf("getting VPN cluster server IDs: %w", err)
 		}
-
-		// Ensure that the LoadBalancer corresponding to the Kubernetes API server is created and
-		// attached to the Hetzner Network. Without a configured hostname, the private IP of this
-		// LoadBalancer is rendered as the CAPI/Cilium endpoint. With a configured hostname,
-		// kubeaid-cli renders the hostname and uses the public LB IP only as temporary bootstrap
-		// DNS resolution.
+		for _, serverID := range serverIDs {
+			if err := h.AttachHCloudServerToNetwork(ctx, serverID, network.ID); err != nil {
+				return fmt.Errorf("attaching HCloud server %d to network: %w", serverID, err)
+			}
+		}
 
 		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint
 		loadBalancer := h.CreateLB(ctx,
@@ -106,13 +109,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 		globals.ControlPlaneLBPrivateIP = loadBalancer.PrivateNet[0].IP.String()
 		globals.ControlPlaneHostname = controlPlaneHostname
 
-		// During the bootstrap window the LB is publicly reachable
-		// at loadBalancer.PublicNet.IPv4.IP — operators hit that
-		// IP directly until NetBird is up, after which kube-api is
-		// reached via the LB's private IP through the mesh. DNS
-		// resolution for the configured hostname (cert SAN, kubeconfig
-		// server) is the operator's responsibility — kubeaid-cli does
-		// not modify /etc/hosts.
 		if controlPlaneHostname != "" {
 			assert.Assert(ctx,
 				loadBalancer.PublicNet.Enabled && loadBalancer.PublicNet.IPv4.IP != nil,
@@ -123,4 +119,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 			globals.ControlPlaneLBBootstrapPublicIP = loadBalancer.PublicNet.IPv4.IP.String()
 		}
 	}
+
+	return nil
 }

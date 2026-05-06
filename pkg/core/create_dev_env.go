@@ -33,8 +33,11 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		aws.SetAWSSpecificEnvs(ctx)
-		aws.CreateIAMCloudFormationStack(ctx)
+		err := aws.SetAWSSpecificEnvs(ctx)
+		assert.AssertErrNil(ctx, err, "Failed setting AWS specific environment variables")
+
+		err = aws.CreateIAMCloudFormationStack(ctx)
+		assert.AssertErrNil(ctx, err, "Failed creating IAM CloudFormation stack")
 	}
 
 	// Ensure that the KubeAid Config repo is cloned locally.
