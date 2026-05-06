@@ -135,6 +135,13 @@ type TemplateValues struct {
 	// the same identifiers without hardcoding strings in YAML.
 	NetBirdClientID        string
 	NetBirdBackendClientID string
+
+	// NetBirdPostgresDSN is the libpq URI Mgmt uses to connect to
+	// the CNPG-managed Postgres. Empty on the very first render
+	// (CNPG hasn't generated the password yet); patched into the
+	// in-cluster Secret post-sync, then read-back here on
+	// subsequent runs so the SealedSecret in git stays correct.
+	NetBirdPostgresDSN string
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -249,6 +256,19 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		)
 		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird TURN password")
 		templateValues.NetBirdTurnPassword = turnPwd
+
+		// postgresDSN is CNPG-generated and only available in-cluster
+		// after the netbird-pgsql Cluster CR is reconciled. On the
+		// first kubeaid-cli run the Secret doesn't have the key yet
+		// → render an empty string; bootstrap_cluster.go's
+		// patchNetBirdPostgresDSN step fills it in post-sync. On
+		// re-runs the patched value is read back here so the
+		// SealedSecret in git stays in sync.
+		templateValues.NetBirdPostgresDSN = readSecretValueOrEmpty(ctx, clusterClient,
+			constants.NamespaceNetBird,
+			constants.SecretNameNetBird,
+			constants.SecretKeyNetBirdPostgresDSN,
+		)
 
 		templateValues.NetBirdClientID = constants.NetBirdClientID
 		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID

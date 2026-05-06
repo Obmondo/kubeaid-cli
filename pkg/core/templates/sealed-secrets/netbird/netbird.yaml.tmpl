@@ -9,10 +9,11 @@ stringData:
   idpClientMgmtID: {{ .NetBirdBackendClientID }}
   idpClientMgmtSecret: {{ .NetBirdBackendClientSecret }}
   idpServiceAccountUser: service-account-{{ .NetBirdBackendClientID }}
+  idpServiceAccountPassword: ""
   datastoreEncryptionKey: {{ .NetBirdDatastoreKey }}
   relayPassword: {{ .NetBirdRelayPassword }}
   stunServer: stun:{{ .NetBird.StunDNS }}:3478
   turnServer: turn:{{ .NetBird.TurnDNS }}:3478
   turnServerUser: {{ .NetBird.TurnUser }}
   turnServerPassword: {{ .NetBirdTurnPassword }}
-  postgresDSN: ""
+  postgresDSN: {{ .NetBirdPostgresDSN | quote }}
