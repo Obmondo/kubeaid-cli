@@ -1,15 +1,28 @@
-# Keycloak bootstrap — managed Keycloak on a VPN cluster
+# Keycloak bootstrap on a VPN cluster
 
 > Companion to [netbird-vpn-architecture.md](./netbird-vpn-architecture.md).
 > That doc covers what NetBird + Keycloak give end users; this one covers
-> *how* `kubeaid-cli bootstrap` provisions Keycloak's realm + clients on
-> a VPN cluster, and how workload clusters join that Keycloak.
+> *how* `kubeaid-cli bootstrap` provisions (or wires up) Keycloak's realm
+> + clients on a VPN cluster, and how workload clusters join that Keycloak.
+
+VPN clusters can run in either of two Keycloak modes, set via
+`cluster.keycloak.mode` in `general.yaml`:
+
+| mode | what kubeaid-cli does | who runs Keycloak |
+|---|---|---|
+| `managed` | installs Keycloak via the keycloakx chart, generates the admin password, runs the gocloak realm reconciler post-sync | this cluster (kubeaid-cli) |
+| `external` | configures kube-apiserver / NetBird Mgmt to trust an existing Keycloak; the realm + clients must be set up by hand before bootstrap | operator (somewhere else) |
+
+Most of this doc covers managed mode — that's the path most operators
+take. The [External Keycloak mode](#external-keycloak-mode) section
+calls out exactly which steps differ when the operator brings their
+own Keycloak.
 
 ## What this design has to do
 
 When a customer runs `kubeaid-cli bootstrap` against `cluster.type=vpn` with managed Keycloak:
 
-1. Stand Keycloak up on the cluster (the existing [`keycloakx`](https://gitea.obmondo.com/EnableIT/kubeaid/src/branch/main/argocd-helm-charts/keycloakx) Helm chart) backed by CloudNativePG.
+1. Stand Keycloak up on the cluster (the existing [`keycloakx`](https://github.com/Obmondo/KubeAid/tree/master/argocd-helm-charts/keycloakx) Helm chart) backed by CloudNativePG.
 2. Create a realm named after the customer's domain, populated with NetBird's OIDC clients and a `kubernetes-<vpn-cluster>` client for kubelogin.
 3. Hand NetBird Mgmt the credentials it needs to talk to Keycloak.
 
@@ -184,6 +197,90 @@ The trade-off: rolling-update latency (~10-15 min on a 3-node HA control plane; 
 10. ArgoCD syncs apps; NetBird host agents on every node join parent's mesh
 ```
 
+## External Keycloak mode
+
+When the operator already runs Keycloak elsewhere (corporate IdP,
+existing SSO instance), set `cluster.keycloak.mode: external` in
+`general.yaml`. kubeaid-cli still installs the surrounding stack — cnpg
+(for NetBird's Postgres), traefik, the LE ClusterIssuer, the netbird +
+netbird-turn-credentials SealedSecrets, the NetBird Mgmt + Signal +
+Relay + Dashboard + Coturn ArgoCD app — but skips everything that
+talks to Keycloak as an installer or admin:
+
+|  | managed | external |
+|---|---|---|
+| keycloakx chart rendered | ✓ | — |
+| keycloak-admin SealedSecret | ✓ | — |
+| Post-sync gocloak realm reconcile | ✓ | — |
+| netbird Secret rendered | ✓ | ✓ |
+| postgres DSN patch | ✓ | ✓ |
+| NetBird Mgmt + Signal + Relay + Dashboard + Coturn | ✓ | ✓ |
+| traefik + cert-manager LE issuer | ✓ | ✓ |
+
+### Operator prerequisites
+
+The realm + OIDC clients have to exist in the external Keycloak
+**before** bootstrap runs — otherwise NetBird Mgmt can't complete its
+client_credentials flow and kube-apiserver rejects every JWT for an
+unknown issuer. The exact list of resources is documented next to the
+chart that consumes them:
+
+  [`kubeaid/argocd-helm-charts/netbird/README.md`](https://github.com/Obmondo/KubeAid/blob/master/argocd-helm-charts/netbird/README.md#keycloak-realm-prerequisites) — *"Keycloak realm prerequisites"*
+
+That section enumerates the three OIDC clients (`netbird-client`
+public PKCE, `netbird-backend` confidential + service-account-enabled,
+`kubernetes-<cluster-name>` public PKCE), the `api` client scope, the
+audience mapper, and the `view-users` role grant on
+`netbird-backend`'s service account — i.e. exactly what the gocloak
+reconciler creates in managed mode.
+
+### Configuring kubeaid-cli for external mode
+
+In `general.yaml`:
+
+```yaml
+cluster:
+  type: vpn
+  acmeEmail: ops@acme.com
+  keycloak:
+    mode: external
+    dns: auth.acme.com         # operator's existing Keycloak public DNS
+    realm: acme                # the realm they created the clients in
+  netbird:
+    dns: netbird.vpn.acme.com  # NetBird Mgmt's public DNS (this cluster)
+```
+
+In `secrets.yaml` — kubeaid-cli has no way to mint or look up the
+client secret in an external Keycloak, so the operator hands it over:
+
+```yaml
+keycloak:
+  netBirdBackendClientSecret: <copy from external Keycloak admin UI>
+```
+
+The validator rejects bootstrap with a clear error when this is
+missing; no chance of a silent "everything synced but NetBird Mgmt
+can't talk to Keycloak" failure mode.
+
+### Phase 0 differences
+
+Steps 4-12 of the managed-mode sequence collapse: kubeaid-cli skips
+the keycloakx app render, the admin Secret, the port-forward to the
+in-cluster Keycloak, and the gocloak Reconcile* calls. Step 6's git
+push still goes out (with the netbird SealedSecret using the
+operator-supplied client secret), step 7 syncs cnpg + traefik + the
+NetBird ArgoCD app, and step 13's NetBird Mgmt comes up directly
+against the external Keycloak.
+
+### Phase 1 (workload clusters joining the mesh)
+
+Identical to managed mode in shape — the workload cluster's kube-apiserver
+trusts the same external Keycloak issuer URL set in `apiServer.oidc`.
+kubeaid-cli does NOT port-forward into the parent's Keycloak; the
+operator instead creates the workload's `kubernetes-<cluster>` OIDC
+client manually in their external Keycloak (per the realm-prerequisites
+doc) before running the workload bootstrap.
+
 ## Phase 2 — User onboarding (operator-driven, no `kubeaid-cli` code)
 
 ```
@@ -259,4 +356,5 @@ The work ships as a stack of small PRs:
 - `pkg/utils/kubernetes/argo.go:180-200` — port-forward pattern (`NewArgoCDClient`) we mirror for Keycloak admin access.
 - `pkg/config/parser/audit_logging.go` — pattern for `apiServer.files` / `extraArgs` / `extraVolumes` delivery via CAPI; AuthenticationConfiguration follows the same path.
 - [`Nerzal/gocloak`](https://github.com/Nerzal/gocloak) — Go client for Keycloak admin API.
+- [`kubeaid/argocd-helm-charts/netbird/README.md`](https://github.com/Obmondo/KubeAid/blob/master/argocd-helm-charts/netbird/README.md) — Keycloak realm prerequisites for `mode=external`; lists the exact OIDC clients, scopes, mappers, and role grants the operator must create by hand.
 - Plan source: `/home/ashish/.claude/plans/or-user-can-also-lively-sloth.md` (local; this doc is the in-repo committed version).
