@@ -47,6 +47,7 @@
 - [HostPathMountConfig](#hostpathmountconfig)
 - [InstallImageConfig](#installimageconfig)
 - [KeycloakConfig](#keycloakconfig)
+- [KeycloakCredentials](#keycloakcredentials)
 - [KubeAidForkConfig](#kubeaidforkconfig)
 - [KubePrometheusConfig](#kubeprometheusconfig)
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
@@ -177,11 +178,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -591,6 +592,18 @@ user-facing.</p>
 | dns | `string` |  | DNS is the public hostname Keycloak is reachable at, e.g.<br>"keycloak.vpn.acme.com". Required. Used to derive the OIDC<br>issuer URL the apiserver and kubelogin trust, and (when<br>Realm is unset) to default the realm name.<br> |
 | realm | `string` |  | Realm is the Keycloak realm name. Optional — when empty,<br>kubeaid-cli derives it from DNS via<br>`golang.org/x/net/publicsuffix.EffectiveTLDPlusOne` and the<br>first dot-separated segment of the result. Examples:<br>  keycloak.vpn.acme.com  → "acme"<br>  keycloak.foo.co.uk     → "foo"<br>Set this explicitly to override the derivation.<br> |
 
+## KeycloakCredentials
+
+<p>KeycloakCredentials carries the OIDC client secrets the
+operator must hand kubeaid-cli when cluster.keycloak.mode is
+"external". Managed-mode bootstrap reconciles these clients
+itself via gocloak and persists the secrets in-cluster, so
+this block stays empty in that case.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| netBirdBackendClientSecret | `string` |  | NetBirdBackendClientSecret is the confidential-client<br>secret the operator created for the netbird-backend<br>client in their external Keycloak realm. Templated into<br>the netbird Secret's idpClientMgmtSecret key.<br> |
+
 ## KubeAidForkConfig
 
 <p>KubeAid repository specific details.</p>
@@ -718,6 +731,7 @@ provision infrastructure.</p>
 | azure | [`AzureCredentials`](#azurecredentials) |  |  |
 | hetzner | [`HetznerCredentials`](#hetznercredentials) |  |  |
 | obmondo | [`ObmondoCredentials`](#obmondocredentials) |  |  |
+| keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
 
 ## UserConfig
 

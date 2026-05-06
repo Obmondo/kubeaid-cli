@@ -205,7 +205,7 @@ func TestValidateKeycloakConfig(t *testing.T) {
 		})
 	})
 
-	t.Run("workload cluster with managed keycloak fails", func(t *testing.T) {
+	t.Run("workload cluster with keycloak block fails (any mode)", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
 			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
@@ -216,7 +216,68 @@ func TestValidateKeycloakConfig(t *testing.T) {
 
 			err := validateKeycloakConfig()
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "managed is only valid when cluster.type=vpn")
+			assert.Contains(t, err.Error(), "cluster.keycloak is only valid when cluster.type=vpn")
+		})
+	})
+
+	t.Run("vpn cluster with external keycloak passes", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "external",
+				DNS:   "auth.acme.com",
+				Realm: "acme",
+			}
+			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
+				DNS: "netbird.vpn.acme.com",
+			}
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			origSecrets := config.ParsedSecretsConfig
+			config.ParsedSecretsConfig = &config.SecretsConfig{
+				Keycloak: &config.KeycloakCredentials{
+					NetBirdBackendClientSecret: "operator-supplied-secret",
+				},
+			}
+			t.Cleanup(func() { config.ParsedSecretsConfig = origSecrets })
+
+			require.NoError(t, validateKeycloakConfig())
+		})
+	})
+
+	t.Run("external keycloak without netbird backend secret fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "external",
+				DNS:   "auth.acme.com",
+				Realm: "acme",
+			}
+			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
+				DNS: "netbird.vpn.acme.com",
+			}
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			origSecrets := config.ParsedSecretsConfig
+			config.ParsedSecretsConfig = &config.SecretsConfig{}
+			t.Cleanup(func() { config.ParsedSecretsConfig = origSecrets })
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "keycloak.netBirdBackendClientSecret is required")
+		})
+	})
+
+	t.Run("invalid keycloak mode is rejected", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "weird",
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "must be \"managed\" or \"external\"")
 		})
 	})
 

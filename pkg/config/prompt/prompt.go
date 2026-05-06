@@ -41,12 +41,20 @@ type PromptedConfig struct {
 
 	// VPN-cluster fields. Populated only when the operator chose
 	// the "VPN cluster" kind at the cluster-kind prompt — i.e.
-	// cluster.type=vpn with managed Keycloak. They render the
-	// cluster.keycloak / cluster.netbird / cluster.acmeEmail blocks
-	// in general.yaml. Empty for workload clusters.
-	KeycloakDNS string
-	NetBirdDNS  string
-	ACMEEmail   string
+	// cluster.type=vpn. Render the cluster.keycloak /
+	// cluster.netbird / cluster.acmeEmail blocks in general.yaml.
+	// Empty for workload clusters.
+	KeycloakMode string // "managed" | "external"
+	KeycloakDNS  string
+	NetBirdDNS   string
+	ACMEEmail    string
+
+	// NetBirdBackendClientSecret is collected only when KeycloakMode
+	// is "external" — kubeaid-cli has no way to mint or look up the
+	// netbird-backend client secret in the operator's external
+	// Keycloak. Rendered into secrets.yaml under
+	// keycloak.netBirdBackendClientSecret. Empty when managed.
+	NetBirdBackendClientSecret string
 
 	// HCloud-VPN control-plane endpoint FQDN — required when
 	// running a VPN cluster on Hetzner HCloud. Rendered into
@@ -248,17 +256,23 @@ func promptClusterKind(cfg *PromptedConfig) error {
 	return nil
 }
 
-// promptVPNClusterDetails collects the public DNS names of Keycloak
-// and NetBird Mgmt and the ACME contact email used to register the
-// Let's Encrypt account. All three are required for a managed-Keycloak
-// VPN bootstrap to succeed — the validator will reject the config if
-// they're empty, and at runtime cert-manager's HTTP-01 challenge will
-// fail if DNS isn't pointing at the LB's bootstrap public IP.
+// promptVPNClusterDetails collects the inputs every VPN cluster
+// needs: Keycloak mode (managed/external), Keycloak DNS, NetBird DNS,
+// ACME email for Let's Encrypt, and the control-plane endpoint FQDN.
 //
-// Auto-derives apiServer.oidc.{issuerUrl,clientId} from the Keycloak
-// DNS and cluster name so the operator doesn't have to repeat them.
-// The realm name is derived again at parse time via publicsuffix.
+// In external mode it also collects the netbird-backend OIDC client
+// secret (kubeaid-cli can't mint it because the client lives in the
+// operator's external Keycloak) and prints a pointer to the realm
+// prerequisites doc so the operator knows what to set up there.
+//
+// Auto-derives apiServer.oidc.{issuerUrl,clientId} from Keycloak DNS
+// and cluster name; the realm name is re-derived at parse time via
+// publicsuffix.
 func promptVPNClusterDetails(cfg *PromptedConfig) error {
+	if err := promptKeycloakMode(cfg); err != nil {
+		return err
+	}
+
 	if err := requiredInput(
 		"Keycloak DNS (e.g. keycloak.vpn.acme.com):",
 		&cfg.KeycloakDNS,
@@ -287,9 +301,59 @@ func promptVPNClusterDetails(cfg *PromptedConfig) error {
 		return err
 	}
 
+	if cfg.KeycloakMode == "external" {
+		if err := requiredPassword(
+			"netbird-backend client secret (from your external Keycloak):",
+			&cfg.NetBirdBackendClientSecret,
+		); err != nil {
+			return err
+		}
+	}
+
 	cfg.EnableOIDC = true
 	cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + deriveRealmFromDNS(cfg.KeycloakDNS)
 	cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
+
+	return nil
+}
+
+// promptKeycloakMode asks whether kubeaid-cli should install Keycloak
+// itself (managed) or hook into the operator's existing Keycloak
+// (external). External mode prints a pointer to the doc that
+// enumerates the realm prerequisites the operator must set up by
+// hand — netbird-client / netbird-backend / kubernetes-<cluster>
+// clients, the api scope, the audience mapper, the view-users grant.
+func promptKeycloakMode(cfg *PromptedConfig) error {
+	const (
+		optManaged  = "managed (kubeaid-cli installs Keycloak on this cluster)"
+		optExternal = "external (use my existing Keycloak elsewhere)"
+	)
+
+	var choice string
+	if err := selectOption(
+		"Keycloak mode:",
+		[]string{optManaged, optExternal},
+		optManaged, &choice,
+	); err != nil {
+		return err
+	}
+
+	if choice == optManaged {
+		cfg.KeycloakMode = "managed"
+		return nil
+	}
+
+	cfg.KeycloakMode = "external"
+	fmt.Println()
+	fmt.Println("  External Keycloak selected. Before running bootstrap, make sure your")
+	fmt.Println("  Keycloak realm has the resources kubeaid-cli would otherwise create:")
+	fmt.Println("  three OIDC clients (netbird-client, netbird-backend, kubernetes-<cluster>),")
+	fmt.Println("  one client scope ('api'), one audience mapper, and the view-users role")
+	fmt.Println("  grant on netbird-backend. See:")
+	fmt.Println()
+	fmt.Println("    kubeaid/argocd-helm-charts/netbird/README.md")
+	fmt.Println("    -> 'Keycloak realm prerequisites'")
+	fmt.Println()
 
 	return nil
 }

@@ -39,7 +39,7 @@ cluster:
 {{- end }}
 {{- if eq .ClusterType "vpn" }}
   keycloak:
-    mode: managed
+    mode: {{ .KeycloakMode }}
     dns: {{ .KeycloakDNS }}
   netbird:
     dns: {{ .NetBirdDNS }}

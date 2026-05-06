@@ -204,33 +204,15 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ObmondoKeyFileContents = string(key)
 	}
 
-	if managedKeycloakEnabled() {
-		// Both secrets are read-or-generate: regenerating on a
-		// re-run would drift the in-cluster Secret from the value
-		// Keycloak still holds (the chart's pre-install hook bakes
-		// the admin password once; gocloak ignores spec.Secret on
-		// existing clients). Cluster client is nil pre-bootstrap,
-		// in which case both calls fall back to a fresh value and
-		// the first SealedSecret sync establishes the stable one.
+	if vpnClusterEnabled() {
+		// Cluster client is nil pre-bootstrap; the read-or-generate
+		// helpers fall back to fresh values in that case and the
+		// first SealedSecret sync establishes the stable values.
+		// Re-runs read the persisted values so we never drift from
+		// what's already deployed.
 		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
 			constants.OutputPathMainClusterKubeconfig,
 		)
-
-		adminPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceKeycloak,
-			constants.SecretNameKeycloakAdmin,
-			constants.SecretKeyKeycloakPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating Keycloak admin password")
-		templateValues.KeycloakAdminPassword = adminPwd
-
-		nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdIDPMgmtSecret,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
-		templateValues.NetBirdBackendClientSecret = nbSecret
 
 		datastoreKey, err := keycloak.GetOrGenerateBase64Key(ctx, clusterClient,
 			constants.NamespaceNetBird,
@@ -272,6 +254,40 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		templateValues.NetBirdClientID = constants.NetBirdClientID
 		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID
+
+		// netbird-backend OIDC client secret: source depends on mode.
+		//   managed:  read-or-generate; same value passed to
+		//             ReconcileClient so Keycloak stores what NetBird
+		//             expects to envFrom.
+		//   external: operator-supplied via secrets.yaml; we have no
+		//             way to mint or look up the value otherwise. The
+		//             validator (added separately) ensures the field
+		//             is present before bootstrap proceeds.
+		if managedKeycloakEnabled() {
+			nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+				constants.NamespaceNetBird,
+				constants.SecretNameNetBird,
+				constants.SecretKeyNetBirdIDPMgmtSecret,
+			)
+			assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
+			templateValues.NetBirdBackendClientSecret = nbSecret
+		} else if config.ParsedSecretsConfig.Keycloak != nil {
+			templateValues.NetBirdBackendClientSecret = config.ParsedSecretsConfig.Keycloak.NetBirdBackendClientSecret
+		}
+	}
+
+	if managedKeycloakEnabled() {
+		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+		)
+
+		adminPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
+			constants.NamespaceKeycloak,
+			constants.SecretNameKeycloakAdmin,
+			constants.SecretKeyKeycloakPassword,
+		)
+		assert.AssertErrNil(ctx, err, "Failed reading/generating Keycloak admin password")
+		templateValues.KeycloakAdminPassword = adminPwd
 	}
 
 	// Set cloud provider specific values.
@@ -435,11 +451,24 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
 	}
 
-	// Managed Keycloak: when this is the VPN cluster and cluster.keycloak.mode
-	// is "managed", render the keycloakx + cloudnative-pg ArgoCD apps so
-	// Keycloak comes up backed by CNPG Postgres on first sync. Realm / client
-	// reconciliation happens later (kubeaid-cli + gocloak via port-forward to
-	// the keycloakx Service).
+	// VPN cluster (any Keycloak mode): traefik for the NetBird Mgmt
+	// Ingress (and Keycloak ingress when managed) and CloudNativePG
+	// for NetBird's Postgres backend. cnpg also backs keycloak-pgsql
+	// in managed mode; rendering it here keeps cnpg syncing once
+	// regardless of mode.
+	if vpnClusterEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.TraefikTemplateNames...,
+		)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.CloudNativePGTemplateNames...,
+		)
+	}
+
+	// Managed Keycloak only: kubeaid-cli installs the keycloakx
+	// chart on this cluster and runs the gocloak realm reconciler
+	// post-sync. External-mode VPN clusters skip this — the
+	// operator's existing Keycloak handles it.
 	if managedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedNonSecretTemplateNames...,
@@ -466,22 +495,44 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	return embeddedTemplateNames
 }
 
-// managedKeycloakEnabled reports whether kubeaid-cli should render
-// the keycloakx + cloudnative-pg ArgoCD Apps for THIS cluster. True
-// only when cluster.type=vpn AND cluster.keycloak.mode=managed —
-// only VPN clusters host Keycloak, and only in managed mode does
-// kubeaid-cli install it (mode=external means an existing Keycloak
-// elsewhere). Workload clusters always return false: they don't host
-// Keycloak; they authenticate kube-apiserver against an existing one
-// via apiServer.oidc (issuer URL + client ID, set in their own
-// general.yaml). Nil-safe — Cluster.Keycloak is absent on workload
-// clusters and on VPN clusters that opt out.
+// managedKeycloakEnabled reports whether kubeaid-cli should
+// install Keycloak itself on this cluster. True only when
+// cluster.type=vpn AND cluster.keycloak.mode=managed.
+//
+// Gates the kubeaid-cli-side Keycloak install: the keycloakx
+// ArgoCD App, the keycloak-admin SealedSecret, and the post-sync
+// gocloak realm reconciler. Does NOT gate cnpg, traefik, the
+// netbird Secret, or the postgres DSN patch — those are needed
+// in both modes; see vpnClusterEnabled() for that.
+//
+// Workload clusters always return false (they don't host Keycloak).
+// Nil-safe.
 func managedKeycloakEnabled() bool {
 	cluster := config.ParsedGeneralConfig.Cluster
 	if cluster.Type != constants.ClusterTypeVPN || cluster.Keycloak == nil {
 		return false
 	}
-	return cluster.Keycloak.Mode == "managed"
+	return cluster.Keycloak.Mode == constants.KeycloakModeManaged
+}
+
+// vpnClusterEnabled reports whether kubeaid-cli should render the
+// VPN-cluster-wide infrastructure: cnpg (for NetBird's Postgres),
+// traefik (for NetBird's Ingress), the netbird /
+// netbird-turn-credentials SealedSecrets, and the post-sync
+// postgres DSN patch.
+//
+// True for any VPN cluster regardless of Keycloak mode — external
+// Keycloak still needs the same surrounding stack because NetBird
+// itself runs in-cluster, only the OIDC IdP is offsite. Workload
+// clusters always return false.
+//
+// Equivalent in practice to cluster.type=vpn with a keycloak block
+// present (validator requires the block for VPN clusters), but
+// expressed as its own function so callers don't have to reason
+// about the validator's invariants.
+func vpnClusterEnabled() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
 }
 
 // hcloudControlPlaneEndpointSet reports whether kubeaid-cli should
@@ -575,6 +626,17 @@ func getEmbeddedSecretTemplateNames() []string {
 		}
 	}
 
+	// VPN cluster (any Keycloak mode): netbird + netbird-turn-credentials
+	// SealedSecrets always. The OIDC client secret inside the
+	// netbird Secret is generated by kubeaid-cli when managed,
+	// supplied by the operator via secrets.yaml when external.
+	if vpnClusterEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.NetBirdSecretTemplateNames...,
+		)
+	}
+
+	// Managed Keycloak only: keycloak-admin SealedSecret.
 	if managedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedSecretTemplateNames...,
