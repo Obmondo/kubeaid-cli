@@ -16,6 +16,7 @@ import (
 	appsV1 "k8s.io/api/apps/v1"
 	batchV1 "k8s.io/api/batch/v1"
 	coreV1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,46 +32,20 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
 var (
-	amContainerizedFn        = amContainerized
 	loadKubeConfigFromFileFn = clientcmd.LoadFromFile
 	createKubernetesClientFn = CreateKubernetesClient
 	pingKubernetesClusterFn  = pingKubernetesCluster
-	dockerEnvPathFn          = func() string { return "/.dockerenv" }
 	newClientFn              = client.New
 )
 
-// Returns the management cluster kubeconfig file path, based on whether the script is running
-// inside a container or not.
-func GetManagementClusterKubeconfigPath(ctx context.Context) (string, error) {
-	containerized, err := amContainerizedFn()
-	if err != nil {
-		return "", fmt.Errorf("failed determining management cluster kubeconfig path: %w", err)
-	}
-
-	if containerized {
-		return constants.OutputPathManagementClusterContainerKubeconfig, nil
-	}
-
+// GetManagementClusterKubeconfigPath returns the management cluster kubeconfig
+// file path on the host.
+func GetManagementClusterKubeconfigPath(_ context.Context) (string, error) {
 	return constants.OutputPathManagementClusterHostKubeconfig, nil
-}
-
-// Detects whether the KubeAid Bootstrap Script is running inside a container or not.
-// If the /.dockerenv file exists, then that means, it's running inside a container.
-// Only compatible with the Docker container engine for now.
-func amContainerized() (bool, error) {
-	_, err := os.Stat(dockerEnvPathFn())
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
-	if err != nil {
-		return false, fmt.Errorf("failed detecting whether running inside a container: %w", err)
-	}
-	return true, nil
 }
 
 // Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
@@ -94,6 +69,7 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 		{"Core v1", coreV1.AddToScheme},
 		{"Apps v1", appsV1.AddToScheme},
 		{"Batch v1", batchV1.AddToScheme},
+		{"API Extensions v1", apiextensionsv1.AddToScheme},
 		{"ClusterAPI v1beta1", clusterAPIV1Beta1.AddToScheme},
 		{"KCP (Kubeadm Control plane Provider) v1beta1", kcpV1Beta1.AddToScheme},
 		{"CAPA (ClusterAPI Provider AWS) v1beta2", capaV1Beta2.AddToScheme},
@@ -115,6 +91,32 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	err = pingKubernetesClusterFn(ctx, clusterClient)
 	return clusterClient, err
+}
+
+// CreateUnstructuredClient creates a Kubernetes client suitable for working with
+// unstructured objects. It reads the kubeconfig path from the KUBECONFIG env var.
+func CreateUnstructuredClient(_ context.Context) (client.Client, error) {
+	kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
+	if kubeconfigPath == "" {
+		return nil, fmt.Errorf("$KUBECONFIG is not set")
+	}
+
+	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed building config from kubeconfig %q: %w", kubeconfigPath, err)
+	}
+
+	scheme := runtime.NewScheme()
+	if err := coreV1.AddToScheme(scheme); err != nil {
+		return nil, fmt.Errorf("failed adding core/v1 scheme: %w", err)
+	}
+
+	clusterClient, err := newClientFn(kubeconfig, client.Options{Scheme: scheme})
+	if err != nil {
+		return nil, fmt.Errorf("failed creating kubernetes client: %w", err)
+	}
+
+	return clusterClient, nil
 }
 
 func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) error {
@@ -263,10 +265,10 @@ func IsNodeGroupCountZero(ctx context.Context) bool {
 // RemoveNoScheduleTaintsFromMasterNodes removes the
 // 'node-role.kubernetes.io/control-plane:NoSchedule' taint from master nodes.
 func RemoveNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client) error {
-	return removeNoScheduleTaintsFromMasterNodes(ctx, clusterClient, commandexecutor.NewLocalCommandExecutor(false))
+	return removeNoScheduleTaintsFromMasterNodes(ctx, clusterClient)
 }
 
-func removeNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client, exec commandexecutor.CommandExecutor) error {
+func removeNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient client.Client) error {
 	slog.InfoContext(ctx, "Removing no-schedule taints from master nodes")
 
 	var masterNodeList coreV1.NodeList
@@ -277,18 +279,20 @@ func removeNoScheduleTaintsFromMasterNodes(ctx context.Context, clusterClient cl
 		return fmt.Errorf("failed listing master nodes: %w", err)
 	}
 
-	for _, masterNode := range masterNodeList.Items {
-		for _, taint := range masterNode.Spec.Taints {
-			// We only remove the taint whose key matches the control-plane role label;
-			// the effect is always NoSchedule by kubeadm convention.
-			if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
-				exec.MustExecute(ctx,
-					fmt.Sprintf(
-						"kubectl taint node %s node-role.kubernetes.io/control-plane:NoSchedule-",
-						masterNode.Name,
-					),
-				)
+	for i := range masterNodeList.Items {
+		node := &masterNodeList.Items[i]
+		newTaints := make([]coreV1.Taint, 0, len(node.Spec.Taints))
+		for _, t := range node.Spec.Taints {
+			if t.Key != kubeadmConstants.LabelNodeRoleControlPlane {
+				newTaints = append(newTaints, t)
 			}
+		}
+		if len(newTaints) == len(node.Spec.Taints) {
+			continue
+		}
+		node.Spec.Taints = newTaints
+		if err := clusterClient.Update(ctx, node); err != nil {
+			return fmt.Errorf("failed updating node %q: %w", node.Name, err)
 		}
 	}
 	return nil

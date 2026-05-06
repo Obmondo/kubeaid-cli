@@ -42,125 +42,12 @@ func newTestScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-type fakeCommandExecutor struct {
-	commands []string
-}
-
-func (f *fakeCommandExecutor) Execute(_ context.Context, command string) (string, error) {
-	f.commands = append(f.commands, command)
-	return "", nil
-}
-
-func (f *fakeCommandExecutor) MustExecute(_ context.Context, command string) string {
-	f.commands = append(f.commands, command)
-	return ""
-}
-
-func TestAmContainerized(t *testing.T) {
-	tests := []struct {
-		name    string
-		setup   func(t *testing.T) string
-		want    bool
-		wantErr bool
-	}{
-		{
-			name: "returns true when .dockerenv file exists",
-			setup: func(t *testing.T) string {
-				t.Helper()
-				dir := t.TempDir()
-				p := filepath.Join(dir, ".dockerenv")
-				require.NoError(t, os.WriteFile(p, nil, 0o600))
-				return p
-			},
-			want: true,
-		},
-		{
-			name: "returns false when .dockerenv file does not exist",
-			setup: func(t *testing.T) string {
-				t.Helper()
-				return filepath.Join(t.TempDir(), ".dockerenv")
-			},
-			want: false,
-		},
-		{
-			name: "returns error when os.Stat fails with non-ErrNotExist",
-			setup: func(t *testing.T) string {
-				t.Helper()
-				return "/invalid\x00path"
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			origFn := dockerEnvPathFn
-			t.Cleanup(func() { dockerEnvPathFn = origFn })
-
-			path := tc.setup(t)
-			dockerEnvPathFn = func() string { return path }
-
-			got, err := amContainerized()
-			if tc.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
 func TestGetManagementClusterKubeconfigPath(t *testing.T) {
-	resetAmContainerizedFn := func(t *testing.T) {
-		t.Helper()
-		orig := amContainerizedFn
-		t.Cleanup(func() { amContainerizedFn = orig })
-	}
+	t.Parallel()
 
-	tests := []struct {
-		name               string
-		containerized      bool
-		containerizedErr   error
-		wantKubeconfigPath string
-		wantErr            bool
-	}{
-		{
-			name:               "amContainerized returns true — container kubeconfig path",
-			containerized:      true,
-			wantKubeconfigPath: constants.OutputPathManagementClusterContainerKubeconfig,
-		},
-		{
-			name:               "amContainerized returns false — host kubeconfig path",
-			containerized:      false,
-			wantKubeconfigPath: constants.OutputPathManagementClusterHostKubeconfig,
-		},
-		{
-			name:             "returns error when amContainerized fails",
-			containerizedErr: errors.New("permission denied"),
-			wantErr:          true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			resetAmContainerizedFn(t)
-
-			containerized := tc.containerized
-			containerizedErr := tc.containerizedErr
-			amContainerizedFn = func() (bool, error) {
-				return containerized, containerizedErr
-			}
-
-			got, err := GetManagementClusterKubeconfigPath(context.Background())
-			if tc.wantErr {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.wantKubeconfigPath, got)
-		})
-	}
+	got, err := GetManagementClusterKubeconfigPath(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, constants.OutputPathManagementClusterHostKubeconfig, got)
 }
 
 func TestCreateKubernetesClient(t *testing.T) {
@@ -942,6 +829,49 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 	}
 }
 
+func nodeRuntimeObjects(nodes []coreV1.Node) []runtime.Object {
+	objs := make([]coreV1.Node, len(nodes))
+	copy(objs, nodes)
+
+	runtimeObjs := make([]runtime.Object, len(objs))
+	for i := range objs {
+		runtimeObjs[i] = &objs[i]
+	}
+
+	return runtimeObjs
+}
+
+func countRemovedControlPlaneTaints(t *testing.T, cl client.Client, nodes []coreV1.Node) int {
+	t.Helper()
+
+	removedCount := 0
+	for _, origNode := range nodes {
+		if _, ok := origNode.Labels[kubeadmConstants.LabelNodeRoleControlPlane]; !ok {
+			continue
+		}
+
+		updatedNode := &coreV1.Node{}
+		err := cl.Get(context.Background(), types.NamespacedName{Name: origNode.Name}, updatedNode)
+		require.NoError(t, err)
+
+		if hasControlPlaneTaint(origNode.Spec.Taints) && !hasControlPlaneTaint(updatedNode.Spec.Taints) {
+			removedCount++
+		}
+	}
+
+	return removedCount
+}
+
+func hasControlPlaneTaint(taints []coreV1.Taint) bool {
+	for _, taint := range taints {
+		if taint.Key == kubeadmConstants.LabelNodeRoleControlPlane {
+			return true
+		}
+	}
+
+	return false
+}
+
 func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 	t.Parallel()
 
@@ -956,10 +886,11 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 		name          string
 		nodes         []coreV1.Node
 		interceptList func(ctx context.Context, cl client.WithWatch, list client.ObjectList, opts ...client.ListOption) error
-		wantCmdCount  int
-		wantCmdSubstr string
 		wantErr       bool
 		wantErrSubstr string
+		// wantTaintsRemoved is the number of nodes expected to have their
+		// control-plane taint removed.
+		wantTaintsRemoved int
 	}{
 		{
 			name: "removes taint from single control-plane node",
@@ -976,8 +907,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 					},
 				},
 			},
-			wantCmdCount:  1,
-			wantCmdSubstr: "kubectl taint node master-0",
+			wantTaintsRemoved: 1,
 		},
 		{
 			name: "removes taint from multiple control-plane nodes",
@@ -1005,7 +935,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 					},
 				},
 			},
-			wantCmdCount: 2,
+			wantTaintsRemoved: 2,
 		},
 		{
 			name: "no-op when no control-plane nodes exist",
@@ -1019,7 +949,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 					},
 				},
 			},
-			wantCmdCount: 0,
+			wantTaintsRemoved: 0,
 		},
 		{
 			name: "no-op when control-plane node has no matching taint",
@@ -1038,12 +968,12 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 					},
 				},
 			},
-			wantCmdCount: 0,
+			wantTaintsRemoved: 0,
 		},
 		{
-			name:         "no-op when node list is empty",
-			nodes:        []coreV1.Node{},
-			wantCmdCount: 0,
+			name:              "no-op when node list is empty",
+			nodes:             []coreV1.Node{},
+			wantTaintsRemoved: 0,
 		},
 		{
 			name: "only removes matching taint when node has mixed taints",
@@ -1064,8 +994,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 					},
 				},
 			},
-			wantCmdCount:  1,
-			wantCmdSubstr: "kubectl taint node master-0",
+			wantTaintsRemoved: 1,
 		},
 		{
 			name: "returns error when List fails",
@@ -1081,17 +1010,9 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			objs := make([]coreV1.Node, len(tc.nodes))
-			copy(objs, tc.nodes)
-
-			runtimeObjs := make([]runtime.Object, len(objs))
-			for i := range objs {
-				runtimeObjs[i] = &objs[i]
-			}
-
 			builder := crFake.NewClientBuilder().
 				WithScheme(scheme).
-				WithRuntimeObjects(runtimeObjs...)
+				WithRuntimeObjects(nodeRuntimeObjects(tc.nodes)...)
 
 			if tc.interceptList != nil {
 				builder = builder.WithInterceptorFuncs(interceptor.Funcs{
@@ -1101,8 +1022,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 
 			fakeClient := builder.Build()
 
-			exec := &fakeCommandExecutor{}
-			err := removeNoScheduleTaintsFromMasterNodes(context.Background(), fakeClient, exec)
+			err := removeNoScheduleTaintsFromMasterNodes(context.Background(), fakeClient)
 			if tc.wantErr {
 				require.Error(t, err)
 				if tc.wantErrSubstr != "" {
@@ -1112,10 +1032,7 @@ func TestRemoveNoScheduleTaintsFromMasterNodes(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			assert.Len(t, exec.commands, tc.wantCmdCount)
-			if tc.wantCmdSubstr != "" && len(exec.commands) > 0 {
-				assert.Contains(t, exec.commands[0], tc.wantCmdSubstr)
-			}
+			assert.Equal(t, tc.wantTaintsRemoved, countRemovedControlPlaneTaints(t, fakeClient, tc.nodes))
 		})
 	}
 }

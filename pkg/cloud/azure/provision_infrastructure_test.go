@@ -6,7 +6,6 @@ package azure
 import (
 	"context"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
@@ -15,55 +14,80 @@ import (
 	"github.com/stretchr/testify/require"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 )
 
-// fakeCommandExecutor implements commandexecutor.CommandExecutor for tests.
-type fakeCommandExecutor struct {
-	outputs map[string]string
-	err     error
+func readyXRClaim(kind, name string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"status": map[string]interface{}{
+				"conditions": []interface{}{
+					map[string]interface{}{
+						"type":   "Ready",
+						"status": "True",
+					},
+				},
+			},
+		},
+	}
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "infrastructure.obmondo.com",
+		Version: "v1alpha1",
+		Kind:    kind,
+	})
+	obj.SetName(name)
+	obj.SetNamespace(constants.NamespaceCrossPlane)
+	return obj
 }
 
-func (f *fakeCommandExecutor) Execute(_ context.Context, command string) (string, error) {
-	if f.err != nil {
-		return "", f.err
-	}
-	if out, ok := f.outputs[command]; ok {
-		return out, nil
-	}
-	return "", nil
+func roleAssignment(name, uami string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "authorization.azure.upbound.io",
+		Version: "v1beta1",
+		Kind:    "RoleAssignment",
+	})
+	obj.SetName(name)
+	obj.SetLabels(map[string]string{"uami": uami})
+	return obj
 }
 
-func (f *fakeCommandExecutor) MustExecute(_ context.Context, command string) string {
-	out, ok := f.outputs[command]
-	if !ok {
-		return ""
+func userAssignedIdentity(name, uami, clientID string) *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"status": map[string]interface{}{
+				"atProvider": map[string]interface{}{
+					"clientId": clientID,
+				},
+			},
+		},
 	}
-	return out
+	obj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "managedidentity.azure.upbound.io",
+		Version: "v1beta1",
+		Kind:    "UserAssignedIdentity",
+	})
+	obj.SetName(name)
+	obj.SetNamespace(constants.NamespaceCrossPlane)
+	obj.SetLabels(map[string]string{"uami": uami})
+	return obj
 }
 
-// Mutates syncArgoCDAppFn, newCommandExecutorFn, config.ParsedGeneralConfig — sequential only.
+// Mutates syncArgoCDAppFn, createUnstructuredClientFn, config.ParsedGeneralConfig — sequential only.
 func TestProvisionInfrastructure(t *testing.T) {
-	makeStatusCmd := func(xrClaim string) string {
-		return fmt.Sprintf(`
-              kubectl get %s \
-                -n crossplane \
-                -o "jsonpath={.status.conditions[?(@.type=='Ready')].status}"
-            `, xrClaim)
-	}
-
 	tests := []struct {
 		name         string
 		drConfig     *config.DisasterRecoveryConfig
 		syncFn       func(ctx context.Context, name string, resources []*argoCDV1Alpha1.SyncOperationResource) error
-		cmdOutputs   map[string]string
+		objects      []client.Object
 		pollInterval time.Duration
 		wantErr      bool
 		errContains  string
@@ -82,8 +106,9 @@ func TestProvisionInfrastructure(t *testing.T) {
 			syncFn: func(_ context.Context, _ string, _ []*argoCDV1Alpha1.SyncOperationResource) error {
 				return nil
 			},
-			cmdOutputs: map[string]string{
-				makeStatusCmd("workloadidentityinfrastructure/default"): "True",
+			objects: []client.Object{
+				readyXRClaim("WorkloadIdentityInfrastructure", "default"),
+				roleAssignment("capi-role-assignment", "capi"),
 			},
 			pollInterval: time.Millisecond,
 		},
@@ -93,9 +118,11 @@ func TestProvisionInfrastructure(t *testing.T) {
 			syncFn: func(_ context.Context, _ string, _ []*argoCDV1Alpha1.SyncOperationResource) error {
 				return nil
 			},
-			cmdOutputs: map[string]string{
-				makeStatusCmd("workloadidentityinfrastructure/default"): "True",
-				makeStatusCmd("disasterrecoveryinfrastructure/default"): "True",
+			objects: []client.Object{
+				readyXRClaim("WorkloadIdentityInfrastructure", "default"),
+				readyXRClaim("DisasterRecoveryInfrastructure", "default"),
+				roleAssignment("capi-role-assignment", "capi"),
+				roleAssignment("velero-role-assignment", "velero"),
 			},
 			pollInterval: time.Millisecond,
 		},
@@ -105,11 +132,11 @@ func TestProvisionInfrastructure(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			savedConfig := config.ParsedGeneralConfig
 			savedSync := syncArgoCDAppFn
-			savedCmdFn := newCommandExecutorFn
+			savedClientFn := createUnstructuredClientFn
 			t.Cleanup(func() {
 				config.ParsedGeneralConfig = savedConfig
 				syncArgoCDAppFn = savedSync
-				newCommandExecutorFn = savedCmdFn
+				createUnstructuredClientFn = savedClientFn
 			})
 
 			config.ParsedGeneralConfig = &config.GeneralConfig{
@@ -120,12 +147,13 @@ func TestProvisionInfrastructure(t *testing.T) {
 
 			syncArgoCDAppFn = tc.syncFn
 
-			outputs := tc.cmdOutputs
-			if outputs == nil {
-				outputs = map[string]string{}
+			builder := fakeclient.NewClientBuilder().WithScheme(runtime.NewScheme())
+			if len(tc.objects) > 0 {
+				builder = builder.WithObjects(tc.objects...)
 			}
-			newCommandExecutorFn = func() commandexecutor.CommandExecutor {
-				return &fakeCommandExecutor{outputs: outputs}
+			fakeClient := builder.Build()
+			createUnstructuredClientFn = func(context.Context) (client.Client, error) {
+				return fakeClient, nil
 			}
 
 			a := &Azure{pollInterval: tc.pollInterval}
@@ -140,7 +168,7 @@ func TestProvisionInfrastructure(t *testing.T) {
 	}
 }
 
-// Mutates newCommandExecutorFn, globals.CAPIUAMIClientID, globals.VeleroUAMIClientID,
+// Mutates createUnstructuredClientFn, globals.CAPIUAMIClientID, globals.VeleroUAMIClientID,
 // globals.AzureStorageAccountAccessKey, config.ParsedGeneralConfig — sequential only.
 func TestGetInfrastructureDetails(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -177,27 +205,40 @@ func TestGetInfrastructureDetails(t *testing.T) {
 		errContains           string
 	}{
 		{
-			name:                  "success without disaster recovery",
-			objects:               []client.Object{secretWithKey.DeepCopy()},
+			name: "success without disaster recovery",
+			objects: []client.Object{
+				secretWithKey.DeepCopy(),
+				userAssignedIdentity("capi-uami", "capi", "capi-client-id"),
+			},
 			wantCAPIClientID:      "capi-client-id",
 			wantStorageAccountKey: "test-access-key-123",
 		},
 		{
-			name:                  "success with disaster recovery",
-			drConfig:              &config.DisasterRecoveryConfig{},
-			objects:               []client.Object{secretWithKey.DeepCopy()},
+			name:     "success with disaster recovery",
+			drConfig: &config.DisasterRecoveryConfig{},
+			objects: []client.Object{
+				secretWithKey.DeepCopy(),
+				userAssignedIdentity("capi-uami", "capi", "capi-client-id"),
+				userAssignedIdentity("velero-uami", "velero", "velero-client-id"),
+			},
 			wantCAPIClientID:      "capi-client-id",
 			wantVeleroClientID:    "velero-client-id",
 			wantStorageAccountKey: "test-access-key-123",
 		},
 		{
-			name:        "secret not found returns error",
+			name: "secret not found returns error",
+			objects: []client.Object{
+				userAssignedIdentity("capi-uami", "capi", "capi-client-id"),
+			},
 			wantErr:     true,
 			errContains: "getting Kubernetes Secret containing storage account connection details",
 		},
 		{
-			name:        "secret missing primary_access_key returns error",
-			objects:     []client.Object{secretWithoutKey.DeepCopy()},
+			name: "secret missing primary_access_key returns error",
+			objects: []client.Object{
+				secretWithoutKey.DeepCopy(),
+				userAssignedIdentity("capi-uami", "capi", "capi-client-id"),
+			},
 			wantErr:     true,
 			errContains: "primary access key not found",
 		},
@@ -206,13 +247,13 @@ func TestGetInfrastructureDetails(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			savedConfig := config.ParsedGeneralConfig
-			savedCmdFn := newCommandExecutorFn
+			savedClientFn := createUnstructuredClientFn
 			savedCAPI := globals.CAPIUAMIClientID
 			savedVelero := globals.VeleroUAMIClientID
 			savedStorageKey := globals.AzureStorageAccountAccessKey
 			t.Cleanup(func() {
 				config.ParsedGeneralConfig = savedConfig
-				newCommandExecutorFn = savedCmdFn
+				createUnstructuredClientFn = savedClientFn
 				globals.CAPIUAMIClientID = savedCAPI
 				globals.VeleroUAMIClientID = savedVelero
 				globals.AzureStorageAccountAccessKey = savedStorageKey
@@ -224,18 +265,14 @@ func TestGetInfrastructureDetails(t *testing.T) {
 				},
 			}
 
-			newCommandExecutorFn = func() commandexecutor.CommandExecutor {
-				return &fakeInfraDetailsExecutor{
-					capiClientID:   "capi-client-id",
-					veleroClientID: "velero-client-id",
-				}
-			}
-
 			builder := fakeclient.NewClientBuilder().WithScheme(scheme)
 			if len(tc.objects) > 0 {
 				builder = builder.WithObjects(tc.objects...)
 			}
 			fakeClient := builder.Build()
+			createUnstructuredClientFn = func(context.Context) (client.Client, error) {
+				return fakeClient, nil
+			}
 
 			a := &Azure{}
 			err := a.GetInfrastructureDetails(context.Background(), fakeClient)
@@ -252,24 +289,4 @@ func TestGetInfrastructureDetails(t *testing.T) {
 			assert.Equal(t, tc.wantStorageAccountKey, globals.AzureStorageAccountAccessKey)
 		})
 	}
-}
-
-// fakeInfraDetailsExecutor returns predefined client IDs based on command content.
-type fakeInfraDetailsExecutor struct {
-	capiClientID   string
-	veleroClientID string
-}
-
-func (f *fakeInfraDetailsExecutor) Execute(_ context.Context, _ string) (string, error) {
-	return "", nil
-}
-
-func (f *fakeInfraDetailsExecutor) MustExecute(_ context.Context, command string) string {
-	if strings.Contains(command, `"uami=capi"`) {
-		return f.capiClientID
-	}
-	if strings.Contains(command, `"uami=velero"`) {
-		return f.veleroClientID
-	}
-	return ""
 }

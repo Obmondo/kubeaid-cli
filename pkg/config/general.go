@@ -20,10 +20,6 @@ var (
 type (
 	// Non secret configuration options.
 	GeneralConfig struct {
-		// Image pull policy for the KubeAid Core container image.
-		// Valid values: Always, IfNotPresent, Never.
-		ImagePullPolicy string `yaml:"imagePullPolicy" default:"IfNotPresent" validate:"oneof=Always IfNotPresent Never"`
-
 		// Git server specific details.
 		Git GitConfig `yaml:"git"`
 

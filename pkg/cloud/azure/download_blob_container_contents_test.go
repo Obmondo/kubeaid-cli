@@ -17,8 +17,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 )
 
 // fakeBlobDownloader implements blobDownloader for unit tests.
@@ -176,6 +174,15 @@ func TestDownloadBlobContent(t *testing.T) {
 
 // Mutates listBlobNamesFn — sequential only.
 func TestDownloadBlobContainerContents(t *testing.T) {
+	downloadRoot := t.TempDir()
+	savedGetDownloadDir := getDownloadedStorageBucketContentsDir
+	getDownloadedStorageBucketContentsDir = func(containerName string) string {
+		return filepath.Join(downloadRoot, containerName)
+	}
+	t.Cleanup(func() {
+		getDownloadedStorageBucketContentsDir = savedGetDownloadDir
+	})
+
 	tests := []struct {
 		name        string
 		listFn      func(ctx context.Context, client *azblob.Client, containerName string) ([]string, error)
@@ -205,13 +212,11 @@ func TestDownloadBlobContainerContents(t *testing.T) {
 
 			listBlobNamesFn = tc.listFn
 
-			// DownloadBlobContainerContents writes to /tmp/kubeaid-core/buckets/<containerName>.
-			// We cannot redirect that without adding a seam for the download directory.
 			// The success path with actual blob downloads requires a real *azblob.Client
 			// because the concrete type is passed through; see TestDownloadBlobContent for
 			// coverage of the actual download logic via the blobDownloader interface.
 			containerName := "test-dl-" + tc.name
-			t.Cleanup(func() { _ = os.RemoveAll(utils.GetDownloadedStorageBucketContentsDir(containerName)) })
+			t.Cleanup(func() { _ = os.RemoveAll(getDownloadedStorageBucketContentsDir(containerName)) })
 			err := DownloadBlobContainerContents(context.Background(), nil, containerName)
 
 			if tc.wantErr {

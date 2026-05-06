@@ -31,6 +31,8 @@ type S3API interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
 
+var getDownloadedStorageBucketContentsDir = utils.GetDownloadedStorageBucketContentsDir
+
 // Creates S3 Bucket.
 func CreateS3Bucket(ctx context.Context, s3Client S3API, name string) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
@@ -82,7 +84,7 @@ func DownloadS3BucketContents(ctx context.Context,
 
 	slog.InfoContext(ctx, "Downloading contents of S3 bucket")
 
-	downloadDir := utils.GetDownloadedStorageBucketContentsDir(bucketName)
+	downloadDir := getDownloadedStorageBucketContentsDir(bucketName)
 	if err := os.MkdirAll(downloadDir, 0o750); err != nil {
 		return fmt.Errorf("creating directory %s: %w", downloadDir, err)
 	}

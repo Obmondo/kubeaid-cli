@@ -20,10 +20,8 @@ require (
 	github.com/bitnami-labs/sealed-secrets v0.36.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/containerd/errdefs v1.0.0
 	github.com/creack/pty v1.1.24
 	github.com/creasty/defaults v1.8.0
-	github.com/docker/docker v28.5.2+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/go-cmd/cmd v1.4.3
 	github.com/go-git/go-git/v5 v5.18.0
@@ -37,9 +35,7 @@ require (
 	github.com/kubescape/go-git-url v0.0.30
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mikefarah/yq/v4 v4.50.1
-	github.com/moby/term v0.5.2
 	github.com/muesli/termenv v0.16.0
-	github.com/opencontainers/image-spec v1.1.1
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
@@ -56,6 +52,7 @@ require (
 	helm.sh/helm/v3 v3.20.2
 	k8c.io/kubeone v1.12.0
 	k8s.io/api v0.35.1
+	k8s.io/apiextensions-apiserver v0.35.1
 	k8s.io/apimachinery v0.35.1
 	k8s.io/client-go v0.35.1
 	k8s.io/cloud-provider v0.33.4
@@ -160,6 +157,7 @@ require (
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/containerd/containerd v1.7.30 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
 	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/go-cni v1.1.12 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -178,6 +176,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/docker/cli v28.5.2+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
+	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -296,6 +295,7 @@ require (
 	github.com/moby/sys/sequential v0.6.0 // indirect
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
+	github.com/moby/term v0.5.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
 	github.com/monochromegane/go-gitignore v0.0.0-20200626010858-205db1a8cc00 // indirect
@@ -308,6 +308,7 @@ require (
 	github.com/nikolaydubina/treemap v1.2.5 // indirect
 	github.com/onsi/gomega v1.39.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
@@ -405,7 +406,6 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	k8c.io/machine-controller/sdk v1.64.0 // indirect
-	k8s.io/apiextensions-apiserver v0.35.1 // indirect
 	k8s.io/apiserver v0.35.1 // indirect
 	k8s.io/cli-runtime v0.35.1 // indirect
 	k8s.io/cluster-bootstrap v0.33.4 // indirect

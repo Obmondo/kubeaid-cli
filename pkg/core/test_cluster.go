@@ -5,9 +5,12 @@ package core
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 
+	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -19,7 +22,7 @@ import (
 
 func TestCluster(ctx context.Context) {
 	// Ensure that required runtime dependencies are installed.
-	if err := utils.EnsureRuntimeDependencyInstalled("cilium-cli"); err != nil {
+	if err := utils.EnsureRuntimeDependencyInstalled(ctx, "cilium-cli"); err != nil {
 		slog.ErrorContext(ctx, "Runtime dependency unavailable", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
@@ -38,19 +41,25 @@ func TestCluster(ctx context.Context) {
 }
 
 func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client.Client) {
-	slog.InfoContext(ctx, "🧪 Running minimal Cilium network connectivity tests")
+	slog.InfoContext(ctx, "Running minimal Cilium network connectivity tests")
 
 	// Create the cilium-test namespace.
 	err := kubernetes.CreateNamespace(ctx, constants.NamespaceCiliumTest, clusterClient)
 	assert.AssertErrNil(ctx, err, "Failed creating namespace",
 		slog.String("namespace", constants.NamespaceCiliumTest))
-	//
+
 	// Pods spun up during the network connectivity tests, need to do DNS lookups and tcpdumps.
 	// So they need to run in privileged mode.
-	// Let's apply appropriate namespace label, to enforce the privileged Pod Security Standard.
-	// REFER : https://kubernetes.io/docs/tasks/configure-pod-container/enforce-standards-namespace-labels/.
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		"kubectl label namespace cilium-test pod-security.kubernetes.io/enforce=privileged")
+	// Apply appropriate namespace label to enforce the privileged Pod Security Standard.
+	ns := &coreV1.Namespace{}
+	if err := clusterClient.Get(ctx, types.NamespacedName{Name: constants.NamespaceCiliumTest}, ns); err != nil {
+		assert.AssertErrNil(ctx, err, "Failed getting cilium-test namespace")
+	}
+	if ns.Labels == nil {
+		ns.Labels = make(map[string]string)
+	}
+	ns.Labels["pod-security.kubernetes.io/enforce"] = "privileged"
+	assert.AssertErrNil(ctx, clusterClient.Update(ctx, ns), "Failed labeling cilium-test namespace")
 
 	// Run minimal Cilium network connectivity tests.
 	commandexecutor.NewLocalCommandExecutor(true).MustExecute(ctx, `
@@ -60,9 +69,16 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
       --test ! \
       --timeout 5m
   `)
-	slog.InfoContext(ctx, "✅ Cilium connectivity tests passed")
+	slog.InfoContext(ctx, "Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		"kubectl delete namespace cilium-test cilium-test-1")
+	for _, nsName := range []string{constants.NamespaceCiliumTest, "cilium-test-1"} {
+		nsObj := &coreV1.Namespace{}
+		if getErr := clusterClient.Get(ctx, types.NamespacedName{Name: nsName}, nsObj); getErr != nil {
+			continue
+		}
+		if delErr := clusterClient.Delete(ctx, nsObj); delErr != nil {
+			slog.WarnContext(ctx, fmt.Sprintf("Failed deleting namespace %q: %v", nsName, delErr))
+		}
+	}
 }

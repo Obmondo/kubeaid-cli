@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/status"
 	valuesPkg "helm.sh/helm/v3/pkg/cli/values"
 	coreV1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,7 +37,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -73,25 +73,30 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	   NOTE : We need to retry, since raw.githubusercontent.com doesn't respond sometimes.
 	*/
 	for {
-		_, err := commandexecutor.NewLocalCommandExecutor(false).Execute(ctx,
-			fmt.Sprintf(
-				`
-          kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml
-
-          kubectl label crd appprojects.argoproj.io app.kubernetes.io/managed-by=Helm --overwrite
-          kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-name=%s --overwrite
-          kubectl annotate crd appprojects.argoproj.io meta.helm.sh/release-namespace=%s --overwrite
-        `,
-				constants.ReleaseNameArgoCD,
-				constants.NamespaceArgoCD,
-			),
-		)
+		err := ApplyManifestFromURL(ctx, clusterClient,
+			"https://raw.githubusercontent.com/argoproj/argo-cd/refs/heads/master/manifests/crds/appproject-crd.yaml")
 		if err == nil {
 			break
 		}
-
-		// Retry after 10 seconds.
 		time.Sleep(10 * time.Second)
+	}
+
+	// Label and annotate the CRD for Helm ownership.
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	if err := clusterClient.Get(ctx, types.NamespacedName{Name: "appprojects.argoproj.io"}, crd); err != nil {
+		return fmt.Errorf("failed getting AppProject CRD: %w", err)
+	}
+	if crd.Labels == nil {
+		crd.Labels = make(map[string]string)
+	}
+	crd.Labels["app.kubernetes.io/managed-by"] = "Helm"
+	if crd.Annotations == nil {
+		crd.Annotations = make(map[string]string)
+	}
+	crd.Annotations["meta.helm.sh/release-name"] = constants.ReleaseNameArgoCD
+	crd.Annotations["meta.helm.sh/release-namespace"] = constants.NamespaceArgoCD
+	if err := clusterClient.Update(ctx, crd); err != nil {
+		return fmt.Errorf("failed updating AppProject CRD labels/annotations: %w", err)
 	}
 
 	// Install the ArgoCD Helm chart. Pass the rendered values-argocd.yaml
@@ -121,13 +126,15 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
 		repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
-		commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-			fmt.Sprintf("kubectl apply -f %s", repoKubeaidSecretPath))
+		if err := ApplyManifestFromFile(ctx, clusterClient, repoKubeaidSecretPath); err != nil {
+			return fmt.Errorf("failed applying repo-kubeaid secret: %w", err)
+		}
 	}
 
 	repoKubeaidConfigSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid-config.yaml")
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		fmt.Sprintf("kubectl apply -f %s", repoKubeaidConfigSecretPath))
+	if err := ApplyManifestFromFile(ctx, clusterClient, repoKubeaidConfigSecretPath); err != nil {
+		return fmt.Errorf("failed applying repo-kubeaid-config secret: %w", err)
+	}
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
 	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
@@ -158,8 +165,9 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// Create the root ArgoCD App.
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		fmt.Sprintf("kubectl apply -f %s", rootArgoCDAppPath))
+	if err := ApplyManifestFromFile(ctx, clusterClient, rootArgoCDAppPath); err != nil {
+		return fmt.Errorf("failed applying root ArgoCD app: %w", err)
+	}
 	slog.InfoContext(ctx, "Created root ArgoCD app")
 
 	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.

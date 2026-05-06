@@ -7,10 +7,7 @@ LDFLAGS := -s -w \
 	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
 	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
 
-IMAGE_NAME := ghcr.io/obmondo/kubeaid-core:$(VERSION)
-CONTAINER_NAME := kubeaid-core
 MANAGEMENT_CLUSTER_NAME := kubeaid-bootstrapper
-NETWORK_NAME := k3d-$(MANAGEMENT_CLUSTER_NAME)
 
 default: help ## Run help by default
 
@@ -81,53 +78,16 @@ check-k8s-eol: ## Check that pkg/config/parser/k8s-eol.json is up to date with e
 	fi
 	@echo "pkg/config/parser/k8s-eol.json is up to date with endoflife.date"
 
-.PHONY: build-kubeaid-core
-build-kubeaid-core: ## Build kubeaid-core binary
-	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-core ./cmd/kubeaid-core
-
-.PHONY: build-kubeaid-storagectl
-build-kubeaid-storagectl: ## Build kubeaid-storagectl binary
-	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
+.PHONY: build
+build: build-cli ## Build the kubeaid-cli binary (default build target)
 
 .PHONY: build-cli
 build-cli: ## Build kubeaid-cli binary
 	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-cli
 
-.PHONY: build-image
-build-image: ## Build container image
-	@docker build \
-		--build-arg VERSION=$(VERSION) \
-		--build-arg COMMIT=$(COMMIT) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		-t $(IMAGE_NAME) .
-
-.PHONY: remove-image
-remove-image: ## Remove container image
-	@docker rmi $(IMAGE_NAME)
-
-.PHONY: run-container
-run-container: build-image ## Run container with local mounts
-	@if ! docker network ls | grep -q $(NETWORK_NAME); then \
-		docker network create $(NETWORK_NAME); \
-	fi
-	@docker run --name $(CONTAINER_NAME) \
-		--network $(NETWORK_NAME) \
-		-v ./outputs:/outputs \
-		-v /var/run/docker.sock:/var/run/docker.sock \
-		--rm \
-		$(IMAGE_NAME)
-
-.PHONY: exec-container
-exec-container: ## Open shell in running container
-	@docker exec -it $(CONTAINER_NAME) /bin/sh
-
-.PHONY: stop-container
-stop-container: ## Stop running container
-	@docker stop $(CONTAINER_NAME)
-
-.PHONY: remove-container
-remove-container: stop-container ## Stop and remove container
-	@docker rm $(CONTAINER_NAME)
+.PHONY: build-kubeaid-storagectl
+build-kubeaid-storagectl: ## Build kubeaid-storagectl binary
+	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
 
 .PHONY: management-cluster-delete
 management-cluster-delete: ## Delete the management k3d cluster

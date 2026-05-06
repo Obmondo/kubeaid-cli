@@ -33,6 +33,13 @@ type SetupKubeAidConfigArgs struct {
 	GitAuthMethod transport.AuthMethod
 }
 
+var kubePrometheusBuildDependencies = []string{
+	"jsonnet",
+	"jb",
+	"jq",
+	"gojsontoyaml",
+}
+
 /*
 Does the following :
 
@@ -265,6 +272,12 @@ func createFileFromTemplate(ctx context.Context,
 // Creates the jsonnet vars file for the cluster.
 // Then executes KubeAid's kube-prometheus build script.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
+	for _, dependency := range kubePrometheusBuildDependencies {
+		err := utils.EnsureRuntimeDependencyInstalled(ctx, dependency)
+		assert.AssertErrNil(ctx, err, "KubePrometheus build dependency unavailable",
+			slog.String("runtime-dependency", dependency))
+	}
+
 	// Create the jsonnet vars file.
 	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet",
 		clusterDir,

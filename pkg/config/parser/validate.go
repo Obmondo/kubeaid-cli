@@ -50,9 +50,6 @@ func validateConfigs(ctx context.Context) error {
 		return fmt.Errorf("validating K8s version: %w", err)
 	}
 
-	if err := validateKeycloakConfig(); err != nil {
-		return fmt.Errorf("validating cluster.keycloak: %w", err)
-	}
 	if generalConfig.KubePrometheus != nil && generalConfig.KubePrometheus.Version != "" {
 		if err := validateKubePrometheusVersion(ctx,
 			generalConfig.KubePrometheus.Version,
@@ -89,7 +86,14 @@ func validateConfigFields(
 	validators := []func() error{
 		func() error { return validateClusterName(generalConfig.Cluster.Name) },
 		func() error { return validateClusterType(generalConfig.Cluster.Type, cloudProviderName) },
+		validateHCloudControlPlaneLoadBalancerEndpointNotIP,
 		func() error { return validateConfigStructTags(generalConfig, secretsConfig) },
+		func() error {
+			if err := validateKeycloakConfig(); err != nil {
+				return fmt.Errorf("validating cluster.keycloak: %w", err)
+			}
+			return nil
+		},
 		func() error {
 			return validateKubeAidForkVersion(generalConfig.Forks.KubeaidFork.Version, cloudProviderName)
 		},
@@ -336,7 +340,7 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 
 	endpoint := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint
 	if endpoint != "" && net.ParseIP(endpoint) != nil {
-		return errors.New("control-plane HCloud load-balancer endpoint must be a DNS name, not an IP address")
+		return errors.New("control-plane HCloud load-balancer Endpoint must be a DNS name, not an IP address")
 	}
 	return nil
 }
