@@ -265,11 +265,31 @@ type (
 	// NetBirdConfig declares the NetBird Management instance this
 	// VPN cluster hosts. Used to render the redirect URI and
 	// audience claim for the netbird-client / netbird-backend OIDC
-	// clients in Keycloak.
+	// clients in Keycloak, and (when this VPN cluster also hosts
+	// Coturn / Relay) to compute the public STUN / TURN endpoints
+	// kubeaid-cli writes into the netbird Secret.
 	NetBirdConfig struct {
 		// DNS is the public hostname NetBird Management is
 		// reachable at, e.g. "netbird.vpn.acme.com". Required.
 		DNS string `yaml:"dns" validate:"required"`
+
+		// StunDNS is the public hostname Coturn answers STUN queries
+		// on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives
+		// it as "stun.<base>" where base is DNS with the leading
+		// "netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).
+		// Override only when STUN is exposed on a non-standard FQDN.
+		StunDNS string `yaml:"stunDNS"`
+
+		// TurnDNS is the public hostname Coturn answers TURN queries
+		// on, e.g. "turn.vpn.acme.com". Optional: derived as
+		// "turn.<base>" by the same logic as StunDNS.
+		TurnDNS string `yaml:"turnDNS"`
+
+		// TurnUser is the static username Coturn / NetBird Mgmt agree
+		// on for TURN authentication. The matching password is
+		// generated and persisted in the Secret. Optional, defaults
+		// to "netbird".
+		TurnUser string `yaml:"turnUser" default:"netbird"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount

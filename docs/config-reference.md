@@ -630,11 +630,16 @@ user-facing.</p>
 <p>NetBirdConfig declares the NetBird Management instance this
 VPN cluster hosts. Used to render the redirect URI and
 audience claim for the netbird-client / netbird-backend OIDC
-clients in Keycloak.</p>
+clients in Keycloak, and (when this VPN cluster also hosts
+Coturn / Relay) to compute the public STUN / TURN endpoints
+kubeaid-cli writes into the netbird Secret.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | dns | `string` |  | DNS is the public hostname NetBird Management is<br>reachable at, e.g. "netbird.vpn.acme.com". Required.<br> |
+| stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
+| turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
+| turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
 
 ## NodeGroup
 

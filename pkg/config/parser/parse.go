@@ -98,6 +98,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// defaults so error messages reference the user-visible value.
 		hydrateKeycloakDefaults()
 
+		// Default cluster.netbird.{stunDNS,turnDNS,turnUser} when
+		// unset. Renders into the netbird Secret consumed by NetBird
+		// Mgmt, Dashboard, and Coturn.
+		hydrateNetBirdDefaults()
+
 		// Default KubePrometheus version when not explicitly provided.
 		err = hydrateKubePrometheusVersion(ctx)
 		assert.AssertErrNil(ctx, err, "Failed defaulting KubePrometheus version")
