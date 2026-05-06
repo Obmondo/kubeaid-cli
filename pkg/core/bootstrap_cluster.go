@@ -108,6 +108,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			reconcileNetBirdInKeycloak(ctx, mainClusterClient),
 			"Failed reconciling NetBird in Keycloak",
 		)
+
+		bar.Describe("Patching NetBird Secret with CNPG-generated postgres DSN")
+		assert.AssertErrNil(ctx,
+			patchNetBirdPostgresDSN(ctx, mainClusterClient),
+			"Failed patching NetBird postgres DSN",
+		)
 	}
 
 	// When we have setup Disaster Recovery,

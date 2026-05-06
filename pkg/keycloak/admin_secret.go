@@ -34,6 +34,35 @@ func GetOrGenerateClientSecret(
 	clusterClient client.Client,
 	namespace, name, secretKey string,
 ) (string, error) {
+	return getOrGenerateSecretKey(ctx, clusterClient, namespace, name, secretKey, generatePassword)
+}
+
+// GetOrGenerateBase64Key behaves like GetOrGenerateClientSecret but
+// generates a base64-encoded fixed-byte-length key on miss instead
+// of an alphanumeric password. Used for symmetric keys whose
+// consumers base64-decode into raw bytes (e.g. NetBird's
+// datastoreEncryptionKey → 32-byte AES).
+func GetOrGenerateBase64Key(
+	ctx context.Context,
+	clusterClient client.Client,
+	namespace, name, secretKey string,
+	byteLen int,
+) (string, error) {
+	return getOrGenerateSecretKey(ctx, clusterClient, namespace, name, secretKey,
+		func() (string, error) { return generateBase64Key(byteLen) },
+	)
+}
+
+// getOrGenerateSecretKey reads the Secret once and returns the
+// existing value at secretKey, falling back to gen() on miss.
+// Shared between GetOrGenerateClientSecret (alphanumeric password)
+// and GetOrGenerateBase64Key (base64 byte key).
+func getOrGenerateSecretKey(
+	ctx context.Context,
+	clusterClient client.Client,
+	namespace, name, secretKey string,
+	gen func() (string, error),
+) (string, error) {
 	if clusterClient != nil {
 		existing := &coreV1.Secret{}
 		err := clusterClient.Get(ctx,
@@ -51,5 +80,5 @@ func GetOrGenerateClientSecret(
 		}
 	}
 
-	return generatePassword()
+	return gen()
 }

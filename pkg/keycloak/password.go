@@ -5,6 +5,7 @@ package keycloak
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"math/big"
 )
@@ -30,4 +31,17 @@ func generatePassword() (string, error) {
 	}
 
 	return string(out), nil
+}
+
+// generateBase64Key returns byteLen random bytes encoded as
+// standard-padding base64. Used where the consumer expects a
+// fixed-byte-length key rather than printable-charset password —
+// e.g. NetBird's datastoreEncryptionKey, which the Mgmt server
+// base64-decodes into a 32-byte AES key.
+func generateBase64Key(byteLen int) (string, error) {
+	raw := make([]byte, byteLen)
+	if _, err := rand.Read(raw); err != nil {
+		return "", fmt.Errorf("reading random bytes for base64 key: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(raw), nil
 }

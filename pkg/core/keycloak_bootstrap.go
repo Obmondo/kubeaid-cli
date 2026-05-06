@@ -65,8 +65,8 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 
 	nbBackendSecret, err := readSecretValue(ctx, clusterClient,
 		constants.NamespaceNetBird,
-		constants.SecretNameNetBirdKeycloak,
-		constants.SecretKeyNetBirdSecret,
+		constants.SecretNameNetBird,
+		constants.SecretKeyNetBirdIDPMgmtSecret,
 	)
 	if err != nil {
 		return err
@@ -103,4 +103,36 @@ func readSecretValue(
 		)
 	}
 	return string(v), nil
+}
+
+// readSecretValueOrEmpty is readSecretValue but returns "" instead
+// of an error when the cluster, Secret, or key is missing.
+//
+// Use case: kubeaid-cli's template-render path runs both pre- and
+// post-bootstrap. On the very first render the cluster doesn't
+// exist yet, on a re-render the Secret may exist with the key
+// already populated by an earlier post-sync patch step. Returning
+// "" on miss lets the template emit an empty value the first time
+// and the persisted value on every run after.
+//
+// clusterClient may be nil — same treatment as Secret-not-found.
+func readSecretValueOrEmpty(
+	ctx context.Context,
+	clusterClient client.Client,
+	namespace, name, key string,
+) string {
+	if clusterClient == nil {
+		return ""
+	}
+	secret := &coreV1.Secret{}
+	if err := clusterClient.Get(ctx,
+		types.NamespacedName{Namespace: namespace, Name: name},
+		secret,
+	); err != nil {
+		return ""
+	}
+	if v, ok := secret.Data[key]; ok && len(v) > 0 {
+		return string(v)
+	}
+	return ""
 }

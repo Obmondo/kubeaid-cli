@@ -232,16 +232,25 @@ var KeycloakManagedNonSecretTemplateNames = []string{
 	"argocd-apps/values-keycloakx.yaml.tmpl",
 }
 
-// Managed-Keycloak SealedSecrets. keycloak-admin seeds Keycloak's
-// initial admin password (consumed by the keycloakx chart's
-// pre-install hook). netbird-keycloak carries the netbird-backend
-// OIDC client secret, kubeaid-cli pre-generates and templates the
-// same plaintext into both the SealedSecret here AND the
-// ReconcileClient call so Keycloak stores what NetBird's chart
-// already expects to envFrom.
+// Managed-Keycloak SealedSecrets.
+//   - keycloak-admin: seeds Keycloak's initial admin password
+//     (consumed by the keycloakx chart's pre-install hook).
+//   - netbird: holds every credential the NetBird Helm chart's
+//     envFromSecret block references — OIDC client IDs/secret,
+//     datastoreEncryptionKey, relayPassword, stun/turn server
+//     URLs, turn user/password. kubeaid-cli pre-generates the
+//     random keys and read-or-generates them on re-runs so the
+//     same value stays put across bootstraps. The OIDC client
+//     secret here is the same plaintext kubeaid-cli passes to
+//     ReconcileClient so Keycloak stores what NetBird's chart
+//     already expects to envFrom.
+//   - netbird-turn-credentials: Coturn server reads this for its
+//     own TURN auth. Password matches the netbird Secret's
+//     turnServerPassword so Mgmt's hand-back to clients lines up.
 var KeycloakManagedSecretTemplateNames = []string{
 	"sealed-secrets/keycloakx/keycloak-admin.yaml.tmpl",
-	"sealed-secrets/netbird/netbird-keycloak.yaml.tmpl",
+	"sealed-secrets/netbird/netbird.yaml.tmpl",
+	"sealed-secrets/netbird/netbird-turn-credentials.yaml.tmpl",
 }
 
 // Obmondo customer specific template names.
