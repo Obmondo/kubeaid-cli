@@ -520,8 +520,6 @@ type (
 
 		// Details about the node-groups.
 		NodeGroups HetznerNodeGroups `yaml:"nodeGroups"`
-
-		VPNCluster *HCloudVPNClusterConfig `yaml:"vpnCluster"`
 	}
 
 	HCloudVPNClusterConfig struct {

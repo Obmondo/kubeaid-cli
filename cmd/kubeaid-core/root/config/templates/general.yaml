@@ -285,8 +285,6 @@ cloud:
       hcloud:
       # Details about node-groups in Hetzner Bare Metal.
       bareMetal:
-    vpnCluster:
-      name:
   bare-metal:
     ssh:
       port: 22
