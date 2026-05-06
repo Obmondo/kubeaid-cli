@@ -33,13 +33,6 @@ type SetupKubeAidConfigArgs struct {
 	GitAuthMethod transport.AuthMethod
 }
 
-var kubePrometheusBuildDependencies = []string{
-	"jsonnet",
-	"jb",
-	"jq",
-	"gojsontoyaml",
-}
-
 /*
 Does the following :
 
@@ -271,13 +264,28 @@ func createFileFromTemplate(ctx context.Context,
 
 // Creates the jsonnet vars file for the cluster.
 // Then executes KubeAid's kube-prometheus build script.
+//
+// build.sh needs the jsonnet toolchain (jsonnet, jb, gojsontoyaml,
+// jq, util-linux for `column`). After the single-binary refactor
+// kubeaid-cli no longer ships those, so the script runs inside a
+// small docker image that does. The image is built on first use
+// from the embedded Dockerfile (scripts/kube-prom-builder/Dockerfile);
+// subsequent runs hit the docker layer cache and the build is a
+// no-op.
+//
+// Mounts:
+//
+//	kubeAidDir (read-write) at the same host path inside the
+//	  container — build.sh does `git -C "${basedir}/../.."` to
+//	  read the kubeaid version, which needs the worktree
+//	  visible.
+//	clusterDir (read-write) at the same host path inside the
+//	  container — script reads the *-vars.jsonnet and writes
+//	  the generated manifests under <clusterDir>/kube-prometheus/.
+//
+// User: --user <hostUid>:<hostGid> so files written into clusterDir
+// end up owned by the operator on the host, not by root.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
-	for _, dependency := range kubePrometheusBuildDependencies {
-		err := utils.EnsureRuntimeDependencyInstalled(ctx, dependency)
-		assert.AssertErrNil(ctx, err, "KubePrometheus build dependency unavailable",
-			slog.String("runtime-dependency", dependency))
-	}
-
 	// Create the jsonnet vars file.
 	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet",
 		clusterDir,
@@ -297,12 +305,35 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 		slog.String("path", kubePrometheusDir),
 	)
 
-	// Run the KubePrometheus build script.
-	slog.InfoContext(ctx, "Running KubePrometheus build script...")
-
 	kubeAidDir := utils.GetKubeAidDir()
-	buildScriptPath := path.Join(kubeAidDir, "build/kube-prometheus/build.sh")
 
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx,
-		fmt.Sprintf("%s %s", buildScriptPath, clusterDir))
+	// Build (or refresh) the kube-prom-builder image. Docker's
+	// layer cache makes this a no-op once the image exists for the
+	// current Dockerfile contents.
+	ensureKubePromBuilderImage(ctx)
+
+	// Run the KubePrometheus build script inside the builder image.
+	//
+	// kubeAidDir is bind-mounted at the same host absolute path so
+	// build.sh's `git -C "${basedir}/../.."` resolves correctly
+	// from inside the container without us having to translate
+	// paths. clusterDir is bind-mounted at its host absolute path
+	// for the same reason — the script's argv[1] is the host path
+	// it reads / writes.
+	//
+	// --user pins the container process to the operator's
+	// uid:gid so the generated kube-prometheus/ files end up
+	// owned correctly on the host when the container exits.
+	slog.InfoContext(ctx, "Running KubePrometheus build script in container...")
+	hostUID := os.Getuid()
+	hostGID := os.Getgid()
+	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, fmt.Sprintf(
+		"docker run --rm --user %d:%d -v %s:%s -v %s:%s %s %s/build/kube-prometheus/build.sh %s",
+		hostUID, hostGID,
+		kubeAidDir, kubeAidDir,
+		clusterDir, clusterDir,
+		constants.KubePromBuilderImage,
+		kubeAidDir,
+		clusterDir,
+	))
 }
