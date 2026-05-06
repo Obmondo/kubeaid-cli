@@ -45,6 +45,42 @@ func deriveRealmFromDNS(host string) string {
 	return strings.SplitN(etldPlusOne, ".", 2)[0]
 }
 
+// stripFirstLabel returns host with its leading DNS label removed —
+// "keycloak.vpn.acme.com" → "vpn.acme.com". Used by the prompt to
+// turn the operator-supplied Keycloak DNS into a base domain it can
+// prefix with "netbird." / "api." for the next prompts' defaults.
+//
+// Returns "" when host has no dot (single label like "localhost"),
+// in which case auto-derivation is skipped and the operator types
+// each FQDN explicitly.
+func stripFirstLabel(host string) string {
+	host = strings.TrimSpace(host)
+	idx := strings.Index(host, ".")
+	if idx < 0 {
+		return ""
+	}
+	return host[idx+1:]
+}
+
+// deriveACMEEmailFromDNS returns "ops@<eTLD+1>" for host — e.g.
+// "vpn.obmondo.com" → "ops@obmondo.com". Used as a default for the
+// LE contact email so the operator can press Enter when their domain
+// already has an ops@ alias. publicsuffix handles multi-part TLDs
+// correctly; "" on lookup failure so the operator just types it.
+func deriveACMEEmailFromDNS(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+
+	etldPlusOne, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return ""
+	}
+
+	return "ops@" + etldPlusOne
+}
+
 // printRecap echoes the completed question and answer to stdout so the
 // exchange persists after huh tears down its UI
 func printRecap(question, answer string) {

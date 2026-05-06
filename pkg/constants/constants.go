@@ -131,16 +131,19 @@ var (
 
 	OutputPathManagementClusterK3DConfig = path.Join(OutputsDirectory, "k3d.config.yaml")
 
-	OutputPathManagementClusterHostKubeconfig = path.Join(OutputsDirectory,
+	OutputPathManagementClusterHostKubeconfig = path.Join(
+		OutputsDirectory,
 		"kubeconfigs/clusters/management/host.yaml",
 	)
-	OutputPathManagementClusterContainerKubeconfig = path.Join(OutputsDirectory,
+	OutputPathManagementClusterContainerKubeconfig = path.Join(
+		OutputsDirectory,
 		"kubeconfigs/clusters/management/container.yaml",
 	)
 
 	OutputPathMainClusterKubeconfig = path.Join(OutputsDirectory, "kubeconfigs/clusters/main.yaml")
 
-	OutputPathJWKSDocument = path.Join(OutputsDirectory,
+	OutputPathJWKSDocument = path.Join(
+		OutputsDirectory,
 		"workload-identity/openid-provider/jwks.json",
 	)
 )
@@ -271,20 +274,20 @@ const (
 	// shared secret, and the static turn user/password Coturn and
 	// Mgmt agree on. kubeaid-cli read-or-generates each random key
 	// against the cluster-side Secret so re-runs don't drift.
-	SecretNameNetBird               = "netbird"
-	SecretKeyNetBirdIDPClientID     = "idpClientID"
-	SecretKeyNetBirdIDPMgmtID       = "idpClientMgmtID"
-	SecretKeyNetBirdIDPMgmtSecret   = "idpClientMgmtSecret"
-	SecretKeyNetBirdIDPSAUser       = "idpServiceAccountUser"
-	SecretKeyNetBirdDatastoreKey    = "datastoreEncryptionKey"
-	SecretKeyNetBirdRelayPassword   = "relayPassword"
-	SecretKeyNetBirdStunServer      = "stunServer"
-	SecretKeyNetBirdTurnServer      = "turnServer"
-	SecretKeyNetBirdTurnUser        = "turnServerUser"
-	SecretKeyNetBirdTurnPassword    = "turnServerPassword"
-	SecretKeyNetBirdPostgresDSN     = "postgresDSN"
-	NetBirdClientID                 = "netbird-client"
-	NetBirdBackendClientID          = "netbird-backend"
+	SecretNameNetBird             = "netbird"
+	SecretKeyNetBirdIDPClientID   = "idpClientID"
+	SecretKeyNetBirdIDPMgmtID     = "idpClientMgmtID"
+	SecretKeyNetBirdIDPMgmtSecret = "idpClientMgmtSecret"
+	SecretKeyNetBirdIDPSAUser     = "idpServiceAccountUser"
+	SecretKeyNetBirdDatastoreKey  = "datastoreEncryptionKey"
+	SecretKeyNetBirdRelayPassword = "relayPassword"
+	SecretKeyNetBirdStunServer    = "stunServer"
+	SecretKeyNetBirdTurnServer    = "turnServer"
+	SecretKeyNetBirdTurnUser      = "turnServerUser"
+	SecretKeyNetBirdTurnPassword  = "turnServerPassword"
+	SecretKeyNetBirdPostgresDSN   = "postgresDSN"
+	NetBirdClientID               = "netbird-client"
+	NetBirdBackendClientID        = "netbird-backend"
 
 	// netbird-turn-credentials Secret. Coturn server reads this for
 	// its own TURN auth via existingSecret in the chart values; the

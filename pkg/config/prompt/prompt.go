@@ -156,7 +156,7 @@ func ConfigFromPrompt(configsDirectory string) error {
 		return fmt.Errorf("collecting cluster kind: %w", err)
 	}
 
-	if cfg.ClusterType == "vpn" {
+	if cfg.ClusterType == constants.ClusterTypeVPN {
 		if err := promptVPNClusterDetails(cfg); err != nil {
 			return fmt.Errorf("collecting VPN cluster details: %w", err)
 		}
@@ -229,7 +229,7 @@ func promptOIDC(cfg *PromptedConfig) error {
 // time, so the prompt mirrors that constraint up front.)
 func promptClusterKind(cfg *PromptedConfig) error {
 	if cfg.CloudProvider != constants.CloudProviderHetzner {
-		cfg.ClusterType = "workload"
+		cfg.ClusterType = constants.ClusterTypeWorkload
 		return nil
 	}
 
@@ -248,9 +248,9 @@ func promptClusterKind(cfg *PromptedConfig) error {
 	}
 
 	if choice == optVPN {
-		cfg.ClusterType = "vpn"
+		cfg.ClusterType = constants.ClusterTypeVPN
 	} else {
-		cfg.ClusterType = "workload"
+		cfg.ClusterType = constants.ClusterTypeWorkload
 	}
 
 	return nil
@@ -280,6 +280,24 @@ func promptVPNClusterDetails(cfg *PromptedConfig) error {
 		return err
 	}
 
+	// Strip the leading "keycloak." (or whatever first label is)
+	// from the Keycloak DNS to build defaults for the next three
+	// prompts: a base of "vpn.obmondo.com" yields "netbird.vpn.obmondo.com",
+	// "api.vpn.obmondo.com", and "ops@obmondo.com" without the
+	// operator retyping the suffix. Empty base (single-label host
+	// like "localhost") falls through to a blank prompt.
+	if base := stripFirstLabel(cfg.KeycloakDNS); base != "" {
+		if cfg.NetBirdDNS == "" {
+			cfg.NetBirdDNS = "netbird." + base
+		}
+		if cfg.ControlPlaneEndpoint == "" {
+			cfg.ControlPlaneEndpoint = "api." + base
+		}
+		if cfg.ACMEEmail == "" {
+			cfg.ACMEEmail = deriveACMEEmailFromDNS(base)
+		}
+	}
+
 	if err := requiredInput(
 		"NetBird Mgmt DNS (e.g. netbird.vpn.acme.com):",
 		&cfg.NetBirdDNS,
@@ -301,7 +319,7 @@ func promptVPNClusterDetails(cfg *PromptedConfig) error {
 		return err
 	}
 
-	if cfg.KeycloakMode == "external" {
+	if cfg.KeycloakMode == constants.KeycloakModeExternal {
 		if err := requiredPassword(
 			"netbird-backend client secret (from your external Keycloak):",
 			&cfg.NetBirdBackendClientSecret,
@@ -339,11 +357,11 @@ func promptKeycloakMode(cfg *PromptedConfig) error {
 	}
 
 	if choice == optManaged {
-		cfg.KeycloakMode = "managed"
+		cfg.KeycloakMode = constants.KeycloakModeManaged
 		return nil
 	}
 
-	cfg.KeycloakMode = "external"
+	cfg.KeycloakMode = constants.KeycloakModeExternal
 	fmt.Println()
 	fmt.Println("  External Keycloak selected. Before running bootstrap, make sure your")
 	fmt.Println("  Keycloak realm has the resources kubeaid-cli would otherwise create:")

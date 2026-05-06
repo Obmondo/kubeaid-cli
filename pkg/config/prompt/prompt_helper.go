@@ -47,7 +47,7 @@ func printSummaryAndConfirm(cfg *PromptedConfig) error {
 	prompter := prompterForProvider(cfg.CloudProvider)
 	lines = append(lines, prompter.SummaryLines(cfg)...)
 
-	if cfg.ClusterType == "vpn" {
+	if cfg.ClusterType == constants.ClusterTypeVPN {
 		lines = append(lines,
 			fmt.Sprintf("  Keycloak DNS:  %s", cfg.KeycloakDNS),
 			fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
