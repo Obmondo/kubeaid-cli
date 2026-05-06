@@ -56,22 +56,25 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 
 		s3Client := s3.NewFromConfig(awsSDKConfig)
 
-		awsServices.DownloadS3BucketContents(ctx,
+		err = awsServices.DownloadS3BucketContents(ctx,
 			s3Client,
 			sealedSecretsKeysBackupsBucketName,
 			true,
 		)
+		assert.AssertErrNil(ctx, err, "Failed downloading S3 bucket contents")
 
 	case constants.CloudProviderAzure:
-		credentials := azure.GetClientSecretCredentials(ctx)
+		credentials, credErr := azure.GetClientSecretCredentials()
+		assert.AssertErrNil(ctx, credErr, "Failed getting Azure client secret credentials")
 
 		blobClient, err := azblob.NewClient(azure.GetStorageAccountURL(), credentials, nil)
 		assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
 
-		azure.DownloadBlobContainerContents(ctx,
+		dlErr := azure.DownloadBlobContainerContents(ctx,
 			blobClient,
 			sealedSecretsKeysBackupsBucketName,
 		)
+		assert.AssertErrNil(ctx, dlErr, "Failed downloading Azure Blob Container contents")
 
 	default:
 		panic("unreachable")

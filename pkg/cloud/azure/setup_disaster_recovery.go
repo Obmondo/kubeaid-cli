@@ -5,34 +5,37 @@ package azure
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-// Sets up the provisioned cluster for Disaster Recovery.
-func (a *Azure) SetupDisasterRecovery(ctx context.Context) {
+var syncArgoCDAppFn = kubernetes.SyncArgoCDApp
+
+// SetupDisasterRecovery sets up the provisioned cluster for Disaster Recovery.
+func (a *Azure) SetupDisasterRecovery(ctx context.Context) error {
 	disasterRecoveryConfig := config.ParsedGeneralConfig.Cloud.DisasterRecovery
-	assert.AssertNotNil(ctx, disasterRecoveryConfig,
-		"No Azure disaster-recovery config provided",
-	)
+	if disasterRecoveryConfig == nil {
+		return fmt.Errorf("no Azure disaster-recovery config provided")
+	}
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
 
-	// Sync Azure Workload Identity Webhook, Velero and SealedSecrets ArgoCD Apps.
 	argocdAppsToBeSynced := []string{
 		"azure-workload-identity-webhook",
 		constants.ArgoCDAppVelero,
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		err := kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
-		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
-			slog.String("app", argoCDApp))
+		if err := syncArgoCDAppFn(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{}); err != nil {
+			return fmt.Errorf("syncing ArgoCD app %s: %w", argoCDApp, err)
+		}
 	}
+
+	return nil
 }

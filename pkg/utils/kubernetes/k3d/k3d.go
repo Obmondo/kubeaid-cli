@@ -208,7 +208,7 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 		Name:       clusterName,
 		K3sVersion: k3sVersion,
 
-		ControlPlaneHostname:    globals.ControlPlaneHostname,
+		ControlPlaneHostname:            globals.ControlPlaneHostname,
 		ControlPlaneLBBootstrapPublicIP: globals.ControlPlaneLBBootstrapPublicIP,
 	}
 	if globals.CloudProviderName == constants.CloudProviderAzure {
@@ -224,8 +224,13 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 			return fmt.Errorf("canonicalizing OpenID provider SSH private key path: %w", err)
 		}
 
+		saIssuerURL, err := azure.GetServiceAccountIssuerURL()
+		if err != nil {
+			return fmt.Errorf("getting Azure ServiceAccount issuer URL: %w", err)
+		}
+
 		k3dConfigTemplateValues.WorkloadIdentity = &WorkloadIdentity{
-			ServiceAccountIssuerURL: azure.GetServiceAccountIssuerURL(ctx),
+			ServiceAccountIssuerURL: saIssuerURL,
 
 			SSHPublicKeyFilePath:  pubKeyPath,
 			SSHPrivateKeyFilePath: privKeyPath,

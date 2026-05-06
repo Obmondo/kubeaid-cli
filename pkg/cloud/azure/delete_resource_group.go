@@ -7,20 +7,18 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-func (a *Azure) DeleteResourceGroup(ctx context.Context) {
+func (a *Azure) DeleteResourceGroup(ctx context.Context) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("resource-group-name", a.resourceGroupName),
 	})
 
-	responsePoller, err := a.resourceGroupsClient.BeginDelete(ctx, a.resourceGroupName, nil)
-	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
-
-	_, err = responsePoller.PollUntilDone(ctx, nil)
-	assert.AssertErrNil(ctx, err, "Failed deleting Azure Resource Group")
+	if err := a.deleteResourceGroupFn(ctx, a.resourceGroupName); err != nil {
+		return err
+	}
 
 	slog.InfoContext(ctx, "Deleted resources related to Workload Identity Provider")
+	return nil
 }

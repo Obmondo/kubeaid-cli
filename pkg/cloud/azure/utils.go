@@ -4,7 +4,6 @@
 package azure
 
 import (
-	"context"
 	"fmt"
 	"net/url"
 
@@ -13,29 +12,31 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 // Constructs and returns Azure client secret credentials.
-func GetClientSecretCredentials(ctx context.Context) *azidentity.ClientSecretCredential {
+func GetClientSecretCredentials() (*azidentity.ClientSecretCredential, error) {
 	credentials, err := azidentity.NewClientSecretCredential(
 		config.ParsedGeneralConfig.Cloud.Azure.TenantID,
 		config.ParsedSecretsConfig.Azure.ClientID,
 		config.ParsedSecretsConfig.Azure.ClientSecret,
 		nil,
 	)
-	assert.AssertErrNil(ctx, err, "Failed constructing Azure credentials")
+	if err != nil {
+		return nil, fmt.Errorf("constructing Azure credentials: %w", err)
+	}
 
-	return credentials
+	return credentials, nil
 }
 
-// Type casts the give CloudProvider interface instance to an instance of the Azure struct.
-// Panics if the type casting fails.
-func CloudProviderToAzure(ctx context.Context, cloudProvider cloud.CloudProvider) *Azure {
+// Type casts the given CloudProvider interface instance to an instance of the Azure struct.
+func CloudProviderToAzure(cloudProvider cloud.CloudProvider) (*Azure, error) {
 	azure, ok := cloudProvider.(*Azure)
-	assert.Assert(ctx, ok, "Failed type casting CloudProvider interface to Azure struct type")
+	if !ok {
+		return nil, fmt.Errorf("failed type casting CloudProvider interface to Azure struct type")
+	}
 
-	return azure
+	return azure, nil
 }
 
 // Returns URL of the storage account being used.
@@ -46,7 +47,7 @@ func GetStorageAccountURL() string {
 }
 
 // Returns URL of the OIDC provider being used for Workload Identity support.
-func GetServiceAccountIssuerURL(ctx context.Context) string {
+func GetServiceAccountIssuerURL() (string, error) {
 	storageAccountURL := fmt.Sprintf(
 		"https://%s.blob.core.windows.net/",
 		config.ParsedGeneralConfig.Cloud.Azure.StorageAccount,
@@ -56,7 +57,9 @@ func GetServiceAccountIssuerURL(ctx context.Context) string {
 		storageAccountURL,
 		constants.BlobContainerNameOIDCProvider,
 	)
-	assert.AssertErrNil(ctx, err, "Failed constructing ServiceAccount issuer URL")
+	if err != nil {
+		return "", fmt.Errorf("constructing ServiceAccount issuer URL: %w", err)
+	}
 
-	return serviceAccountIssuerURL
+	return serviceAccountIssuerURL, nil
 }

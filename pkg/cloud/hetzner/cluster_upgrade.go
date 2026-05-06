@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,7 +18,6 @@ import (
 
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
@@ -42,62 +40,53 @@ func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
 	name string,
 	updates any,
-) {
+) error {
 	parsedUpdates, ok := updates.(HetznerMachineTemplateUpdates)
-	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
-
-	// Determine whether the machine template corresponds to HCloud or Hetzner Bare Metal.
+	if !ok {
+		return fmt.Errorf("wrong type of MachineTemplateUpdates object passed")
+	}
 
 	var infrastructureRefKind string
 
 	switch strings.Contains(name, "control-plane") {
-	// Machine template for the control-plane.
 	case true:
-		// Get the KubeadmControlPlane resource, from which we can determine :
-		// whether the control-plane nodes are in HCloud or Hetzner Bare Metal.
-
 		kubeadmControlPlane := &kubeadmControlPlaneV1Beta1.KubeadmControlPlane{
 			ObjectMeta: metaV1.ObjectMeta{
 				Name:      name,
 				Namespace: kubernetes.GetCapiClusterNamespace(),
 			},
 		}
-		err := kubernetes.GetKubernetesResource(ctx, clusterClient, kubeadmControlPlane)
-		assert.AssertErrNil(ctx, err, "Failed retrieving the corresponding KubeadmControlPlane")
+		if err := kubernetes.GetKubernetesResource(ctx, clusterClient, kubeadmControlPlane); err != nil {
+			return fmt.Errorf("retrieving the corresponding KubeadmControlPlane: %w", err)
+		}
 
 		infrastructureRefKind = kubeadmControlPlane.Spec.MachineTemplate.InfrastructureRef.Kind
 
-	// Machine template for a node-group.
 	default:
-		// Get the MachineDeployment resource, from which we can determine :
-		// whether the node-group is in HCloud or Hetzner Bare Metal.
-
 		machineDeployment := &clusterAPIV1Beta1.MachineDeployment{
 			ObjectMeta: metaV1.ObjectMeta{
 				Name:      name,
 				Namespace: kubernetes.GetCapiClusterNamespace(),
 			},
 		}
-		err := kubernetes.GetKubernetesResource(ctx, clusterClient, machineDeployment)
-		assert.AssertErrNil(ctx, err, "Failed retrieving the corresponding MachineDeployment")
+		if err := kubernetes.GetKubernetesResource(ctx, clusterClient, machineDeployment); err != nil {
+			return fmt.Errorf("retrieving the corresponding MachineDeployment: %w", err)
+		}
 
 		infrastructureRefKind = machineDeployment.Spec.Template.Spec.InfrastructureRef.Kind
 	}
 
 	switch infrastructureRefKind {
 	case "HCloudMachineTemplate":
-		updateHCloudMachineTemplate(ctx, clusterClient, name, parsedUpdates.HCloudMachineTemplateUpdates)
+		return updateHCloudMachineTemplate(ctx, clusterClient, name, parsedUpdates.HCloudMachineTemplateUpdates)
 
 	case "HetznerBareMetalMachineTemplate":
-		updateHetznerBareMetalMachineTemplate(ctx, clusterClient, name,
+		return updateHetznerBareMetalMachineTemplate(ctx, clusterClient, name,
 			parsedUpdates.HetznerBareMetalMachineTemplateUpdates,
 		)
 
 	default:
-		slog.InfoContext(ctx, "Wrong type of infrastructureRef kind in MachineDeployment",
-			slog.String("kind", infrastructureRefKind),
-		)
-		os.Exit(1)
+		return fmt.Errorf("unexpected infrastructureRef kind %q in MachineDeployment", infrastructureRefKind)
 	}
 }
 
@@ -105,63 +94,67 @@ func updateHCloudMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
 	name string,
 	updates HCloudMachineTemplateUpdates,
-) {
-	// Get the HCloudMachineTemplate.
+) error {
 	hcloudMachineTemplate := &caphV1Beta1.HCloudMachineTemplate{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      name,
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := kubernetes.GetKubernetesResource(ctx, clusterClient, hcloudMachineTemplate)
-	assert.AssertErrNil(ctx, err, "Failed retrieving the current HCloudMachineTemplate")
+	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, hcloudMachineTemplate); err != nil {
+		return fmt.Errorf("retrieving the current HCloudMachineTemplate: %w", err)
+	}
 
-	// Delete that.
-	err = clusterClient.Delete(ctx, hcloudMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(ctx, err, "Failed deleting the current HCloudMachineTemplate")
+	if err := clusterClient.Delete(ctx, hcloudMachineTemplate, &client.DeleteOptions{}); err != nil {
+		return fmt.Errorf("deleting the current HCloudMachineTemplate: %w", err)
+	}
 	slog.InfoContext(ctx, "Deleted the current HCloudMachineTemplate")
-
-	// And, recreate it, with the updates.
 
 	hcloudMachineTemplate.Spec.Template.Spec.ImageName = updates.NewImageName
 	hcloudMachineTemplate.ResourceVersion = ""
 
-	err = clusterClient.Create(ctx, hcloudMachineTemplate, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed recreating the HCloudMachineTemplate")
+	if err := clusterClient.Create(ctx, hcloudMachineTemplate, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("recreating the HCloudMachineTemplate: %w", err)
+	}
+
+	return nil
 }
 
 func updateHetznerBareMetalMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
 	name string,
 	updates HetznerBareMetalMachineTemplateUpdates,
-) {
-	// Get the HetznerBareMetalMachineTemplate.
+) error {
 	hetznerBareMetalMachineTemplate := &caphV1Beta1.HetznerBareMetalMachineTemplate{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      name,
 			Namespace: kubernetes.GetCapiClusterNamespace(),
 		},
 	}
-	err := kubernetes.GetKubernetesResource(ctx, clusterClient, hetznerBareMetalMachineTemplate)
-	assert.AssertErrNil(ctx, err, "Failed retrieving the current HetznerBareMetalMachineTemplate")
+	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, hetznerBareMetalMachineTemplate); err != nil {
+		return fmt.Errorf("retrieving the current HetznerBareMetalMachineTemplate: %w", err)
+	}
 
-	// Delete that.
-	err = clusterClient.Delete(ctx, hetznerBareMetalMachineTemplate, &client.DeleteOptions{})
-	assert.AssertErrNil(ctx, err, "Failed deleting the current HetznerBareMetalMachineTemplate")
+	if err := clusterClient.Delete(ctx, hetznerBareMetalMachineTemplate, &client.DeleteOptions{}); err != nil {
+		return fmt.Errorf("deleting the current HetznerBareMetalMachineTemplate: %w", err)
+	}
 	slog.InfoContext(ctx, "Deleted the current HetznerBareMetalMachineTemplate")
-
-	// And, recreate it, with the updates.
 
 	hetznerBareMetalMachineTemplate.Spec.Template.Spec.InstallImage.Image.Path = updates.NewImagePath
 	hetznerBareMetalMachineTemplate.ResourceVersion = ""
 
-	err = clusterClient.Create(ctx, hetznerBareMetalMachineTemplate, &client.CreateOptions{})
-	assert.AssertErrNil(ctx, err, "Failed recreating the HetznerBareMetalMachineTemplate")
+	if err := clusterClient.Create(ctx, hetznerBareMetalMachineTemplate, &client.CreateOptions{}); err != nil {
+		return fmt.Errorf("recreating the HetznerBareMetalMachineTemplate: %w", err)
+	}
+
+	return nil
 }
 
-func (*Hetzner) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) {
+func (*Hetzner) UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) error {
 	parsedUpdates, ok := updates.(HetznerMachineTemplateUpdates)
-	assert.Assert(ctx, ok, "Wrong type of MachineTemplateUpdates object passed")
+	if !ok {
+		return fmt.Errorf("wrong type of MachineTemplateUpdates object passed")
+	}
 
 	if len(parsedUpdates.NewImageName) > 0 {
 		yqCmd := yqCmdLib.New()
@@ -171,10 +164,9 @@ func (*Hetzner) UpdateCapiClusterValuesFile(ctx context.Context, path string, up
 			path,
 			"--inplace",
 		})
-		err := yqCmd.ExecuteContext(ctx)
-		assert.AssertErrNil(ctx, err,
-			"Failed updating image name for HCloud machines, in values-capi-cluster.yaml file",
-		)
+		if err := yqCmd.ExecuteContext(ctx); err != nil {
+			return fmt.Errorf("updating image name for HCloud machines in values-capi-cluster.yaml: %w", err)
+		}
 	}
 
 	if len(parsedUpdates.NewImagePath) > 0 {
@@ -185,9 +177,10 @@ func (*Hetzner) UpdateCapiClusterValuesFile(ctx context.Context, path string, up
 			path,
 			"--inplace",
 		})
-		err := yqCmd.ExecuteContext(ctx)
-		assert.AssertErrNil(ctx, err,
-			"Failed updating install-image script path, in values-capi-cluster.yaml file",
-		)
+		if err := yqCmd.ExecuteContext(ctx); err != nil {
+			return fmt.Errorf("updating install-image script path in values-capi-cluster.yaml: %w", err)
+		}
 	}
+
+	return nil
 }

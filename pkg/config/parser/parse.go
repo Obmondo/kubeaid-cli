@@ -129,7 +129,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	}
 
 	// Set globals.CloudProvider based on the underlying cloud-provider being used.
-	setCloudProvider()
+	setCloudProvider(ctx)
 
 	/*
 		For each node-group (in the general config), the CPU and memory of the corresponding VM type
@@ -244,13 +244,17 @@ func detectCloudProviderName() {
 }
 
 // Based on the cloud-provider we're using, sets the value of globals.CloudProvider.
-func setCloudProvider() {
+func setCloudProvider(ctx context.Context) {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		globals.CloudProvider = awsCloudProvider.NewAWSCloudProvider()
+		provider, err := awsCloudProvider.NewAWSCloudProvider()
+		assert.AssertErrNil(ctx, err, "Failed creating AWS cloud provider")
+		globals.CloudProvider = provider
 
 	case constants.CloudProviderAzure:
-		globals.CloudProvider = azure.NewAzureCloudProvider()
+		provider, err := azure.NewAzureCloudProvider()
+		assert.AssertErrNil(ctx, err, "Failed creating Azure cloud provider")
+		globals.CloudProvider = provider
 
 	case constants.CloudProviderHetzner:
 		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
@@ -294,7 +298,10 @@ func hydrateVMSpecs(ctx context.Context) {
 		awsConfig := config.ParsedGeneralConfig.Cloud.AWS
 
 		for i, nodeGroup := range awsConfig.NodeGroups {
-			instanceSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.InstanceType)
+			instanceSpecs, err := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.InstanceType)
+			assert.AssertErrNil(ctx, err, "Failed getting VM specs for instance type",
+				slog.String("instance-type", nodeGroup.InstanceType),
+			)
 
 			awsConfig.NodeGroups[i].CPU = instanceSpecs.CPU
 			awsConfig.NodeGroups[i].Memory = instanceSpecs.Memory
@@ -304,7 +311,10 @@ func hydrateVMSpecs(ctx context.Context) {
 		azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
 		for i, nodeGroup := range azureConfig.NodeGroups {
-			vmSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
+			vmSpecs, err := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.VMSize)
+			assert.AssertErrNil(ctx, err, "Failed getting VM specs for VM size",
+				slog.String("vm-size", nodeGroup.VMSize),
+			)
 
 			azureConfig.NodeGroups[i].CPU = vmSpecs.CPU
 			azureConfig.NodeGroups[i].Memory = vmSpecs.Memory
@@ -314,7 +324,10 @@ func hydrateVMSpecs(ctx context.Context) {
 		hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
 		for i, nodeGroup := range hetznerConfig.NodeGroups.HCloud {
-			machineSpecs := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.MachineType)
+			machineSpecs, err := globals.CloudProvider.GetVMSpecs(ctx, nodeGroup.MachineType)
+			assert.AssertErrNil(ctx, err, "Failed getting VM specs for machine type",
+				slog.String("machine-type", nodeGroup.MachineType),
+			)
 			assert.AssertNotNil(
 				ctx,
 				machineSpecs.RootVolumeSize,

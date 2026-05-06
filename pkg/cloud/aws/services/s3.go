@@ -6,6 +6,8 @@ package services
 import (
 	"compress/gzip"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -19,12 +21,18 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
+type S3API interface {
+	CreateBucket(ctx context.Context, params *s3.CreateBucketInput, optFns ...func(*s3.Options)) (*s3.CreateBucketOutput, error)
+	HeadBucket(ctx context.Context, params *s3.HeadBucketInput, optFns ...func(*s3.Options)) (*s3.HeadBucketOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+}
+
 // Creates S3 Bucket.
-func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
+func CreateS3Bucket(ctx context.Context, s3Client S3API, name string) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("s3Bucket", name),
 	})
@@ -40,52 +48,58 @@ func CreateS3Bucket(ctx context.Context, s3Client *s3.Client, name string) {
 		}
 	}
 	_, err := s3Client.CreateBucket(ctx, createBucketInput)
-	//nolint:errorlint
-	switch err.(type) {
-	// S3 Bucket already exists and is owned by the user.
-	case *s3Types.BucketAlreadyOwnedByYou:
+
+	var alreadyOwned *s3Types.BucketAlreadyOwnedByYou
+	switch {
+	case err == nil:
+		if err := s3.NewBucketExistsWaiter(s3Client).
+			Wait(ctx, &s3.HeadBucketInput{Bucket: aws.String(name)}, time.Minute); err != nil {
+			return fmt.Errorf("waiting for S3 bucket %s to be created: %w", name, err)
+		}
+		slog.InfoContext(ctx, "Created S3 bucket")
+
+	case errors.As(err, &alreadyOwned):
 		slog.WarnContext(ctx, "S3 bucket already exists and is owned by you")
 
 	default:
-		assert.AssertErrNil(ctx, err, "Failed creating S3 bucket")
-
-		// Wait fo the S3 bucket to be created.
-		err = s3.NewBucketExistsWaiter(s3Client).
-			Wait(ctx, &s3.HeadBucketInput{Bucket: aws.String(name)}, time.Minute)
-		assert.AssertErrNil(ctx, err, "Failed waiting for S3 bucket to be created")
-		slog.InfoContext(ctx, "Created S3 bucket")
+		return fmt.Errorf("creating S3 bucket %s: %w", name, err)
 	}
+
+	return nil
 }
 
 // Downloads the contents of the given S3 bucket locally.
 // If the contents are gZip encoded, then you can choose to gZip decode them after download.
 // NOTE : The download path is decided by utils.GetDownloadedStorageBucketContentsDir( ).
 func DownloadS3BucketContents(ctx context.Context,
-	s3Client *s3.Client,
+	s3Client S3API,
 	bucketName string,
 	gzipDecode bool,
-) {
+) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("s3-bucket", bucketName),
 	})
 
 	slog.InfoContext(ctx, "Downloading contents of S3 bucket")
 
-	// Create directory where S3 objects will be downloaded.
 	downloadDir := utils.GetDownloadedStorageBucketContentsDir(bucketName)
-	err := os.MkdirAll(downloadDir, 0o750)
-	assert.AssertErrNil(ctx, err, "Failed creating directory", slog.String("path", downloadDir))
+	if err := os.MkdirAll(downloadDir, 0o750); err != nil {
+		return fmt.Errorf("creating directory %s: %w", downloadDir, err)
+	}
 
 	listObjectsInput := s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
 	}
 	for {
 		listObjectsOutput, err := s3Client.ListObjectsV2(ctx, &listObjectsInput)
-		assert.AssertErrNil(ctx, err, "Failed listing objects in S3 bucket")
+		if err != nil {
+			return fmt.Errorf("listing objects in S3 bucket %s: %w", bucketName, err)
+		}
 
-		// Iterate through the S3 objects and download content of each object.
 		for _, object := range listObjectsOutput.Contents {
-			downloadS3Object(ctx, s3Client, &bucketName, &downloadDir, object.Key, gzipDecode)
+			if err := downloadS3Object(ctx, s3Client, &bucketName, &downloadDir, object.Key, gzipDecode); err != nil {
+				return fmt.Errorf("downloading S3 object %s: %w", *object.Key, err)
+			}
 		}
 
 		if !*listObjectsOutput.IsTruncated {
@@ -93,51 +107,62 @@ func DownloadS3BucketContents(ctx context.Context,
 		}
 		listObjectsInput.ContinuationToken = listObjectsOutput.ContinuationToken
 	}
+
+	return nil
 }
 
-// Downloads the content of the given S3 object locally.
 func downloadS3Object(ctx context.Context,
-	s3Client *s3.Client,
+	s3Client S3API,
 	bucketName, downloadDir, objectKey *string,
 	gzipDecode bool,
-) {
+) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("object", *objectKey),
 	})
 
 	filePath := filepath.Join(*downloadDir, *objectKey)
 
-	// Create intermediate directories (if required).
-	if strings.Contains(*objectKey, "/") {
-		err := utils.CreateIntermediateDirsForFile(filePath)
-		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs", slog.String("path", filePath))
+	// Guard against path traversal: ensure the resolved path stays under the download directory.
+	if !strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(*downloadDir)+string(os.PathSeparator)) {
+		return fmt.Errorf("object key %q escapes download directory", *objectKey)
 	}
 
-	// Create the file where the contents of the given S3 object will be stored.
+	if strings.Contains(*objectKey, "/") {
+		if err := utils.CreateIntermediateDirsForFile(filePath); err != nil {
+			return fmt.Errorf("creating intermediate dirs for %s: %w", filePath, err)
+		}
+	}
+
 	destinationFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	assert.AssertErrNil(ctx, err, "Failed opening file", slog.String("path", filePath))
+	if err != nil {
+		return fmt.Errorf("opening file %s: %w", filePath, err)
+	}
 	defer destinationFile.Close()
 
-	// Fetch the S3 object.
 	getObjectOutput, err := s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: bucketName,
 		Key:    objectKey,
 	})
-	assert.AssertErrNil(ctx, err, "Failed getting S3 Object")
+	if err != nil {
+		return fmt.Errorf("getting S3 object: %w", err)
+	}
 	defer getObjectOutput.Body.Close()
 
 	s3ObjectContentReader := getObjectOutput.Body
 
-	// gZip decode S3 object content (if required).
 	if gzipDecode {
 		gzipReader, err := gzip.NewReader(getObjectOutput.Body)
-		assert.AssertErrNil(ctx, err, "Failed creating a gZip reader")
+		if err != nil {
+			return fmt.Errorf("creating gZip reader: %w", err)
+		}
 		defer gzipReader.Close()
 
 		s3ObjectContentReader = gzipReader
 	}
 
-	// Copy contents of the fetched S3 object to the file.
-	_, err = io.Copy(destinationFile, s3ObjectContentReader)
-	assert.AssertErrNil(ctx, err, "Failed writing S3 Object contents to file")
+	if _, err = io.Copy(destinationFile, s3ObjectContentReader); err != nil {
+		return fmt.Errorf("writing S3 object contents to file: %w", err)
+	}
+
+	return nil
 }

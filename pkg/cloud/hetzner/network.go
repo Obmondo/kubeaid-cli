@@ -15,45 +15,37 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Creates the Hetzner Network, if it doesn't already exist.
-// The Hetzner Network details are returned.
-func (h *Hetzner) CreateNetwork(ctx context.Context) *hcloud.Network {
+// CreateNetwork creates the Hetzner Network, if it doesn't already exist.
+func (h *Hetzner) CreateNetwork(ctx context.Context) (*hcloud.Network, error) {
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
 
 	_, parsedHetznerNetworkCIDR, err := net.ParseCIDR(constants.HetznerNetworkCIDR)
-	assert.AssertErrNil(ctx, err, "Failed parsing Hetzner Network CIDR",
-		slog.String("cidr", constants.HetznerNetworkCIDR),
-	)
+	if err != nil {
+		return nil, fmt.Errorf("parsing Hetzner Network CIDR %q: %w", constants.HetznerNetworkCIDR, err)
+	}
 
 	_, parsedHCloudServersSubnetCIDR, err := net.ParseCIDR(constants.HCloudServersSubnetCIDR)
-	assert.AssertErrNil(ctx, err, "Failed parsing HCloud servers subnet CIDR",
-		slog.String("cidr", constants.HCloudServersSubnetCIDR),
-	)
+	if err != nil {
+		return nil, fmt.Errorf("parsing HCloud servers subnet CIDR %q: %w", constants.HCloudServersSubnetCIDR, err)
+	}
 
-	networkClient := h.hcloudClient.Network
-
-	// Check whether the Hetzner Network already exists.
-	// If yes, then we assume that it was created by KubeAid CLI, with the correct configuration.
-
-	network, response, err := networkClient.Get(ctx, clusterName)
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusOK)),
-		"Failed running Hetzner Network GET operation",
-	)
+	network, response, err := h.networkClient.Get(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("running Hetzner Network GET operation: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("running Hetzner Network GET operation: unexpected status %d", response.StatusCode)
+	}
 
 	if network != nil {
 		slog.InfoContext(ctx, "Hetzner Network already exists")
-		return network
+		return network, nil
 	}
 
-	// The Hetzner Network doesn't exist.
-	// So, let's create it.
-
-	network, response, err = networkClient.Create(ctx, hcloud.NetworkCreateOpts{
+	network, response, err = h.networkClient.Create(ctx, hcloud.NetworkCreateOpts{
 		Name: clusterName,
 
 		Labels: map[string]string{
@@ -64,7 +56,6 @@ func (h *Hetzner) CreateNetwork(ctx context.Context) *hcloud.Network {
 		IPRange: parsedHetznerNetworkCIDR,
 
 		Subnets: []hcloud.NetworkSubnet{
-			// For the HCloud servers.
 			{
 				Type:        hcloud.NetworkSubnetTypeCloud,
 				IPRange:     parsedHCloudServersSubnetCIDR,
@@ -74,38 +65,41 @@ func (h *Hetzner) CreateNetwork(ctx context.Context) *hcloud.Network {
 
 		ExposeRoutesToVSwitch: true,
 	})
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusCreated)),
-		"Failed creating Hetzner Network",
-	)
+	if err != nil {
+		return nil, fmt.Errorf("creating Hetzner Network: %w", err)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("creating Hetzner Network: unexpected status %d", response.StatusCode)
+	}
 	slog.InfoContext(ctx, "Created Hetzner Network")
 
-	return network
+	return network, nil
 }
 
-// Attaches the given HCloud server to the given Hetzner Network.
-func (h *Hetzner) AttachHCloudServerToNetwork(ctx context.Context, serverID, networkID int) {
+// AttachHCloudServerToNetwork attaches the given HCloud server to the given Hetzner Network.
+func (h *Hetzner) AttachHCloudServerToNetwork(ctx context.Context, serverID, networkID int) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.Int("server-id", serverID), slog.Int("network-id", networkID),
 	})
 
-	_, response, err := h.hcloudClient.Server.AttachToNetwork(ctx,
+	_, response, err := h.serverClient.AttachToNetwork(ctx,
 		&hcloud.Server{ID: serverID},
 		hcloud.ServerAttachToNetworkOpts{
 			Network: &hcloud.Network{ID: networkID},
 		},
 	)
 
-	// When the attachment already exists.
 	if (err != nil) && strings.Contains(err.Error(), string(hcloud.ErrorCodeServerAlreadyAttached)) {
 		slog.InfoContext(ctx, "Attachment already exists")
-		return
+		return nil
 	}
 
-	// Otherwise, it must be created.
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusCreated)),
-		"Failed attaching HCloud server to Hetzner Network",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return fmt.Errorf("attaching HCloud server %d to Hetzner Network %d: %w", serverID, networkID, err)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return fmt.Errorf("attaching HCloud server %d to Hetzner Network %d: unexpected status %d", serverID, networkID, response.StatusCode)
+	}
+
+	return nil
 }

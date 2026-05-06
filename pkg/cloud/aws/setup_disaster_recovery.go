@@ -13,50 +13,60 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-// Sets up the provisioned cluster for Disaster Recovery.
-// NOTE : Picks up AWS credentials from the environment.
-func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
+var getAccountIDFunc = GetAccountID
+
+var syncArgoCDApp = kubernetes.SyncArgoCDApp
+
+// SetupDisasterRecovery sets up the provisioned cluster for Disaster Recovery.
+// NOTE: Picks up AWS credentials from the environment.
+func (a *AWS) SetupDisasterRecovery(ctx context.Context) error {
 	disasterRecoveryConfig := config.ParsedGeneralConfig.Cloud.DisasterRecovery
-	assert.AssertNotNil(ctx, disasterRecoveryConfig, "No disaster-recovery config provided")
+	if disasterRecoveryConfig == nil {
+		return fmt.Errorf("no disaster-recovery config provided")
+	}
 
 	slog.InfoContext(ctx, "Setting up Disaster Recovery")
 
-	// Create S3 bucket where Sealed Secrets will be backed up.
-	services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.SealedSecretsBackupsBucketName)
-	//
-	// Create S3 bucket where Kubernetes Objects will be backed up (by Velero).
-	services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.VeleroBackupsBucketName)
+	if err := services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.SealedSecretsBackupsBucketName); err != nil {
+		return fmt.Errorf("creating sealed-secrets backup S3 bucket: %w", err)
+	}
 
-	var (
-		clusterName = config.ParsedGeneralConfig.Cluster.Name
-		accountID   = GetAccountID(ctx)
-	)
+	if err := services.CreateS3Bucket(ctx, a.s3Client, disasterRecoveryConfig.VeleroBackupsBucketName); err != nil {
+		return fmt.Errorf("creating Velero backup S3 bucket: %w", err)
+	}
 
-	// Create IAM Policy for Sealed Secrets Backuper.
+	clusterName := config.ParsedGeneralConfig.Cluster.Name
+
+	accountID, err := getAccountIDFunc(ctx)
+	if err != nil {
+		return fmt.Errorf("getting AWS account ID for disaster recovery setup: %w", err)
+	}
+
 	sealedSecretsBackuperIAMPolicyName := fmt.Sprintf("sealed-secrets-backuper-%s", clusterName)
-	services.CreateIAMRoleForPolicy(ctx,
+	if err := services.CreateIAMRoleForPolicy(ctx,
 		accountID,
 		a.iamClient,
 		sealedSecretsBackuperIAMPolicyName,
 		getSealedSecretsBackuperIAMPolicy(),
-		getIAMTrustPolicy(ctx),
-	)
+		getIAMTrustPolicy(accountID),
+	); err != nil {
+		return fmt.Errorf("creating IAM role for sealed-secrets backuper: %w", err)
+	}
 
-	// Create IAM Policy for Velero.
 	veleroIAMPolicyName := fmt.Sprintf("velero-%s", clusterName)
-	services.CreateIAMRoleForPolicy(ctx,
+	if err := services.CreateIAMRoleForPolicy(ctx,
 		accountID,
 		a.iamClient,
 		veleroIAMPolicyName,
 		getVeleroIAMPolicy(),
-		getIAMTrustPolicy(ctx),
-	)
+		getIAMTrustPolicy(accountID),
+	); err != nil {
+		return fmt.Errorf("creating IAM role for velero: %w", err)
+	}
 
-	// Sync Kube2IAM, K8sConfigs, Velero and SealedSecrets ArgoCD Apps.
 	argocdAppsToBeSynced := []string{
 		"kube2iam",
 		"k8s-configs",
@@ -64,8 +74,10 @@ func (a *AWS) SetupDisasterRecovery(ctx context.Context) {
 		"sealed-secrets",
 	}
 	for _, argoCDApp := range argocdAppsToBeSynced {
-		err := kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
-		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
-			slog.String("app", argoCDApp))
+		if err := syncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{}); err != nil {
+			return fmt.Errorf("syncing ArgoCD app %s: %w", argoCDApp, err)
+		}
 	}
+
+	return nil
 }

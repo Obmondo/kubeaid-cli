@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,13 +15,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
 	"github.com/Azure/azure-workload-identity/pkg/cmd/jwks"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
@@ -32,7 +33,27 @@ type TemplateArgs struct {
 	BlobContainerName string
 }
 
-func (a *Azure) CreateOIDCProvider(ctx context.Context) {
+var httpGetFn = http.Get
+
+var newBlobClientFn = func(storageAccountURL string, cred *azidentity.ClientSecretCredential) (*azblob.Client, error) {
+	return azblob.NewClient(storageAccountURL, cred, nil)
+}
+
+var uploadBlobBufferFn = func(ctx context.Context, client *azblob.Client, containerName, blobName string, data []byte) error {
+	_, err := client.UploadBuffer(ctx, containerName, blobName, data, nil)
+	return err
+}
+
+var generateJWKSDocumentFn = func(ctx context.Context, publicKeyPath, outputPath string) error {
+	jwksCmd := jwks.NewJWKSCmd()
+	jwksCmd.SetArgs([]string{
+		"--public-keys", publicKeyPath,
+		"--output-file", outputPath,
+	})
+	return jwksCmd.ExecuteContext(ctx)
+}
+
+func (a *Azure) CreateOIDCProvider(ctx context.Context) error {
 	slog.InfoContext(ctx, "Setting up OIDC provider...")
 
 	var (
@@ -40,12 +61,17 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 
 		storageAccountName = azureConfig.StorageAccount
 		storageAccountURL  = GetStorageAccountURL()
-
-		serviceAccountIssuerURL = GetServiceAccountIssuerURL(ctx)
 	)
 
-	blobClient, err := azblob.NewClient(storageAccountURL, a.credentials, nil)
-	assert.AssertErrNil(ctx, err, "Failed creating Azure Blob client")
+	serviceAccountIssuerURL, err := GetServiceAccountIssuerURL()
+	if err != nil {
+		return fmt.Errorf("getting service account issuer URL: %w", err)
+	}
+
+	blobClient, err := newBlobClientFn(storageAccountURL, a.credentials)
+	if err != nil {
+		return fmt.Errorf("creating Azure Blob client: %w", err)
+	}
 
 	// Generate and upload the OIDC provider discovery document.
 	{
@@ -70,17 +96,15 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 			       of the Azure Blob Container.
 		*/
 		err = utils.WithRetry(10*time.Second, 6, func() error {
-			_, err := blobClient.UploadBuffer(ctx,
+			return uploadBlobBufferFn(ctx, blobClient,
 				constants.BlobContainerNameOIDCProvider,
 				constants.AzureBlobNameOpenIDConfiguration,
 				openIDConfig,
-				nil,
 			)
-			return err
 		})
-		assert.AssertErrNil(ctx, err,
-			"Failed uploading openid-configuration.json to Azure Blob Container",
-		)
+		if err != nil {
+			return fmt.Errorf("uploading openid-configuration.json to Azure Blob Container: %w", err)
+		}
 
 		// Verify that the OIDC provider discovery document is publicly accessible.
 
@@ -88,19 +112,24 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 			serviceAccountIssuerURL,
 			constants.AzureBlobNameOpenIDConfiguration,
 		)
-		assert.AssertErrNil(ctx, err, "Failed constructing OpenID config URL path")
+		if err != nil {
+			return fmt.Errorf("constructing OpenID config URL path: %w", err)
+		}
 
-		response, err := http.Get(openIDConfigURL)
-		assert.AssertErrNil(ctx, err, "Failed fetching uploaded openid-configuration.json")
+		response, err := httpGetFn(openIDConfigURL) //nolint:gosec
+		if err != nil {
+			return fmt.Errorf("fetching uploaded openid-configuration.json: %w", err)
+		}
 		defer response.Body.Close()
 
 		responseBody, err := io.ReadAll(response.Body)
-		assert.AssertErrNil(ctx, err, "Failed reading fetched openid-configuration.json")
+		if err != nil {
+			return fmt.Errorf("reading fetched openid-configuration.json: %w", err)
+		}
 
-		assert.Assert(ctx,
-			bytes.Equal(responseBody, openIDConfig),
-			"Fetched openid-configuration.json, isn't as expected",
-		)
+		if !bytes.Equal(responseBody, openIDConfig) {
+			return fmt.Errorf("fetched openid-configuration.json does not match expected content")
+		}
 	}
 
 	// Generate and upload the JWKS document.
@@ -110,32 +139,33 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 		// Create required intermediate directories,
 		// to save the JWKS document locally.
 		err := utils.CreateIntermediateDirsForFile(constants.OutputPathJWKSDocument)
-		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs for JWKS document")
+		if err != nil {
+			return fmt.Errorf("creating intermediate dirs for JWKS document: %w", err)
+		}
 
 		// Generate the JWKS document.
-
-		jwksCmd := jwks.NewJWKSCmd()
-		jwksCmd.SetArgs([]string{
-			"--public-keys",
+		err = generateJWKSDocumentFn(ctx,
 			azureConfig.WorkloadIdentity.OpenIDProviderSSHKeyPair.PublicKeyFilePath,
-
-			"--output-file",
 			constants.OutputPathJWKSDocument,
-		})
-		err = jwksCmd.ExecuteContext(ctx)
-		assert.AssertErrNil(ctx, err, "Failed generating JWKS document")
+		)
+		if err != nil {
+			return fmt.Errorf("generating JWKS document: %w", err)
+		}
 
 		jwksDocument, err := os.ReadFile(constants.OutputPathJWKSDocument)
-		assert.AssertErrNil(ctx, err, "Failed reading the generated JWKS document")
+		if err != nil {
+			return fmt.Errorf("reading the generated JWKS document: %w", err)
+		}
 
 		// Upload the JWKS document.
-		_, err = blobClient.UploadBuffer(ctx,
+		err = uploadBlobBufferFn(ctx, blobClient,
 			constants.BlobContainerNameOIDCProvider,
 			constants.AzureBlobNameJWKSDocument,
 			jwksDocument,
-			nil,
 		)
-		assert.AssertErrNil(ctx, err, "Failed uploading JWKS document to Azure Blob Container")
+		if err != nil {
+			return fmt.Errorf("uploading JWKS document to Azure Blob Container: %w", err)
+		}
 
 		// Verify that the JWKS document is publicly accessible.
 
@@ -143,20 +173,26 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) {
 			serviceAccountIssuerURL,
 			constants.AzureBlobNameJWKSDocument,
 		)
-		assert.AssertErrNil(ctx, err, "Failed constructing OpenID config URL path")
+		if err != nil {
+			return fmt.Errorf("constructing JWKS document URL path: %w", err)
+		}
 
-		response, err := http.Get(jwksDocumentConfigURL)
-		assert.AssertErrNil(ctx, err, "Failed fetching uploaded JWKS document")
+		response, err := httpGetFn(jwksDocumentConfigURL) //nolint:gosec
+		if err != nil {
+			return fmt.Errorf("fetching uploaded JWKS document: %w", err)
+		}
 		defer response.Body.Close()
 
 		responseBody, err := io.ReadAll(response.Body)
-		assert.AssertErrNil(ctx, err, "Failed reading fetched JWKS document")
+		if err != nil {
+			return fmt.Errorf("reading fetched JWKS document: %w", err)
+		}
 
-		assert.Assert(ctx,
-			bytes.Equal(responseBody, jwksDocument),
-			"Fetched JWKS document, isn't as expected",
-		)
+		if !bytes.Equal(responseBody, jwksDocument) {
+			return fmt.Errorf("fetched JWKS document does not match expected content")
+		}
 	}
 
 	slog.InfoContext(ctx, "Finished setting up OIDC provider")
+	return nil
 }

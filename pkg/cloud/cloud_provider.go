@@ -11,22 +11,22 @@ import (
 
 type (
 	CloudProvider interface {
-		GetVMSpecs(ctx context.Context, vmType string) *VMSpec
+		GetVMSpecs(ctx context.Context, vmType string) (*VMSpec, error)
 
-		SetupDisasterRecovery(ctx context.Context)
+		SetupDisasterRecovery(ctx context.Context) error
 
 		// Following methods are invoked when upgrading the cluster.
 
 		// While performing a Kubernetes cluster update,
 		// this function does updates in the cloud provider specific section of the cluster's
 		// values-capi-cluster.yaml file.
-		UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any)
+		UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) error
 
 		// While performing a Kubernetes cluster update,
 		// this function recreates the given infrastructure provider specific MachineTemplate resource
 		// (like AWSMachineTemplate for AWS), with the required updates, since it can't be updated
 		// in-place.
-		UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, name string, updates any)
+		UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, name string, updates any) error
 	}
 
 	VMSpec struct {

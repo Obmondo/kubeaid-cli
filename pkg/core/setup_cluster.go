@@ -165,17 +165,21 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 		// Doing the following once (i.e., while being in the management cluster) is enough.
 		if args.ClusterType == constants.ClusterTypeManagement {
-			cloudProviderAzure := azure.CloudProviderToAzure(ctx, globals.CloudProvider)
+			cloudProviderAzure, castErr := azure.CloudProviderToAzure(globals.CloudProvider)
+			assert.AssertErrNil(ctx, castErr, "Failed casting CloudProvider to Azure")
 
 			// Create required infrastructure for Azure Workload Identity and Disaster Recovery,
 			// using CrossPlane.
-			cloudProviderAzure.ProvisionInfrastructure(ctx)
+			provErr := cloudProviderAzure.ProvisionInfrastructure(ctx)
+			assert.AssertErrNil(ctx, provErr, "Failed provisioning Azure infrastructure")
 
 			// Create the OIDC provider.
-			cloudProviderAzure.CreateOIDCProvider(ctx)
+			oidcErr := cloudProviderAzure.CreateOIDCProvider(ctx)
+			assert.AssertErrNil(ctx, oidcErr, "Failed creating OIDC provider")
 
 			// Retrieves details about the infrastructure provisioned using CrossPlane.
-			cloudProviderAzure.GetInfrastructureDetails(ctx, args.ClusterClient)
+			detailsErr := cloudProviderAzure.GetInfrastructureDetails(ctx, args.ClusterClient)
+			assert.AssertErrNil(ctx, detailsErr, "Failed retrieving infrastructure details")
 
 			// Rebuild the cluster's KubeAid Config, with the infrastructure details available.
 			SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{

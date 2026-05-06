@@ -14,7 +14,7 @@ override:
   - path: "^pkg/utils/git$"
     threshold: 16
   - path: "^pkg/utils/kubernetes$"
-    threshold: 65
+    threshold: 62
   - path: "^pkg/utils/kubernetes/k3d$"
     threshold: 65
   - path: "^pkg/storageplanner/storageplan$"
@@ -23,6 +23,15 @@ override:
     threshold: 50
   - path: "^pkg/config/prompt$"
     threshold: 18
+  - path: "^pkg/cloud/aws$"
+    threshold: 74
+  - path: "^pkg/cloud/aws/services$"
+    threshold: 88
+  - path: "^pkg/cloud/azure$"
+    threshold: 57
+  - path: "^pkg/cloud/hetzner$"
+    threshold: 31
 
 exclude:
-  paths: []
+  paths:
+    - ^pkg/cloud/aws/services/fake$

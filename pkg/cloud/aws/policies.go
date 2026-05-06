@@ -4,14 +4,13 @@
 package aws
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 )
 
-func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
+func getIAMTrustPolicy(accountID string) services.PolicyDocument {
 	return services.PolicyDocument{
 		Version: "2012-10-17",
 		Statement: []services.PolicyStatement{
@@ -21,7 +20,7 @@ func getIAMTrustPolicy(ctx context.Context) services.PolicyDocument {
 				Principal: map[string]string{
 					"AWS": fmt.Sprintf(
 						"arn:aws:iam::%s:role/nodes.cluster-api-provider-aws.sigs.k8s.io",
-						GetAccountID(ctx),
+						accountID,
 					),
 				},
 			},

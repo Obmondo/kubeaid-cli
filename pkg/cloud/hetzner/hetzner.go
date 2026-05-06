@@ -5,6 +5,8 @@ package hetzner
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/hetznercloud/hcloud-go/hcloud"
@@ -14,19 +16,58 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
+type serverTypeClient interface {
+	GetByName(ctx context.Context, name string) (*hcloud.ServerType, *hcloud.Response, error)
+}
+
+type networkClient interface {
+	Get(ctx context.Context, idOrName string) (*hcloud.Network, *hcloud.Response, error)
+	Create(ctx context.Context, opts hcloud.NetworkCreateOpts) (*hcloud.Network, *hcloud.Response, error)
+}
+
+type serverClient interface {
+	AttachToNetwork(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
+	List(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error)
+}
+
+//nolint:dupl
+type loadBalancerClient interface {
+	Get(ctx context.Context, idOrName string) (*hcloud.LoadBalancer, *hcloud.Response, error)
+	Create(ctx context.Context, opts hcloud.LoadBalancerCreateOpts) (hcloud.LoadBalancerCreateResult, *hcloud.Response, error)
+	Update(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerUpdateOpts) (*hcloud.LoadBalancer, *hcloud.Response, error)
+	AttachToNetwork(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
+	EnablePublicInterface(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
+	DisablePublicInterface(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
+}
+
 type Hetzner struct {
 	hcloudClient *hcloud.Client
 	robotClient  *resty.Client
+
+	serverTypeClient   serverTypeClient
+	networkClient      networkClient
+	serverClient       serverClient
+	loadBalancerClient loadBalancerClient
+
+	sleepFunc func(time.Duration)
 }
 
 func NewHetznerCloudProvider() cloud.CloudProvider {
-	hetznerClient := &Hetzner{}
+	hetznerClient := &Hetzner{
+		sleepFunc: time.Sleep,
+	}
 
 	// Construct HCloud client, if we're using HCloud.
 	if config.UsingHCloud() {
-		hetznerClient.hcloudClient = hcloud.NewClient(
+		hcloudClient := hcloud.NewClient(
 			hcloud.WithToken(config.ParsedSecretsConfig.Hetzner.APIToken),
 		)
+
+		hetznerClient.hcloudClient = hcloudClient
+		hetznerClient.serverTypeClient = &hcloudClient.ServerType
+		hetznerClient.networkClient = &hcloudClient.Network
+		hetznerClient.serverClient = &hcloudClient.Server
+		hetznerClient.loadBalancerClient = &hcloudClient.LoadBalancer
 	}
 
 	// Construct Hetzner Robot HTTP client, if we're using Hetzner Bare Metal.
@@ -43,10 +84,6 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	return hetznerClient
 }
 
-func (*Hetzner) SetupDisasterRecovery(ctx context.Context) {
-	panic("unimplemented")
-}
-
-func (*Hetzner) GetLatestBackupName(ctx context.Context) string {
-	panic("unreachable")
+func (*Hetzner) SetupDisasterRecovery(_ context.Context) error {
+	return fmt.Errorf("setup disaster recovery is not implemented for Hetzner")
 }

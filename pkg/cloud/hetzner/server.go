@@ -19,38 +19,31 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
-// Returns IDs of the HCloud servers associated with the given Kubernetes cluster which was
-// provisioned using Cluster API Provider Hetzner (CAPH).
-func (h *Hetzner) GetHCloudServerIDsForCluster(ctx context.Context, name string) []int {
-	server := h.hcloudClient.Server
-
-	// Suppose the Kubernetes cluster name is vpn.
-	// Since it was provisioned using Cluster API Provider Hetzner (CAPH), the associated HCloud
-	// servers must have the "caph-cluster-vpn: owned" label attached.
-	// So, we'll list those HCloud servers, which have the following label attached.
-	servers, response, err := server.List(ctx, hcloud.ServerListOpts{
+// GetHCloudServerIDsForCluster returns IDs of the HCloud servers associated with the given
+// Kubernetes cluster which was provisioned using Cluster API Provider Hetzner (CAPH).
+func (h *Hetzner) GetHCloudServerIDsForCluster(ctx context.Context, name string) ([]int, error) {
+	servers, response, err := h.serverClient.List(ctx, hcloud.ServerListOpts{
 		ListOpts: hcloud.ListOpts{
 			LabelSelector: "caph-cluster-" + name,
 		},
 	})
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusOK)),
-		"Failed listing HCloud servers associated with the given Kubernetes cluster",
-		slog.String("cluster", name),
-	)
-
-	serverIDs := []int{}
-	for _, server := range servers {
-		serverIDs = append(serverIDs, server.ID)
+	if err != nil {
+		return nil, fmt.Errorf("listing HCloud servers for cluster %q: %w", name, err)
 	}
-	return serverIDs
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("listing HCloud servers for cluster %q: unexpected status %d", name, response.StatusCode)
+	}
+
+	serverIDs := make([]int, 0, len(servers))
+	for _, s := range servers {
+		serverIDs = append(serverIDs, s.ID)
+	}
+	return serverIDs, nil
 }
 
-func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
+func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 
 	var (
@@ -61,24 +54,25 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 	)
 
 	server, response, err := h.hcloudClient.Server.GetByName(ctx, serverName)
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusOK)),
-		"Failed searching for the NAT gateway server",
-		slog.String("server", serverName),
-	)
+	if err != nil {
+		return fmt.Errorf("searching for NAT gateway server %q: %w", serverName, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("searching for NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+	}
 
 	switch {
 	case server != nil:
 		slog.InfoContext(ctx, "NAT Gateway server already exists")
 
-	// The HCloud server doesn't already exist. Let's create it.
 	default:
 		sshKeyPair, response, err := h.hcloudClient.SSHKey.GetByName(ctx, hetznerConfig.SSHKeyPair.Name)
-		assert.Assert(ctx,
-			((err == nil) && (response.StatusCode == http.StatusOK)),
-			"Failed getting HCloud SSH keypair",
-			logger.Error(err), slog.Any("response", response),
-		)
+		if err != nil {
+			return fmt.Errorf("getting HCloud SSH keypair %q: %w", hetznerConfig.SSHKeyPair.Name, err)
+		}
+		if response.StatusCode != http.StatusOK {
+			return fmt.Errorf("getting HCloud SSH keypair %q: unexpected status %d", hetznerConfig.SSHKeyPair.Name, response.StatusCode)
+		}
 
 		result, response, err := h.hcloudClient.Server.Create(ctx, hcloud.ServerCreateOpts{
 			Name:       serverName,
@@ -102,24 +96,24 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 
 			StartAfterCreate: ptr.To(true),
 		})
-		assert.Assert(ctx,
-			((err == nil) && (response.StatusCode == http.StatusCreated)),
-			"Failed creating NAT Gateway server",
-			logger.Error(err), slog.Any("response", response),
-		)
+		if err != nil {
+			return fmt.Errorf("creating NAT gateway server %q: %w", serverName, err)
+		}
+		if response.StatusCode != http.StatusCreated {
+			return fmt.Errorf("creating NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+		}
 		slog.InfoContext(ctx, "Created NAT Gateway server")
 
 		server = result.Server
 	}
 
-	// Register the HCloud server as NAT Gateway for the Hetzner Network, if not already done.
-
 	network, response, err := h.hcloudClient.Network.GetByID(ctx, networkID)
-	assert.Assert(ctx,
-		((err == nil) && (response.StatusCode == http.StatusOK)),
-		"Failed getting Hetzner Network",
-		logger.Error(err), slog.Any("response", response),
-	)
+	if err != nil {
+		return fmt.Errorf("getting Hetzner network %d: %w", networkID, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("getting Hetzner network %d: unexpected status %d", networkID, response.StatusCode)
+	}
 
 	var serverRegisteredAsNATGateway bool
 	for _, route := range network.Routes {
@@ -142,14 +136,13 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 				},
 			},
 		)
-		assert.Assert(ctx,
-			((err == nil) && (response.StatusCode == http.StatusCreated)),
-			"Failed registering HCloud server as NAT Gateway for the Hetzner Network",
-			logger.Error(err), slog.Any("response", response),
-		)
+		if err != nil {
+			return fmt.Errorf("registering NAT gateway route on network %d: %w", networkID, err)
+		}
+		if response.StatusCode != http.StatusCreated {
+			return fmt.Errorf("registering NAT gateway route on network %d: unexpected status %d", networkID, response.StatusCode)
+		}
 	}
-
-	// Open an SSH connection to the NAT Gateway, and configure it.
 
 	connector := kubeonessh.NewConnector(ctx)
 
@@ -171,11 +164,15 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 		}
 
 		// An HCloud server isn't reachable just after creation.
-		// So we'll wait for sometime, and retry.
 		slog.InfoContext(ctx, "NAT Gateway server not reachable. Will retry after sometime....")
 		time.Sleep(10 * time.Second)
 	}
 	defer connection.Close()
+
+	cidr := hetznerConfig.HCloud.HetznerNetwork.CIDR
+	if _, _, err := net.ParseCIDR(cidr); err != nil {
+		return fmt.Errorf("invalid CIDR %q: %w", cidr, err)
+	}
 
 	_, _, _, err = connection.Exec(fmt.Sprintf(
 		`
@@ -200,10 +197,13 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) {
 
       systemctl enable --now netfilter-persistent
     `,
-		hetznerConfig.HCloud.HetznerNetwork.CIDR,
+		cidr,
 	))
-	assert.AssertErrNil(ctx, err, "Failed configuring NAT Gateway server")
+	if err != nil {
+		return fmt.Errorf("configuring NAT gateway server: %w", err)
+	}
 	slog.InfoContext(ctx, "Configured NAT Gateway server")
+	return nil
 }
 
 type (
@@ -216,20 +216,21 @@ type (
 	}
 )
 
-// Fetches public IPv4 address of the Hetzner bare-metal server with the given ID.
-func (h *Hetzner) getHetznerBareMetalServerIP(ctx context.Context, id string) string {
+// getHetznerBareMetalServerIP fetches the public IPv4 address of the Hetzner bare-metal
+// server with the given ID.
+func (h *Hetzner) getHetznerBareMetalServerIP(id string) (string, error) {
 	response, err := h.robotClient.R().Get("/server/" + id)
-	assert.AssertErrNil(ctx, err, "Failed getting server details")
-	assert.Assert(ctx,
-		(response.StatusCode() == http.StatusOK),
-		"Failed getting server details",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return "", fmt.Errorf("getting server %s details: %w", id, err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return "", fmt.Errorf("getting server %s details: unexpected status %d", id, response.StatusCode())
+	}
 
-	getServerResponseBody := GetServerResponseBody{}
+	var body GetServerResponseBody
+	if err := json.Unmarshal(response.Body(), &body); err != nil {
+		return "", fmt.Errorf("unmarshalling server %s response: %w", id, err)
+	}
 
-	err = json.Unmarshal(response.Body(), &getServerResponseBody)
-	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling GetServerResponseBody")
-
-	return getServerResponseBody.Server.IP
+	return body.Server.IP, nil
 }

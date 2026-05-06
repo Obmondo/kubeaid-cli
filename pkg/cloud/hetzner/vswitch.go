@@ -11,14 +11,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -46,50 +44,42 @@ type CreateVSwitchResponseBody struct {
 // Hetzner Network, when spinning up a Hetzner hybrid cluster).
 // This function is responsible for creating that VSwitch, if it doesn't already exist.
 // The VSwitch ID gets returned.
-func (h *Hetzner) CreateVSwitch(ctx context.Context) int {
+func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
 	vSwitchConfig := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.VSwitch
 
-	// Check whether the VSwitch already exists or not.
-
 	response, err := h.robotClient.NewRequest().Get("/vswitch")
-
-	assert.AssertErrNil(ctx, err, "Failed listing VSwitches")
-	assert.Assert(ctx,
-		(response.StatusCode() == http.StatusOK),
-		"Failed listing VSwitches",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return 0, fmt.Errorf("listing VSwitches: %w", err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return 0, fmt.Errorf("listing VSwitches: unexpected status code %d", response.StatusCode())
+	}
 
 	listVSwitchResponseBody := ListVSwitchResponseBody{}
 
 	err = json.Unmarshal(response.Body(), &listVSwitchResponseBody)
-	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling list VSwitch response body")
+	if err != nil {
+		return 0, fmt.Errorf("unmarshalling list VSwitch response body: %w", err)
+	}
 
 	for _, vSwitch := range listVSwitchResponseBody {
 		if vSwitch.VLANID != vSwitchConfig.VLANID {
 			continue
 		}
 
-		// Ensure that a different VSwitch with the same VLANID doesn't exist.
-		assert.Assert(ctx, (vSwitch.Name == vSwitchConfig.Name),
-			"A different VSwitch with the same VLANID exists. Please provide a different VLANID.",
-			slog.String("existing-vswitch", vSwitch.Name),
-		)
+		if vSwitch.Name != vSwitchConfig.Name {
+			return 0, fmt.Errorf("a different VSwitch %q with the same VLANID exists; provide a different VLANID", vSwitch.Name)
+		}
 
-		// Ensure that the VSwitch isn't being deleted (cancelled).
-		assert.Assert(ctx, !vSwitch.Cancelled, "VSwitch exists but is being deleted (cancelled)")
-
-		// VSwitch already exists.
-		// So, we don't need to do anything else.
+		if vSwitch.Cancelled {
+			return 0, fmt.Errorf("vswitch exists but is being deleted (cancelled)")
+		}
 
 		vSwitchID = vSwitch.ID
 
 		slog.InfoContext(ctx, "VSwitch already exists", slog.Int("id", vSwitchID))
-		return vSwitchID
+		return vSwitchID, nil
 	}
-
-	// The VSwitch doesn't already exist.
-	// So, let's create it.
 
 	response, err = h.robotClient.NewRequest().
 		SetFormData(map[string]string{
@@ -97,51 +87,49 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) int {
 			"vlan": strconv.Itoa(vSwitchConfig.VLANID),
 		}).
 		Post("/vswitch")
-
-	assert.AssertErrNil(ctx, err, "Failed creating VSwitch")
-	assert.Assert(ctx,
-		(response.StatusCode() == http.StatusOK),
-		"Failed creating VSwitch",
-		slog.Any("response", response),
-	)
+	if err != nil {
+		return 0, fmt.Errorf("creating VSwitch: %w", err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return 0, fmt.Errorf("creating VSwitch: unexpected status code %d", response.StatusCode())
+	}
 
 	createVSwitchResponseBody := new(CreateVSwitchResponseBody)
 	err = json.Unmarshal(response.Body(), createVSwitchResponseBody)
-	assert.AssertErrNil(ctx, err, "Failed JSON unmarshalling create VSwitch response body")
+	if err != nil {
+		return 0, fmt.Errorf("unmarshalling create VSwitch response body: %w", err)
+	}
 
 	vSwitchID = createVSwitchResponseBody.ID
 
 	slog.InfoContext(ctx, "Created VSwitch", slog.Int("id", vSwitchID))
 
-	return vSwitchID
+	return vSwitchID, nil
 }
 
 // When using Hetzner Bare Metal, we need to establish private connectivity between them and the
 // HCloud servers in a Hetzner Network, using a VSwitch.
-func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network *hcloud.Network) {
-	// Check whether the VSwitch is already connected to the Hetzner Network.
+func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network *hcloud.Network) error {
 	for _, subnet := range network.Subnets {
 		if subnet.Type == hcloud.NetworkSubnetTypeVSwitch {
-			// Only 1 VSwitch can be connected with an Hetzner Network.
-			// And it must be the VSwitch we're expecting.
-			assert.Assert(ctx,
-				(subnet.VSwitchID == vSwitchID),
-				"An unexpected VSwitch is already connected to the Hetzner Network",
-				slog.Int("vswitch-id", subnet.VSwitchID),
-			)
+			if subnet.VSwitchID != vSwitchID {
+				return fmt.Errorf("an unexpected VSwitch (id=%d) is already connected to the Hetzner Network", subnet.VSwitchID)
+			}
 
 			slog.InfoContext(ctx, "VSwitch is already connected to the Hetzner Network")
-			return
+			return nil
 		}
 	}
 
-	// If not, then establish private connectivity by creating a VSwitch Subnet.
-
 	_, subnetCIDR, err := net.ParseCIDR(constants.HetznerVSwitchSubnetCIDR)
-	assert.AssertErrNil(ctx, err, "Failed parsing VSwitch Subnet CIDR")
+	if err != nil {
+		return fmt.Errorf("parsing VSwitch Subnet CIDR: %w", err)
+	}
 
 	gatewayIP := net.ParseIP(constants.HetznerVSwitchGatewayIP)
-	assert.AssertNotNil(ctx, gatewayIP, "Failed parsing VSwitch Gateway IP")
+	if gatewayIP == nil {
+		return fmt.Errorf("parsing VSwitch Gateway IP %q", constants.HetznerVSwitchGatewayIP)
+	}
 
 	_, _, err = h.hcloudClient.Network.AddSubnet(ctx, network, hcloud.NetworkAddSubnetOpts{
 		Subnet: hcloud.NetworkSubnet{
@@ -152,32 +140,34 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 			VSwitchID:   vSwitchID,
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed connecting VSwitch to Hetzner Network")
+	if err != nil {
+		return fmt.Errorf("connecting VSwitch to Hetzner Network: %w", err)
+	}
 
 	slog.InfoContext(ctx, "Connected VSwitch to Hetzner Network")
+	return nil
 }
 
-func (h *Hetzner) AttachServerToVSwitch(ctx context.Context, serverID string, vswitchID int) {
+func (h *Hetzner) AttachServerToVSwitch(ctx context.Context, serverID string, vswitchID int) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("server-id", serverID), slog.Int("vswitch-id", vSwitchID),
+		slog.String("server-id", serverID), slog.Int("vswitch-id", vswitchID),
 	})
 
-	// BUG : Even if I specify multiple serversIDs, only 1 server gets attached to the VSwitch.
-	//       So, as of now, I am sending 1 request per server.
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
 			"server": []string{serverID},
 		}).
-		Post(fmt.Sprintf("/vswitch/%d/server", vSwitchID))
-
-	assert.AssertErrNil(ctx, err, "Failed attaching Hetzner Bare Metal server to VSwitch")
+		Post(fmt.Sprintf("/vswitch/%d/server", vswitchID))
+	if err != nil {
+		return fmt.Errorf("attaching Hetzner Bare Metal server %s to VSwitch: %w", serverID, err)
+	}
 
 	switch response.StatusCode() {
 	case http.StatusCreated, http.StatusConflict:
 		slog.InfoContext(ctx, "Server is being attached to VSwitch")
+		return nil
 
 	default:
-		slog.ErrorContext(ctx, "Received unexpected response statuscode", slog.Any("response", response))
-		os.Exit(1)
+		return fmt.Errorf("attaching server %s to VSwitch: unexpected status code %d", serverID, response.StatusCode())
 	}
 }
