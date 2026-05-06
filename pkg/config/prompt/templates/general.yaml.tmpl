@@ -18,6 +18,9 @@ cluster:
   name: {{ .ClusterName }}
   k8sVersion: {{ .K8sVersion }}
   enableAuditLogging: {{ .EnableAuditLogging }}
+{{- if .ACMEEmail }}
+  acmeEmail: {{ .ACMEEmail }}
+{{- end }}
   apiServer:
     extraArgs: {}
     extraVolumes: []
@@ -33,6 +36,13 @@ cluster:
     # oidc:
     #   issuerUrl: https://keycloak.example/realms/clusters
     #   clientId:  kubernetes-{{ .ClusterName }}
+{{- end }}
+{{- if eq .ClusterType "vpn" }}
+  keycloak:
+    mode: managed
+    dns: {{ .KeycloakDNS }}
+  netbird:
+    dns: {{ .NetBirdDNS }}
 {{- end }}
   argoCD:
     deployKeys:
@@ -91,7 +101,11 @@ cloud:
         loadBalancer:
           enabled: true
           region: {{ .HetznerLBRegion }}
-          hostname:
+{{- if eq .ClusterType "vpn" }}
+          endpoint: {{ .ControlPlaneEndpoint }}
+{{- else }}
+          endpoint:
+{{- end }}
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:

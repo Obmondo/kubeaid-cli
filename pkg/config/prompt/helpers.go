@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/net/publicsuffix"
 )
 
 var (
@@ -21,6 +22,28 @@ var (
 	recapAnswerStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#02BF87"))
 	recapMaskedAnswer  = "••••••••"
 )
+
+// deriveRealmFromDNS returns the first dot-separated segment of the
+// effective TLD-plus-one for host. Returns "" when host has no public
+// suffix or is otherwise unworkable — the parser's validator surfaces
+// the error at parse time.
+//
+// Mirrors parser.deriveRealm; duplicated here to avoid an import cycle
+// (parser imports config; prompt is upstream of both at config-write
+// time).
+func deriveRealmFromDNS(host string) string {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return ""
+	}
+
+	etldPlusOne, err := publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return ""
+	}
+
+	return strings.SplitN(etldPlusOne, ".", 2)[0]
+}
 
 // printRecap echoes the completed question and answer to stdout so the
 // exchange persists after huh tears down its UI

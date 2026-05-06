@@ -303,6 +303,9 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-hetzner")
 
+	c.expectString("What are you setting up?")
+	c.acceptDefault()
+
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
