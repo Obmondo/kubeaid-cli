@@ -11,11 +11,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
 func TestValidateKubePrometheusVersion_Errors(t *testing.T) {
+	ctx := context.Background()
 	tests := []struct {
 		name       string
 		kpVersion  string
@@ -38,24 +37,13 @@ func TestValidateKubePrometheusVersion_Errors(t *testing.T) {
 			name:       "malformed semver",
 			kpVersion:  "vinvalid",
 			k8sVersion: "v1.34.0",
-			wantErrSub: "parsing KubePrometheus semantic version",
+			wantErrSub: "failed parsing KubePrometheus semantic version",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origGeneral := config.ParsedGeneralConfig
-			origCloudProvider := globals.CloudProviderName
-			t.Cleanup(func() {
-				config.ParsedGeneralConfig = origGeneral
-				globals.CloudProviderName = origCloudProvider
-			})
-			config.ParsedGeneralConfig = &config.GeneralConfig{
-				Cluster: config.ClusterConfig{K8sVersion: tc.k8sVersion},
-			}
-			globals.CloudProviderName = constants.CloudProviderLocal
-
-			err := validateKubePrometheusVersion(tc.kpVersion, tc.k8sVersion)
+			err := validateKubePrometheusVersion(ctx, tc.kpVersion, tc.k8sVersion)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErrSub)
 		})
@@ -63,6 +51,7 @@ func TestValidateKubePrometheusVersion_Errors(t *testing.T) {
 }
 
 func TestHydrateKubePrometheusVersion_Errors(t *testing.T) {
+	ctx := context.Background()
 	tests := []struct {
 		name       string
 		k8sVersion string
@@ -76,7 +65,7 @@ func TestHydrateKubePrometheusVersion_Errors(t *testing.T) {
 		{
 			name:       "malformed K8s version",
 			k8sVersion: "not-a-version",
-			wantErrSub: "parsing Kubernetes semantic version",
+			wantErrSub: "failed parsing Kubernetes semantic version",
 		},
 	}
 
@@ -90,9 +79,17 @@ func TestHydrateKubePrometheusVersion_Errors(t *testing.T) {
 				KubePrometheus: &config.KubePrometheusConfig{},
 			}
 
-			err := hydrateKubePrometheusVersion(context.Background())
+			err := hydrateKubePrometheusVersion(ctx)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantErrSub)
 		})
 	}
+}
+
+func TestValidateKubePrometheusVersion_ReturnsCanceledWhenContextDone(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := validateKubePrometheusVersion(ctx, "v0.16.0", "v1.34.0")
+	require.ErrorIs(t, err, context.Canceled)
 }

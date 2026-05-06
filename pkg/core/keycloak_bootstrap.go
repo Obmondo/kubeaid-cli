@@ -94,7 +94,7 @@ func readSecretValue(
 		types.NamespacedName{Namespace: namespace, Name: name},
 		secret,
 	); err != nil {
-		return "", fmt.Errorf("reading Secret %s/%s: %w", namespace, name, err)
+		return "", fmt.Errorf("reading secret %s/%s: %w", namespace, name, err)
 	}
 	v, ok := secret.Data[key]
 	if !ok || len(v) == 0 {

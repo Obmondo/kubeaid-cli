@@ -624,52 +624,67 @@ func (f *fakeKeycloak) handleUserClientRoles(w http.ResponseWriter, r *http.Requ
 
 	switch r.Method {
 	case http.MethodGet:
-		assigned := f.userClientRoles[realm][userID][clientInternalID]
-		out := []*gocloak.Role{}
-		// Resolve role names to *gocloak.Role from the fixture so
-		// the names + IDs round-trip cleanly.
-		c, ok := f.clients[realm][clientInternalID]
-		if !ok {
-			writeJSON(w, out)
-			return
-		}
-		fixture := clientRolesFixture[derefString(c.ClientID)]
-		for _, name := range assigned {
-			for _, role := range fixture {
-				if role.Name != nil && *role.Name == name {
-					out = append(out, role)
-				}
-			}
-		}
-		writeJSON(w, out)
+		writeJSON(w, f.getUserClientRoles(realm, userID, clientInternalID))
 	case http.MethodPost:
-		var roles []gocloak.Role
-		if err := json.NewDecoder(r.Body).Decode(&roles); err != nil {
+		roles, err := decodeRoles(r)
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		current := f.userClientRoles[realm][userID][clientInternalID]
-		for _, role := range roles {
-			if role.Name == nil {
-				continue
-			}
-			already := false
-			for _, existing := range current {
-				if existing == *role.Name {
-					already = true
-					break
-				}
-			}
-			if !already {
-				current = append(current, *role.Name)
-			}
-		}
-		f.userClientRoles[realm][userID][clientInternalID] = current
+		f.userClientRoles[realm][userID][clientInternalID] = mergeRoleNames(
+			f.userClientRoles[realm][userID][clientInternalID],
+			roles,
+		)
 		f.noteWrite()
 		w.WriteHeader(http.StatusNoContent)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func (f *fakeKeycloak) getUserClientRoles(realm, userID, clientInternalID string) []*gocloak.Role {
+	assigned := f.userClientRoles[realm][userID][clientInternalID]
+	out := []*gocloak.Role{}
+	c, ok := f.clients[realm][clientInternalID]
+	if !ok {
+		return out
+	}
+	fixture := clientRolesFixture[derefString(c.ClientID)]
+	for _, name := range assigned {
+		for _, role := range fixture {
+			if role.Name != nil && *role.Name == name {
+				out = append(out, role)
+			}
+		}
+	}
+	return out
+}
+
+func decodeRoles(r *http.Request) ([]gocloak.Role, error) {
+	var roles []gocloak.Role
+	if err := json.NewDecoder(r.Body).Decode(&roles); err != nil {
+		return nil, err
+	}
+	return roles, nil
+}
+
+func mergeRoleNames(current []string, roles []gocloak.Role) []string {
+	for _, role := range roles {
+		if role.Name == nil {
+			continue
+		}
+		already := false
+		for _, existing := range current {
+			if existing == *role.Name {
+				already = true
+				break
+			}
+		}
+		if !already {
+			current = append(current, *role.Name)
+		}
+	}
+	return current
 }
 
 // --- helpers ---

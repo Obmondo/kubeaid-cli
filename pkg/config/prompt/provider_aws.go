@@ -52,7 +52,11 @@ type (
 
 // fetchLatestUbuntu2404AMIs pulls Canonical's published simplestreams index
 // and returns the newest HVM + SSD-backed AMI IDs keyed by region.
-func fetchLatestUbuntu2404AMIs(ctx context.Context) (map[string]string, error) {
+func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[string]string, error) {
+	if client == nil {
+		client = http.DefaultClient
+	}
+
 	fetchCtx, cancel := context.WithTimeout(ctx, amiFetchTimeout)
 	defer cancel()
 
@@ -61,7 +65,8 @@ func fetchLatestUbuntu2404AMIs(ctx context.Context) (map[string]string, error) {
 		return nil, err
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	//nolint:gosec // URL is the fixed Canonical simplestreams endpoint; client is injectable for tests.
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +217,7 @@ func (p *awsPrompter) promptAWSQuestions(cfg *PromptedConfig) error {
 	cfg.AWSRegion = "eu-west-1"
 	cfg.AWSCPInstanceType = "t3.medium"
 
-	amiMap, err := fetchLatestUbuntu2404AMIs(context.Background())
+	amiMap, err := fetchLatestUbuntu2404AMIs(context.Background(), http.DefaultClient)
 	if err != nil {
 		return fmt.Errorf("fetching latest Ubuntu 24.04 AMIs from Canonical: %w", err)
 	}

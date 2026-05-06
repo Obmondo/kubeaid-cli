@@ -13,31 +13,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor/fake"
 )
-
-type mockExecutor struct {
-	// commands is a list of outputs returned in order.
-	commands []string
-	callIdx  int
-}
-
-func (m *mockExecutor) Execute(_ context.Context, _ string) (string, error) {
-	out := m.commands[m.callIdx]
-	m.callIdx++
-	return out, nil
-}
-
-func (m *mockExecutor) MustExecute(ctx context.Context, cmd string) string {
-	out, _ := m.Execute(ctx, cmd)
-	return out
-}
 
 // newMock creates a mock that returns nicSpeed for the first call (NIC speed query)
 // and lsblk JSON for the second call.
-func newMock(nicSpeed string, devices []LSBLKOutputRow) *mockExecutor {
+func newMock(nicSpeed string, devices []LSBLKOutputRow) *fake.Executor {
 	lsblk := LSBLKOutput{BlockDevices: devices}
 	data, _ := json.Marshal(lsblk)
-	return &mockExecutor{commands: []string{nicSpeed, string(data)}}
+	return fake.NewExecutor(nicSpeed, string(data))
 }
 
 func device(name, tran string, sizeGB int, rota bool) LSBLKOutputRow {

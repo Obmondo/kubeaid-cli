@@ -162,15 +162,11 @@ func hydrateKubePrometheusVersion(ctx context.Context) error {
 
 	parsedK8sVersion, err := version.ParseGeneric(config.ParsedGeneralConfig.Cluster.K8sVersion)
 	if err != nil {
-		return fmt.Errorf(
-			"parsing Kubernetes semantic version %q: %w",
-			config.ParsedGeneralConfig.Cluster.K8sVersion, err,
-		)
+		return fmt.Errorf("failed parsing Kubernetes semantic version: %w", err)
 	}
 
 	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
-	matrix := constants.KubernetesKubePrometheusVersionCompatibilityMatrix
-	compatibleKubePrometheusVersions, ok := matrix[k8sMajorMinorVersion]
+	compatibleKubePrometheusVersions, ok := constants.KubernetesKubePrometheusVersionCompatibilityMatrix[k8sMajorMinorVersion]
 	if !ok {
 		return fmt.Errorf(
 			"unsupported Kubernetes version %s for KubePrometheus compatibility matrix",
@@ -192,19 +188,22 @@ func hydrateKubePrometheusVersion(ctx context.Context) error {
 		}
 		parsedA, err := version.ParseGeneric(a)
 		if err != nil {
-			sortErr = fmt.Errorf("parsing KubePrometheus version %q: %w", a, err)
+			sortErr = fmt.Errorf("failed parsing KubePrometheus semantic version %q: %w", a, err)
 			return 0
 		}
+
 		parsedB, err := version.ParseGeneric(b)
 		if err != nil {
-			sortErr = fmt.Errorf("parsing KubePrometheus version %q: %w", b, err)
+			sortErr = fmt.Errorf("failed parsing KubePrometheus semantic version %q: %w", b, err)
 			return 0
 		}
+
 		cmp, err := parsedA.Compare(parsedB.String())
 		if err != nil {
-			sortErr = fmt.Errorf("comparing KubePrometheus versions %q vs %q: %w", a, b, err)
+			sortErr = fmt.Errorf("failed comparing KubePrometheus versions: %w", err)
 			return 0
 		}
+
 		return cmp
 	})
 	if sortErr != nil {

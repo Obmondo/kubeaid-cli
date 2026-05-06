@@ -38,7 +38,10 @@ var DevenvCmd = &cobra.Command{
 		}
 
 		// Ensure required runtime dependencies are installed.
-		utils.EnsureRuntimeDependenciesInstalled(ctx)
+		if err := utils.EnsureRuntimeDependenciesInstalled(); err != nil {
+			slog.ErrorContext(ctx, "Runtime dependency unavailable", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 	},
 }
 

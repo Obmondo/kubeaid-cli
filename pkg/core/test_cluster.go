@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"log/slog"
+	"os"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -18,7 +19,10 @@ import (
 
 func TestCluster(ctx context.Context) {
 	// Ensure that required runtime dependencies are installed.
-	utils.EnsureRuntimeDependencyInstalled(ctx, "cilium-cli")
+	if err := utils.EnsureRuntimeDependencyInstalled("cilium-cli"); err != nil {
+		slog.ErrorContext(ctx, "Runtime dependency unavailable", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
 
 	// Set the KUBECONFIG environment variable to the main cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)

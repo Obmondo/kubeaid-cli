@@ -4,8 +4,12 @@
 package prompt
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -108,4 +112,85 @@ func TestDetectAWSCredentials(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFetchLatestUbuntu2404AMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"products": {
+				"com.ubuntu.cloud:server:24.04:amd64": {
+					"versions": {
+						"20240101": {
+							"items": {
+								"old": {"id": "ami-old", "crsn": "eu-west-1", "root_store": "ssd", "virt": "hvm"}
+							}
+						},
+						"20240201": {
+							"items": {
+								"eu-west-1": {"id": "ami-latest-eu", "crsn": "eu-west-1", "root_store": "ssd-gp3", "virt": "hvm"},
+								"us-east-1": {"id": "ami-latest-us", "region": "us-east-1", "root_store": "ssd", "virt": "hvm"},
+								"paravirtual": {"id": "ami-paravirtual", "crsn": "eu-central-1", "root_store": "ssd", "virt": "pv"},
+								"instance-store": {"id": "ami-instance-store", "crsn": "ap-south-1", "root_store": "instance", "virt": "hvm"},
+								"missing-region": {"id": "ami-missing-region", "root_store": "ssd", "virt": "hvm"}
+							}
+						}
+					}
+				}
+			}
+		}`))
+	}))
+	defer server.Close()
+
+	amis, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"eu-west-1": "ami-latest-eu",
+		"us-east-1": "ami-latest-us",
+	}, amis)
+}
+
+func TestFetchLatestUbuntu2404AMIsReturnsStatusError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	_, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected status")
+}
+
+func TestFetchLatestUbuntu2404AMIsReturnsErrorForMissingProduct(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"products": {}}`))
+	}))
+	defer server.Close()
+
+	_, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing")
+}
+
+type rewriteTransport struct {
+	serverURL string
+	base      http.RoundTripper
+}
+
+func clientForTestServer(server *httptest.Server) *http.Client {
+	return &http.Client{
+		Transport: rewriteTransport{
+			serverURL: server.URL,
+			base:      http.DefaultTransport,
+		},
+	}
+}
+
+func (rt rewriteTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	testReq := req.Clone(req.Context())
+	testReq.URL.Scheme = "http"
+	testReq.URL.Host = strings.TrimPrefix(rt.serverURL, "http://")
+	return rt.base.RoundTrip(testReq)
 }

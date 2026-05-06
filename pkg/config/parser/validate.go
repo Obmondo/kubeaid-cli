@@ -32,89 +32,37 @@ import (
 
 // validateConfigs validates the parsed general and secrets config.
 func validateConfigs(ctx context.Context) error {
-	if strings.Contains(config.ParsedGeneralConfig.Cluster.Name, ".") {
-		return errors.New("cluster name cannot contain any dots")
-	}
+	generalConfig := config.ParsedGeneralConfig
+	secretsConfig := config.ParsedSecretsConfig
+	cloudProviderName := globals.CloudProviderName
 
-	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN &&
-		globals.CloudProviderName != constants.CloudProviderHetzner {
-		return errors.New("cluster type VPN is supported only for the Hetzner provider as of now")
-	}
-
-	if err := validateHCloudControlPlaneLoadBalancerEndpointNotIP(); err != nil {
+	if err := validateConfigFields(
+		ctx,
+		generalConfig,
+		secretsConfig,
+		cloudProviderName,
+		os.Stat,
+	); err != nil {
 		return err
 	}
 
-	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	if err := validator.RegisterValidation(
-		"notblank", goNonStandardValidators.NotBlank,
-	); err != nil {
-		return fmt.Errorf("registering notblank validator: %w", err)
-	}
-
-	if err := validator.Struct(config.ParsedGeneralConfig); err != nil {
-		return fmt.Errorf("struct validation failed for general config: %w", err)
-	}
-	if err := validator.Struct(config.ParsedSecretsConfig); err != nil {
-		return fmt.Errorf("struct validation failed for secrets config: %w", err)
-	}
-
-	if err := validateK8sVersion(ctx, config.ParsedGeneralConfig.Cluster.K8sVersion); err != nil {
+	if err := validateK8sVersion(ctx, generalConfig.Cluster.K8sVersion); err != nil {
 		return fmt.Errorf("validating K8s version: %w", err)
 	}
 
-	// Cross-field validation for the typed cluster.keycloak block:
-	// VPN clusters must have it; managed-mode is only valid on VPN
-	// clusters; realm must be non-empty after default-derivation.
 	if err := validateKeycloakConfig(); err != nil {
 		return fmt.Errorf("validating cluster.keycloak: %w", err)
 	}
-
-	if globals.CloudProviderName != constants.CloudProviderLocal &&
-		config.ParsedGeneralConfig.Forks.KubeaidFork.Version == "" {
-		return errors.New("KubeAid fork version is required for non-local providers")
-	}
-
-	if config.ParsedGeneralConfig.KubePrometheus != nil &&
-		config.ParsedGeneralConfig.KubePrometheus.Version != "" {
-		if err := validateKubePrometheusVersion(
-			config.ParsedGeneralConfig.KubePrometheus.Version,
-			config.ParsedGeneralConfig.Cluster.K8sVersion,
+	if generalConfig.KubePrometheus != nil && generalConfig.KubePrometheus.Version != "" {
+		if err := validateKubePrometheusVersion(ctx,
+			generalConfig.KubePrometheus.Version,
+			generalConfig.Cluster.K8sVersion,
 		); err != nil {
 			return fmt.Errorf("validating KubePrometheus version: %w", err)
 		}
 	}
 
-	for _, additionalUser := range config.ParsedGeneralConfig.Cluster.AdditionalUsers {
-		if additionalUser.Name == "ubuntu" {
-			return errors.New("additional user name cannot be 'ubuntu'")
-		}
-		if _, _, _, _, err := ssh.ParseAuthorizedKey(
-			[]byte(additionalUser.SSHPublicKey),
-		); err != nil {
-			return fmt.Errorf(
-				"SSH public key for additional user %q is invalid: %w",
-				additionalUser.Name, err,
-			)
-		}
-	}
-
-	// Validate git.knownHosts entries. Each line must parse as an SSH
-	// known_hosts entry — garbage here would otherwise land in
-	// argocd-ssh-known-hosts-cm and silently break ArgoCD's first clone.
-	if err := validateKnownHostsEntries(
-		ctx, config.ParsedGeneralConfig.Git.KnownHosts,
-	); err != nil {
-		return fmt.Errorf("git.knownHosts validation failed: %w", err)
-	}
-
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
-		if err := validateObmondoMonitoringConfig(); err != nil {
-			return fmt.Errorf("validating obmondo monitoring config: %w", err)
-		}
-	}
-
-	switch globals.CloudProviderName {
+	switch cloudProviderName {
 	case constants.CloudProviderAWS:
 		return validateAWSConfig()
 	case constants.CloudProviderAzure:
@@ -129,50 +77,129 @@ func validateConfigs(ctx context.Context) error {
 	return nil
 }
 
-func validateObmondoMonitoringConfig() error {
-	obmondo := config.ParsedGeneralConfig.Obmondo
+type statFunc func(string) (os.FileInfo, error)
 
-	if obmondo.CertPath == "" {
-		return errors.New(
-			"obmondo.monitoring is true but obmondo.certPath is empty" +
-				" — an Obmondo-issued mTLS cert is required",
-		)
-	}
-	if obmondo.KeyPath == "" {
-		return errors.New(
-			"obmondo.monitoring is true but obmondo.keyPath is empty" +
-				" — the private key paired with obmondo.certPath is required",
-		)
-	}
-	if _, err := os.Stat(obmondo.CertPath); err != nil {
-		return fmt.Errorf("obmondo.certPath %s: %w", obmondo.CertPath, err)
-	}
-	if _, err := os.Stat(obmondo.KeyPath); err != nil {
-		return fmt.Errorf("obmondo.keyPath %s: %w", obmondo.KeyPath, err)
+func validateConfigFields(
+	ctx context.Context,
+	generalConfig *config.GeneralConfig,
+	secretsConfig *config.SecretsConfig,
+	cloudProviderName string,
+	stat statFunc,
+) error {
+	validators := []func() error{
+		func() error { return validateClusterName(generalConfig.Cluster.Name) },
+		func() error { return validateClusterType(generalConfig.Cluster.Type, cloudProviderName) },
+		func() error { return validateConfigStructTags(generalConfig, secretsConfig) },
+		func() error {
+			return validateKubeAidForkVersion(generalConfig.Forks.KubeaidFork.Version, cloudProviderName)
+		},
+		func() error { return validateAdditionalUsers(generalConfig.Cluster.AdditionalUsers) },
+		func() error { return validateKnownHostsEntries(ctx, generalConfig.Git.KnownHosts) },
+		func() error { return validateObmondoMonitoring(generalConfig.Obmondo, secretsConfig.Obmondo, stat) },
 	}
 
-	teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
-	if teleportEnabled {
-		if config.ParsedSecretsConfig.Obmondo == nil {
-			return errors.New(
-				"obmondo.monitoring is true and obmondo.teleportAgent isn't false" +
-					" — secrets.obmondo.teleportAuthToken is required" +
-					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)",
-			)
+	for _, validator := range validators {
+		if err := validator(); err != nil {
+			return err
 		}
-		if config.ParsedSecretsConfig.Obmondo.TeleportAuthToken == "" {
-			return errors.New(
-				"obmondo.monitoring is true and obmondo.teleportAgent isn't false" +
-					" — secrets.obmondo.teleportAuthToken is required" +
-					" (set obmondo.teleportAgent: false to skip teleport-kube-agent)",
+	}
+
+	return nil
+}
+
+func validateClusterName(clusterName string) error {
+	if strings.Contains(clusterName, ".") {
+		return errors.New("cluster name cannot contain any dots")
+	}
+	return nil
+}
+
+func validateClusterType(clusterType, cloudProviderName string) error {
+	if clusterType == constants.ClusterTypeVPN && cloudProviderName != constants.CloudProviderHetzner {
+		return errors.New("cluster type VPN is supported only for the Hetzner provider as of now")
+	}
+	return nil
+}
+
+func validateConfigStructTags(
+	generalConfig *config.GeneralConfig,
+	secretsConfig *config.SecretsConfig,
+) error {
+	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
+	if err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank); err != nil {
+		return fmt.Errorf("failed registering notblank validator: %w", err)
+	}
+	if err := validator.Struct(generalConfig); err != nil {
+		return fmt.Errorf("struct validation failed for general config: %w", err)
+	}
+	if err := validator.Struct(secretsConfig); err != nil {
+		return fmt.Errorf("struct validation failed for secrets config: %w", err)
+	}
+	return nil
+}
+
+func validateKubeAidForkVersion(kubeAidForkVersion, cloudProviderName string) error {
+	if cloudProviderName != constants.CloudProviderLocal && kubeAidForkVersion == "" {
+		return errors.New("KubeAid fork version is required for non-local providers")
+	}
+	return nil
+}
+
+func validateAdditionalUsers(additionalUsers []config.UserConfig) error {
+	for _, additionalUser := range additionalUsers {
+		if additionalUser.Name == "ubuntu" {
+			return errors.New("additional user name cannot be ubuntu")
+		}
+		if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(additionalUser.SSHPublicKey)); err != nil {
+			return fmt.Errorf(
+				"SSH public key is invalid for additional user %q: %w",
+				additionalUser.Name,
+				err,
 			)
 		}
 	}
 	return nil
 }
 
-// validateK8sVersion checks whether the given string represents a valid and
-// supported Kubernetes version.
+func validateObmondoMonitoring(
+	obmondo *config.ObmondoConfig,
+	obmondoCredentials *config.ObmondoCredentials,
+	stat statFunc,
+) error {
+	if obmondo == nil || !obmondo.Monitoring {
+		return nil
+	}
+	if obmondo.CertPath == "" {
+		return errors.New(
+			"obmondo.monitoring is true but obmondo.certPath is empty, " +
+				"an Obmondo-issued mTLS cert is required",
+		)
+	}
+	if obmondo.KeyPath == "" {
+		return errors.New(
+			"obmondo.monitoring is true but obmondo.keyPath is empty, " +
+				"the private key paired with obmondo.certPath is required",
+		)
+	}
+	if _, err := stat(obmondo.CertPath); err != nil {
+		return fmt.Errorf("obmondo.certPath does not exist: %w", err)
+	}
+	if _, err := stat(obmondo.KeyPath); err != nil {
+		return fmt.Errorf("obmondo.keyPath does not exist: %w", err)
+	}
+
+	teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
+	if teleportEnabled && (obmondoCredentials == nil || obmondoCredentials.TeleportAuthToken == "") {
+		return errors.New(
+			"obmondo.monitoring is true and obmondo.teleportAgent isn't false, " +
+				"but secrets.obmondo.teleportAuthToken is empty, it's required. " +
+				"Set obmondo.teleportAgent: false to skip teleport-kube-agent",
+		)
+	}
+
+	return nil
+}
+
 func validateK8sVersion(ctx context.Context, k8sVersion string) error {
 	if !strings.HasPrefix(k8sVersion, "v") {
 		return errors.New("K8s version must start with 'v' (for e.g.: v1.35.0)")
@@ -183,8 +210,6 @@ func validateK8sVersion(ctx context.Context, k8sVersion string) error {
 		return fmt.Errorf("parsing K8s semantic version %q: %w", k8sVersion, err)
 	}
 
-	// Strip the patch so any patch (e.g. v1.34.6) within a supported minor
-	// release is accepted by the inclusive major.minor range check below.
 	parsedK8sVersion, err := version.ParseMajorMinor(
 		fmt.Sprintf("v%d.%d", semver.Major(), semver.Minor()),
 	)
@@ -551,19 +576,22 @@ func validateLabelsAndTaints(
 	return nil
 }
 
-func validateKubePrometheusVersion(kubePrometheusVersion, k8sVersion string) error {
+func validateKubePrometheusVersion(ctx context.Context, kubePrometheusVersion, k8sVersion string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if !strings.HasPrefix(kubePrometheusVersion, "v") {
 		return errors.New("KubePrometheus version must start with 'v' (for e.g.: v0.15.0)")
 	}
 
 	parsedKubePrometheusVersion, err := version.ParseGeneric(kubePrometheusVersion)
 	if err != nil {
-		return fmt.Errorf("parsing KubePrometheus semantic version: %w", err)
+		return fmt.Errorf("failed parsing KubePrometheus semantic version: %w", err)
 	}
 
 	parsedK8sVersion, err := version.ParseGeneric(k8sVersion)
 	if err != nil {
-		return fmt.Errorf("parsing Kubernetes semantic version: %w", err)
+		return fmt.Errorf("failed parsing Kubernetes semantic version: %w", err)
 	}
 
 	k8sMajorMinorVersion := fmt.Sprintf("v%d.%d", parsedK8sVersion.Major(), parsedK8sVersion.Minor())
@@ -585,7 +613,7 @@ func validateKubePrometheusVersion(kubePrometheusVersion, k8sVersion string) err
 			parsedCompatibleVersion, err := version.ParseGeneric(compatibleVersion)
 			if err != nil {
 				sentinelErr = fmt.Errorf(
-					"parsing KubePrometheus semantic version %q from compatibility matrix: %w",
+					"failed parsing KubePrometheus semantic version %q from compatibility matrix: %w",
 					compatibleVersion, err,
 				)
 				return false

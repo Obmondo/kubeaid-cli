@@ -5,10 +5,10 @@ package parser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -175,7 +175,7 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 			name:       "ip address is rejected",
 			endpoint:   "1.2.3.4",
 			wantErr:    true,
-			wantErrSub: "must be a DNS name, not an IP address",
+			wantErrSub: "Endpoint",
 		},
 	}
 
@@ -379,17 +379,11 @@ func TestValidateKnownHostsEntries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateKnownHostsEntries(context.Background(), tc.entries)
 			if tc.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got nil")
-				}
-				if !strings.Contains(err.Error(), tc.wantErrMsg) {
-					t.Errorf("error %q does not contain %q", err.Error(), tc.wantErrMsg)
-				}
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrMsg)
 				return
 			}
-			if err != nil {
-				t.Errorf("expected no error, got: %v", err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -885,7 +879,7 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key}, nil
 			},
 			wantErr:    true,
-			wantErrSub: "secrets.obmondo.teleportAuthToken is required",
+			wantErrSub: "teleportAuthToken",
 		},
 		{
 			name: "valid Cert + Key + teleport token passes",
@@ -920,17 +914,8 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origGeneral, origSecrets := config.ParsedGeneralConfig, config.ParsedSecretsConfig
-			t.Cleanup(func() {
-				config.ParsedGeneralConfig = origGeneral
-				config.ParsedSecretsConfig = origSecrets
-			})
-
 			obmondoCfg, obmondoSecrets := tc.setup(t)
-			config.ParsedGeneralConfig = &config.GeneralConfig{Obmondo: obmondoCfg}
-			config.ParsedSecretsConfig = &config.SecretsConfig{Obmondo: obmondoSecrets}
-
-			err := validateObmondoMonitoringConfig()
+			err := validateObmondoMonitoring(obmondoCfg, obmondoSecrets, os.Stat)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrSub)
@@ -939,4 +924,139 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestValidateConfigHelpers(t *testing.T) {
+	teleportAgentDisabled := false
+	tests := []struct {
+		name       string
+		validate   func() error
+		wantErr    bool
+		wantErrSub string
+	}{
+		{
+			name:       "cluster name rejects dots",
+			validate:   func() error { return validateClusterName("prod.eu") },
+			wantErr:    true,
+			wantErrSub: "dots",
+		},
+		{
+			name:       "cluster type rejects VPN for non-Hetzner provider",
+			validate:   func() error { return validateClusterType(constants.ClusterTypeVPN, constants.CloudProviderAWS) },
+			wantErr:    true,
+			wantErrSub: "Hetzner",
+		},
+		{
+			name:       "KubeAid fork version is required for non-local providers",
+			validate:   func() error { return validateKubeAidForkVersion("", constants.CloudProviderAWS) },
+			wantErr:    true,
+			wantErrSub: "non-local",
+		},
+		{
+			name:     "KubeAid fork version is optional for local provider",
+			validate: func() error { return validateKubeAidForkVersion("", constants.CloudProviderLocal) },
+		},
+		{
+			name: "additional users rejects ubuntu user",
+			validate: func() error {
+				return validateAdditionalUsers([]config.UserConfig{{Name: "ubuntu", SSHPublicKey: validSSHPublicKey}})
+			},
+			wantErr:    true,
+			wantErrSub: "ubuntu",
+		},
+		{
+			name: "additional users rejects invalid SSH public key",
+			validate: func() error {
+				return validateAdditionalUsers([]config.UserConfig{{Name: "alice", SSHPublicKey: "not-a-key"}})
+			},
+			wantErr:    true,
+			wantErrSub: "alice",
+		},
+		{
+			name: "Obmondo monitoring requires cert path",
+			validate: func() error {
+				return validateObmondoMonitoring(&config.ObmondoConfig{Monitoring: true}, nil, statOK)
+			},
+			wantErr:    true,
+			wantErrSub: "certPath",
+		},
+		{
+			name: "Obmondo monitoring requires key path",
+			validate: func() error {
+				return validateObmondoMonitoring(
+					&config.ObmondoConfig{Monitoring: true, CertPath: "cert.pem"},
+					nil,
+					statOK,
+				)
+			},
+			wantErr:    true,
+			wantErrSub: "keyPath",
+		},
+		{
+			name: "Obmondo monitoring returns stat error",
+			validate: func() error {
+				return validateObmondoMonitoring(
+					&config.ObmondoConfig{Monitoring: true, CertPath: "cert.pem", KeyPath: "key.pem"},
+					nil,
+					func(string) (os.FileInfo, error) { return nil, errors.New("missing") },
+				)
+			},
+			wantErr:    true,
+			wantErrSub: "certPath",
+		},
+		{
+			name: "Obmondo monitoring requires teleport token by default",
+			validate: func() error {
+				return validateObmondoMonitoring(
+					&config.ObmondoConfig{Monitoring: true, CertPath: "cert.pem", KeyPath: "key.pem"},
+					nil,
+					statOK,
+				)
+			},
+			wantErr:    true,
+			wantErrSub: "teleportAuthToken",
+		},
+		{
+			name: "Obmondo monitoring allows missing teleport token when agent disabled",
+			validate: func() error {
+				return validateObmondoMonitoring(
+					&config.ObmondoConfig{
+						Monitoring:    true,
+						CertPath:      "cert.pem",
+						KeyPath:       "key.pem",
+						TeleportAgent: &teleportAgentDisabled,
+					},
+					nil,
+					statOK,
+				)
+			},
+		},
+		{
+			name: "config struct tags returns validation errors",
+			validate: func() error {
+				return validateConfigStructTags(&config.GeneralConfig{}, &config.SecretsConfig{})
+			},
+			wantErr:    true,
+			wantErrSub: "general config",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.validate()
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+const validSSHPublicKey = "ssh-ed25519 " +
+	"AAAAC3NzaC1lZDI1NTE5AAAAIKfOCyJYhRVTYzdoqhk0h/kyRfd58+EmrBHqvq4ML8rf test@example"
+
+func statOK(string) (os.FileInfo, error) {
+	return nil, nil
 }
