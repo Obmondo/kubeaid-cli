@@ -222,6 +222,18 @@ var CloudNativePGTemplateNames = []string{
 	"argocd-apps/values-cloudnative-pg.yaml.tmpl",
 }
 
+// NetBird Mgmt + Signal + Relay + Dashboard + Coturn — the full
+// VPN mesh stack. Sync-order 25 keeps it after cnpg (so the
+// netbird-pgsql Cluster CR the chart's kubeaid-addons subdep
+// instantiates can land), traefik (so its ingressClassName
+// resolves), and keycloakx when managed (so the realm + OIDC
+// clients the post-sync gocloak reconcile creates exist before
+// NetBird Mgmt does its first OIDC handshake).
+var NetBirdNonSecretTemplateNames = []string{
+	"argocd-apps/templates/netbird.yaml.tmpl",
+	"argocd-apps/values-netbird.yaml.tmpl",
+}
+
 // Managed-Keycloak template names. Included only when
 // cluster.type=vpn AND cluster.keycloak.mode=managed — kubeaid-cli
 // installs Keycloak via the keycloakx Helm chart on this cluster.

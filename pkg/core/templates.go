@@ -452,16 +452,20 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	// VPN cluster (any Keycloak mode): traefik for the NetBird Mgmt
-	// Ingress (and Keycloak ingress when managed) and CloudNativePG
-	// for NetBird's Postgres backend. cnpg also backs keycloak-pgsql
-	// in managed mode; rendering it here keeps cnpg syncing once
-	// regardless of mode.
+	// Ingress (and Keycloak ingress when managed), CloudNativePG
+	// for NetBird's Postgres backend, and NetBird Mgmt + Signal +
+	// Relay + Dashboard + Coturn themselves. cnpg also backs
+	// keycloak-pgsql in managed mode; rendering it here keeps cnpg
+	// syncing once regardless of mode.
 	if vpnClusterEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TraefikTemplateNames...,
 		)
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.CloudNativePGTemplateNames...,
+		)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.NetBirdNonSecretTemplateNames...,
 		)
 	}
 
