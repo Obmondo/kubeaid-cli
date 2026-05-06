@@ -120,8 +120,43 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 			)
 
 			globals.ControlPlaneLBBootstrapPublicIP = loadBalancer.PublicNet.IPv4.IP.String()
+
+			if err := waitForControlPlaneDNS(ctx, globals.ControlPlaneLBBootstrapPublicIP); err != nil {
+				return fmt.Errorf("waiting for control-plane DNS: %w", err)
+			}
 		}
 	}
 
 	return nil
+}
+
+// waitForControlPlaneDNS pauses bootstrap until the operator has
+// added the required A records for the cluster's public-facing
+// hostnames — without those records, cert-manager's ACME HTTP-01
+// challenge fails as soon as the keycloakx Ingress syncs, and there
+// is no clean retry.
+//
+// The set of FQDNs we wait on depends on what the cluster needs:
+//
+//   - The control-plane LB hostname is always required (every
+//     HCloud-VPN cluster sets it).
+//   - keycloak.dns and netbird.dns are only set on VPN clusters with
+//     managed Keycloak; we add them when present so the operator
+//     gets a single consolidated DNS step instead of a second pause
+//     after Keycloak's app starts syncing.
+//
+// No-op when no FQDNs have been collected (we wouldn't know what to
+// poll).
+func waitForControlPlaneDNS(ctx context.Context, lbPublicIP string) error {
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	fqdns := []string{globals.ControlPlaneHostname}
+	if cluster.Keycloak != nil && cluster.Keycloak.DNS != "" {
+		fqdns = append(fqdns, cluster.Keycloak.DNS)
+	}
+	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
+		fqdns = append(fqdns, cluster.NetBird.DNS)
+	}
+
+	return WaitForDNSResolution(ctx, fqdns, lbPublicIP)
 }
