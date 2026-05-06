@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 )
 
 // CreateLB creates the Hetzner control-plane LB if it doesn't already
@@ -27,17 +27,27 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 	network *hcloud.Network,
 	location string,
 	enablePublicInterface bool,
-) *hcloud.LoadBalancer {
-	if existing := h.getLB(ctx, clusterName); existing != nil {
-		existing = h.ensureExistingControlPlaneLB(ctx, existing, clusterName, network)
+) (*hcloud.LoadBalancer, error) {
+	existing, err := h.getLB(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("checking for existing LB: %w", err)
+	}
+	if existing != nil {
+		existing, err = h.ensureExistingControlPlaneLB(ctx, existing, clusterName, network)
+		if err != nil {
+			return nil, fmt.Errorf("ensuring existing control-plane LB: %w", err)
+		}
 		if enablePublicInterface {
-			existing = h.SetControlPlaneLBPublicInterface(ctx, clusterName, true)
+			existing, err = h.SetControlPlaneLBPublicInterface(ctx, clusterName, true)
+			if err != nil {
+				return nil, fmt.Errorf("enabling public interface on existing LB: %w", err)
+			}
 		}
 		slog.InfoContext(ctx, "Hetzner LB already exists")
-		return existing
+		return existing, nil
 	}
 
-	_, response, err := h.hcloudClient.LoadBalancer.Create(ctx, hcloud.LoadBalancerCreateOpts{
+	_, response, err := h.loadBalancerClient.Create(ctx, hcloud.LoadBalancerCreateOpts{
 		Name: clusterName,
 		LoadBalancerType: &hcloud.LoadBalancerType{
 			Name:        constants.HCloudLBTypeLB11,
@@ -51,10 +61,18 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 			controlPlaneLBOwnershipLabel(clusterName): "owned",
 		},
 	})
-	assertHCloudCall(ctx, err, response, http.StatusCreated, "Failed creating Hetzner LB")
+	if err != nil {
+		return nil, fmt.Errorf("creating Hetzner LB: %w", err)
+	}
+	if response == nil {
+		return nil, fmt.Errorf("creating Hetzner LB: nil response")
+	}
+	if response.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("creating Hetzner LB: unexpected status %d", response.StatusCode)
+	}
 	slog.InfoContext(ctx, "Created Hetzner LB")
 
-	return h.waitForLB(ctx, clusterName, func(lb *hcloud.LoadBalancer) bool {
+	lb, err := h.waitForLB(ctx, clusterName, func(lb *hcloud.LoadBalancer) bool {
 		if len(lb.PrivateNet) == 0 {
 			return false
 		}
@@ -63,6 +81,10 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		}
 		return lb.PublicNet.Enabled && lb.PublicNet.IPv4.IP != nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("waiting for LB readiness after creation: %w", err)
+	}
+	return lb, nil
 }
 
 // SetControlPlaneLBPublicInterface ensures the LB's public interface
@@ -71,113 +93,149 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 // finalize (disable) once NetBird routes the private endpoint.
 func (h *Hetzner) SetControlPlaneLBPublicInterface(
 	ctx context.Context, clusterName string, enabled bool,
-) *hcloud.LoadBalancer {
-	lb := h.getLB(ctx, clusterName)
+) (*hcloud.LoadBalancer, error) {
+	lb, err := h.getLB(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("getting LB for public interface toggle: %w", err)
+	}
 	if lb == nil || lb.PublicNet.Enabled == enabled {
-		return lb
+		return lb, nil
 	}
 
 	var (
 		response *hcloud.Response
-		err      error
 		ready    func(*hcloud.LoadBalancer) bool
 		logMsg   string
 	)
 	if enabled {
-		_, response, err = h.hcloudClient.LoadBalancer.EnablePublicInterface(ctx, lb)
+		_, response, err = h.loadBalancerClient.EnablePublicInterface(ctx, lb)
 		ready = func(lb *hcloud.LoadBalancer) bool {
 			return lb.PublicNet.Enabled && lb.PublicNet.IPv4.IP != nil
 		}
 		logMsg = "Enabled public interface on Hetzner LB"
 	} else {
-		_, response, err = h.hcloudClient.LoadBalancer.DisablePublicInterface(ctx, lb)
+		_, response, err = h.loadBalancerClient.DisablePublicInterface(ctx, lb)
 		ready = func(lb *hcloud.LoadBalancer) bool { return !lb.PublicNet.Enabled }
 		logMsg = "Disabled public interface on Hetzner LB"
 	}
-	assertHCloudCall(ctx, err, response, http.StatusCreated,
-		fmt.Sprintf("Failed setting public interface (enabled=%t) on Hetzner LB", enabled))
+	if err != nil {
+		return nil, fmt.Errorf("setting public interface (enabled=%t) on Hetzner LB: %w", enabled, err)
+	}
+	if response == nil {
+		return nil, fmt.Errorf("setting public interface (enabled=%t) on Hetzner LB: nil response", enabled)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("setting public interface (enabled=%t) on Hetzner LB: unexpected status %d", enabled, response.StatusCode)
+	}
 
-	lb = h.waitForLB(ctx, clusterName, ready)
+	lb, err = h.waitForLB(ctx, clusterName, ready)
+	if err != nil {
+		return nil, fmt.Errorf("waiting for LB public interface change: %w", err)
+	}
 	slog.InfoContext(ctx, logMsg)
-	return lb
+	return lb, nil
 }
 
 // DisableControlPlaneLBPublicInterface is the post-bootstrap finalize
 // call. Gated on hostname being configured — without a hostname the
 // LB's public IP is the operator's only entry point and disabling it
 // would lock them out.
-func (h *Hetzner) DisableControlPlaneLBPublicInterface(ctx context.Context) {
+func (h *Hetzner) DisableControlPlaneLBPublicInterface(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	if hetznerConfig.HCloudVPNCluster == nil ||
 		hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
-		return
+		return nil
 	}
-	h.SetControlPlaneLBPublicInterface(ctx, config.ParsedGeneralConfig.Cluster.Name, false)
+	_, err := h.SetControlPlaneLBPublicInterface(ctx, config.ParsedGeneralConfig.Cluster.Name, false)
+	if err != nil {
+		return fmt.Errorf("disabling control-plane LB public interface: %w", err)
+	}
+	return nil
 }
 
 func (h *Hetzner) ensureExistingControlPlaneLB(ctx context.Context,
 	loadBalancer *hcloud.LoadBalancer,
 	clusterName string,
 	network *hcloud.Network,
-) *hcloud.LoadBalancer {
+) (*hcloud.LoadBalancer, error) {
 	ownershipLabel := controlPlaneLBOwnershipLabel(clusterName)
 	if loadBalancer.Labels[ownershipLabel] != "owned" {
 		labels := map[string]string{}
-		for key, value := range loadBalancer.Labels {
-			labels[key] = value
-		}
+		maps.Copy(labels, loadBalancer.Labels)
 		labels[ownershipLabel] = "owned"
 
-		updated, response, err := h.hcloudClient.LoadBalancer.Update(ctx, loadBalancer,
+		updated, response, err := h.loadBalancerClient.Update(ctx, loadBalancer,
 			hcloud.LoadBalancerUpdateOpts{Labels: labels},
 		)
-		assertHCloudCall(ctx, err, response, http.StatusOK, "Failed updating Hetzner LB labels")
+		if err != nil {
+			return nil, fmt.Errorf("updating Hetzner LB labels: %w", err)
+		}
+		if response == nil {
+			return nil, fmt.Errorf("updating Hetzner LB labels: nil response")
+		}
+		if response.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("updating Hetzner LB labels: unexpected status %d", response.StatusCode)
+		}
 		loadBalancer = updated
 	}
 
 	if !loadBalancerAttachedToNetwork(loadBalancer, network.ID) {
-		_, response, err := h.hcloudClient.LoadBalancer.AttachToNetwork(ctx, loadBalancer,
+		_, response, err := h.loadBalancerClient.AttachToNetwork(ctx, loadBalancer,
 			hcloud.LoadBalancerAttachToNetworkOpts{Network: network},
 		)
-		assertHCloudCall(ctx, err, response, http.StatusCreated, "Failed attaching Hetzner LB to network")
-		return h.waitForLB(ctx, clusterName, func(lb *hcloud.LoadBalancer) bool {
+		if err != nil {
+			return nil, fmt.Errorf("attaching Hetzner LB to network: %w", err)
+		}
+		if response == nil {
+			return nil, fmt.Errorf("attaching Hetzner LB to network: nil response")
+		}
+		if response.StatusCode != http.StatusCreated {
+			return nil, fmt.Errorf("attaching Hetzner LB to network: unexpected status %d", response.StatusCode)
+		}
+		lb, err := h.waitForLB(ctx, clusterName, func(lb *hcloud.LoadBalancer) bool {
 			return loadBalancerAttachedToNetwork(lb, network.ID)
 		})
+		if err != nil {
+			return nil, fmt.Errorf("waiting for LB network attachment: %w", err)
+		}
+		return lb, nil
 	}
 
-	return loadBalancer
+	return loadBalancer, nil
 }
 
-func (h *Hetzner) getLB(ctx context.Context, clusterName string) *hcloud.LoadBalancer {
-	lb, response, err := h.hcloudClient.LoadBalancer.Get(ctx, clusterName)
-	assertHCloudCall(ctx, err, response, http.StatusOK, "Failed running Hetzner LB GET operation")
-	return lb
+func (h *Hetzner) getLB(ctx context.Context, clusterName string) (*hcloud.LoadBalancer, error) {
+	lb, response, err := h.loadBalancerClient.Get(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("running Hetzner LB GET operation: %w", err)
+	}
+	if response != nil && response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("running Hetzner LB GET operation: unexpected status %d", response.StatusCode)
+	}
+	return lb, nil
 }
 
 func (h *Hetzner) waitForLB(ctx context.Context,
 	clusterName string,
 	ready func(*hcloud.LoadBalancer) bool,
-) *hcloud.LoadBalancer {
+) (*hcloud.LoadBalancer, error) {
 	for {
-		time.Sleep(10 * time.Second)
-		if lb := h.getLB(ctx, clusterName); ready(lb) {
-			return lb
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("waiting for LB %q: %w", clusterName, ctx.Err())
+		default:
+		}
+
+		h.sleepFunc(10 * time.Second)
+
+		lb, err := h.getLB(ctx, clusterName)
+		if err != nil {
+			return nil, fmt.Errorf("polling LB %q: %w", clusterName, err)
+		}
+		if lb != nil && ready(lb) {
+			return lb, nil
 		}
 	}
-}
-
-// assertHCloudCall checks the (err, response, expected status) tuple
-// the hcloud-go SDK returns for nearly every call, fataling with the
-// supplied message on mismatch. Centralised so the seven call sites
-// in this file don't repeat the same three-line conjunction.
-func assertHCloudCall(ctx context.Context,
-	err error, response *hcloud.Response, expectedStatus int, msg string,
-) {
-	assert.Assert(ctx,
-		err == nil && response != nil && response.StatusCode == expectedStatus,
-		msg,
-		slog.Any("response", response),
-	)
 }
 
 func controlPlaneLBOwnershipLabel(clusterName string) string {

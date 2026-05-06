@@ -134,7 +134,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
-		hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx)
+		assert.AssertErrNil(ctx,
+			hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
+			"Failed disabling control-plane LB public interface",
+		)
 	}
 
 	bar.Finish()

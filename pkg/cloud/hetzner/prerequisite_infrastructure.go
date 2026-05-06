@@ -99,12 +99,15 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		}
 
 		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint
-		loadBalancer := h.CreateLB(ctx,
+		loadBalancer, err := h.CreateLB(ctx,
 			config.ParsedGeneralConfig.Cluster.Name,
 			network,
 			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Region,
 			controlPlaneHostname != "",
 		)
+		if err != nil {
+			return fmt.Errorf("creating control-plane LB: %w", err)
+		}
 
 		globals.ControlPlaneLBPrivateIP = loadBalancer.PrivateNet[0].IP.String()
 		globals.ControlPlaneHostname = controlPlaneHostname
