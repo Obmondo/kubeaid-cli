@@ -315,6 +315,18 @@ const (
 
 	ClusterTypeVPN      = "vpn"
 	ClusterTypeWorkload = "workload"
+
+	// Keycloak modes for cluster.type=vpn clusters.
+	//   managed:  kubeaid-cli installs Keycloak via the keycloakx
+	//             chart on this cluster, generates the admin
+	//             password, and runs the gocloak realm reconciler.
+	//   external: operator's existing Keycloak; kubeaid-cli only
+	//             configures kube-apiserver / NetBird Mgmt to trust
+	//             it. The realm + clients must be set up by hand
+	//             (see argocd-helm-charts/netbird/README.md, "Keycloak
+	//             realm prerequisites") before bootstrap.
+	KeycloakModeManaged  = "managed"
+	KeycloakModeExternal = "external"
 )
 
 // Miscellaneous.
