@@ -78,3 +78,53 @@ func TestManagedKeycloakEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestHCloudControlPlaneEndpointSet(t *testing.T) {
+	tests := []struct {
+		name    string
+		hetzner *config.HetznerConfig
+		want    bool
+	}{
+		{
+			name:    "nil hetzner config: false",
+			hetzner: nil,
+			want:    false,
+		},
+		{
+			name:    "hetzner config without HCloud control-plane: false",
+			hetzner: &config.HetznerConfig{},
+			want:    false,
+		},
+		{
+			name: "HCloud control-plane with empty endpoint: false",
+			hetzner: &config.HetznerConfig{
+				ControlPlane: config.HetznerControlPlane{
+					HCloud: &config.HCloudControlPlane{},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "HCloud control-plane with endpoint set: true",
+			hetzner: &config.HetznerConfig{
+				ControlPlane: config.HetznerControlPlane{
+					HCloud: &config.HCloudControlPlane{
+						LoadBalancer: config.HCloudControlPlaneLoadBalancer{
+							Endpoint: "api.acme.com",
+						},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cloud.Hetzner = tc.hetzner
+				assert.Equal(t, tc.want, hcloudControlPlaneEndpointSet())
+			})
+		})
+	}
+}

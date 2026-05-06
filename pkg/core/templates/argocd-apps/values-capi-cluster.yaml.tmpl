@@ -111,14 +111,26 @@ hetzner:
   controlPlane:
     regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
-    {{/* When provisioning an HCloud / Hetzner hybrid cluster with a VPN cluster,
-         kubeaid-cli creates the control-plane LB before CAPI starts. Without a hostname,
-         endpoint.host is the private LB IP. With a hostname, endpoint.host remains the
-         hostname while bootstrapHostsEntry/privateHostsEntry control node-side resolution. */}}
+    {{/* On HCloud-VPN clusters kubeaid-cli pre-provisions the control-plane LB
+         before CAPI starts. The chart consumes:
+           - endpoint.host    : kubeadm controlPlaneEndpoint, kubeconfig server
+           - extraCertSANs    : merged with endpoint.host into kubeadm's
+             apiServer.certSANs so clients hitting mesh-side hostnames (e.g.
+             NetBird-form names) don't trip x509 cert-name mismatches.
+           - loadBalancer.privateIP / bootstrapPublicIP : used in a postKubeadmCommand
+             that patches kube-system/coredns to resolve the endpoint to both IPs. */}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
+    {{- if .ControlPlaneExtraCertSANs }}
+    extraCertSANs: {{ .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
+    {{- end }}
+    loadBalancer:
+      privateIP: {{ .ControlPlaneLBPrivateIP }}
+      {{- if .ControlPlaneLBBootstrapPublicIP }}
+      bootstrapPublicIP: {{ .ControlPlaneLBBootstrapPublicIP }}
+      {{- end }}
     {{- end }}
     {{- end }}
 
