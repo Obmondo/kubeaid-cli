@@ -75,6 +75,78 @@ func TestHTTPSURL(t *testing.T) {
 	}
 }
 
+func TestDeriveRealmFromDNS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "single-segment TLD", host: "keycloak.vpn.acme.com", want: "acme"},
+		{name: "multi-part TLD .co.uk", host: "kc.foo.co.uk", want: "foo"},
+		{name: "two-segment domain", host: "kc.acme.com", want: "acme"},
+		{name: "bare apex", host: "acme.com", want: "acme"},
+		{name: "empty input", host: "", want: ""},
+		{name: "whitespace-only input", host: "  \t ", want: ""},
+		{name: "host with no public suffix", host: "localhost", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, deriveRealmFromDNS(tc.host))
+		})
+	}
+}
+
+func TestStripFirstLabel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "standard keycloak prefix", host: "keycloak.vpn.acme.com", want: "vpn.acme.com"},
+		{name: "single-label first", host: "auth.acme.com", want: "acme.com"},
+		{name: "two-segment apex", host: "acme.com", want: "com"},
+		{name: "single-label host has no first label to strip", host: "localhost", want: ""},
+		{name: "empty input", host: "", want: ""},
+		{name: "whitespace gets trimmed before stripping", host: "  keycloak.vpn.acme.com  ", want: "vpn.acme.com"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, stripFirstLabel(tc.host))
+		})
+	}
+}
+
+func TestDeriveACMEEmailFromDNS(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "two-segment domain → ops@apex", host: "vpn.obmondo.com", want: "ops@obmondo.com"},
+		{name: "deeply-nested domain → ops@eTLD+1", host: "k8s.dev.team.acme.com", want: "ops@acme.com"},
+		{name: "multi-part TLD", host: "vpn.foo.co.uk", want: "ops@foo.co.uk"},
+		{name: "empty input", host: "", want: ""},
+		{name: "host without a public suffix", host: "localhost", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, deriveACMEEmailFromDNS(tc.host))
+		})
+	}
+}
+
 func TestNonEmpty(t *testing.T) {
 	tests := []struct {
 		name    string
