@@ -70,6 +70,23 @@ type TemplateValues struct {
 	*/
 	ControlPlaneEndpoint string
 
+	// ControlPlaneLBPrivateIP and ControlPlaneLBBootstrapPublicIP
+	// are the HCloud load-balancer's private (steady-state) and
+	// bootstrap-only public IPs. Populated only on HCloud-VPN
+	// clusters where a control-plane endpoint FQDN is configured;
+	// the CoreDNS ConfigMap renders both as A records for the
+	// endpoint so resolution works during the bootstrap window
+	// (public IP) and after NetBird is up (private IP through the
+	// mesh).
+	ControlPlaneLBPrivateIP         string
+	ControlPlaneLBBootstrapPublicIP string
+
+	// ControlPlaneExtraCertSANs are extra DNS names rendered into
+	// the chart's values so kubeadm includes them in the apiserver
+	// TLS cert SAN list (alongside the primary endpoint). Used for
+	// mesh-side hostnames like a NetBird-form name.
+	ControlPlaneExtraCertSANs []string
+
 	ExtraKnownHosts []string
 
 	*config.DisasterRecoveryConfig
@@ -225,6 +242,9 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		// hostname when configured (clients resolve via CoreDNS to
 		// the LB private IP), else the private IP directly.
 		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && (hetznerConfig.HCloudVPNCluster != nil)):
+			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
+			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
+			templateValues.ControlPlaneExtraCertSANs = hetznerConfig.ControlPlane.HCloud.LoadBalancer.ExtraCertSANs
 			if globals.ControlPlaneHostname != "" {
 				templateValues.ControlPlaneEndpoint = globals.ControlPlaneHostname
 				break
@@ -276,6 +296,18 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			"argocd-apps/templates/k8s-configs.yaml.tmpl",
 			"k8s-configs/argocd-tls-certs-cm.configmap.yaml.tmpl",
+		)
+	}
+
+	// On HCloud-VPN clusters with a control-plane endpoint, render
+	// kube-system/coredns with a hosts block resolving the endpoint
+	// to the LB's IPs. ArgoCD owns the ConfigMap; CoreDNS reload
+	// picks up edits. Re-adding the k8s-configs App template is
+	// safe — duplicate-render is a no-op.
+	if hcloudControlPlaneEndpointSet() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			"argocd-apps/templates/k8s-configs.yaml.tmpl",
+			"k8s-configs/coredns.configmap.yaml.tmpl",
 		)
 	}
 
@@ -386,6 +418,18 @@ func managedKeycloakEnabled() bool {
 		return false
 	}
 	return cluster.Keycloak.Mode == "managed"
+}
+
+// hcloudControlPlaneEndpointSet reports whether kubeaid-cli should
+// render the cluster-side coredns-custom ConfigMap for resolving
+// the apiserver endpoint. True only when the operator configured
+// loadBalancer.endpoint on an HCloud control-plane.
+func hcloudControlPlaneEndpointSet() bool {
+	h := config.ParsedGeneralConfig.Cloud.Hetzner
+	if h == nil || h.ControlPlane.HCloud == nil {
+		return false
+	}
+	return h.ControlPlane.HCloud.LoadBalancer.Endpoint != ""
 }
 
 // teleportAgentEnabled reports whether the teleport-kube-agent ArgoCD App
