@@ -99,7 +99,7 @@ func readSecretValue(
 	v, ok := secret.Data[key]
 	if !ok || len(v) == 0 {
 		return "", fmt.Errorf(
-			"Secret %s/%s is missing the %q key", namespace, name, key,
+			"secret %s/%s is missing the %q key", namespace, name, key,
 		)
 	}
 	return string(v), nil

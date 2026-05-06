@@ -95,7 +95,7 @@ func pickPodBehindService(
 		return nil, fmt.Errorf("reading Service %s/%s: %w", namespace, serviceName, err)
 	}
 	if len(svc.Spec.Selector) == 0 {
-		return nil, fmt.Errorf("Service %s/%s has no selector", namespace, serviceName)
+		return nil, fmt.Errorf("service %s/%s has no selector", namespace, serviceName)
 	}
 
 	selector := labels.SelectorFromSet(svc.Spec.Selector).String()
