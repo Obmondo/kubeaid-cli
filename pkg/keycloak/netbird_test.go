@@ -59,6 +59,7 @@ func TestReconcileNetBird_RequiredFields(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			r, _ := newTestReconciler(t)
 			err := r.ReconcileNetBird(context.Background(), tc.spec)
 			require.Error(t, err)

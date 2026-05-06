@@ -604,6 +604,7 @@ func (f *fakeKeycloak) handleUserResetPassword(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
+//nolint:gocognit
 func (f *fakeKeycloak) handleUserClientRoles(w http.ResponseWriter, r *http.Request, realm, userID string, parts []string) {
 	if len(parts) == 0 {
 		http.NotFound(w, r)
