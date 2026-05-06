@@ -212,6 +212,14 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 // CNPG CRDs are in place before keycloakx (sync-order 20) creates
 // its dependent Cluster resource.
 var KeycloakManagedNonSecretTemplateNames = []string{
+	// Traefik. The ingress controller in front of Keycloak / NetBird
+	// Mgmt; cert-manager's http01 solver also targets its
+	// ingressClassName (see values-cert-manager.yaml.tmpl). Renders
+	// before keycloakx (sync-order 15 vs 20) so the Ingress class
+	// exists by the time the chart's Ingress objects sync.
+	"argocd-apps/templates/traefik.yaml.tmpl",
+	"argocd-apps/values-traefik.yaml.tmpl",
+
 	// CloudNativePG operator. Provides the Cluster CRD that the
 	// keycloakx chart instantiates for Keycloak's Postgres backend.
 	"argocd-apps/templates/cloudnative-pg.yaml.tmpl",
