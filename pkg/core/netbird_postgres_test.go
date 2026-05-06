@@ -57,6 +57,7 @@ func TestBuildPostgresDSN(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			assert.Equal(t, tc.want, buildPostgresDSN(tc.username, tc.password))
 		})
 	}
