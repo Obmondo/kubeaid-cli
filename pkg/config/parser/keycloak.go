@@ -133,5 +133,20 @@ func validateKeycloakConfig() error {
 		)
 	}
 
+	// External mode: the netbird-backend OIDC client lives in the
+	// operator's external Keycloak; only they know its client
+	// secret. The validator runs after secrets.yaml is parsed, so
+	// surface the missing field clearly here rather than letting
+	// kubeaid-cli emit a netbird Secret with an empty client
+	// secret and fail at runtime.
+	if cfg.Mode == constants.KeycloakModeExternal {
+		creds := config.ParsedSecretsConfig.Keycloak
+		if creds == nil || creds.NetBirdBackendClientSecret == "" {
+			return errors.New(
+				"secrets.yaml: keycloak.netBirdBackendClientSecret is required when cluster.keycloak.mode=external — kubeaid-cli can't generate it because the netbird-backend client lives in the operator's external Keycloak",
+			)
+		}
+	}
+
 	return nil
 }

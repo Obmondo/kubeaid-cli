@@ -203,52 +203,57 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
 }
 
-// Managed Keycloak template names. Included only when
-// cluster.type=vpn AND cluster.keycloak.mode=managed — the VPN
-// cluster provisions Keycloak via the existing keycloakx Helm chart
-// in the kubeaid repo, backed by a CloudNativePG Postgres Cluster
-// (the chart renders the Cluster CR via kubeaid-addons'
-// postgresql-cluster.yaml). cnpg syncs first (sync-order 10) so the
-// CNPG CRDs are in place before keycloakx (sync-order 20) creates
-// its dependent Cluster resource.
-var KeycloakManagedNonSecretTemplateNames = []string{
-	// Traefik. The ingress controller in front of Keycloak / NetBird
-	// Mgmt; cert-manager's http01 solver also targets its
-	// ingressClassName (see values-cert-manager.yaml.tmpl). Renders
-	// before keycloakx (sync-order 15 vs 20) so the Ingress class
-	// exists by the time the chart's Ingress objects sync.
+// Traefik. The ingress controller in front of NetBird Mgmt (and
+// Keycloak when managed); cert-manager's http01 solver also targets
+// its ingressClassName (see values-cert-manager.yaml.tmpl).
+// Sync-order 15 keeps it ahead of any chart that creates Ingress
+// objects.
+var TraefikTemplateNames = []string{
 	"argocd-apps/templates/traefik.yaml.tmpl",
 	"argocd-apps/values-traefik.yaml.tmpl",
+}
 
-	// CloudNativePG operator. Provides the Cluster CRD that the
-	// keycloakx chart instantiates for Keycloak's Postgres backend.
+// CloudNativePG operator. Provides the Cluster CRD that the
+// keycloakx chart (when managed Keycloak is enabled) and the
+// netbird chart both instantiate — for keycloak-pgsql and
+// netbird-pgsql respectively.
+var CloudNativePGTemplateNames = []string{
 	"argocd-apps/templates/cloudnative-pg.yaml.tmpl",
 	"argocd-apps/values-cloudnative-pg.yaml.tmpl",
+}
 
-	// Keycloak. Backed by CNPG Postgres; ingress exposes
-	// cluster.keycloak.dns publicly so kubelogin and end-users can
-	// reach the realm endpoints.
+// Managed-Keycloak template names. Included only when
+// cluster.type=vpn AND cluster.keycloak.mode=managed — kubeaid-cli
+// installs Keycloak via the keycloakx Helm chart on this cluster.
+// Backed by CNPG Postgres; ingress exposes cluster.keycloak.dns
+// publicly so kubelogin and end-users can reach the realm endpoints.
+// Sync-order 20.
+var KeycloakManagedNonSecretTemplateNames = []string{
 	"argocd-apps/templates/keycloakx.yaml.tmpl",
 	"argocd-apps/values-keycloakx.yaml.tmpl",
 }
 
-// Managed-Keycloak SealedSecrets.
-//   - keycloak-admin: seeds Keycloak's initial admin password
-//     (consumed by the keycloakx chart's pre-install hook).
+// Managed-Keycloak SealedSecrets — only when kubeaid-cli installs
+// Keycloak itself. Seeds Keycloak's initial admin password
+// (consumed by the keycloakx chart's pre-install hook).
+var KeycloakManagedSecretTemplateNames = []string{
+	"sealed-secrets/keycloakx/keycloak-admin.yaml.tmpl",
+}
+
+// VPN-cluster NetBird SealedSecrets — both modes.
 //   - netbird: holds every credential the NetBird Helm chart's
 //     envFromSecret block references — OIDC client IDs/secret,
-//     datastoreEncryptionKey, relayPassword, stun/turn server
-//     URLs, turn user/password. kubeaid-cli pre-generates the
-//     random keys and read-or-generates them on re-runs so the
-//     same value stays put across bootstraps. The OIDC client
-//     secret here is the same plaintext kubeaid-cli passes to
-//     ReconcileClient so Keycloak stores what NetBird's chart
-//     already expects to envFrom.
+//     datastoreEncryptionKey, relayPassword, stun/turn server URLs,
+//     turn user/password. kubeaid-cli pre-generates the random
+//     keys and read-or-generates them on re-runs so the same value
+//     stays put across bootstraps. The OIDC client secret is the
+//     same plaintext ReconcileNetBird passes to Keycloak when
+//     managed, or read from secrets.yaml when external (operator
+//     supplies the value out-of-band).
 //   - netbird-turn-credentials: Coturn server reads this for its
 //     own TURN auth. Password matches the netbird Secret's
 //     turnServerPassword so Mgmt's hand-back to clients lines up.
-var KeycloakManagedSecretTemplateNames = []string{
-	"sealed-secrets/keycloakx/keycloak-admin.yaml.tmpl",
+var NetBirdSecretTemplateNames = []string{
 	"sealed-secrets/netbird/netbird.yaml.tmpl",
 	"sealed-secrets/netbird/netbird-turn-credentials.yaml.tmpl",
 }

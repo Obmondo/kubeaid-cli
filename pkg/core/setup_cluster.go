@@ -72,18 +72,26 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
 		namespacesToBeCreated = append(namespacesToBeCreated, "monitoring")
 	}
-	// On VPN clusters with managed Keycloak, kubeaid-cli pre-creates the
-	// keycloak-admin Secret before ArgoCD's first sync, so the keycloakx
-	// namespace must already exist. cnpg-operator is paired here because the
-	// keycloakx chart instantiates a CNPG Cluster CR in that namespace.
-	// netbird is pre-created so the netbird + netbird-turn-credentials
-	// SealedSecrets land in the right place ahead of the netbird
-	// chart's own sync.
+	// On VPN clusters, kubeaid-cli pre-creates the namespaces so its
+	// SealedSecret render lands ahead of ArgoCD's first sync of the
+	// chart that consumes them:
+	//   - cnpg-operator   : both modes (cnpg backs netbird-pgsql in
+	//                       both, and keycloak-pgsql when managed).
+	//   - netbird         : both modes (the netbird +
+	//                       netbird-turn-credentials Secrets are
+	//                       seeded for both).
+	//   - keycloakx       : only when managed (keycloak-admin
+	//                       SealedSecret consumed by the chart's
+	//                       pre-install hook).
+	if vpnClusterEnabled() {
+		namespacesToBeCreated = append(namespacesToBeCreated,
+			constants.NamespaceCloudNativePG,
+			constants.NamespaceNetBird,
+		)
+	}
 	if managedKeycloakEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceKeycloak,
-			constants.NamespaceCloudNativePG,
-			constants.NamespaceNetBird,
 		)
 	}
 	for _, namespace := range namespacesToBeCreated {

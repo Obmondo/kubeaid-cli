@@ -102,13 +102,23 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
+	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
+	// Keycloak via the admin secret and reconciles the realm +
+	// NetBird OIDC clients. External-mode operators handle their
+	// own Keycloak setup (per the realm-prerequisites doc in
+	// kubeaid/argocd-helm-charts/netbird/README.md).
 	if managedKeycloakEnabled() {
 		bar.Describe("Reconciling NetBird's resources in Keycloak")
 		assert.AssertErrNil(ctx,
 			reconcileNetBirdInKeycloak(ctx, mainClusterClient),
 			"Failed reconciling NetBird in Keycloak",
 		)
+	}
 
+	// Both Keycloak modes: NetBird Mgmt's postgresDSN can only be
+	// filled in once CNPG has created the netbird-pgsql-app Secret
+	// in-cluster, so this patch is mode-independent.
+	if vpnClusterEnabled() {
 		bar.Describe("Patching NetBird Secret with CNPG-generated postgres DSN")
 		assert.AssertErrNil(ctx,
 			patchNetBirdPostgresDSN(ctx, mainClusterClient),

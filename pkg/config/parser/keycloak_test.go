@@ -232,8 +232,37 @@ func TestValidateKeycloakConfig(t *testing.T) {
 				DNS: "netbird.vpn.acme.com",
 			}
 			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			origSecrets := config.ParsedSecretsConfig
+			config.ParsedSecretsConfig = &config.SecretsConfig{
+				Keycloak: &config.KeycloakCredentials{
+					NetBirdBackendClientSecret: "operator-supplied-secret",
+				},
+			}
+			t.Cleanup(func() { config.ParsedSecretsConfig = origSecrets })
 
 			require.NoError(t, validateKeycloakConfig())
+		})
+	})
+
+	t.Run("external keycloak without netbird backend secret fails", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "external",
+				DNS:   "auth.acme.com",
+				Realm: "acme",
+			}
+			config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{
+				DNS: "netbird.vpn.acme.com",
+			}
+			config.ParsedGeneralConfig.Cluster.ACMEEmail = "ops@acme.com"
+			origSecrets := config.ParsedSecretsConfig
+			config.ParsedSecretsConfig = &config.SecretsConfig{}
+			t.Cleanup(func() { config.ParsedSecretsConfig = origSecrets })
+
+			err := validateKeycloakConfig()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "keycloak.netBirdBackendClientSecret is required")
 		})
 	})
 
