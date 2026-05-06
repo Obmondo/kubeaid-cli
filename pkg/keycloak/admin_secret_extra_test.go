@@ -5,6 +5,7 @@ package keycloak
 
 import (
 	"context"
+	"encoding/base64"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,4 +78,48 @@ func TestGetOrGenerateClientSecret_GeneratesWhenKeyMissing(t *testing.T) {
 	got, err := GetOrGenerateClientSecret(context.Background(), cl, "ns", "name", "key")
 	require.NoError(t, err)
 	assert.Len(t, got, passwordLength)
+}
+
+func TestGetOrGenerateBase64Key_ReusesExisting(t *testing.T) {
+	t.Parallel()
+
+	const persisted = "ZnJrL3lWVFBSam1tczBxbWozcmE5RnVzbUdBSFpmVDU3SzBQY2p6R05Vdz0="
+
+	cl := crFake.NewClientBuilder().
+		WithScheme(newTestScheme(t)).
+		WithObjects(&coreV1.Secret{
+			ObjectMeta: metaV1.ObjectMeta{Namespace: "netbird", Name: "netbird"},
+			Data:       map[string][]byte{"datastoreEncryptionKey": []byte(persisted)},
+		}).
+		Build()
+
+	got, err := GetOrGenerateBase64Key(context.Background(), cl,
+		"netbird", "netbird", "datastoreEncryptionKey", 32)
+	require.NoError(t, err)
+	assert.Equal(t, persisted, got,
+		"must read persisted base64 key verbatim — re-encoding would shift the AES key NetBird Mgmt has already used")
+}
+
+func TestGetOrGenerateBase64Key_GeneratesWhenMissing(t *testing.T) {
+	t.Parallel()
+
+	cl := crFake.NewClientBuilder().WithScheme(newTestScheme(t)).Build()
+
+	got, err := GetOrGenerateBase64Key(context.Background(), cl, "ns", "name", "key", 32)
+	require.NoError(t, err)
+
+	raw, err := base64.StdEncoding.DecodeString(got)
+	require.NoError(t, err, "generated value must be standard-base64")
+	assert.Len(t, raw, 32, "decoded byte length must match the requested 32")
+}
+
+func TestGetOrGenerateBase64Key_NilClient(t *testing.T) {
+	t.Parallel()
+
+	got, err := GetOrGenerateBase64Key(context.Background(), nil, "ns", "name", "key", 16)
+	require.NoError(t, err)
+
+	raw, err := base64.StdEncoding.DecodeString(got)
+	require.NoError(t, err)
+	assert.Len(t, raw, 16)
 }

@@ -4,6 +4,7 @@
 package keycloak
 
 import (
+	"encoding/base64"
 	"strings"
 	"testing"
 
@@ -40,4 +41,33 @@ func TestGeneratePassword_Uniqueness(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEqual(t, a, b)
+}
+
+func TestGenerateBase64Key_DecodesToRequestedByteLength(t *testing.T) {
+	t.Parallel()
+
+	tests := []int{16, 32, 64}
+	for _, byteLen := range tests {
+		key, err := generateBase64Key(byteLen)
+		require.NoError(t, err)
+
+		raw, err := base64.StdEncoding.DecodeString(key)
+		require.NoError(t, err,
+			"generateBase64Key(%d) must produce valid standard-base64", byteLen)
+		assert.Len(t, raw, byteLen,
+			"decoded key length must match requested byte length")
+	}
+}
+
+func TestGenerateBase64Key_Uniqueness(t *testing.T) {
+	t.Parallel()
+
+	a, err := generateBase64Key(32)
+	require.NoError(t, err)
+
+	b, err := generateBase64Key(32)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, a, b,
+		"two consecutive calls to generateBase64Key must produce different output")
 }

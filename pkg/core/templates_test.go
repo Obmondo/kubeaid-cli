@@ -79,6 +79,51 @@ func TestManagedKeycloakEnabled(t *testing.T) {
 	}
 }
 
+func TestVPNClusterEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		clusterType string
+		keycloak    *config.KeycloakConfig
+		want        bool
+	}{
+		{
+			name:        "workload cluster: false",
+			clusterType: constants.ClusterTypeWorkload,
+			keycloak:    nil,
+			want:        false,
+		},
+		{
+			name:        "vpn cluster without keycloak block: false (validator should have rejected, gate is nil-safe)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    nil,
+			want:        false,
+		},
+		{
+			name:        "vpn cluster + managed: true (renders cnpg/traefik/netbird Secret)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    &config.KeycloakConfig{Mode: "managed", DNS: "keycloak.acme.com"},
+			want:        true,
+		},
+		{
+			name:        "vpn cluster + external: true (same VPN-cluster infra; only Keycloak install differs)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    &config.KeycloakConfig{Mode: "external", DNS: "auth.acme.com"},
+			want:        true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.Type = tc.clusterType
+				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
+
+				assert.Equal(t, tc.want, vpnClusterEnabled())
+			})
+		})
+	}
+}
+
 func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	tests := []struct {
 		name    string
