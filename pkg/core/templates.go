@@ -251,7 +251,7 @@ func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config
 	sanitized := *hetznerConfig
 	if hetznerConfig.ControlPlane.HCloud != nil {
 		hcloudControlPlane := *hetznerConfig.ControlPlane.HCloud
-		hcloudControlPlane.LoadBalancer.Hostname = ""
+		hcloudControlPlane.LoadBalancer.Endpoint = ""
 		sanitized.ControlPlane.HCloud = &hcloudControlPlane
 	}
 

@@ -95,7 +95,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) {
 		// kubeaid-cli renders the hostname and uses the public LB IP only as temporary bootstrap
 		// DNS resolution.
 
-		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Hostname
+		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint
 		loadBalancer := h.CreateLB(ctx,
 			config.ParsedGeneralConfig.Cluster.Name,
 			network,

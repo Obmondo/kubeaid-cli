@@ -109,7 +109,7 @@ func (h *Hetzner) SetControlPlaneLBPublicInterface(
 func (h *Hetzner) DisableControlPlaneLBPublicInterface(ctx context.Context) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	if hetznerConfig.HCloudVPNCluster == nil ||
-		hetznerConfig.ControlPlane.HCloud.LoadBalancer.Hostname == "" {
+		hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
 		return
 	}
 	h.SetControlPlaneLBPublicInterface(ctx, config.ParsedGeneralConfig.Cluster.Name, false)
