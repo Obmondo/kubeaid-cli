@@ -128,50 +128,52 @@ func TestValidateConfigs(t *testing.T) {
 	}
 }
 
-func TestValidateConfigsHetznerControlPlaneLoadBalancerHostname(t *testing.T) {
+func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 	stubK8sVersionDeps(t)
 
 	tests := []struct {
 		name       string
-		hostname   string
+		endpoint   string
 		wantErr    bool
 		wantErrSub string
 	}{
 		{
-			name:     "empty hostname passes",
-			hostname: "",
-		},
-		{
-			name:     "fqdn hostname passes",
-			hostname: "api.example.com",
-		},
-		{
-			name:       "short hostname is rejected",
-			hostname:   "api",
+			name:       "empty endpoint is rejected",
+			endpoint:   "",
 			wantErr:    true,
-			wantErrSub: "Hostname",
+			wantErrSub: "Endpoint",
 		},
 		{
-			name:       "hostname with scheme is rejected",
-			hostname:   "https://api.example.com",
-			wantErr:    true,
-			wantErrSub: "Hostname",
+			name:     "fqdn endpoint passes",
+			endpoint: "api.example.com",
 		},
 		{
-			name:       "hostname with port is rejected",
-			hostname:   "api.example.com:6443",
+			name:       "short endpoint is rejected",
+			endpoint:   "api",
 			wantErr:    true,
-			wantErrSub: "Hostname",
+			wantErrSub: "Endpoint",
 		},
 		{
-			name:       "hostname with whitespace is rejected",
-			hostname:   "api example.com",
+			name:       "endpoint with scheme is rejected",
+			endpoint:   "https://api.example.com",
 			wantErr:    true,
-			wantErrSub: "Hostname",
+			wantErrSub: "Endpoint",
+		},
+		{
+			name:       "endpoint with port is rejected",
+			endpoint:   "api.example.com:6443",
+			wantErr:    true,
+			wantErrSub: "Endpoint",
+		},
+		{
+			name:       "endpoint with whitespace is rejected",
+			endpoint:   "api example.com",
+			wantErr:    true,
+			wantErrSub: "Endpoint",
 		},
 		{
 			name:       "ip address is rejected",
-			hostname:   "1.2.3.4",
+			endpoint:   "1.2.3.4",
 			wantErr:    true,
 			wantErrSub: "must be a DNS name, not an IP address",
 		},
@@ -206,7 +208,7 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerHostname(t *testing.T) {
 							LoadBalancer: config.HCloudControlPlaneLoadBalancer{
 								Enabled:  true,
 								Region:   "hel1",
-								Hostname: tc.hostname,
+								Endpoint: tc.endpoint,
 							},
 						},
 					},
@@ -620,7 +622,7 @@ func TestValidateHCloudConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "HCloud control-plane load-balancer hostname cannot be an IP address",
+			name: "HCloud control-plane load-balancer endpoint cannot be an IP address",
 			general: &config.GeneralConfig{
 				Cloud: config.CloudConfig{
 					Hetzner: &config.HetznerConfig{
@@ -629,7 +631,7 @@ func TestValidateHCloudConfig(t *testing.T) {
 						ControlPlane: config.HetznerControlPlane{
 							HCloud: &config.HCloudControlPlane{
 								LoadBalancer: config.HCloudControlPlaneLoadBalancer{
-									Hostname: "1.2.3.4",
+									Endpoint: "1.2.3.4",
 								},
 							},
 						},

@@ -580,10 +580,14 @@ type (
 		Enabled bool   `yaml:"enabled" validate:"required"`
 		Region  string `yaml:"region"  validate:"notblank"`
 
-		// Stable DNS name used as the Kubernetes API server endpoint.
-		// When set for a workload cluster using hcloudVPNCluster, kubeaid-cli maps it to the
-		// temporary public LB IP during bootstrap and renders the hostname into CAPI/Cilium config.
-		Hostname string `yaml:"hostname,omitempty" validate:"omitempty,fqdn"`
+		// Endpoint is the FQDN clients use to reach kube-apiserver
+		// (CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,
+		// kubeconfig server URL). Required. DNS resolution is the
+		// operator's responsibility — the LB has both public and
+		// private interfaces during bootstrap; once NetBird is up
+		// the public is removed and clients reach the private IP
+		// through the mesh.
+		Endpoint string `yaml:"endpoint" validate:"required,fqdn"`
 	}
 
 	// Details about node-groups in Hetzner.
