@@ -52,7 +52,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	//        CrossPlane provider, Hetzner Bare Metal doesn't have any. So, we can't use CrossPlane
 	//        as of now.
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		bar.Describe("Provisioning Hetzner infrastructure")
+		bar.DescribeWithYubiKeyHint("Provisioning Hetzner infrastructure")
 
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
@@ -64,16 +64,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
-	bar.Describe("Detecting Git authentication method")
+	bar.DescribeWithYubiKeyHint("Detecting Git authentication method")
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create and setup the management cluster.
-	bar.Describe("Creating management cluster")
+	bar.DescribeWithYubiKeyHint("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
-	bar.Describe("Provisioning main cluster")
+	bar.DescribeWithYubiKeyHint("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
 		BootstrapClusterArgs: &args,
 		GitAuthMethod:        gitAuthMethod,
@@ -98,7 +98,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Sync all ArgoCD Apps.
-	bar.Describe("Syncing ArgoCD applications")
+	bar.DescribeWithYubiKeyHint("Syncing ArgoCD applications")
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 

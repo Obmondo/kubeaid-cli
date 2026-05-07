@@ -5,7 +5,6 @@ package git
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -63,12 +62,6 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 		sshAgentAuthMethod.HostKeyCallback = knownHostsCallback
 
 		authMethod = sshAgentAuthMethod
-
-		// Operator hint — SSH agent flows that go through a YubiKey
-		// pause silently waiting for a touch on the hardware key.
-		// Printed to stdout (not slog) so it's visible regardless of
-		// log routing.
-		fmt.Println("👉 SSH agent active — touch your YubiKey when a Git operation pauses.")
 
 		slog.InfoContext(ctx, "Using SSH agent")
 	}
