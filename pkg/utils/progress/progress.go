@@ -15,7 +15,10 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-const yubikeyTouchSuffix = " 👉 touch YubiKey"
+const (
+	yubikeyTouchActiveSubstep = "👉 Touching YubiKey..."
+	yubikeyTouchedSubstep     = "Touched YubiKey ✓"
+)
 
 // Bar is a single-line spinner with docker-style "log-up" + a tree
 // of indented sub-steps. The transcript reads as:
@@ -38,12 +41,11 @@ type Bar struct {
 	bar         *progressbar.ProgressBar
 	currentDesc string
 	lastSubstep string
-	needsTouch  bool
 
 	// hasYubiKey is the cached "is a YubiKey-backed identity loaded
-	// in the SSH agent" check, run once at New(). Gates the touch
-	// hint so a software-key-only agent (or no card plugged in)
-	// doesn't trigger spurious "👉 touch YubiKey" prompts.
+	// in the SSH agent" check, run once at New(). Gates
+	// RequestYubiKeyTouch so a software-key-only agent (or no card
+	// plugged in) doesn't trigger spurious touch sub-steps.
 	hasYubiKey bool
 }
 
@@ -141,27 +143,37 @@ func (b *Bar) Substep(text string) {
 	b.lastSubstep = text
 }
 
-// RequestYubiKeyTouch surfaces the " 👉 touch YubiKey" hint in the
-// live spinner caption — operators on a YubiKey/SSH-agent setup
-// otherwise have no signal that the spinner is paused waiting for
-// a hardware touch. The returned closure clears the hint; pair via
-// `defer bar.RequestYubiKeyTouch()()` around the actual SSH op so
-// the hint shows only while the touch is genuinely needed.
+// RequestYubiKeyTouch emits a transient "👉 Touching YubiKey..."
+// sub-step indicating the spinner is paused on a hardware-touch
+// SSH signature. The returned closure rewrites that line in place
+// to "Touched YubiKey ✓" once the SSH op completes — operator
+// sees the touch as a discrete event in the substep tree, with an
+// audit trail of completed touches.
+//
+// Pair via `defer bar.RequestYubiKeyTouch()()` around the actual
+// SSH op. Caveat: the rewrite assumes no other Substep calls fire
+// between Request and the closure call, so bracket as tightly as
+// possible around the op — emitting other sub-steps in between
+// will cause the rewrite to target the wrong line.
 //
 // No-op (returns a no-op closure) when no YubiKey-backed identity
 // is loaded in the SSH agent — software-only agents never block
-// for a hardware touch and don't need the hint. Card detection is
-// cached at Bar construction; plugging in the YubiKey mid-bootstrap
-// won't be picked up until next run.
+// for a hardware touch. Card detection is cached at Bar
+// construction; plugging in the YubiKey mid-bootstrap won't be
+// picked up until next run.
 func (b *Bar) RequestYubiKeyTouch() (release func()) {
 	if b == nil || b.bar == nil || !b.hasYubiKey {
 		return func() {}
 	}
-	b.needsTouch = true
-	b.refreshCaption()
+	b.Substep(yubikeyTouchActiveSubstep)
 	return func() {
-		b.needsTouch = false
-		b.refreshCaption()
+		// Rewrite the "Touching..." substep we just printed, in
+		// place, with the "Touched ✓" audit-trail version.
+		// Cursor is at the spinner line; the substep is one row
+		// above.
+		_ = b.bar.Clear()
+		fmt.Fprintf(os.Stderr, "\r\033[F\033[K   ├─ %s\n", yubikeyTouchedSubstep)
+		b.lastSubstep = yubikeyTouchedSubstep
 	}
 }
 
@@ -195,12 +207,12 @@ func (b *Bar) closeSubstepTree() {
 	b.lastSubstep = ""
 }
 
-// refreshCaption re-renders the spinner caption based on the
-// current major step + dynamic touch-hint state. Cheap; idempotent.
+// refreshCaption re-renders the spinner caption with the current
+// major-step name. Cheap; idempotent. The YubiKey-touch hint is
+// surfaced as a transient sub-step from RequestYubiKeyTouch
+// instead of via the spinner caption — keeps the spinner line
+// stable while the touch indicator integrates with the substep
+// tree.
 func (b *Bar) refreshCaption() {
-	caption := b.currentDesc
-	if b.needsTouch {
-		caption += yubikeyTouchSuffix
-	}
-	b.bar.Describe(caption)
+	b.bar.Describe(b.currentDesc)
 }
