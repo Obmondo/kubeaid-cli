@@ -35,7 +35,7 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("KubeAid Config fork URL:")
 	c.acceptDefault()
 
-	c.expectString("Git SSH private key path")
+	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
@@ -92,7 +92,7 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.expectString("KubeAid Config fork URL:")
 	c.acceptDefault()
 
-	c.expectString("Git SSH private key path")
+	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
@@ -112,7 +112,7 @@ func TestLocal_PromptFlow(t *testing.T) {
 	// Fork / git details that must not be empty.
 	assert.Contains(t, general, "forkURLs:")
 	assert.Contains(t, general, "kubeaidConfig:")
-	assert.Contains(t, general, "url: https://github.com/Obmondo/kubeaid-config.git")
+	assert.Contains(t, general, "url: git@github.com:Obmondo/kubeaid-config.git")
 	assert.Contains(t, general, "privateKeyFilePath: "+sshKeyPath)
 
 	// K8s version should be auto-detected.
@@ -164,7 +164,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("KubeAid Config fork URL:")
 	c.acceptDefault()
 
-	c.expectString("Git SSH private key path")
+	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
@@ -248,7 +248,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("KubeAid Config fork URL:")
 	c.acceptDefault()
 
-	c.expectString("Git SSH private key path")
+	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
@@ -327,7 +327,7 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.expectString("KubeAid Config fork URL:")
 	c.acceptDefault()
 
-	c.expectString("Git SSH private key path")
+	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")

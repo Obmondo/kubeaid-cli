@@ -391,11 +391,18 @@ func promptHAControlPlane() (string, error) {
 	return "1", nil
 }
 
+// promptConfigRepo collects the operator's kubeaid-config fork URL.
+// kubeaid-cli pushes to this fork during bootstrap, so the URL form
+// has to match what the SSH-only auth resolver in pkg/utils/git/auth.go
+// can actually push to: SSH agent (yubikey) or an SSH private key
+// file. HTTPS would require PAT-based auth that the resolver doesn't
+// implement — so default to the SSH form.
 func promptConfigRepo(cfg *PromptedConfig) error {
 	const message = "KubeAid Config fork URL:"
-	cfg.KubeaidConfigForkURL = "https://github.com/Obmondo/kubeaid-config.git"
+	cfg.KubeaidConfigForkURL = "git@github.com:Obmondo/kubeaid-config.git"
 	if err := huh.NewInput().
 		Title(message).
+		Description("SSH form — uses your yubikey via SSH agent, or the SSH key collected below.").
 		Value(&cfg.KubeaidConfigForkURL).
 		Validate(nonEmpty).
 		Run(); err != nil {
@@ -405,17 +412,28 @@ func promptConfigRepo(cfg *PromptedConfig) error {
 	return nil
 }
 
+// promptDeployKeyPath asks for the read-only SSH key ArgoCD will use
+// to clone kubeaid-config from inside the cluster. This key gets
+// templated into a Kubernetes Secret on the management cluster — it
+// MUST NOT have write access to the fork. By GitHub conventions, an
+// SSH key uploaded as a 'Deploy Key' on a single repo is read-only
+// unless explicitly toggled.
 func promptDeployKeyPath(cfg *PromptedConfig) error {
 	return promptSSHPrivateKeyPath(
 		&cfg.KubeaidConfigDeployKeyPath,
-		"ArgoCD deploy key (private key file path):",
+		"ArgoCD deploy key — read-only SSH key for in-cluster clone (private key file path):",
 	)
 }
 
+// promptGitSSHKey asks for the operator's OWN SSH private key file —
+// the one with write access to their kubeaid-config fork. Only fired
+// when the SSH agent fallback isn't available (no yubikey, agent
+// socket unreachable, or no identities loaded). With a working SSH
+// agent, kubeaid-cli uses it directly and skips this prompt.
 func promptGitSSHKey(cfg *PromptedConfig) error {
 	return promptSSHPrivateKeyPath(
 		&cfg.SSHKeyPath,
-		"Git SSH private key path:",
+		"Your SSH private key (with write access to kubeaid-config — used by kubeaid-cli to push):",
 	)
 }
 
