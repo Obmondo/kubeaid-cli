@@ -5,6 +5,7 @@ package git
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -32,8 +33,15 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 
 	var authMethod transport.AuthMethod
 	switch {
-	// SSH private key.
-	case gitConfig.SSHKeyPairConfig != nil:
+	// SSH private key file. Only taken when the operator gave a
+	// non-empty privateKeyFilePath AND did not opt into the agent.
+	// SSHKeyPairConfig is non-nil whenever any of its fields are set
+	// (including useSSHAgent=true alone), so a nil-only check would
+	// mis-route yubikey/agent operators into gossh.NewPublicKeysFromFile
+	// with an empty path.
+	case gitConfig.SSHKeyPairConfig != nil &&
+		!gitConfig.UseSSHAgent &&
+		gitConfig.PrivateKeyFilePath != "":
 		publicKeysAuthMethod, err := gossh.NewPublicKeysFromFile(
 			gitConfig.SSHUsername,
 			gitConfig.PrivateKeyFilePath,
@@ -55,6 +63,12 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 		sshAgentAuthMethod.HostKeyCallback = knownHostsCallback
 
 		authMethod = sshAgentAuthMethod
+
+		// Operator hint — SSH agent flows that go through a YubiKey
+		// pause silently waiting for a touch on the hardware key.
+		// Printed to stdout (not slog) so it's visible regardless of
+		// log routing.
+		fmt.Println("👉 SSH agent active — touch your YubiKey when a Git operation pauses.")
 
 		slog.InfoContext(ctx, "Using SSH agent")
 	}

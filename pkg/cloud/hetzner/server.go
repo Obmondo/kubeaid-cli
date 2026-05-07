@@ -276,6 +276,13 @@ func waitForNATGatewaySSH(ctx context.Context, server *hcloud.Server, privateKey
 		Timeout:     time.Second * 10,
 	}
 
+	if opts.AgentSocket != "" {
+		// Agent route — the SSH handshake will block waiting for a
+		// YubiKey touch once the gateway server is reachable. Heads
+		// up so the operator keeps the key plugged in and ready.
+		fmt.Println("👉 Be ready to touch your YubiKey for NAT gateway SSH.")
+	}
+
 	for {
 		connection, err := kubeonessh.NewConnection(connector, opts)
 		if err == nil {
