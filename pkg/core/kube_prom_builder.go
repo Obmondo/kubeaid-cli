@@ -39,7 +39,12 @@ func ensureKubePromBuilderImage(ctx context.Context) {
 
 	tempDir, err := os.MkdirTemp("", "kube-prom-builder-*")
 	assert.AssertErrNil(ctx, err, "Failed creating temp dir for Dockerfile")
-	defer os.RemoveAll(tempDir)
+	defer func() {
+		if err := os.RemoveAll(tempDir); err != nil {
+			slog.WarnContext(ctx, "Failed cleaning up Dockerfile temp dir",
+				slog.String("path", tempDir), slog.String("error", err.Error()))
+		}
+	}()
 
 	dockerfilePath := filepath.Join(tempDir, "Dockerfile")
 	err = os.WriteFile(dockerfilePath, []byte(kubePromBuilderDockerfile), 0o600)

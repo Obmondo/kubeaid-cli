@@ -45,128 +45,19 @@ func (h *Hetzner) GetHCloudServerIDsForCluster(ctx context.Context, name string)
 
 func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	clusterName := config.ParsedGeneralConfig.Cluster.Name
+	serverName := fmt.Sprintf("%s-nat-gateway", clusterName)
 
-	var (
-		clusterName = config.ParsedGeneralConfig.Cluster.Name
-		serverName  = fmt.Sprintf("%s-nat-gateway", clusterName)
-
-		server *hcloud.Server
-	)
-
-	server, response, err := h.hcloudClient.Server.GetByName(ctx, serverName)
+	server, err := h.findOrCreateNATGatewayServer(ctx, serverName, networkID)
 	if err != nil {
-		return fmt.Errorf("searching for NAT gateway server %q: %w", serverName, err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("searching for NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+		return err
 	}
 
-	switch {
-	case server != nil:
-		slog.InfoContext(ctx, "NAT Gateway server already exists")
-
-	default:
-		sshKeyPair, response, err := h.hcloudClient.SSHKey.GetByName(ctx, hetznerConfig.SSHKeyPair.Name)
-		if err != nil {
-			return fmt.Errorf("getting HCloud SSH keypair %q: %w", hetznerConfig.SSHKeyPair.Name, err)
-		}
-		if response.StatusCode != http.StatusOK {
-			return fmt.Errorf("getting HCloud SSH keypair %q: unexpected status %d", hetznerConfig.SSHKeyPair.Name, response.StatusCode)
-		}
-
-		result, response, err := h.hcloudClient.Server.Create(ctx, hcloud.ServerCreateOpts{
-			Name:       serverName,
-			ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCAX11},
-			Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
-			SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
-
-			// Nuremberg and Falkenstein frequently run into unavailable HCloud servers issue.
-			// So, we spin it up in Helsinki.
-			Location: &hcloud.Location{Name: constants.HCloudLocationHel1},
-
-			Networks: []*hcloud.Network{{ID: networkID}},
-			PublicNet: &hcloud.ServerCreatePublicNet{
-				EnableIPv4: true,
-				EnableIPv6: false,
-			},
-
-			Labels: map[string]string{
-				fmt.Sprintf("caph-cluster-%s", clusterName): "owned",
-			},
-
-			StartAfterCreate: ptr.To(true),
-		})
-		if err != nil {
-			return fmt.Errorf("creating NAT gateway server %q: %w", serverName, err)
-		}
-		if response.StatusCode != http.StatusCreated {
-			return fmt.Errorf("creating NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
-		}
-		slog.InfoContext(ctx, "Created NAT Gateway server")
-
-		server = result.Server
+	if err := h.ensureNATRouteOnNetwork(ctx, networkID, server); err != nil {
+		return err
 	}
 
-	network, response, err := h.hcloudClient.Network.GetByID(ctx, networkID)
-	if err != nil {
-		return fmt.Errorf("getting Hetzner network %d: %w", networkID, err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("getting Hetzner network %d: unexpected status %d", networkID, response.StatusCode)
-	}
-
-	var serverRegisteredAsNATGateway bool
-	for _, route := range network.Routes {
-		if route.Destination.String() == "0.0.0.0/0" {
-			serverRegisteredAsNATGateway = true
-			slog.InfoContext(ctx, "HCloud server already registered as NAT Gateway for the Hetzner Network")
-		}
-	}
-
-	if !serverRegisteredAsNATGateway {
-		_, response, err = h.hcloudClient.Network.AddRoute(ctx, &hcloud.Network{ID: networkID},
-			hcloud.NetworkAddRouteOpts{
-				Route: hcloud.NetworkRoute{
-					Destination: &net.IPNet{
-						IP:   net.IPv4(0, 0, 0, 0),
-						Mask: net.CIDRMask(0, 32),
-					},
-
-					Gateway: server.PrivateNet[0].IP,
-				},
-			},
-		)
-		if err != nil {
-			return fmt.Errorf("registering NAT gateway route on network %d: %w", networkID, err)
-		}
-		if response.StatusCode != http.StatusCreated {
-			return fmt.Errorf("registering NAT gateway route on network %d: unexpected status %d", networkID, response.StatusCode)
-		}
-	}
-
-	connector := kubeonessh.NewConnector(ctx)
-
-	var connection executor.Interface
-	for {
-		var err error
-		connection, err = kubeonessh.NewConnection(connector, kubeonessh.Opts{
-			Context: ctx,
-
-			Hostname:   server.PublicNet.IPv4.IP.String(),
-			Port:       22,
-			Username:   "root",
-			PrivateKey: []byte(hetznerConfig.SSHKeyPair.PrivateKey),
-
-			Timeout: time.Second * 10,
-		})
-		if err == nil {
-			break
-		}
-
-		// An HCloud server isn't reachable just after creation.
-		slog.InfoContext(ctx, "NAT Gateway server not reachable. Will retry after sometime....")
-		time.Sleep(10 * time.Second)
-	}
+	connection := waitForNATGatewaySSH(ctx, server, hetznerConfig.SSHKeyPair.PrivateKey)
 	defer connection.Close()
 
 	cidr := hetznerConfig.HCloud.HetznerNetwork.CIDR
@@ -204,6 +95,138 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 	}
 	slog.InfoContext(ctx, "Configured NAT Gateway server")
 	return nil
+}
+
+// findOrCreateNATGatewayServer returns the existing HCloud server
+// named serverName if it exists, otherwise creates one (cax11 in
+// hel1, attached to networkID, with a public v4) and returns the
+// fresh server. Extracted from CreateNATGateway to keep that
+// function's cognitive complexity in check.
+func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName string, networkID int) (*hcloud.Server, error) {
+	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	clusterName := config.ParsedGeneralConfig.Cluster.Name
+
+	server, response, err := h.hcloudClient.Server.GetByName(ctx, serverName)
+	if err != nil {
+		return nil, fmt.Errorf("searching for NAT gateway server %q: %w", serverName, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("searching for NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+	}
+	if server != nil {
+		slog.InfoContext(ctx, "NAT Gateway server already exists")
+		return server, nil
+	}
+
+	sshKeyPair, response, err := h.hcloudClient.SSHKey.GetByName(ctx, hetznerConfig.SSHKeyPair.Name)
+	if err != nil {
+		return nil, fmt.Errorf("getting HCloud SSH keypair %q: %w", hetznerConfig.SSHKeyPair.Name, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("getting HCloud SSH keypair %q: unexpected status %d", hetznerConfig.SSHKeyPair.Name, response.StatusCode)
+	}
+
+	result, response, err := h.hcloudClient.Server.Create(ctx, hcloud.ServerCreateOpts{
+		Name:       serverName,
+		ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCAX11},
+		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
+		SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
+
+		// Nuremberg and Falkenstein frequently run into unavailable HCloud servers issue.
+		// So, we spin it up in Helsinki.
+		Location: &hcloud.Location{Name: constants.HCloudLocationHel1},
+
+		Networks: []*hcloud.Network{{ID: networkID}},
+		PublicNet: &hcloud.ServerCreatePublicNet{
+			EnableIPv4: true,
+			EnableIPv6: false,
+		},
+
+		Labels: map[string]string{
+			fmt.Sprintf("caph-cluster-%s", clusterName): "owned",
+		},
+
+		StartAfterCreate: ptr.To(true),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("creating NAT gateway server %q: %w", serverName, err)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("creating NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+	}
+	slog.InfoContext(ctx, "Created NAT Gateway server")
+	return result.Server, nil
+}
+
+// ensureNATRouteOnNetwork registers a 0.0.0.0/0 route on the named
+// Hetzner Network pointing at server's private IP, so other servers
+// in the network egress through it. No-op when the route already
+// exists.
+func (h *Hetzner) ensureNATRouteOnNetwork(ctx context.Context, networkID int, server *hcloud.Server) error {
+	network, response, err := h.hcloudClient.Network.GetByID(ctx, networkID)
+	if err != nil {
+		return fmt.Errorf("getting Hetzner network %d: %w", networkID, err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("getting Hetzner network %d: unexpected status %d", networkID, response.StatusCode)
+	}
+
+	for _, route := range network.Routes {
+		if route.Destination.String() == "0.0.0.0/0" {
+			slog.InfoContext(ctx, "HCloud server already registered as NAT Gateway for the Hetzner Network")
+			return nil
+		}
+	}
+
+	_, response, err = h.hcloudClient.Network.AddRoute(ctx, &hcloud.Network{ID: networkID},
+		hcloud.NetworkAddRouteOpts{
+			Route: hcloud.NetworkRoute{
+				Destination: &net.IPNet{
+					IP:   net.IPv4(0, 0, 0, 0),
+					Mask: net.CIDRMask(0, 32),
+				},
+				Gateway: server.PrivateNet[0].IP,
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("registering NAT gateway route on network %d: %w", networkID, err)
+	}
+	if response.StatusCode != http.StatusCreated {
+		return fmt.Errorf("registering NAT gateway route on network %d: unexpected status %d", networkID, response.StatusCode)
+	}
+	return nil
+}
+
+// waitForNATGatewaySSH polls SSH on the freshly-created HCloud
+// server until it accepts a connection. HCloud servers are not
+// SSH-reachable for tens of seconds after Server.Create returns;
+// retry every 10s instead of failing the bootstrap.
+//
+// The retry loop is unbounded by design — same behaviour as the
+// original inline loop in CreateNATGateway. Cancellation flows
+// through ctx (kubeonessh.NewConnection takes Context). Returns
+// only the connection because the loop never gives up under its
+// own steam.
+func waitForNATGatewaySSH(ctx context.Context, server *hcloud.Server, privateKey string) executor.Interface {
+	connector := kubeonessh.NewConnector(ctx)
+
+	for {
+		connection, err := kubeonessh.NewConnection(connector, kubeonessh.Opts{
+			Context:    ctx,
+			Hostname:   server.PublicNet.IPv4.IP.String(),
+			Port:       22,
+			Username:   "root",
+			PrivateKey: []byte(privateKey),
+			Timeout:    time.Second * 10,
+		})
+		if err == nil {
+			return connection
+		}
+
+		slog.InfoContext(ctx, "NAT Gateway server not reachable. Will retry after sometime....")
+		time.Sleep(10 * time.Second)
+	}
 }
 
 type (
