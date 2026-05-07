@@ -7,16 +7,14 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/charmbracelet/huh"
 )
 
-type hetznerPrompter struct {
-	baseProvider
-}
+type hetznerPrompter struct{}
 
 func newHetznerProvider() *hetznerPrompter {
-	p := &hetznerPrompter{}
-	p.questionsFunc = p.promptHetznerQuestions
-	return p
+	return &hetznerPrompter{}
 }
 
 func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
@@ -33,38 +31,69 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	return lines
 }
 
-func (p *hetznerPrompter) promptHetznerQuestions(cfg *PromptedConfig) error {
-	if err := selectOption(
-		"Mode:", []string{"hcloud", "bare-metal", "hybrid"},
-		"hcloud", &cfg.HetznerMode,
-	); err != nil {
+func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
+	// Pre-fill the SSH key path default.
+	if cfg.HetznerSSHKeyPath == "" {
+		cfg.HetznerSSHKeyPath = detectSSHKeyPath()
+	}
+
+	// HA selector: 3 replicas for HA, 1 otherwise.
+	haChoice := cfg.HetznerCPReplicas != "1"
+
+	robotGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("Robot username:").
+			Value(&cfg.HetznerRobotUser).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Robot password:").
+			EchoMode(huh.EchoModePassword).
+			Value(&cfg.HetznerRobotPassword).
+			Validate(nonEmpty),
+	).WithHideFunc(func() bool {
+		return cfg.HetznerMode != "bare-metal" && cfg.HetznerMode != "hybrid"
+	})
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Mode:").
+				Options(
+					huh.NewOption("hcloud", "hcloud"),
+					huh.NewOption("bare-metal", "bare-metal"),
+					huh.NewOption("hybrid", "hybrid"),
+				).
+				Value(&cfg.HetznerMode),
+			huh.NewInput().
+				Title("Cloud API token:").
+				EchoMode(huh.EchoModePassword).
+				Value(&cfg.HetznerAPIToken).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("SSH private key file path:").
+				Value(&cfg.HetznerSSHKeyPath).
+				Validate(validateSSHKeyPath),
+			huh.NewConfirm().
+				Title("Enable high availability for the control plane?").
+				Value(&haChoice),
+		).Title("Hetzner credentials").Description("Step 3/4"),
+		robotGroup,
+	).Run()
+	if err != nil {
 		return err
 	}
 
-	// Provider credentials come next, immediately after mode.
-	if err := requiredPassword("Cloud API token:", &cfg.HetznerAPIToken); err != nil {
-		return err
-	}
-
-	if cfg.HetznerMode == "bare-metal" || cfg.HetznerMode == "hybrid" {
-		if err := requiredInput("Robot username:", &cfg.HetznerRobotUser); err != nil {
-			return err
-		}
-
-		if err := requiredPassword("Robot password:", &cfg.HetznerRobotPassword); err != nil {
-			return err
-		}
-	}
-
-	if err := promptSSHPrivateKeyPath(&cfg.HetznerSSHKeyPath, "SSH private key file path:"); err != nil {
-		return err
-	}
-
-	// Derive the key pair name from the file path basename (e.g. "/home/user/.ssh/id_ed25519" → "id_ed25519").
+	// Derive the key pair name from the file path basename.
 	cfg.HetznerSSHKeyName = strings.TrimSuffix(
 		filepath.Base(cfg.HetznerSSHKeyPath),
 		filepath.Ext(cfg.HetznerSSHKeyPath),
 	)
+
+	if haChoice {
+		cfg.HetznerCPReplicas = "3"
+	} else {
+		cfg.HetznerCPReplicas = "1"
+	}
 
 	if cfg.HetznerMode == "hcloud" || cfg.HetznerMode == "hybrid" {
 		// Default zone, smallest machine type, and LB region matching the zone.
@@ -72,13 +101,6 @@ func (p *hetznerPrompter) promptHetznerQuestions(cfg *PromptedConfig) error {
 		cfg.HetznerCPMachineType = "cax21"
 		cfg.HetznerRegion = "hel1"
 		cfg.HetznerLBRegion = cfg.HetznerRegion
-
-		replicas, err := promptHAControlPlane()
-		if err != nil {
-			return err
-		}
-
-		cfg.HetznerCPReplicas = replicas
 	}
 
 	return nil

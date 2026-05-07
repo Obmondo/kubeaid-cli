@@ -20,15 +20,23 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
+	// Step 1 — Cluster basics group: provider + name (same group).
+	// Bare-metal is index 3 in the provider select.
 	c.expectString("Cloud provider:")
 	c.selectOption(3)
 
+	// Still in the same group — next field is Cluster name.
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-baremetal")
 
+	// Step 2 — OIDC form: decline OIDC (default No).
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
+	// Step 3 — Bare-metal has no credential form (sets defaults programmatically).
+
+	// Step 4 — Git/SSH form: deploy key + config URL in one group,
+	// then Git SSH key in a second group (no SSH agent).
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -38,6 +46,7 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
 
+	// Summary confirm.
 	c.expectString("Looks good?")
 	c.acceptDefault()
 
@@ -77,15 +86,21 @@ func TestLocal_PromptFlow(t *testing.T) {
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
+	// Step 1 — Cluster basics group: provider + name (same group).
+	// Local is index 4 in the provider select.
 	c.expectString("Cloud provider:")
 	c.selectOption(4)
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-local")
 
+	// Step 2 — OIDC form: decline OIDC (default No).
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
+	// Step 3 — Local has no credential form.
+
+	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -130,15 +145,19 @@ func TestAWS_PromptFlow(t *testing.T) {
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
+	// Step 1 — Cluster basics: AWS is index 0.
 	c.expectString("Cloud provider:")
 	c.selectOption(0)
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-aws")
 
+	// Step 2 — OIDC: decline (default No).
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
+	// Step 3 — AWS credentials form.
+	// HOME is set to a scratch dir in newConsole so ~/.aws is empty.
 	c.expectString("Access Key ID:")
 	c.sendLine("AKIAIOSFODNN7EXAMPLE")
 
@@ -148,16 +167,18 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("Session Token")
 	c.acceptDefault()
 
-	nextPrompt := c.expectAnyString(
-		"Ubuntu 24.04 AMI ID for region",
-		"Enable high availability",
-	)
-	if nextPrompt == "Ubuntu 24.04 AMI ID for region" {
-		c.sendLine("ami-0e2etestmanual123")
-		c.expectString("Enable high availability")
-	}
+	// HA confirm is in the same credentials form, after the cred group.
+	c.expectString("Enable high availability")
 	c.acceptDefault()
 
+	// After the credentials form returns, AMI lookup runs. If it fails
+	// (no network in CI), a manual AMI input form is shown.
+	nextPrompt := c.expectAnyString("Ubuntu 24.04 AMI ID for region", "ArgoCD deploy key")
+	if nextPrompt == "Ubuntu 24.04 AMI ID for region" {
+		c.sendLine("ami-0e2etestmanual123")
+	}
+
+	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -218,15 +239,18 @@ func TestAzure_PromptFlow(t *testing.T) {
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
+	// Step 1 — Cluster basics: Azure is index 1.
 	c.expectString("Cloud provider:")
 	c.selectOption(1)
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2eazure")
 
+	// Step 2 — OIDC: decline (default No).
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
+	// Step 3 — Azure credentials (all in one group + HA confirm).
 	c.expectString("Tenant ID:")
 	c.sendLine("tenant-123")
 
@@ -242,6 +266,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
+	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -297,18 +322,22 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
+	// Step 1 — Cluster basics: Hetzner is index 2.
 	c.expectString("Cloud provider:")
 	c.selectOption(2)
 
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-hetzner")
 
+	// Cluster-kind group appears for Hetzner; workload is the default.
 	c.expectString("What are you setting up?")
 	c.acceptDefault()
 
+	// Step 2 — OIDC: decline (default No; VPN would auto-configure OIDC).
 	c.expectString("Enable OIDC")
 	c.acceptDefault()
 
+	// Step 3 — Hetzner credentials form: mode + token + SSH key + HA.
 	c.expectString("Mode:")
 	c.acceptDefault()
 
@@ -321,6 +350,7 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
+	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 

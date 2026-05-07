@@ -10,7 +10,6 @@ import (
 	"path"
 	"strings"
 
-	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -18,24 +17,8 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-// printSectionHeader prints a section title inside a rounded rectangle.
-//
-//	╭───────────────────────────────╮
-//	│   Cluster Configuration       │
-//	╰───────────────────────────────╯
-func printSectionHeader(title string) {
-	fmt.Println()
-	padding := 3
-	inner := len(title) + padding*2 // equal padding on both sides
-	fmt.Printf("  ╭%s╮\n", strings.Repeat("─", inner))
-	pad := strings.Repeat(" ", padding)
-	fmt.Printf("  │%s%s%s│\n", pad, title, pad)
-	fmt.Printf("  ╰%s╯\n", strings.Repeat("─", inner))
-	fmt.Println()
-}
-
-// printSummaryAndConfirm renders the configuration summary box and asks for confirmation.
-func printSummaryAndConfirm(cfg *PromptedConfig) error {
+// printSummary renders the configuration summary box.
+func printSummary(cfg *PromptedConfig) {
 	lines := []string{
 		fmt.Sprintf("  Cluster:       %s (%s)", cfg.ClusterName, cfg.ClusterType),
 		fmt.Sprintf("  K8s version:   %s (auto-detected)", cfg.K8sVersion),
@@ -70,17 +53,6 @@ func printSummaryAndConfirm(cfg *PromptedConfig) error {
 
 	fmt.Println()
 	printBox("Configuration Summary", lines)
-
-	var confirmed bool
-	if err := confirm("Looks good?", true, &confirmed); err != nil {
-		return err
-	}
-
-	if !confirmed {
-		return fmt.Errorf("configuration not confirmed by user")
-	}
-
-	return nil
 }
 
 // printBox renders lines inside a rounded-corner box with a title in the top border.
@@ -204,32 +176,12 @@ func wrapLine(line string, maxWidth int) []string {
 	return result
 }
 
-// promptSSHPrivateKeyPath asks for an SSH private key file path and validates that the
-// file exists and looks like a PEM-encoded private key. Validation errors are shown
-// inline by huh, which keeps the user on the prompt until a valid path is entered.
-// If a well-known SSH key is found (~/.ssh/id_ed25519 or ~/.ssh/id_rsa), it is offered
-// as the default.
-func promptSSHPrivateKeyPath(dest *string, message string) error {
-	*dest = detectSSHKeyPath()
-
-	if err := huh.NewInput().
-		Title(message).
-		Value(dest).
-		Validate(validateSSHKeyPath).
-		Run(); err != nil {
-		return err
-	}
-
-	printRecap(message, *dest)
-	return nil
-}
-
-func validateSSHKeyPath(path string) error {
-	if strings.TrimSpace(path) == "" {
+func validateSSHKeyPath(p string) error {
+	if strings.TrimSpace(p) == "" {
 		return errRequired
 	}
 
-	keyPath := expandTilde(path)
+	keyPath := expandTilde(p)
 
 	data, err := os.ReadFile(keyPath)
 	if err != nil {

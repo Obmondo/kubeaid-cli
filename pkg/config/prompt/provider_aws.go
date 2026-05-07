@@ -14,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/huh"
 )
 
 // Canonical's unauthenticated simplestreams index for released AWS images.
@@ -131,34 +133,10 @@ func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[st
 	return amis, nil
 }
 
-type awsPrompter struct {
-	baseProvider
-}
+type awsPrompter struct{}
 
 func newAWSProvider() *awsPrompter {
-	p := &awsPrompter{}
-	p.questionsFunc = p.promptAWSQuestions
-	return p
-}
-
-// PromptConfig overrides the base flow to derive SSH key name after promptSSHAuth runs.
-func (p *awsPrompter) PromptConfig(cfg *PromptedConfig, detected *autoDetectedConfig) error {
-	if err := p.baseProvider.PromptConfig(cfg, detected); err != nil {
-		return err
-	}
-
-	// Derive the SSH key name from the deploy key file path
-	// (e.g. "/home/user/.ssh/id_ed25519" → "id_ed25519").
-	keyPath := cfg.KubeaidConfigDeployKeyPath
-	if keyPath == "" {
-		keyPath = cfg.SSHKeyPath
-	}
-	cfg.AWSSSHKeyName = strings.TrimSuffix(
-		filepath.Base(keyPath),
-		filepath.Ext(keyPath),
-	)
-
-	return nil
+	return &awsPrompter{}
 }
 
 func (p *awsPrompter) SummaryLines(cfg *PromptedConfig) []string {
@@ -189,52 +167,98 @@ func detectAWSCredentials() (source string, ok bool) {
 	return "", false
 }
 
-func (p *awsPrompter) promptAWSQuestions(cfg *PromptedConfig) error {
-	// Only prompt for credentials if none are discoverable under ~/.aws.
-	// Otherwise the SDK picks them up automatically.
+func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
+	// Default region and smallest general-purpose instance type.
+	if cfg.AWSRegion == "" {
+		cfg.AWSRegion = "eu-west-1"
+	}
+	if cfg.AWSCPInstanceType == "" {
+		cfg.AWSCPInstanceType = "t3.medium"
+	}
+
+	haChoice := cfg.AWSCPReplicas != "1"
+
+	credGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("Access Key ID:").
+			Value(&cfg.AWSAccessKeyID).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Secret Access Key:").
+			EchoMode(huh.EchoModePassword).
+			Value(&cfg.AWSSecretAccessKey).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Session Token (leave empty if not needed):").
+			Value(&cfg.AWSSessionToken),
+	)
+
 	if source, ok := detectAWSCredentials(); ok {
 		slog.Info("Using existing AWS credentials", slog.String("source", source))
+		// Hide the credential inputs — SDK will pick them up automatically.
+		credGroup = credGroup.WithHide(true)
 	} else {
 		slog.Info("No AWS credentials found in ~/.aws — prompting")
-
-		if err := requiredInput("Access Key ID:", &cfg.AWSAccessKeyID); err != nil {
-			return err
-		}
-
-		if err := requiredPassword("Secret Access Key:", &cfg.AWSSecretAccessKey); err != nil {
-			return err
-		}
-
-		if err := optionalInput(
-			"Session Token (leave empty if not needed):",
-			"", &cfg.AWSSessionToken,
-		); err != nil {
-			return err
-		}
 	}
 
-	// Default region and smallest general-purpose instance type.
-	cfg.AWSRegion = "eu-west-1"
-	cfg.AWSCPInstanceType = "t3.medium"
-
-	amiMap, err := fetchLatestUbuntu2404AMIs(context.Background(), http.DefaultClient)
-	if err != nil {
-		return fmt.Errorf("fetching latest Ubuntu 24.04 AMIs from Canonical: %w", err)
-	}
-	ami, ok := amiMap[cfg.AWSRegion]
-	if !ok {
-		return fmt.Errorf(
-			"no Ubuntu 24.04 AMI for region %s in Canonical's published index",
-			cfg.AWSRegion,
-		)
-	}
-	cfg.AWSAMIID = ami
-
-	replicas, err := promptHAControlPlane()
+	err := huh.NewForm(
+		credGroup,
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Enable high availability for the control plane?").
+				Value(&haChoice),
+		).Title("AWS credentials").Description("Step 3/4"),
+	).Run()
 	if err != nil {
 		return err
 	}
-	cfg.AWSCPReplicas = replicas
 
+	if haChoice {
+		cfg.AWSCPReplicas = "3"
+	} else {
+		cfg.AWSCPReplicas = "1"
+	}
+
+	// Attempt to auto-detect AMI from Canonical; fall back to a manual prompt.
+	amiMap, err := fetchLatestUbuntu2404AMIs(context.Background(), http.DefaultClient)
+	if err != nil {
+		slog.Warn("Failed to fetch latest Ubuntu 24.04 AMI from Canonical",
+			slog.Any("error", err))
+	} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
+		cfg.AWSAMIID = ami
+	}
+
+	if cfg.AWSAMIID == "" {
+		if err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					TitleFunc(func() string {
+						return fmt.Sprintf("Ubuntu 24.04 AMI ID for region %s:", cfg.AWSRegion)
+					}, &cfg.AWSRegion).
+					Value(&cfg.AWSAMIID).
+					Validate(nonEmpty),
+			).Title("AWS AMI").Description("Step 3/4 (cont.)"),
+		).Run(); err != nil {
+			return err
+		}
+	}
+
+	// Derive the SSH key name from the deploy key file path after Step 4 fills
+	// it. We set a post-process hook via the caller's expandPaths call, but the
+	// key name is derived from the basename so we do it after RunCredentialsForm
+	// in the PromptConfig override below.
 	return nil
+}
+
+// postProcess derives AWSSSHKeyName after the Git/SSH step has populated the key path.
+// Called by ConfigFromPrompt after runGitSSHForm.
+func (p *awsPrompter) postProcess(cfg *PromptedConfig) {
+	keyPath := cfg.KubeaidConfigDeployKeyPath
+	if keyPath == "" {
+		keyPath = cfg.SSHKeyPath
+	}
+	cfg.AWSSSHKeyName = strings.TrimSuffix(
+		filepath.Base(keyPath),
+		filepath.Ext(keyPath),
+	)
 }

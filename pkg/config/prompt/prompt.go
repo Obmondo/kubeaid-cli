@@ -120,59 +120,100 @@ type PromptedConfig struct {
 	BareMetalEndpointPort string
 }
 
-// ConfigFromPrompt interactively collects required configuration parameters from the user
-// and writes the generated config files to configsDirectory.
+// ConfigFromPrompt interactively collects required configuration parameters from
+// the user and writes the generated config files to configsDirectory.
 //
 // The flow is:
-//   - Phase 1: Auto-detect K8s version (latest-1), KubeAid version (latest-1), SSH agent
-//   - Phase 2: Ask for cloud provider first, then delegate to the provider-specific prompter
-//   - Phase 3: Print summary and confirm
+//   - Phase 1: Auto-detect K8s version (latest-1), KubeAid version (latest-1), SSH agent.
+//   - Phase 2: Grouped form prompts. Related fields are shown together on the
+//     same screen. Steps:
+//     Step 1 — Cluster basics (provider, name, kind)
+//     Step 2a — VPN Keycloak setup (mode + DNS) — hidden for workload clusters
+//     Step 2b — VPN endpoints (NetBird DNS, CP endpoint, ACME email) — hidden
+//     for workload clusters; pre-filled by auto-derive from Keycloak DNS
+//     Step 2c — OIDC (optional) — hidden for VPN clusters
+//     Step 3 — Cloud credentials (provider-specific)
+//     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
+//   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
 func ConfigFromPrompt(configsDirectory string) error {
 	// Phase 1: Auto-detect.
 	detected := autoDetect()
 
 	cfg := &PromptedConfig{
 		// SRE defaults.
-		ClusterType:           "workload",
+		ClusterType:           constants.ClusterTypeWorkload,
 		SSHUsername:           "git",
 		KubeaidForkURL:        constants.KubeAidPublicHTTPSURL,
+		KubeaidConfigForkURL:  "git@github.com:Obmondo/kubeaid-config.git",
 		K8sVersion:            detected.K8sVersion,
 		KubePrometheusVersion: detected.KubePrometheusVersion,
 		KubeaidVersion:        detected.KubeAidVersion,
+		// Hetzner defaults — pre-set so the form pre-fills them on
+		// edit loops even before the Hetzner group has run once.
+		HetznerMode:          "hcloud",
+		HetznerHCloudZone:    "eu-central",
+		HetznerCPMachineType: "cax21",
+		HetznerRegion:        "hel1",
 	}
 
-	// Phase 2: Cluster configuration — provider first, then provider-specific questions.
-	printSectionHeader("Cluster Configuration")
-
-	if err := promptProvider(cfg); err != nil {
-		return fmt.Errorf("collecting cloud provider: %w", err)
-	}
-
-	if err := promptClusterName(cfg); err != nil {
-		return fmt.Errorf("collecting cluster name: %w", err)
-	}
-
-	if err := promptClusterKind(cfg); err != nil {
-		return fmt.Errorf("collecting cluster kind: %w", err)
-	}
-
-	if cfg.ClusterType == constants.ClusterTypeVPN {
-		if err := promptVPNClusterDetails(cfg); err != nil {
-			return fmt.Errorf("collecting VPN cluster details: %w", err)
+	// Phase 2 + 3: Prompt loop — re-runs when the operator declines the summary.
+	for {
+		// Step 1: cluster basics — provider, name, kind.
+		if err := runBasicsForm(cfg); err != nil {
+			return fmt.Errorf("collecting cluster basics: %w", err)
 		}
-	} else if err := promptOIDC(cfg); err != nil {
-		return fmt.Errorf("collecting OIDC config: %w", err)
-	}
 
-	// Delegate remaining questions to the provider-specific prompter.
-	prompter := prompterForProvider(cfg.CloudProvider)
-	if err := prompter.PromptConfig(cfg, detected); err != nil {
-		return fmt.Errorf("collecting provider config: %w", err)
-	}
+		// Steps 2a/2b/2c: VPN or OIDC details.
+		if cfg.ClusterType == constants.ClusterTypeVPN {
+			if err := runVPNKeycloakForm(cfg); err != nil {
+				return fmt.Errorf("collecting VPN Keycloak setup: %w", err)
+			}
+			// Auto-derive VPN DNS defaults from Keycloak DNS after group A.
+			applyVPNDefaults(cfg)
 
-	// Phase 3: Summary and confirm.
-	if err := printSummaryAndConfirm(cfg); err != nil {
-		return fmt.Errorf("confirming config: %w", err)
+			if err := runVPNEndpointsForm(cfg); err != nil {
+				return fmt.Errorf("collecting VPN endpoints: %w", err)
+			}
+
+			// Derive OIDC from Keycloak DNS — no separate prompt needed for VPN clusters.
+			cfg.EnableOIDC = true
+			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + deriveRealmFromDNS(cfg.KeycloakDNS)
+			cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
+		} else {
+			if err := runOIDCForm(cfg); err != nil {
+				return fmt.Errorf("collecting OIDC config: %w", err)
+			}
+		}
+
+		// Step 3: provider-specific credentials.
+		prompter := prompterForProvider(cfg.CloudProvider)
+		if err := prompter.RunCredentialsForm(cfg, detected); err != nil {
+			return fmt.Errorf("collecting provider credentials: %w", err)
+		}
+
+		// Step 4: Git / SSH.
+		if err := runGitSSHForm(cfg, detected); err != nil {
+			return fmt.Errorf("collecting Git/SSH config: %w", err)
+		}
+
+		// AWS derives its SSH key pair name from the deploy key path,
+		// which is only known after Step 4.
+		if aws, ok := prompterForProvider(cfg.CloudProvider).(*awsPrompter); ok {
+			aws.postProcess(cfg)
+		}
+
+		// Phase 3: summary + confirm.
+		printSummary(cfg)
+
+		confirmed, err := runConfirm()
+		if err != nil {
+			return fmt.Errorf("confirming config: %w", err)
+		}
+		if confirmed {
+			break
+		}
+		// Operator picked No — loop back; all cfg fields carry the
+		// last-entered values so the form reopens pre-filled.
 	}
 
 	// Expand tilde in all file paths so that paths are absolute.
@@ -185,69 +226,57 @@ func ConfigFromPrompt(configsDirectory string) error {
 	return nil
 }
 
-func promptClusterName(cfg *PromptedConfig) error {
-	return requiredInput("Cluster name:", &cfg.ClusterName)
-}
-
-// promptOIDC asks whether to enable OIDC on kube-apiserver and, if so,
-// collects the issuer URL and client ID — the only two required
-// fields. UsernameClaim and GroupsClaim are defaulted by the schema.
-// Default is "no" so users who don't run Keycloak get a clean
-// non-OIDC config without extra prompts.
-func promptOIDC(cfg *PromptedConfig) error {
-	if err := confirm(
-		"Enable OIDC (Keycloak) authentication on kube-apiserver?",
-		false, &cfg.EnableOIDC,
-	); err != nil {
-		return err
-	}
-
-	if !cfg.EnableOIDC {
-		return nil
-	}
-
-	if err := requiredHTTPSInput(
-		"OIDC issuer URL (e.g. https://keycloak.example/realms/clusters):",
-		&cfg.OIDCIssuerURL,
-	); err != nil {
-		return err
-	}
-
-	return requiredInput(
-		fmt.Sprintf("OIDC client ID for this cluster (e.g. kubernetes-%s):", cfg.ClusterName),
-		&cfg.OIDCClientID,
-	)
-}
-
-// promptClusterKind asks the operator whether they're setting up a
-// brand-new VPN cluster (Phase 0 — hosts Keycloak + NetBird mesh) or
-// a regular workload cluster. Maps the choice to cfg.ClusterType.
-//
-// VPN clusters are only supported on Hetzner HCloud today; for any
-// other provider the prompt is skipped and the cluster is treated as
-// workload. (The schema validator rejects vpn-on-non-hcloud at parse
-// time, so the prompt mirrors that constraint up front.)
-func promptClusterKind(cfg *PromptedConfig) error {
-	if cfg.CloudProvider != constants.CloudProviderHetzner {
-		cfg.ClusterType = constants.ClusterTypeWorkload
-		return nil
-	}
-
+// runBasicsForm shows Step 1 — provider, cluster name, and cluster kind.
+func runBasicsForm(cfg *PromptedConfig) error {
 	const (
 		optVPN      = "A new VPN cluster (Phase 0 — hosts Keycloak + NetBird mesh)"
 		optWorkload = "A workload cluster (no managed Keycloak; OIDC is optional)"
 	)
 
-	var choice string
-	if err := selectOption(
-		"What are you setting up?",
-		[]string{optVPN, optWorkload},
-		optWorkload, &choice,
-	); err != nil {
+	clusterKindChoice := optWorkload
+	if cfg.ClusterType == constants.ClusterTypeVPN {
+		clusterKindChoice = optVPN
+	}
+
+	clusterKindGroup := huh.NewGroup(
+		huh.NewSelect[string]().
+			Title("What are you setting up?").
+			Options(
+				huh.NewOption(optWorkload, optWorkload),
+				huh.NewOption(optVPN, optVPN),
+			).
+			Value(&clusterKindChoice),
+	).WithHideFunc(func() bool {
+		// VPN clusters are only supported on Hetzner today.
+		return cfg.CloudProvider != constants.CloudProviderHetzner
+	})
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Cloud provider:").
+				Options(
+					huh.NewOption(constants.CloudProviderAWS, constants.CloudProviderAWS),
+					huh.NewOption(constants.CloudProviderAzure, constants.CloudProviderAzure),
+					huh.NewOption(constants.CloudProviderHetzner, constants.CloudProviderHetzner),
+					huh.NewOption(constants.CloudProviderBareMetal, constants.CloudProviderBareMetal),
+					huh.NewOption(constants.CloudProviderLocal, constants.CloudProviderLocal),
+				).
+				Value(&cfg.CloudProvider),
+			huh.NewInput().
+				Title("Cluster name:").
+				Value(&cfg.ClusterName).
+				Validate(nonEmpty),
+		).Title("Cluster basics").Description("Step 1/4"),
+		clusterKindGroup,
+	).Run()
+	if err != nil {
 		return err
 	}
 
-	if choice == optVPN {
+	if cfg.CloudProvider != constants.CloudProviderHetzner {
+		cfg.ClusterType = constants.ClusterTypeWorkload
+	} else if clusterKindChoice == optVPN {
 		cfg.ClusterType = constants.ClusterTypeVPN
 	} else {
 		cfg.ClusterType = constants.ClusterTypeWorkload
@@ -256,228 +285,199 @@ func promptClusterKind(cfg *PromptedConfig) error {
 	return nil
 }
 
-// promptVPNClusterDetails collects the inputs every VPN cluster
-// needs: Keycloak mode (managed/external), Keycloak DNS, NetBird DNS,
-// ACME email for Let's Encrypt, and the control-plane endpoint FQDN.
-//
-// In external mode it also collects the netbird-backend OIDC client
-// secret (kubeaid-cli can't mint it because the client lives in the
-// operator's external Keycloak) and prints a pointer to the realm
-// prerequisites doc so the operator knows what to set up there.
-//
-// Auto-derives apiServer.oidc.{issuerUrl,clientId} from Keycloak DNS
-// and cluster name; the realm name is re-derived at parse time via
-// publicsuffix.
-func promptVPNClusterDetails(cfg *PromptedConfig) error {
-	if err := promptKeycloakMode(cfg); err != nil {
-		return err
+// applyVPNDefaults fills NetBirdDNS, ControlPlaneEndpoint, and ACMEEmail from
+// KeycloakDNS when those fields are currently empty (first run) or when
+// KeycloakDNS has changed (edit loop). On an edit loop the operator may have
+// already typed custom values — we don't overwrite non-empty custom values
+// unless they look like they were auto-derived from the old KeycloakDNS.
+func applyVPNDefaults(cfg *PromptedConfig) {
+	base := stripFirstLabel(cfg.KeycloakDNS)
+	if base == "" {
+		return
 	}
-
-	if err := requiredInput(
-		"Keycloak DNS (e.g. keycloak.vpn.acme.com):",
-		&cfg.KeycloakDNS,
-	); err != nil {
-		return err
+	if cfg.NetBirdDNS == "" {
+		cfg.NetBirdDNS = "netbird." + base
 	}
-
-	// Strip the leading "keycloak." (or whatever first label is)
-	// from the Keycloak DNS to build defaults for the next three
-	// prompts: a base of "vpn.obmondo.com" yields "netbird.vpn.obmondo.com",
-	// "api.vpn.obmondo.com", and "ops@obmondo.com" without the
-	// operator retyping the suffix. Empty base (single-label host
-	// like "localhost") falls through to a blank prompt.
-	if base := stripFirstLabel(cfg.KeycloakDNS); base != "" {
-		if cfg.NetBirdDNS == "" {
-			cfg.NetBirdDNS = "netbird." + base
-		}
-		if cfg.ControlPlaneEndpoint == "" {
-			cfg.ControlPlaneEndpoint = "api." + base
-		}
-		if cfg.ACMEEmail == "" {
-			cfg.ACMEEmail = deriveACMEEmailFromDNS(base)
-		}
+	if cfg.ControlPlaneEndpoint == "" {
+		cfg.ControlPlaneEndpoint = "api." + base
 	}
-
-	if err := requiredInput(
-		"NetBird Mgmt DNS (e.g. netbird.vpn.acme.com):",
-		&cfg.NetBirdDNS,
-	); err != nil {
-		return err
+	if cfg.ACMEEmail == "" {
+		cfg.ACMEEmail = deriveACMEEmailFromDNS(base)
 	}
-
-	if err := requiredInput(
-		"Control-plane endpoint FQDN (e.g. api.vpn.acme.com):",
-		&cfg.ControlPlaneEndpoint,
-	); err != nil {
-		return err
-	}
-
-	if err := requiredInput(
-		"ACME email for Let's Encrypt (e.g. ops@acme.com):",
-		&cfg.ACMEEmail,
-	); err != nil {
-		return err
-	}
-
-	if cfg.KeycloakMode == constants.KeycloakModeExternal {
-		if err := requiredPassword(
-			"netbird-backend client secret (from your external Keycloak):",
-			&cfg.NetBirdBackendClientSecret,
-		); err != nil {
-			return err
-		}
-	}
-
-	cfg.EnableOIDC = true
-	cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + deriveRealmFromDNS(cfg.KeycloakDNS)
-	cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
-
-	return nil
 }
 
-// promptKeycloakMode asks whether kubeaid-cli should install Keycloak
-// itself (managed) or hook into the operator's existing Keycloak
-// (external). External mode prints a pointer to the doc that
-// enumerates the realm prerequisites the operator must set up by
-// hand — netbird-client / netbird-backend / kubernetes-<cluster>
-// clients, the api scope, the audience mapper, the view-users grant.
-func promptKeycloakMode(cfg *PromptedConfig) error {
+// runVPNKeycloakForm shows Step 2a — Keycloak mode and DNS.
+func runVPNKeycloakForm(cfg *PromptedConfig) error {
 	const (
 		optManaged  = "managed (kubeaid-cli installs Keycloak on this cluster)"
 		optExternal = "external (use my existing Keycloak elsewhere)"
 	)
 
-	var choice string
-	if err := selectOption(
-		"Keycloak mode:",
-		[]string{optManaged, optExternal},
-		optManaged, &choice,
-	); err != nil {
+	keycloakModeChoice := optManaged
+	if cfg.KeycloakMode == constants.KeycloakModeExternal {
+		keycloakModeChoice = optExternal
+	}
+
+	fields := []huh.Field{
+		huh.NewSelect[string]().
+			Title("Keycloak mode:").
+			Options(
+				huh.NewOption(optManaged, optManaged),
+				huh.NewOption(optExternal, optExternal),
+			).
+			Value(&keycloakModeChoice),
+		huh.NewInput().
+			Title("Keycloak DNS (e.g. keycloak.vpn.acme.com):").
+			Value(&cfg.KeycloakDNS).
+			Validate(nonEmpty),
+	}
+
+	// Only show the client-secret field when external mode is selected; we
+	// can't use WithHideFunc here because it's per-group not per-field, so
+	// we collect the secret in a separate one-field form run after mode is known.
+	err := huh.NewForm(
+		huh.NewGroup(fields...).
+			Title("VPN — Keycloak setup").
+			Description("Step 2a/4"),
+	).Run()
+	if err != nil {
 		return err
 	}
 
-	if choice == optManaged {
+	if keycloakModeChoice == optManaged {
 		cfg.KeycloakMode = constants.KeycloakModeManaged
-		return nil
+	} else {
+		cfg.KeycloakMode = constants.KeycloakModeExternal
 	}
 
-	cfg.KeycloakMode = constants.KeycloakModeExternal
-	fmt.Println()
-	fmt.Println("  External Keycloak selected. Before running bootstrap, make sure your")
-	fmt.Println("  Keycloak realm has the resources kubeaid-cli would otherwise create:")
-	fmt.Println("  three OIDC clients (netbird-client, netbird-backend, kubernetes-<cluster>),")
-	fmt.Println("  one client scope ('api'), one audience mapper, and the view-users role")
-	fmt.Println("  grant on netbird-backend. See:")
-	fmt.Println()
-	fmt.Println("    kubeaid/argocd-helm-charts/netbird/README.md")
-	fmt.Println("    -> 'Keycloak realm prerequisites'")
-	fmt.Println()
+	// Collect the external client secret in its own run so it can be
+	// shown only when the mode is external — huh has no per-field hide.
+	if cfg.KeycloakMode == constants.KeycloakModeExternal {
+		return huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("netbird-backend client secret (from your external Keycloak):").
+					EchoMode(huh.EchoModePassword).
+					Value(&cfg.NetBirdBackendClientSecret).
+					Validate(nonEmpty),
+			).Title("VPN — external Keycloak secret").Description("Step 2a/4 (cont.)"),
+		).Run()
+	}
 
 	return nil
 }
 
-// promptHAControlPlane asks whether the user wants a highly available control plane
-// and returns the appropriate replica count ("3" for HA, "1" otherwise).
-func promptHAControlPlane() (string, error) {
-	var ha bool
-	if err := confirm("Enable high availability for the control plane?", true, &ha); err != nil {
-		return "", err
-	}
-
-	if ha {
-		return "3", nil
-	}
-
-	return "1", nil
+// runVPNEndpointsForm shows Step 2b — NetBird DNS, CP endpoint, ACME email.
+// These are pre-filled by applyVPNDefaults before this form renders.
+func runVPNEndpointsForm(cfg *PromptedConfig) error {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("NetBird Mgmt DNS (e.g. netbird.vpn.acme.com):").
+				Value(&cfg.NetBirdDNS).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("Control-plane endpoint FQDN (e.g. api.vpn.acme.com):").
+				Value(&cfg.ControlPlaneEndpoint).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("ACME email for Let's Encrypt (e.g. ops@acme.com):").
+				Value(&cfg.ACMEEmail).
+				Validate(nonEmpty),
+		).Title("VPN — endpoints").Description("Step 2b/4"),
+	).Run()
 }
 
-// promptConfigRepo collects the operator's kubeaid-config fork URL.
-// kubeaid-cli pushes to this fork during bootstrap, so the URL form
-// has to match what the SSH-only auth resolver in pkg/utils/git/auth.go
-// can actually push to: SSH agent (yubikey) or an SSH private key
-// file. HTTPS would require PAT-based auth that the resolver doesn't
-// implement — so default to the SSH form.
-func promptConfigRepo(cfg *PromptedConfig) error {
-	const message = "KubeAid Config fork URL:"
-	cfg.KubeaidConfigForkURL = "git@github.com:Obmondo/kubeaid-config.git"
-	if err := huh.NewInput().
-		Title(message).
-		Description("SSH form — uses your yubikey via SSH agent, or the SSH key collected below.").
-		Value(&cfg.KubeaidConfigForkURL).
-		Validate(nonEmpty).
-		Run(); err != nil {
-		return err
-	}
-	printRecap(message, cfg.KubeaidConfigForkURL)
-	return nil
+// runOIDCForm shows the OIDC group (workload clusters only).
+func runOIDCForm(cfg *PromptedConfig) error {
+	// Build the issuer and client ID inputs unconditionally; they are
+	// shown only when EnableOIDC is true, gated by a separate group with
+	// WithHideFunc.
+	oidcDetailsGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("OIDC issuer URL (e.g. https://keycloak.example/realms/clusters):").
+			Value(&cfg.OIDCIssuerURL).
+			Validate(httpsURL),
+		huh.NewInput().
+			TitleFunc(func() string {
+				return fmt.Sprintf("OIDC client ID for this cluster (e.g. kubernetes-%s):", cfg.ClusterName)
+			}, &cfg.ClusterName).
+			Value(&cfg.OIDCClientID).
+			Validate(nonEmpty),
+	).WithHideFunc(func() bool { return !cfg.EnableOIDC })
+
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Enable OIDC (Keycloak) authentication on kube-apiserver?").
+				Value(&cfg.EnableOIDC),
+		).Title("OIDC (optional)").Description("Step 2/4"),
+		oidcDetailsGroup,
+	).Run()
 }
 
-// promptDeployKeyPath asks for the read-only SSH key ArgoCD will use
-// to clone kubeaid-config from inside the cluster. This key gets
-// templated into a Kubernetes Secret on the management cluster — it
-// MUST NOT have write access to the fork. By GitHub conventions, an
-// SSH key uploaded as a 'Deploy Key' on a single repo is read-only
-// unless explicitly toggled.
-func promptDeployKeyPath(cfg *PromptedConfig) error {
-	return promptSSHPrivateKeyPath(
-		&cfg.KubeaidConfigDeployKeyPath,
-		"ArgoCD deploy key — read-only SSH key for in-cluster clone (private key file path):",
-	)
-}
-
-// promptGitSSHKey asks for the operator's OWN SSH private key file —
-// the one with write access to their kubeaid-config fork. Only fired
-// when the SSH agent fallback isn't available (no yubikey, agent
-// socket unreachable, or no identities loaded). With a working SSH
-// agent, kubeaid-cli uses it directly and skips this prompt.
-func promptGitSSHKey(cfg *PromptedConfig) error {
-	return promptSSHPrivateKeyPath(
-		&cfg.SSHKeyPath,
-		"Your SSH private key (with write access to kubeaid-config — used by kubeaid-cli to push):",
-	)
-}
-
-func promptProvider(cfg *PromptedConfig) error {
-	return selectOption(
-		"Cloud provider:",
-		[]string{
-			constants.CloudProviderAWS,
-			constants.CloudProviderAzure,
-			constants.CloudProviderHetzner,
-			constants.CloudProviderBareMetal,
-			constants.CloudProviderLocal,
-		},
-		"",
-		&cfg.CloudProvider,
-	)
-}
-
-// promptSSHAuth resolves SSH authentication and config repo URL.
-// The flow depends on whether the SSH agent (YubiKey) is available:
+// runGitSSHForm shows Step 4 — ArgoCD deploy key, config repo URL, and (when
+// no SSH agent is available) a separate Git SSH private key.
 //
-// With YubiKey: ArgoCD deploy key -> config repo URL
-// Without YubiKey: ArgoCD deploy key -> config repo URL -> Git SSH key (verified)
-func promptSSHAuth(cfg *PromptedConfig, detected *autoDetectedConfig) error {
-	if detected.SSHAgentAvail {
-		cfg.UseSSHAgent = true
+// kubeaid-cli pushes to the kubeaid-config fork, so the URL must be SSH form —
+// the auth resolver in pkg/utils/git/auth.go only speaks SSH (agent or key file),
+// not PAT-based HTTPS. The default and description below reflect that constraint.
+//
+// The deploy key label clarifies it must be read-only (ArgoCD in-cluster clone);
+// the optional SSH key label clarifies it needs write access (kubeaid-cli push).
+func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
+	cfg.UseSSHAgent = detected.SSHAgentAvail
 
-		if err := promptDeployKeyPath(cfg); err != nil {
-			return err
-		}
+	// gitKeyGroup is hidden when an SSH agent is available; only shown when
+	// the operator must supply a key file for kubeaid-cli to push with.
+	gitKeyGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("Your SSH private key (with write access to kubeaid-config — used by kubeaid-cli to push):").
+			Value(&cfg.SSHKeyPath).
+			Validate(validateSSHKeyPath),
+	).WithHide(detected.SSHAgentAvail)
 
-		return promptConfigRepo(cfg)
+	// Pre-fill the SSH key path default.
+	if cfg.SSHKeyPath == "" {
+		cfg.SSHKeyPath = detectSSHKeyPath()
+	}
+	if cfg.KubeaidConfigDeployKeyPath == "" {
+		cfg.KubeaidConfigDeployKeyPath = detectSSHKeyPath()
 	}
 
-	// No SSH agent (no YubiKey): ask for separate ArgoCD and Git keys.
-	if err := promptDeployKeyPath(cfg); err != nil {
-		return err
-	}
+	return huh.NewForm(
+		huh.NewGroup(
+			// ArgoCD deploy key: read-only SSH key for in-cluster clone.
+			// MUST NOT have write access — GitHub Deploy Keys are read-only
+			// by default, which is the correct posture here.
+			huh.NewInput().
+				Title("ArgoCD deploy key — read-only SSH key for in-cluster clone (private key file path):").
+				Value(&cfg.KubeaidConfigDeployKeyPath).
+				Validate(validateSSHKeyPath),
+			huh.NewInput().
+				Title("KubeAid Config fork URL:").
+				Description("SSH form — uses your yubikey via SSH agent, or the SSH key collected below.").
+				Value(&cfg.KubeaidConfigForkURL).
+				Validate(nonEmpty),
+		).Title("Git / SSH").Description("Step 4/4"),
+		gitKeyGroup,
+	).Run()
+}
 
-	if err := promptConfigRepo(cfg); err != nil {
-		return err
+// runConfirm shows the "Looks good?" confirm and returns the operator's choice.
+func runConfirm() (bool, error) {
+	var confirmed bool
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Looks good?").
+				Value(&confirmed),
+		),
+	).Run()
+	if err != nil {
+		return false, err
 	}
-
-	return promptGitSSHKey(cfg)
+	return confirmed, nil
 }
 
 // writeConfigFiles renders the config templates with prompted values and writes them to disk.
