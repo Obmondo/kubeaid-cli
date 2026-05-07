@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
@@ -247,23 +248,36 @@ func (h *Hetzner) ensureNATRouteOnNetwork(ctx context.Context, networkID int, se
 // SSH-reachable for tens of seconds after Server.Create returns;
 // retry every 10s instead of failing the bootstrap.
 //
+// Auth strategy:
+//
+//   - When SSH_AUTH_SOCK is set, the connection is routed through
+//     the agent. This is the yubikey path — the private key
+//     never leaves the hardware module; kubeone's ssh package
+//     signs through the agent socket.
+//   - Falls back to the operator-provided private key bytes when
+//     no agent is present. Same as the pre-yubikey behaviour.
+//
+// Both can be set; kubeone tries the agent first and falls through
+// to PrivateKey on agent failure (e.g. yubikey unplugged mid-run).
+//
 // The retry loop is unbounded by design — same behaviour as the
 // original inline loop in CreateNATGateway. Cancellation flows
-// through ctx (kubeonessh.NewConnection takes Context). Returns
-// only the connection because the loop never gives up under its
-// own steam.
+// through ctx (kubeonessh.NewConnection takes Context).
 func waitForNATGatewaySSH(ctx context.Context, server *hcloud.Server, privateKey string) executor.Interface {
 	connector := kubeonessh.NewConnector(ctx)
 
+	opts := kubeonessh.Opts{
+		Context:     ctx,
+		Hostname:    server.PublicNet.IPv4.IP.String(),
+		Port:        22,
+		Username:    "root",
+		AgentSocket: os.Getenv(constants.EnvNameSSHAuthSock),
+		PrivateKey:  []byte(privateKey),
+		Timeout:     time.Second * 10,
+	}
+
 	for {
-		connection, err := kubeonessh.NewConnection(connector, kubeonessh.Opts{
-			Context:    ctx,
-			Hostname:   server.PublicNet.IPv4.IP.String(),
-			Port:       22,
-			Username:   "root",
-			PrivateKey: []byte(privateKey),
-			Timeout:    time.Second * 10,
-		})
+		connection, err := kubeonessh.NewConnection(connector, opts)
 		if err == nil {
 			return connection
 		}

@@ -6,13 +6,14 @@ package prompt
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -247,30 +248,35 @@ func detectSSHKeyPath() string {
 	return ""
 }
 
-// detectAgentSSHKeyPath shells out to `ssh-add -L`, parses each
-// public-key line for a comment that looks like an absolute file
-// path under home, and returns the first one whose corresponding
-// private-key file exists. Returns "" if no agent / no agent
-// keys / no comment matches a real file (yubikey-only setups
-// where the comment is the card serial usually fall here).
+// detectAgentSSHKeyPath dials SSH_AUTH_SOCK and asks the agent
+// for its loaded identities. For each identity whose comment is
+// an absolute file path under home, return the first one whose
+// corresponding private-key file exists. Returns "" if no agent
+// / no agent keys / no comment matches a real file (yubikey-only
+// setups where the comment is the card serial fall here).
 func detectAgentSSHKeyPath(home string) string {
-	out, err := exec.Command("ssh-add", "-L").Output()
+	socketPath := os.Getenv(constants.EnvNameSSHAuthSock)
+	if socketPath == "" {
+		return ""
+	}
+	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
 		return ""
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
+	defer conn.Close()
+
+	identities, err := agent.NewClient(conn).List()
+	if err != nil {
+		return ""
+	}
+	for _, key := range identities {
+		if !strings.HasPrefix(key.Comment, home+"/") {
 			continue
 		}
-		comment := fields[len(fields)-1]
-		if !strings.HasPrefix(comment, home+"/") {
-			continue
-		}
-		if isPrivateKeyFile(comment) {
+		if isPrivateKeyFile(key.Comment) {
 			// Prefer the home-relative form since the rest of
 			// the prompt collects ~/-style paths.
-			return "~" + strings.TrimPrefix(comment, home)
+			return "~" + strings.TrimPrefix(key.Comment, home)
 		}
 	}
 	return ""

@@ -358,7 +358,25 @@ type (
 	}
 
 	SSHKeyPairConfig struct {
-		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
+		// PrivateKeyFilePath is the on-disk SSH private key
+		// kubeaid-cli reads to derive PublicKey + Fingerprint and
+		// (for cloud-side SSH connections like the Hetzner NAT
+		// gateway setup) to authenticate the SSH session. Required
+		// when UseSSHAgent is false; ignored when UseSSHAgent is
+		// true (the agent owns the private key — yubikey case —
+		// so there's nothing on disk to point at). Cross-field
+		// validation in pkg/config/parser/validate.go enforces
+		// "exactly one is set".
+		PrivateKeyFilePath string `yaml:"privateKeyFilePath"`
+
+		// UseSSHAgent flips the SSH key sourcing from "read a file
+		// from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+		// the agent for its loaded identities". The first identity
+		// supplies PublicKey + Fingerprint; the SSH client (kubeone)
+		// signs through the agent socket so yubikey-resident
+		// private keys never need to be exported.
+		UseSSHAgent bool `yaml:"useSSHAgent"`
+
 		//nolint:gosec // This struct intentionally stores hydrated SSH key material.
 		PrivateKey,
 
