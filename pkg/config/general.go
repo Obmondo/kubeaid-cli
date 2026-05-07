@@ -50,12 +50,11 @@ type (
 		// SSH username.
 		SSHUsername string `yaml:"sshUsername" validate:"notblank" default:"git"`
 
-		// Either make KubeAid CLI use the given SSH private key.
+		// Either a private key file path or useSSHAgent=true. The
+		// embedded struct supplies both yaml fields plus the
+		// hydrated PublicKey/Fingerprint, so a YubiKey-backed agent
+		// flow and a file-backed flow share one schema.
 		*SSHKeyPairConfig `yaml:",inline"`
-
-		// Or, make KubeAid CLI use the SSH Agent.
-		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
-		UseSSHAgent bool `yaml:"useSSHAgent"`
 
 		// Additional SSH known hosts.
 		// Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
