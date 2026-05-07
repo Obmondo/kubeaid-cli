@@ -42,10 +42,15 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
 	// discovery endpoint before any infrastructure is touched. Catches
 	// typo'd issuer URLs / unreachable Keycloak before Hetzner VMs
-	// (etc.) are provisioned.
-	bar.Describe("Validating OIDC issuer")
-	assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
-		"OIDC issuer validation failed")
+	// (etc.) are provisioned. Skipped (no spinner step at all) when
+	// OIDC isn't configured — otherwise the bar would flash a no-op
+	// "Validating OIDC issuer" line that the operator has to wonder
+	// about.
+	if config.ParsedGeneralConfig.Cluster.APIServer.OIDC != nil {
+		bar.Describe("Validating OIDC issuer")
+		assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
+			"OIDC issuer validation failed")
+	}
 
 	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
 	// NOTE : Though HCloud has an official Terraform provider which can be imported into a
