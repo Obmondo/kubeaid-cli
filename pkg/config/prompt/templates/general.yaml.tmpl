@@ -4,6 +4,12 @@ git:
 {{- if and (not .UseSSHAgent) .SSHKeyPath }}
   privateKeyFilePath: {{ .SSHKeyPath }}
 {{- end }}
+{{- if .GitKnownHosts }}
+  knownHosts:
+{{- range .GitKnownHosts }}
+    - "{{ . }}"
+{{- end }}
+{{- end }}
 
 forkURLs:
   kubeaid:

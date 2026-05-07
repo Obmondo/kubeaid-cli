@@ -88,6 +88,13 @@ type PromptedConfig struct {
 	// ArgoCD deploy keys.
 	KubeaidConfigDeployKeyPath string
 
+	// GitKnownHosts holds known_hosts lines captured at prompt time
+	// for SSH-form fork URLs whose host isn't already in the
+	// embedded common-providers list (github / gitlab / azure /
+	// bitbucket). Persisted into git.knownHosts in general.yaml so
+	// subsequent kubeaid-cli runs work offline.
+	GitKnownHosts []string
+
 	// Cloud provider.
 	CloudProvider string
 
@@ -498,7 +505,7 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 		cfg.KubeaidConfigDeployKeyPath = detectSSHKeyPath()
 	}
 
-	return huh.NewForm(
+	if err := huh.NewForm(
 		huh.NewGroup(
 			// ArgoCD deploy key: read-only SSH key for in-cluster clone.
 			// MUST NOT have write access — GitHub Deploy Keys are read-only
@@ -514,7 +521,16 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 				Validate(sshGitURL),
 		).Title("Git / SSH").Description("Step 4/4"),
 		gitKeyGroup,
-	).Run()
+	).Run(); err != nil {
+		return err
+	}
+
+	// Auto-populate git.knownHosts for self-hosted forge URLs whose
+	// host keys aren't shipped in the embedded common-providers
+	// list. Silent for HTTPS / public-forge URLs.
+	populateGitKnownHosts(cfg)
+
+	return nil
 }
 
 // runConfirm shows the "Looks good?" confirm and returns the operator's choice.
