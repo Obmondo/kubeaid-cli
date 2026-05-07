@@ -30,10 +30,15 @@ type autoDetectedConfig struct {
 // autoDetect resolves K8s version (latest-1 minor), KubeAid version (latest stable release),
 // and checks SSH agent availability. Shows a progress bar during detection.
 func autoDetect() *autoDetectedConfig {
-	bar := progress.New("Detecting K8s version (latest-1)")
+	// progress.Bar.New takes a header that does NOT get its own
+	// "✓" line on log-up — the first real step is the first
+	// Describe call below.
+	bar := progress.New("Auto-detecting versions")
+	defer bar.Finish()
 
 	cfg := &autoDetectedConfig{}
 
+	bar.Describe("Detecting K8s version (latest-1)")
 	cfg.K8sVersion = detectK8sVersion()
 
 	bar.Describe("Detecting KubePrometheus version")
@@ -44,8 +49,6 @@ func autoDetect() *autoDetectedConfig {
 
 	bar.Describe("Checking SSH agent")
 	cfg.SSHAgentAvail = detectSSHAgent()
-
-	bar.Finish()
 
 	// Surface the KubeAid release tag up front. K8s is owned by
 	// the Step 0 profile picker; SSH agent state drives whether
