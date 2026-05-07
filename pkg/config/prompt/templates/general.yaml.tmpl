@@ -86,7 +86,11 @@ cloud:
     mode: {{ .HetznerMode }}
     sshKeyPair:
       name: {{ .HetznerSSHKeyName }}
+{{- if .UseSSHAgent }}
+      useSSHAgent: true
+{{- else }}
       privateKeyFilePath: {{ .HetznerSSHKeyPath }}
+{{- end }}
 {{- if or (eq .HetznerMode "hcloud") (eq .HetznerMode "hybrid") }}
     hcloud:
       zone: {{ .HetznerHCloudZone }}

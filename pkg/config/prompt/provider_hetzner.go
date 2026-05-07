@@ -31,9 +31,11 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	return lines
 }
 
-func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
-	// Pre-fill the SSH key path default.
-	if cfg.HetznerSSHKeyPath == "" {
+func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
+	// Only pre-fill a file path default when we'll actually ask for
+	// one. With an SSH agent reachable, the path stays empty and the
+	// hetzner block of general.yaml renders useSSHAgent: true instead.
+	if !detected.SSHAgentAvail && cfg.HetznerSSHKeyPath == "" {
 		cfg.HetznerSSHKeyPath = detectSSHKeyPath()
 	}
 
@@ -54,6 +56,17 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetecte
 		return cfg.HetznerMode != "bare-metal" && cfg.HetznerMode != "hybrid"
 	})
 
+	// SSH key path is sourced from the agent when one is reachable
+	// (yubikey or ssh-add'd key — see autodetect.detectSSHAgent).
+	// Skip the prompt in that case so the operator isn't asked for
+	// a path they don't have on disk.
+	sshKeyGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("SSH private key file path:").
+			Value(&cfg.HetznerSSHKeyPath).
+			Validate(validateSSHKeyPath),
+	).WithHide(detected.SSHAgentAvail)
+
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
@@ -69,25 +82,33 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetecte
 				EchoMode(huh.EchoModePassword).
 				Value(&cfg.HetznerAPIToken).
 				Validate(nonEmpty),
-			huh.NewInput().
-				Title("SSH private key file path:").
-				Value(&cfg.HetznerSSHKeyPath).
-				Validate(validateSSHKeyPath),
+		).Title("Hetzner credentials").Description("Step 3/4"),
+		sshKeyGroup,
+		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Enable high availability for the control plane?").
 				Value(&haChoice),
-		).Title("Hetzner credentials").Description("Step 3/4"),
+		),
 		robotGroup,
 	).Run()
 	if err != nil {
 		return err
 	}
 
-	// Derive the key pair name from the file path basename.
-	cfg.HetznerSSHKeyName = strings.TrimSuffix(
-		filepath.Base(cfg.HetznerSSHKeyPath),
-		filepath.Ext(cfg.HetznerSSHKeyPath),
-	)
+	// Derive the HCloud SSH key resource name. With a file path, use
+	// its basename (matches the operator's "this is my id_ed25519
+	// key" mental model). With the agent (no file), fall back to the
+	// cluster name — the resource name only needs to be unique per
+	// HCloud account, and HCloud's idempotency check goes by
+	// fingerprint anyway.
+	if detected.SSHAgentAvail {
+		cfg.HetznerSSHKeyName = cfg.ClusterName
+	} else {
+		cfg.HetznerSSHKeyName = strings.TrimSuffix(
+			filepath.Base(cfg.HetznerSSHKeyPath),
+			filepath.Ext(cfg.HetznerSSHKeyPath),
+		)
+	}
 
 	if haChoice {
 		cfg.HetznerCPReplicas = "3"
