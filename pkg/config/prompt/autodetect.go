@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
@@ -45,19 +47,40 @@ func autoDetect() *autoDetectedConfig {
 
 	bar.Finish()
 
-	// Print results on a single line.
-	parts := []string{}
-	if cfg.K8sVersion != "" {
-		parts = append(parts, fmt.Sprintf("K8s %s", cfg.K8sVersion))
-	}
+	// Surface the KubeAid release tag up front. K8s is owned by
+	// the Step 0 profile picker; SSH agent state drives whether
+	// Step 4 asks for a key path (no need to print). KubeAid's
+	// tag is the only one that's locked in at this point and the
+	// operator needs to see it before any prompt fires — that
+	// version determines which kubeaid-config templates this run
+	// will render.
 	if cfg.KubeAidVersion != "" {
-		parts = append(parts, fmt.Sprintf("KubeAid %s", cfg.KubeAidVersion))
-	}
-	if len(parts) > 0 {
-		fmt.Printf("  Auto-detected: %s\n", strings.Join(parts, ", "))
+		printKubeAidReleaseTag(cfg.KubeAidVersion)
 	}
 
 	return cfg
+}
+
+// printKubeAidReleaseTag renders the locked-in KubeAid tag as a
+// visually prominent banner so the operator notices it even when
+// scrolling fast. lipgloss handles falling back to plain text on
+// terminals without colour support.
+func printKubeAidReleaseTag(tag string) {
+	label := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#02BF87")).
+		Render("KubeAid")
+
+	version := lipgloss.NewStyle().
+		Bold(true).
+		Render(tag)
+
+	hint := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Italic(true).
+		Render("(latest stable release)")
+
+	fmt.Printf("  %s  %s  %s\n", label, version, hint)
 }
 
 // detectK8sVersion fetches the latest stable K8s version and returns the latest patch

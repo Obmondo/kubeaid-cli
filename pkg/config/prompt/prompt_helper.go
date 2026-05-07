@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 
@@ -208,30 +209,82 @@ func validateSSHPrivateKey(data []byte) error {
 	return nil
 }
 
-// detectSSHKeyPath returns the path to the first well-known SSH private key found,
-// preferring ed25519 over RSA. Returns "" if none is found.
+// detectSSHKeyPath returns the path to the first SSH private key
+// the operator has on this machine. Lookup order:
+//
+//  1. ~/.ssh/id_ed25519 then ~/.ssh/id_rsa (the standard names).
+//  2. Whatever the SSH agent (yubikey or ssh-add'd key) reports
+//     via `ssh-add -L`. Each line's 3rd field is typically the
+//     original key file path the agent was given — match on a
+//     real file under ~/.ssh and return that.
+//
+// Returns "" when nothing matches; caller's huh form falls back
+// to an empty input the operator can fill in by hand.
 func detectSSHKeyPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
 
-	candidates := []string{
+	for _, p := range []string{
 		path.Join(home, ".ssh", "id_ed25519"),
 		path.Join(home, ".ssh", "id_rsa"),
-	}
-
-	for _, p := range candidates {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		if strings.Contains(string(data), "PRIVATE KEY") {
+	} {
+		if isPrivateKeyFile(p) {
 			return "~/.ssh/" + path.Base(p)
 		}
 	}
 
+	// Standard names didn't hit. If the agent has identities
+	// loaded (yubikey, or any ssh-add'd key), one of them is
+	// almost certainly the key the operator wants for this
+	// cluster — peek at the agent's public-key listing for path
+	// hints.
+	if p := detectAgentSSHKeyPath(home); p != "" {
+		return p
+	}
+
 	return ""
+}
+
+// detectAgentSSHKeyPath shells out to `ssh-add -L`, parses each
+// public-key line for a comment that looks like an absolute file
+// path under home, and returns the first one whose corresponding
+// private-key file exists. Returns "" if no agent / no agent
+// keys / no comment matches a real file (yubikey-only setups
+// where the comment is the card serial usually fall here).
+func detectAgentSSHKeyPath(home string) string {
+	out, err := exec.Command("ssh-add", "-L").Output()
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		comment := fields[len(fields)-1]
+		if !strings.HasPrefix(comment, home+"/") {
+			continue
+		}
+		if isPrivateKeyFile(comment) {
+			// Prefer the home-relative form since the rest of
+			// the prompt collects ~/-style paths.
+			return "~" + strings.TrimPrefix(comment, home)
+		}
+	}
+	return ""
+}
+
+// isPrivateKeyFile reports whether path exists and contains the
+// "PRIVATE KEY" marker that's common to PEM and OpenSSH-format
+// private keys.
+func isPrivateKeyFile(p string) bool {
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "PRIVATE KEY")
 }
 
 // expandTilde resolves a leading ~ to the user's home directory.

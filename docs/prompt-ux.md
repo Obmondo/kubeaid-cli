@@ -19,6 +19,8 @@ The new flow uses `huh.NewForm` with five `huh.NewGroup` pages. A "Step N/M"
 description on each group replaces the old printed section headers.
 
 ```
+Step 0/4 — K8s version profile   (table + huh.NewSelect over Proven /
+                                   Balanced ★ / Early Adopter / Bleeding Edge)
 Step 1/4 — Cluster basics        (provider, cluster name, cluster kind)
 Step 2/4 — VPN endpoints         (Keycloak mode, DNS names, CP endpoint, ACME
                                    email) — HIDDEN when ClusterType != "vpn"
@@ -31,6 +33,38 @@ Step 4/4 — Git / SSH             (ArgoCD deploy key, config repo URL, Git SSH
 Review   — Summary confirm       ("Looks good?" confirm inside the form)
 ```
 
+### Step 0 — K8s version profile
+
+Replaces today's silent "latest-1 minor" auto-pick with an explicit
+trade-off table. Four profiles map to positions in K8s's support
+window relative to the current latest minor:
+
+| Profile        | Position             | Risk         | Note                                |
+|----------------|----------------------|--------------|-------------------------------------|
+| Proven         | current minor − 2    | Lowest       | battle-tested                       |
+| Balanced ★     | current minor − 1    | Low          | 3 mo of stability — default pick    |
+| Early Adopter  | current minor, .1+   | Medium-High  | community shakes out bugs first     |
+| Bleeding Edge  | current minor, .0    | High         | day-one — breaking changes possible |
+
+"Current minor" comes from `dl.k8s.io/release/stable.txt`; on network
+failure the picker falls back to the highest cycle in the embedded
+EOL data (`pkg/config/parser/k8s-eol.json`) and prints a one-line
+note in the table. Concrete patch versions are pulled from the same
+embedded EOL data — Proven and Balanced rows are marked unavailable
+when the EOL JSON doesn't carry the corresponding cycle (rare, but
+possible if the embedded file lags upstream).
+
+Renders with `lipgloss.NewTable` (rounded border, header row in
+bold, Balanced row highlighted with bold + background tint 236) so
+the recommended pick is visually obvious. Operator picks via
+`huh.NewSelect`; Balanced is preselected, the cursor lands on it on
+first render.
+
+Picked version overrides `cfg.K8sVersion` before the Step 1 form
+fires. On Ctrl+C / huh error / total fallback failure the silent
+autodetect default is preserved so we never write an empty version
+into general.yaml.
+
 Provider-specific credential groups (AWS, Azure, Hetzner, bare-metal) are
 rendered as a single group per provider, gated by `WithHideFunc` on the
 cluster's `CloudProvider` value.
@@ -41,6 +75,7 @@ cluster's `CloudProvider` value.
 
 | Old position | Field | New group |
 |---|---|---|
+| (silent autodetect) | K8s version | Step 0 — K8s version profile |
 | 1 | Cloud provider | Step 1 — Cluster basics |
 | 2 | Cluster name | Step 1 — Cluster basics |
 | 3 | What are you setting up? (cluster kind) | Step 1 — Cluster basics |

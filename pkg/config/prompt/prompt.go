@@ -5,7 +5,9 @@ package prompt
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
+	"os"
 	"path"
 
 	"github.com/charmbracelet/huh"
@@ -120,6 +122,26 @@ type PromptedConfig struct {
 	BareMetalEndpointPort string
 }
 
+// exitCleanlyOnAbort detects huh's user-abort sentinel anywhere in
+// the wrapped error chain and replaces the noisy multi-frame error
+// with a single friendly line, exiting with status 130 (the
+// conventional Ctrl+C exit code). Called as a deferred from
+// ConfigFromPrompt with a pointer to the named return so it sees
+// the final wrapped error post-defer chain.
+//
+// Non-abort errors fall through unchanged — caller's slog.Error
+// chain still applies for those.
+func exitCleanlyOnAbort(errPtr *error) {
+	if errPtr == nil || *errPtr == nil {
+		return
+	}
+	if !errors.Is(*errPtr, huh.ErrUserAborted) {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "  Cancelled — no config files written.")
+	os.Exit(130)
+}
+
 // ConfigFromPrompt interactively collects required configuration parameters from
 // the user and writes the generated config files to configsDirectory.
 //
@@ -135,7 +157,14 @@ type PromptedConfig struct {
 //     Step 3 — Cloud credentials (provider-specific)
 //     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
-func ConfigFromPrompt(configsDirectory string) error {
+func ConfigFromPrompt(configsDirectory string) (returnErr error) {
+	// Catch huh's user-abort sentinel at the single ConfigFromPrompt
+	// chokepoint so Ctrl+C exits with a friendly one-line message
+	// instead of the deeply-wrapped 'Failed preparing config files
+	// error=interactive config setup failed: collecting cluster
+	// basics: user aborted' chain that bubbles up through Prepare.
+	defer exitCleanlyOnAbort(&returnErr)
+
 	// Phase 1: Auto-detect.
 	detected := autoDetect()
 
@@ -154,6 +183,21 @@ func ConfigFromPrompt(configsDirectory string) error {
 		HetznerHCloudZone:    "eu-central",
 		HetznerCPMachineType: "cax21",
 		HetznerRegion:        "hel1",
+	}
+
+	// Step 0: K8s version profile picker. Replaces today's silent
+	// "latest-1 minor" choice with an explicit picker showing four
+	// risk profiles (Proven / Balanced / Early Adopter / Bleeding
+	// Edge) so the operator can trade off freshness vs. stability.
+	// Picker overrides cfg.K8sVersion when the operator picks; on
+	// Ctrl+C / no selection / total fallback failure, the silent
+	// autodetect default in detected.K8sVersion is preserved.
+	pickedK8s, err := pickK8sProfile(detected)
+	if err != nil {
+		return fmt.Errorf("picking K8s profile: %w", err)
+	}
+	if pickedK8s != "" {
+		cfg.K8sVersion = pickedK8s
 	}
 
 	// Phase 2 + 3: Prompt loop — re-runs when the operator declines the summary.

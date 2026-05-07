@@ -22,6 +22,9 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 
 	// Step 1 — Cluster basics group: provider + name (same group).
 	// Bare-metal is index 3 in the provider select.
+	c.expectString("K8s version profile:")
+	c.acceptDefault()
+
 	c.expectString("Cloud provider:")
 	c.selectOption(3)
 
@@ -88,6 +91,9 @@ func TestLocal_PromptFlow(t *testing.T) {
 
 	// Step 1 — Cluster basics group: provider + name (same group).
 	// Local is index 4 in the provider select.
+	c.expectString("K8s version profile:")
+	c.acceptDefault()
+
 	c.expectString("Cloud provider:")
 	c.selectOption(4)
 
@@ -146,6 +152,9 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c, cmd := newConsole(t, binary, outputDir)
 
 	// Step 1 — Cluster basics: AWS is index 0.
+	c.expectString("K8s version profile:")
+	c.acceptDefault()
+
 	c.expectString("Cloud provider:")
 	c.selectOption(0)
 
@@ -240,6 +249,9 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c, cmd := newConsole(t, binary, outputDir)
 
 	// Step 1 — Cluster basics: Azure is index 1.
+	c.expectString("K8s version profile:")
+	c.acceptDefault()
+
 	c.expectString("Cloud provider:")
 	c.selectOption(1)
 
@@ -323,6 +335,9 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c, cmd := newConsole(t, binary, outputDir)
 
 	// Step 1 — Cluster basics: Hetzner is index 2.
+	c.expectString("K8s version profile:")
+	c.acceptDefault()
+
 	c.expectString("Cloud provider:")
 	c.selectOption(2)
 
