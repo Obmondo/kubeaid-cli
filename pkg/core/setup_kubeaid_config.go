@@ -333,7 +333,8 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	slog.InfoContext(ctx, "Running KubePrometheus build script in container...")
 	hostUID := os.Getuid()
 	hostGID := os.Getgid()
-	runKubePrometheusBuilder(ctx, hostGID, hostUID, kubeAidDir, clusterDir, constants.KubePromBuilderImage)
+	err = runKubePrometheusBuilder(ctx, hostUID, hostGID, kubeAidDir, clusterDir, constants.KubePromBuilderImage)
+	assert.AssertErrNil(ctx, err, "Failed running KubePrometheus build script")
 }
 
 func runKubePrometheusBuilder(
@@ -350,7 +351,7 @@ func runKubePrometheusBuilder(
 	if err != nil {
 		return fmt.Errorf("creating docker client: %w", err)
 	}
-	defer cli.Close()
+	defer func() { _ = cli.Close() }()
 
 	// Optional: pull image first.
 	pullReader, err := cli.ImagePull(ctx, builderImage, image.PullOptions{})

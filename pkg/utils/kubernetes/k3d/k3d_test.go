@@ -250,6 +250,50 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 	}
 }
 
+func TestCreateK3DCluster(t *testing.T) {
+	// Mutates package globals and shared config — sequential only.
+	origRuntime := DockerRuntime
+	origFixFn := fixControlPlaneNodeLabelsFn
+	origProvider := globals.CloudProviderName
+	origConfig := *config.ParsedGeneralConfig
+	origK3DConfigPath := constants.OutputPathManagementClusterK3DConfig
+	origHostKubeconfigPath := constants.OutputPathManagementClusterHostKubeconfig
+	origContainerKubeconfigPath := constants.OutputPathManagementClusterContainerKubeconfig
+	t.Cleanup(func() {
+		DockerRuntime = origRuntime
+		fixControlPlaneNodeLabelsFn = origFixFn
+		globals.CloudProviderName = origProvider
+		*config.ParsedGeneralConfig = origConfig
+		constants.OutputPathManagementClusterK3DConfig = origK3DConfigPath
+		constants.OutputPathManagementClusterHostKubeconfig = origHostKubeconfigPath
+		constants.OutputPathManagementClusterContainerKubeconfig = origContainerKubeconfigPath
+	})
+
+	tmpDir := t.TempDir()
+	constants.OutputPathManagementClusterK3DConfig = filepath.Join(tmpDir, "k3d.config.yaml")
+	constants.OutputPathManagementClusterHostKubeconfig = filepath.Join(tmpDir, "kubeconfigs", "host.yaml")
+	constants.OutputPathManagementClusterContainerKubeconfig = filepath.Join(tmpDir, "kubeconfigs", "container.yaml")
+
+	rt := &fakeK3DRuntime{}
+	DockerRuntime = rt
+	fixControlPlaneNodeLabelsFn = func(_ context.Context, _ string) error { return nil }
+	globals.CloudProviderName = constants.CloudProviderLocal
+	config.ParsedGeneralConfig.Cluster.K8sVersion = "v1.30.0"
+
+	err := CreateK3DCluster(context.Background(), "test-cluster")
+	require.NoError(t, err)
+
+	require.True(t, rt.createCalled)
+	assert.Equal(t, constants.OutputPathManagementClusterK3DConfig, rt.createConfigPath)
+	assert.Equal(t, constants.OutputPathManagementClusterHostKubeconfig, rt.writeKubeconfigPath)
+	assert.Contains(t, readFileContent(t, constants.OutputPathManagementClusterK3DConfig), "name: test-cluster")
+	assert.Contains(
+		t,
+		readFileContent(t, constants.OutputPathManagementClusterContainerKubeconfig),
+		"server: https://k3d-test-cluster-server-0:6443",
+	)
+}
+
 func TestDeleteK3DClusterWithRuntime(t *testing.T) {
 	t.Parallel()
 
@@ -291,6 +335,28 @@ func TestDeleteK3DClusterWithRuntime(t *testing.T) {
 			assert.Equal(t, tc.configPath, rt.deleteConfigPath)
 		})
 	}
+}
+
+func TestDeleteK3DCluster(t *testing.T) {
+	// Mutates package globals — sequential only.
+	origRuntime := DockerRuntime
+	origK3DConfigPath := constants.OutputPathManagementClusterK3DConfig
+	t.Cleanup(func() {
+		DockerRuntime = origRuntime
+		constants.OutputPathManagementClusterK3DConfig = origK3DConfigPath
+	})
+
+	configPath := filepath.Join(t.TempDir(), "k3d.config.yaml")
+	constants.OutputPathManagementClusterK3DConfig = configPath
+
+	rt := &fakeK3DRuntime{}
+	DockerRuntime = rt
+
+	err := DeleteK3DCluster(context.Background())
+	require.NoError(t, err)
+
+	require.True(t, rt.deleteCalled)
+	assert.Equal(t, configPath, rt.deleteConfigPath)
 }
 
 func TestGetK3sVersion(t *testing.T) {
