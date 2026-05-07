@@ -73,8 +73,9 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		)
 	}
 
-	// Detect git authentication method.
-	bar.Describe("Detecting Git authentication method")
+	// Detect git authentication method. Fast (no network), so no
+	// separate spinner step — folded into "Creating management
+	// cluster" which is the first step that actually uses it.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create and setup the management cluster.

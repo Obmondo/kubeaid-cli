@@ -94,21 +94,21 @@ func detectYubiKeyInAgent() bool {
 	return false
 }
 
-// Describe advances the spinner to the next major step. Any prior
-// step is logged up — the spinner clears, the previous step's last
-// sub-step is redrawn as "└─", and a permanent "✓ <step>" line is
-// emitted above. A "::  <step>" header line is then printed for
-// the new major step so any sub-steps that follow are visually
-// nested under it, and the live spinner re-renders at the bottom.
+// Describe advances the spinner to the next major step. The new
+// step's header line ("✓ <step>") is printed immediately so any
+// sub-steps that stream below are visually nested under it. When
+// transitioning, the previous step's last sub-step is redrawn from
+// "├─" to "└─" so the tree closes; no separate close line is
+// emitted (the next "✓ <step>" header serves as the implicit
+// boundary).
 //
 // Top-to-bottom the final transcript reads as:
 //
-//	:: Provisioning Hetzner infrastructure
+//	✓ Provisioning Hetzner infrastructure
 //	   ├─ Created Hetzner Network
 //	   └─ Created NAT Gateway
-//	✓ Provisioning Hetzner infrastructure
-//	:: Detecting Git authentication method
-//	...
+//	✓ Creating management cluster
+//	   └─ ...
 //
 // No-op for repeat Describe calls with the same description.
 func (b *Bar) Describe(description string) {
@@ -119,11 +119,11 @@ func (b *Bar) Describe(description string) {
 		return
 	}
 	if b.currentDesc != "" {
-		b.logUp(b.currentDesc)
+		b.closeSubstepTree()
 	}
 	b.currentDesc = description
 	_ = b.bar.Clear()
-	fmt.Fprintf(os.Stderr, ":: %s\n", description)
+	fmt.Fprintf(os.Stderr, "✓ %s\n", description)
 	b.refreshCaption()
 	_ = b.bar.Add(1)
 }
@@ -165,33 +165,34 @@ func (b *Bar) RequestYubiKeyTouch() (release func()) {
 	}
 }
 
-// Finish emits the final step's "✓" line and clears the spinner.
+// Finish closes any open sub-step tree and clears the spinner.
+// No final "✓" line is emitted — the last Describe's header
+// already serves as that block's marker.
 func (b *Bar) Finish() {
 	if b == nil || b.bar == nil {
 		return
 	}
 	if b.currentDesc != "" {
-		b.logUp(b.currentDesc)
+		b.closeSubstepTree()
 		b.currentDesc = ""
 	}
 	_ = b.bar.Finish()
 }
 
-// logUp clears the live spinner line, redraws the last sub-step
-// (if any) from "├─" to "└─", and prints a permanent "✓ <step>"
-// line in place of the spinner. The next Describe re-renders the
-// spinner below.
-func (b *Bar) logUp(desc string) {
-	desc = strings.TrimSuffix(desc, yubikeyTouchSuffix)
-	_ = b.bar.Clear()
-	if b.lastSubstep != "" {
-		// Cursor is at the start of the cleared spinner line;
-		// the last sub-step row is one above. Move up, clear it,
-		// rewrite as the closing "└─" branch.
-		fmt.Fprintf(os.Stderr, "\r\033[F\033[K   └─ %s\n", b.lastSubstep)
-		b.lastSubstep = ""
+// closeSubstepTree redraws the last sub-step from "├─" to "└─" via
+// ANSI cursor-up + clear-line, so the tree branch closes cleanly
+// before the next major-step block begins. No-op when there were
+// no sub-steps for the current major.
+func (b *Bar) closeSubstepTree() {
+	if b.lastSubstep == "" {
+		return
 	}
-	fmt.Fprintf(os.Stderr, "✓ %s\n", desc)
+	_ = b.bar.Clear()
+	// Cursor is at the start of the cleared spinner line; the last
+	// sub-step row is one above. Move up, clear it, rewrite as the
+	// closing "└─" branch.
+	fmt.Fprintf(os.Stderr, "\r\033[F\033[K   └─ %s\n", b.lastSubstep)
+	b.lastSubstep = ""
 }
 
 // refreshCaption re-renders the spinner caption based on the
