@@ -539,6 +539,25 @@ func vpnClusterEnabled() bool {
 	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
 }
 
+// shouldValidateOIDCNow reports whether the pre-flight OIDC
+// discovery probe should run at the start of bootstrap. True when
+// apiServer.oidc is configured AND we aren't standing Keycloak up
+// in this same bootstrap run (managed-Keycloak issuer doesn't
+// exist yet — kubeaid-cli probes it via in-cluster port-forward
+// later, after the keycloakx app syncs). Mirrors the internal
+// skip in parser.ValidateOIDCDiscovery so the progress-bar spinner
+// step is suppressed at the outer level too.
+func shouldValidateOIDCNow() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.APIServer.OIDC == nil {
+		return false
+	}
+	if cluster.Keycloak != nil && cluster.Keycloak.Mode == constants.KeycloakModeManaged {
+		return false
+	}
+	return true
+}
+
 // hcloudControlPlaneEndpointSet reports whether kubeaid-cli should
 // render the cluster-side coredns-custom ConfigMap for resolving
 // the apiserver endpoint. True only when the operator configured

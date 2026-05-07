@@ -41,13 +41,17 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	ctx = progress.WithBar(ctx, bar)
 
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
-	// discovery endpoint before any infrastructure is touched. Catches
-	// typo'd issuer URLs / unreachable Keycloak before Hetzner VMs
-	// (etc.) are provisioned. Skipped (no spinner step at all) when
-	// OIDC isn't configured — otherwise the bar would flash a no-op
-	// "Validating OIDC issuer" line that the operator has to wonder
-	// about.
-	if config.ParsedGeneralConfig.Cluster.APIServer.OIDC != nil {
+	// discovery endpoint before any infrastructure is touched.
+	// Catches typo'd issuer URLs / unreachable Keycloak before
+	// Hetzner VMs (etc.) are provisioned.
+	//
+	// Skipped entirely (no spinner step) when:
+	//   - apiServer.oidc isn't set, OR
+	//   - cluster.keycloak.mode == managed (the issuer is provisioned
+	//     by THIS bootstrap run; probing now would NXDOMAIN /
+	//     TLS-mismatch). ValidateOIDCDiscovery has the same internal
+	//     skip but the spinner step would still flash.
+	if shouldValidateOIDCNow() {
 		bar.Describe("Validating OIDC issuer")
 		assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
 			"OIDC issuer validation failed")
