@@ -21,6 +21,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // GetHCloudServerIDsForCluster returns IDs of the HCloud servers associated with the given
@@ -275,6 +276,13 @@ func waitForNATGatewaySSH(ctx context.Context, server *hcloud.Server, privateKey
 		PrivateKey:  []byte(privateKey),
 		Timeout:     time.Second * 10,
 	}
+
+	// Surface the YubiKey-touch hint while we're attempting the SSH
+	// handshake — agent-routed signatures pause silently for the
+	// touch, and the operator otherwise has no signal that the bar
+	// is waiting on them. No-op when SSH_AUTH_SOCK is unset.
+	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch()
+	defer releaseTouchHint()
 
 	for {
 		connection, err := kubeonessh.NewConnection(connector, opts)

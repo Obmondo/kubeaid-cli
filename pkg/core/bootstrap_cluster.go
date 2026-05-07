@@ -38,6 +38,7 @@ type BootstrapClusterArgs struct {
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar := progress.New("Bootstrapping cluster")
 	defer bar.Finish()
+	ctx = progress.WithBar(ctx, bar)
 
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
 	// discovery endpoint before any infrastructure is touched. Catches
@@ -57,7 +58,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	//        CrossPlane provider, Hetzner Bare Metal doesn't have any. So, we can't use CrossPlane
 	//        as of now.
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		bar.DescribeWithYubiKeyHint("Provisioning Hetzner infrastructure")
+		bar.Describe("Provisioning Hetzner infrastructure")
 
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
@@ -69,16 +70,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Detect git authentication method.
-	bar.DescribeWithYubiKeyHint("Detecting Git authentication method")
+	bar.Describe("Detecting Git authentication method")
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
 	// Create and setup the management cluster.
-	bar.DescribeWithYubiKeyHint("Creating management cluster")
+	bar.Describe("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	// Provision and setup the main cluster.
 	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
-	bar.DescribeWithYubiKeyHint("Provisioning main cluster")
+	bar.Describe("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
 		BootstrapClusterArgs: &args,
 		GitAuthMethod:        gitAuthMethod,
@@ -103,7 +104,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Sync all ArgoCD Apps.
-	bar.DescribeWithYubiKeyHint("Syncing ArgoCD applications")
+	bar.Describe("Syncing ArgoCD applications")
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 

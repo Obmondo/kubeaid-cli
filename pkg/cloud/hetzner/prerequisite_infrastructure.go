@@ -12,6 +12,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // ProvisionPrerequisiteInfrastructure provisions infrastructure required before CAPH starts
@@ -42,20 +43,25 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		return nil
 	}
 
+	bar := progress.FromCtx(ctx)
+
 	network, err := h.CreateNetwork(ctx)
 	if err != nil {
 		return fmt.Errorf("creating Hetzner Network: %w", err)
 	}
+	bar.Substep("Created Hetzner Network")
 
 	if config.UsingHCloud() {
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		if err := h.CreateHCloudSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
 			return fmt.Errorf("creating HCloud SSH key: %w", err)
 		}
+		bar.Substep("Registered HCloud SSH key")
 
 		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
 			return fmt.Errorf("creating NAT gateway: %w", err)
 		}
+		bar.Substep("Created NAT Gateway")
 	}
 
 	if config.UsingHetznerBareMetal() {
@@ -97,6 +103,9 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 				return fmt.Errorf("attaching HCloud server %d to network: %w", serverID, err)
 			}
 		}
+		if len(serverIDs) > 0 {
+			bar.Substep(fmt.Sprintf("Attached %d existing servers to network", len(serverIDs)))
+		}
 
 		controlPlaneHostname := hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint
 		loadBalancer, err := h.CreateLB(ctx,
@@ -108,6 +117,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		if err != nil {
 			return fmt.Errorf("creating control-plane LB: %w", err)
 		}
+		bar.Substep("Created control-plane Load Balancer")
 
 		globals.ControlPlaneLBPrivateIP = loadBalancer.PrivateNet[0].IP.String()
 		globals.ControlPlaneHostname = controlPlaneHostname
@@ -121,6 +131,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 
 			globals.ControlPlaneLBBootstrapPublicIP = loadBalancer.PublicNet.IPv4.IP.String()
 
+			bar.Substep("Waiting for control-plane DNS")
 			if err := waitForControlPlaneDNS(ctx, globals.ControlPlaneLBBootstrapPublicIP); err != nil {
 				return fmt.Errorf("waiting for control-plane DNS: %w", err)
 			}
