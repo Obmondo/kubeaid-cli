@@ -225,6 +225,9 @@ const (
 	HCloudServerImageUbuntu2404 = "ubuntu-24.04"
 
 	HCloudLocationHel1 = "hel1"
+	HCloudLocationFsn1 = "fsn1"
+	HCloudLocationNbg1 = "nbg1"
+	HCloudLocationAsh  = "ash"
 
 	HCloudLBTypeLB11 = "lb11"
 
@@ -236,6 +239,18 @@ const (
 	HBMSOSInstallationPollInterval      = 20 * time.Second
 	HBMSOSInstallationMaxWaitTime       = 12 * time.Minute
 )
+
+// HCloudARMLocations lists HCloud datacenters that stock ARM
+// (cax-series) servers, in the order kubeaid-cli should try when
+// placing the NAT gateway. Hetzner's ARM stock fluctuates per
+// datacenter; placement returns resource_unavailable when the
+// chosen DC is briefly out — fall through to the next.
+var HCloudARMLocations = []string{
+	HCloudLocationHel1,
+	HCloudLocationFsn1,
+	HCloudLocationNbg1,
+	HCloudLocationAsh,
+}
 
 const (
 	// Namespaces.

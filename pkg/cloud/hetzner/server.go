@@ -6,6 +6,7 @@ package hetzner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -98,10 +99,12 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 }
 
 // findOrCreateNATGatewayServer returns the existing HCloud server
-// named serverName if it exists, otherwise creates one (cax11 in
-// hel1, attached to networkID, with a public v4) and returns the
-// fresh server. Extracted from CreateNATGateway to keep that
-// function's cognitive complexity in check.
+// named serverName if it exists, otherwise creates a fresh cax11
+// (ARM) server attached to networkID with a public v4. ARM stock
+// is uneven across HCloud datacenters and Hetzner returns
+// resource_unavailable when the chosen DC is briefly out — try
+// each location in constants.HCloudARMLocations in turn before
+// giving up.
 func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName string, networkID int) (*hcloud.Server, error) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
@@ -126,36 +129,63 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 		return nil, fmt.Errorf("getting HCloud SSH keypair %q: unexpected status %d", hetznerConfig.SSHKeyPair.Name, response.StatusCode)
 	}
 
-	result, response, err := h.hcloudClient.Server.Create(ctx, hcloud.ServerCreateOpts{
+	opts := hcloud.ServerCreateOpts{
 		Name:       serverName,
 		ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCAX11},
 		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
 		SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
-
-		// Nuremberg and Falkenstein frequently run into unavailable HCloud servers issue.
-		// So, we spin it up in Helsinki.
-		Location: &hcloud.Location{Name: constants.HCloudLocationHel1},
-
-		Networks: []*hcloud.Network{{ID: networkID}},
+		Networks:   []*hcloud.Network{{ID: networkID}},
 		PublicNet: &hcloud.ServerCreatePublicNet{
 			EnableIPv4: true,
 			EnableIPv6: false,
 		},
-
 		Labels: map[string]string{
 			fmt.Sprintf("caph-cluster-%s", clusterName): "owned",
 		},
-
 		StartAfterCreate: ptr.To(true),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("creating NAT gateway server %q: %w", serverName, err)
 	}
-	if response.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("creating NAT gateway server %q: unexpected status %d", serverName, response.StatusCode)
+
+	var lastErr error
+	for _, location := range constants.HCloudARMLocations {
+		opts.Location = &hcloud.Location{Name: location}
+
+		result, response, err := h.hcloudClient.Server.Create(ctx, opts)
+		switch {
+		case err == nil && response.StatusCode == http.StatusCreated:
+			slog.InfoContext(ctx, "Created NAT Gateway server",
+				slog.String("location", location))
+			return result.Server, nil
+
+		case err != nil && isHCloudResourceUnavailable(err):
+			slog.WarnContext(ctx, "NAT Gateway placement failed at location, trying next",
+				slog.String("location", location),
+				slog.String("error", err.Error()),
+			)
+			lastErr = err
+			continue
+
+		case err != nil:
+			return nil, fmt.Errorf("creating NAT gateway server %q at %s: %w", serverName, location, err)
+
+		default:
+			return nil, fmt.Errorf("creating NAT gateway server %q at %s: unexpected status %d", serverName, location, response.StatusCode)
+		}
 	}
-	slog.InfoContext(ctx, "Created NAT Gateway server")
-	return result.Server, nil
+
+	return nil, fmt.Errorf("creating NAT gateway server %q: all %d ARM-capable HCloud locations returned resource_unavailable; last error: %w",
+		serverName, len(constants.HCloudARMLocations), lastErr)
+}
+
+// isHCloudResourceUnavailable reports whether err is a Hetzner API
+// error with code resource_unavailable — typically a transient
+// out-of-stock condition for the requested server type at the
+// chosen datacenter.
+func isHCloudResourceUnavailable(err error) bool {
+	var hcloudErr hcloud.Error
+	if !errors.As(err, &hcloudErr) {
+		return false
+	}
+	return hcloudErr.Code == hcloud.ErrorCodeResourceUnavailable
 }
 
 // ensureNATRouteOnNetwork registers a 0.0.0.0/0 route on the named
