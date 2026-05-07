@@ -13,6 +13,8 @@ import (
 	"text/template"
 
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
@@ -79,6 +81,21 @@ var errRequired = errors.New("value is required")
 func nonEmpty(s string) error {
 	if strings.TrimSpace(s) == "" {
 		return errRequired
+	}
+	return nil
+}
+
+// sshGitURL validates that s is a non-empty SSH-form Git URL.
+// Accepts the two common SSH forms (scp-like git@host:path and
+// rfc-3986 ssh://...) and rejects http(s):// — used in the
+// "private SSH KubeAid fork" path where HTTPS would defeat the
+// reason for asking the question.
+func sshGitURL(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	if giturl.IsHTTP(strings.TrimSpace(s)) {
+		return errors.New("must be SSH form (e.g. git@github.com:org/repo.git)")
 	}
 	return nil
 }

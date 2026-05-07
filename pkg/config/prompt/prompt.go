@@ -13,7 +13,16 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 )
+
+// KubeaidIsSSH reports whether KubeaidForkURL is an SSH-form Git URL.
+// Used by general.yaml.tmpl to decide whether to render the kubeaid
+// ArgoCD deploy key block — HTTPS public forks need no key, SSH
+// forks (private) do.
+func (c *PromptedConfig) KubeaidIsSSH() bool {
+	return giturl.IsSSH(c.KubeaidForkURL)
+}
 
 var (
 	//go:embed templates/general.yaml.tmpl
@@ -502,7 +511,7 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 				Title("KubeAid Config fork URL:").
 				Description("SSH form — uses your yubikey via SSH agent, or the SSH key collected below.").
 				Value(&cfg.KubeaidConfigForkURL).
-				Validate(nonEmpty),
+				Validate(sshGitURL),
 		).Title("Git / SSH").Description("Step 4/4"),
 		gitKeyGroup,
 	).Run()

@@ -18,6 +18,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -36,7 +37,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 
 	// For HTTPs URLs, no auth is needed (public repos only).
 	// If the clone fails, the repo is likely private and requires an SSH URL.
-	if isHTTPURL(url) {
+	if giturl.IsHTTP(url) {
 		authMethod = nil
 	}
 
@@ -70,7 +71,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		return goGit.PlainCloneContext(ctx, path, false, opts)
 	})
 
-	if isHTTPURL(url) &&
+	if giturl.IsHTTP(url) &&
 		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
 		slog.ErrorContext(ctx,
 			"HTTPS clone failed: private repo detected, switch to SSH URL",

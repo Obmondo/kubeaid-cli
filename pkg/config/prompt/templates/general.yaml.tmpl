@@ -46,8 +46,10 @@ cluster:
 {{- end }}
   argoCD:
     deployKeys:
+{{- if .KubeaidIsSSH }}
       kubeaid:
         privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
+{{- end }}
       kubeaidConfig:
         privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
 {{- if .KubePrometheusVersion }}

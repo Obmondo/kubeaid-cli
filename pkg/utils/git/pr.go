@@ -73,8 +73,8 @@ func AddCommitAndPushChanges(ctx context.Context,
 	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
 	if branch != defaultBranchName {
 		createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-			strings.TrimSuffix(kubeaidConfigFork.ParsedURL.GetHttpCloneURL(), ".git"),
-			kubeaidConfigFork.ParsedURL.GetOwnerName(), kubeaidConfigFork.ParsedURL.GetRepoName(),
+			strings.TrimSuffix(kubeaidConfigFork.ParsedURL.HTTPCloneURL(), ".git"),
+			kubeaidConfigFork.ParsedURL.Owner, kubeaidConfigFork.ParsedURL.Repo,
 			branch,
 		)
 

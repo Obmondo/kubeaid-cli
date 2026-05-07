@@ -5,41 +5,32 @@ package git
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"path"
-	"strings"
 
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	gogiturl "github.com/kubescape/go-git-url"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 )
 
-// Returns path to the directory where the given repository will be cloned.
-func GetRepoDir(parsedURL gogiturl.IGitURL) string {
+// GetRepoDir returns the local on-disk path where the given repository
+// will be cloned: <TempDir>/<host>/<owner>/<repo>.
+func GetRepoDir(parsedURL *giturl.ParsedURL) string {
 	return path.Join(constants.TempDirectory,
-		parsedURL.GetHostName(), parsedURL.GetOwnerName(), parsedURL.GetRepoName(),
+		parsedURL.Host, parsedURL.Owner, parsedURL.Repo,
 	)
 }
 
-// ParseURL parses a Git repository URL into its component parts.
-// Expected format: https://gitserver.com/org/repo.git or git@gitserver.com:org/repo.git.
-func ParseURL(url string) (gogiturl.IGitURL, error) {
-	parsedURL, err := gogiturl.NewGitURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("parsing Git repository URL %q: %w", url, err)
-	}
-	return parsedURL, nil
-}
-
-// Returns whether the URL uses HTTP scheme.
-func isHTTPURL(url string) bool {
-	return strings.HasPrefix(url, "https://") || strings.HasPrefix(url, "http://")
+// ParseURL is a thin wrapper over giturl.Parse, kept here so callers
+// in the git package can use the shorter `git.ParseURL` name and to
+// preserve the previous package layout.
+func ParseURL(url string) (*giturl.ParsedURL, error) {
+	return giturl.Parse(url)
 }
 
 func GetDefaultBranchName(ctx context.Context,
