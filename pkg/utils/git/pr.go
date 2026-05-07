@@ -20,6 +20,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 func AddCommitAndPushChanges(ctx context.Context,
@@ -52,6 +53,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	commitObject, err := repo.CommitObject(commit)
 	assert.AssertErrNil(ctx, err, "Failed getting commit object")
 
+	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
 	err = retryGitOperation(ctx, "push branch to origin", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: "origin",
@@ -62,6 +64,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 			},
 		})
 	})
+	releasePushTouch()
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
 	slog.InfoContext(ctx, "Added, committed and pushed changes",
@@ -102,6 +105,7 @@ func WaitUntilPRMerged(ctx context.Context,
 		case <-time.After(10 * time.Second):
 		}
 
+		releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
 		err := retryGitOperation(ctx, "fetch refs while waiting for PR merge", func() error {
 			return repo.FetchContext(ctx, &goGit.FetchOptions{
 				Auth:     auth,
@@ -109,6 +113,7 @@ func WaitUntilPRMerged(ctx context.Context,
 				CABundle: config.ParsedGeneralConfig.Git.CABundle,
 			})
 		})
+		releaseFetchTouch()
 		if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")
 		}

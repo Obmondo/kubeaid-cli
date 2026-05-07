@@ -5,10 +5,12 @@ package progress
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
 	"github.com/schollz/progressbar/v3"
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
@@ -37,6 +39,12 @@ type Bar struct {
 	currentDesc string
 	lastSubstep string
 	needsTouch  bool
+
+	// hasYubiKey is the cached "is a YubiKey-backed identity loaded
+	// in the SSH agent" check, run once at New(). Gates the touch
+	// hint so a software-key-only agent (or no card plugged in)
+	// doesn't trigger spurious "👉 touch YubiKey" prompts.
+	hasYubiKey bool
 }
 
 // New creates a spinner-style progress bar (unknown length) with
@@ -50,7 +58,40 @@ func New(description string) *Bar {
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionClearOnFinish(),
 	)
-	return &Bar{bar: bar}
+	return &Bar{
+		bar:        bar,
+		hasYubiKey: detectYubiKeyInAgent(),
+	}
+}
+
+// detectYubiKeyInAgent dials $SSH_AUTH_SOCK and returns true if any
+// loaded identity has "cardno:" in its comment — the standard
+// OpenSSH-agent / scdaemon marker for a smartcard-backed key
+// (which the operator must touch when signing). False when there's
+// no agent, no identities, or only software-backed identities.
+//
+// Run once at Bar construction; the result is cached and re-used
+// by every RequestYubiKeyTouch call to avoid hammering the agent.
+func detectYubiKeyInAgent() bool {
+	sock := os.Getenv(constants.EnvNameSSHAuthSock)
+	if sock == "" {
+		return false
+	}
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	identities, err := agent.NewClient(conn).List()
+	if err != nil {
+		return false
+	}
+	for _, k := range identities {
+		if strings.Contains(k.Comment, "cardno:") {
+			return true
+		}
+	}
+	return false
 }
 
 // Describe advances the spinner to the next major step. Any prior
@@ -90,13 +131,13 @@ func (b *Bar) Substep(text string) {
 // `defer bar.RequestYubiKeyTouch()()` around the actual SSH op so
 // the hint shows only while the touch is genuinely needed.
 //
-// No-op (returns a no-op closure) when SSH_AUTH_SOCK is unset —
-// no agent in play means no touch is coming, no hint to show.
+// No-op (returns a no-op closure) when no YubiKey-backed identity
+// is loaded in the SSH agent — software-only agents never block
+// for a hardware touch and don't need the hint. Card detection is
+// cached at Bar construction; plugging in the YubiKey mid-bootstrap
+// won't be picked up until next run.
 func (b *Bar) RequestYubiKeyTouch() (release func()) {
-	if b == nil || b.bar == nil {
-		return func() {}
-	}
-	if os.Getenv(constants.EnvNameSSHAuthSock) == "" {
+	if b == nil || b.bar == nil || !b.hasYubiKey {
 		return func() {}
 	}
 	b.needsTouch = true

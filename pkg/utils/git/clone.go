@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // Clones the given git repository, if that isn't already done.
@@ -66,6 +67,8 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		Auth:     authMethod,
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
+
+	defer progress.FromCtx(ctx).RequestYubiKeyTouch()()
 
 	repo, err := retryGitOperationWithResult(ctx, "clone repository", func() (*goGit.Repository, error) {
 		return goGit.PlainCloneContext(ctx, path, false, opts)
@@ -137,6 +140,7 @@ func initRepo(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
 
+	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
 	err = retryGitOperation(ctx, "push init commit", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: goGit.DefaultRemoteName,
@@ -144,6 +148,7 @@ func initRepo(ctx context.Context,
 			CABundle:   config.ParsedGeneralConfig.Git.CABundle,
 		})
 	})
+	releasePushTouch()
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
 	return repo

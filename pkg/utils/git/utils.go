@@ -16,6 +16,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // GetRepoDir returns the local on-disk path where the given repository
@@ -42,6 +43,7 @@ func GetDefaultBranchName(ctx context.Context,
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
+	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
 	refs, err := retryGitOperationWithResult(
 		ctx,
 		"list refs for origin remote",
@@ -52,6 +54,7 @@ func GetDefaultBranchName(ctx context.Context,
 			})
 		},
 	)
+	releaseListTouch()
 	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
 
 	for _, ref := range refs {

@@ -17,6 +17,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // Removes any unstaged changes in the current branch. Then checks out to the default branch and
@@ -39,6 +40,7 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	slog.InfoContext(ctx, "Checked out to the default branch")
 
 	// Fetch all the changes.
+	releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
 	err = retryGitOperation(ctx, "fetch latest changes", func() error {
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
@@ -51,6 +53,7 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 			Tags: goGit.AllTags,
 		})
 	})
+	releaseFetchTouch()
 	if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")
 	}
