@@ -97,16 +97,33 @@ func detectYubiKeyInAgent() bool {
 // Describe advances the spinner to the next major step. Any prior
 // step is logged up — the spinner clears, the previous step's last
 // sub-step is redrawn as "└─", and a permanent "✓ <step>" line is
-// emitted above. Top-to-bottom the transcript reads as a tree of
-// finished work plus the live spinner at the bottom.
+// emitted above. A "::  <step>" header line is then printed for
+// the new major step so any sub-steps that follow are visually
+// nested under it, and the live spinner re-renders at the bottom.
+//
+// Top-to-bottom the final transcript reads as:
+//
+//	:: Provisioning Hetzner infrastructure
+//	   ├─ Created Hetzner Network
+//	   └─ Created NAT Gateway
+//	✓ Provisioning Hetzner infrastructure
+//	:: Detecting Git authentication method
+//	...
+//
+// No-op for repeat Describe calls with the same description.
 func (b *Bar) Describe(description string) {
 	if b == nil || b.bar == nil {
 		return
 	}
-	if b.currentDesc != "" && b.currentDesc != description {
+	if description == b.currentDesc {
+		return
+	}
+	if b.currentDesc != "" {
 		b.logUp(b.currentDesc)
 	}
 	b.currentDesc = description
+	_ = b.bar.Clear()
+	fmt.Fprintf(os.Stderr, ":: %s\n", description)
 	b.refreshCaption()
 	_ = b.bar.Add(1)
 }
