@@ -4,14 +4,21 @@
 package core
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
@@ -21,7 +28,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
@@ -327,13 +333,111 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	slog.InfoContext(ctx, "Running KubePrometheus build script in container...")
 	hostUID := os.Getuid()
 	hostGID := os.Getgid()
-	commandexecutor.NewLocalCommandExecutor(false).MustExecute(ctx, fmt.Sprintf(
-		"docker run --rm --user %d:%d -v %s:%s -v %s:%s %s %s/build/kube-prometheus/build.sh %s",
-		hostUID, hostGID,
-		kubeAidDir, kubeAidDir,
-		clusterDir, clusterDir,
-		constants.KubePromBuilderImage,
-		kubeAidDir,
+	runKubePrometheusBuilder(ctx, hostGID, hostUID, kubeAidDir, clusterDir, constants.KubePromBuilderImage)
+}
+
+func runKubePrometheusBuilder(
+	ctx context.Context,
+	hostUID, hostGID int,
+	kubeAidDir string,
+	clusterDir string,
+	builderImage string,
+) error {
+	cli, err := client.NewClientWithOpts(
+		client.FromEnv,
+		client.WithAPIVersionNegotiation(),
+	)
+	if err != nil {
+		return fmt.Errorf("creating docker client: %w", err)
+	}
+	defer cli.Close()
+
+	// Optional: pull image first.
+	pullReader, err := cli.ImagePull(ctx, builderImage, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("pulling builder image %q: %w", builderImage, err)
+	}
+	_, _ = io.Copy(io.Discard, pullReader)
+	_ = pullReader.Close()
+
+	cmd := []string{
+		fmt.Sprintf("%s/build/kube-prometheus/build.sh", kubeAidDir),
 		clusterDir,
-	))
+	}
+
+	resp, err := cli.ContainerCreate(
+		ctx,
+		&container.Config{
+			Image: builderImage,
+			User:  fmt.Sprintf("%d:%d", hostUID, hostGID),
+			Cmd:   cmd,
+			Tty:   false,
+		},
+		&container.HostConfig{
+			Mounts: []mount.Mount{
+				{
+					Type:   mount.TypeBind,
+					Source: kubeAidDir,
+					Target: kubeAidDir,
+				},
+				{
+					Type:   mount.TypeBind,
+					Source: clusterDir,
+					Target: clusterDir,
+				},
+			},
+		},
+		nil,
+		nil,
+		"",
+	)
+	if err != nil {
+		return fmt.Errorf("creating builder container: %w", err)
+	}
+
+	// Better than AutoRemove=true because you can still read logs after exit.
+	defer func() {
+		_ = cli.ContainerRemove(context.Background(), resp.ID, container.RemoveOptions{
+			Force: true,
+		})
+	}()
+
+	if err := cli.ContainerStart(ctx, resp.ID, container.StartOptions{}); err != nil {
+		return fmt.Errorf("starting builder container: %w", err)
+	}
+
+	statusCh, errCh := cli.ContainerWait(ctx, resp.ID, container.WaitConditionNotRunning)
+
+	var statusCode int64
+	select {
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("waiting for builder container: %w", err)
+		}
+	case status := <-statusCh:
+		statusCode = status.StatusCode
+	}
+
+	logReader, err := cli.ContainerLogs(ctx, resp.ID, container.LogsOptions{
+		ShowStdout: true,
+		ShowStderr: true,
+	})
+	if err != nil {
+		return fmt.Errorf("reading builder logs: %w", err)
+	}
+	defer logReader.Close()
+
+	var stdout, stderr bytes.Buffer
+	_, _ = stdcopy.StdCopy(&stdout, &stderr, logReader)
+
+	if statusCode != 0 {
+		return fmt.Errorf(
+			"builder container failed with exit code %d\nstdout:\n%s\nstderr:\n%s",
+			statusCode,
+			stdout.String(),
+			stderr.String(),
+		)
+	}
+
+	return nil
 }
