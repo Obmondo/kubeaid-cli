@@ -132,7 +132,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 			Upsert: true,
 			Certificates: &argoCDV1Aplha1.RepositoryCertificateList{
 				Items: []argoCDV1Aplha1.RepositoryCertificate{{
-					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.Host,
+					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.HostName(),
 					CertType:   "https",
 					CertData:   config.ParsedGeneralConfig.Git.CABundle,
 				}},

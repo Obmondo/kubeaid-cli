@@ -5,6 +5,7 @@ package giturl
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -95,6 +96,18 @@ func Parse(s string) (*ParsedURL, error) {
 // agent-routed credentials.
 func (p *ParsedURL) HTTPCloneURL() string {
 	return fmt.Sprintf("https://%s/%s/%s.git", p.Host, p.Owner, p.Repo)
+}
+
+// HostName returns Host with any "<host>:<port>" suffix stripped.
+// Use for filesystem paths (where the colon would break tools like
+// docker's -v <src>:<dst> volume specs) and TLS SAN comparisons
+// (where the port is irrelevant). Falls back to Host unchanged
+// when there's no port to strip.
+func (p *ParsedURL) HostName() string {
+	if h, _, err := net.SplitHostPort(p.Host); err == nil {
+		return h
+	}
+	return p.Host
 }
 
 // splitOwnerRepo extracts the first two non-empty segments from a

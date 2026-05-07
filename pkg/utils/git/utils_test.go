@@ -44,11 +44,14 @@ func TestGetRepoDir(t *testing.T) {
 			wantRepo:  "bar",
 		},
 		{
-			name:      "self-hosted gitea on custom SSH port",
-			url:       "ssh://git@gitea.obmondo.com:2223/EnableIT/kubeaid-config-enableit.git",
-			wantHost:  "gitea.obmondo.com:2223",
-			wantOwner: "EnableIT",
-			wantRepo:  "kubeaid-config-enableit",
+			// Custom SSH port — must end up in the on-disk path
+			// without the colon, since docker -v <src>:<dst> would
+			// otherwise read the port as a third path component.
+			name:      "self-hosted forge on custom SSH port",
+			url:       "ssh://git@git.example.com:2223/acme/kubeaid-config-acme.git",
+			wantHost:  "git.example.com",
+			wantOwner: "acme",
+			wantRepo:  "kubeaid-config-acme",
 		},
 	}
 

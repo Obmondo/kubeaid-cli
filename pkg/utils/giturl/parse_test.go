@@ -41,11 +41,11 @@ func TestParse(t *testing.T) {
 			wantRepo:  "kubeaid-config",
 		},
 		{
-			name:      "ssh:// self-hosted gitea with custom port",
-			url:       "ssh://git@gitea.obmondo.com:2223/EnableIT/kubeaid-config-enableit.git",
-			wantHost:  "gitea.obmondo.com:2223",
-			wantOwner: "EnableIT",
-			wantRepo:  "kubeaid-config-enableit",
+			name:      "ssh:// self-hosted forge with custom port",
+			url:       "ssh://git@git.example.com:2223/acme/kubeaid-config-acme.git",
+			wantHost:  "git.example.com:2223",
+			wantOwner: "acme",
+			wantRepo:  "kubeaid-config-acme",
 		},
 		{
 			name:      "https self-hosted with port",
@@ -86,6 +86,26 @@ func TestHTTPCloneURL(t *testing.T) {
 	p := &ParsedURL{Host: "github.com", Owner: "Obmondo", Repo: "kubeaid-config"}
 	assert.Equal(t, "https://github.com/Obmondo/kubeaid-config.git", p.HTTPCloneURL())
 
-	pCustom := &ParsedURL{Host: "gitea.obmondo.com:2223", Owner: "EnableIT", Repo: "kubeaid-config-enableit"}
-	assert.Equal(t, "https://gitea.obmondo.com:2223/EnableIT/kubeaid-config-enableit.git", pCustom.HTTPCloneURL())
+	pCustom := &ParsedURL{Host: "git.example.com:2223", Owner: "acme", Repo: "kubeaid-config-acme"}
+	assert.Equal(t, "https://git.example.com:2223/acme/kubeaid-config-acme.git", pCustom.HTTPCloneURL())
+}
+
+func TestHostName(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{name: "bare hostname", host: "github.com", want: "github.com"},
+		{name: "host with port", host: "git.example.com:2223", want: "git.example.com"},
+		{name: "ipv4 host", host: "192.168.1.10", want: "192.168.1.10"},
+		{name: "ipv4 host with port", host: "192.168.1.10:22", want: "192.168.1.10"},
+		{name: "empty host", host: "", want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &ParsedURL{Host: tc.host}
+			assert.Equal(t, tc.want, p.HostName())
+		})
+	}
 }

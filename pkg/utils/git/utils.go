@@ -19,10 +19,12 @@ import (
 )
 
 // GetRepoDir returns the local on-disk path where the given repository
-// will be cloned: <TempDir>/<host>/<owner>/<repo>.
+// will be cloned: <TempDir>/<host>/<owner>/<repo>. Uses HostName so
+// non-default SSH ports (e.g. ":2223") don't leak the colon into the
+// path — tools like docker's -v <src>:<dst> volume spec choke on it.
 func GetRepoDir(parsedURL *giturl.ParsedURL) string {
 	return path.Join(constants.TempDirectory,
-		parsedURL.Host, parsedURL.Owner, parsedURL.Repo,
+		parsedURL.HostName(), parsedURL.Owner, parsedURL.Repo,
 	)
 }
 
