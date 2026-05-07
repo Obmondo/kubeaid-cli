@@ -207,12 +207,11 @@ func (b *Bar) closeSubstepTree() {
 	b.lastSubstep = ""
 }
 
-// refreshCaption re-renders the spinner caption with the current
-// major-step name. Cheap; idempotent. The YubiKey-touch hint is
-// surfaced as a transient sub-step from RequestYubiKeyTouch
-// instead of via the spinner caption — keeps the spinner line
-// stable while the touch indicator integrates with the substep
-// tree.
+// refreshCaption clears the spinner caption. The major-step
+// header ("✓ <step>") already names the current step at the top
+// of the visible block, and sub-steps fill the middle — repeating
+// the major-step name on the spinner row is redundant noise.
+// Spinner shows only its glyph + elapsed-time counter now.
 func (b *Bar) refreshCaption() {
-	b.bar.Describe(b.currentDesc)
+	b.bar.Describe("")
 }
