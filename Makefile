@@ -79,14 +79,11 @@ check-k8s-eol: ## Check that pkg/config/parser/k8s-eol.json is up to date with e
 	@echo "pkg/config/parser/k8s-eol.json is up to date with endoflife.date"
 
 .PHONY: build
-build: build-cli ## Build the kubeaid-cli binary (default build target)
-
-.PHONY: build-cli
-build-cli: ## Build kubeaid-cli binary
+build: ## Build kubeaid-cli binary
 	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-cli
 
-.PHONY: build-kubeaid-storagectl
-build-kubeaid-storagectl: ## Build kubeaid-storagectl binary
+.PHONY: build-storagectl
+build-storagectl: ## Build kubeaid-storagectl binary
 	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
 
 .PHONY: management-cluster-delete
