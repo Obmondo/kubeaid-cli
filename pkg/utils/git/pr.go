@@ -147,10 +147,26 @@ func WaitUntilPRMerged(ctx context.Context,
 		releaseFetchTouch := requestTouchIfAuth(ctx,
 			"verify PR merge on "+originShortName(repo), auth,
 		)
+		// Targeted refspec: only fetch the default branch, force-update
+		// it locally. The previous "refs/*:refs/*" form tried to update
+		// every local ref — including refs/heads/<feature-branch>, which
+		// gets auto-deleted on the remote when the operator merges with
+		// "delete branch after merge" enabled. With no '+' prefix, the
+		// can't-update on the now-stale feature-branch ref made go-git
+		// flag the WHOLE fetch as failed with "some refs were not
+		// updated", even though refs/heads/<defaultBranch> updated fine.
+		// Net effect: the operator merges the PR, kubeaid-cli kills
+		// itself one second later. The targeted refspec sidesteps this:
+		// we only need the default branch ref to check commit presence,
+		// not anything else.
 		err := retryGitOperation(ctx, "fetch refs to verify PR merge", func() error {
 			return repo.FetchContext(ctx, &goGit.FetchOptions{
-				Auth:     auth,
-				RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
+				Auth: auth,
+				RefSpecs: []goGitConfig.RefSpec{
+					goGitConfig.RefSpec(
+						"+refs/heads/" + defaultBranchName + ":refs/heads/" + defaultBranchName,
+					),
+				},
 				CABundle: config.ParsedGeneralConfig.Git.CABundle,
 			})
 		})
