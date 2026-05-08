@@ -68,7 +68,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	defer progress.FromCtx(ctx).RequestYubiKeyTouch("clone repo")()
+	defer progress.FromCtx(ctx).RequestYubiKeyTouch("clone " + parsed.Owner + "/" + parsed.Repo)()
 
 	repo, err := retryGitOperationWithResult(ctx, "clone repository", func() (*goGit.Repository, error) {
 		return goGit.PlainCloneContext(ctx, path, false, opts)
@@ -140,7 +140,9 @@ func initRepo(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
 
-	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("push init commit")
+	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		"push init commit to " + originShortName(repo),
+	)
 	err = retryGitOperation(ctx, "push init commit", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: goGit.DefaultRemoteName,

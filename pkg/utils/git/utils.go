@@ -29,6 +29,23 @@ func GetRepoDir(parsedURL *giturl.ParsedURL) string {
 	)
 }
 
+// originShortName returns "owner/repo" for the given repo's origin
+// remote. Used in YubiKey-touch prompts so the operator sees which
+// repository they're authorizing the SSH op against. Falls back to
+// "repo" when the URL can't be parsed — the prompt is informational,
+// best-effort is fine.
+func originShortName(repo *goGit.Repository) string {
+	remote, err := repo.Remote(goGit.DefaultRemoteName)
+	if err != nil || remote == nil || len(remote.Config().URLs) == 0 {
+		return "repo"
+	}
+	parsed, err := giturl.Parse(remote.Config().URLs[0])
+	if err != nil {
+		return "repo"
+	}
+	return parsed.Owner + "/" + parsed.Repo
+}
+
 // ParseURL is a thin wrapper over giturl.Parse, kept here so callers
 // in the git package can use the shorter `git.ParseURL` name and to
 // preserve the previous package layout.
@@ -43,7 +60,9 @@ func GetDefaultBranchName(ctx context.Context,
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
-	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("look up default branch")
+	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		"look up default branch on " + originShortName(repo),
+	)
 	refs, err := retryGitOperationWithResult(
 		ctx,
 		"list refs for origin remote",

@@ -53,7 +53,9 @@ func AddCommitAndPushChanges(ctx context.Context,
 	commitObject, err := repo.CommitObject(commit)
 	assert.AssertErrNil(ctx, err, "Failed getting commit object")
 
-	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("push branch")
+	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		"push branch to " + originShortName(repo),
+	)
 	err = retryGitOperation(ctx, "push branch to origin", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: "origin",
@@ -105,7 +107,9 @@ func WaitUntilPRMerged(ctx context.Context,
 		case <-time.After(10 * time.Second):
 		}
 
-		releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("check PR merge")
+		releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+			"check PR merge on " + originShortName(repo),
+		)
 		err := retryGitOperation(ctx, "fetch refs while waiting for PR merge", func() error {
 			return repo.FetchContext(ctx, &goGit.FetchOptions{
 				Auth:     auth,

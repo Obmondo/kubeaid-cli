@@ -40,7 +40,9 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	slog.InfoContext(ctx, "Checked out to the default branch")
 
 	// Fetch all the changes.
-	releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("fetch updates")
+	releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		"fetch updates from " + originShortName(repo),
+	)
 	err = retryGitOperation(ctx, "fetch latest changes", func() error {
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
