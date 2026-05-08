@@ -86,8 +86,34 @@ func TestHTTPCloneURL(t *testing.T) {
 	p := &ParsedURL{Host: "github.com", Owner: "Obmondo", Repo: "kubeaid-config"}
 	assert.Equal(t, "https://github.com/Obmondo/kubeaid-config.git", p.HTTPCloneURL())
 
-	pCustom := &ParsedURL{Host: "git.example.com:2223", Owner: "acme", Repo: "kubeaid-config-acme"}
-	assert.Equal(t, "https://git.example.com:2223/acme/kubeaid-config-acme.git", pCustom.HTTPCloneURL())
+	// scheme="" (no parser scheme set) preserves whatever's in Host —
+	// callers should normally have a scheme set, but the helper has to
+	// be defensive for hand-constructed literals.
+	pNoScheme := &ParsedURL{Host: "git.example.com:2223", Owner: "acme", Repo: "kubeaid-config-acme"}
+	assert.Equal(t, "https://git.example.com:2223/acme/kubeaid-config-acme.git", pNoScheme.HTTPCloneURL())
+
+	// ssh-derived URLs with a port: the port is the SSH port, drop it
+	// from the HTTPS form. (Operator-reported bug: clicking the prompt
+	// URL pointed the browser at the SSH port and 404'd.)
+	sshWithPort := &ParsedURL{
+		Scheme: "ssh", Host: "git.example.com:2223",
+		Owner: "acme", Repo: "kubeaid-config-acme",
+	}
+	assert.Equal(t,
+		"https://git.example.com/acme/kubeaid-config-acme.git",
+		sshWithPort.HTTPCloneURL(),
+	)
+
+	// https-derived URLs with a port: legitimate HTTPS-on-non-default,
+	// port must be preserved.
+	httpsWithPort := &ParsedURL{
+		Scheme: "https", Host: "forge.example.com:8443",
+		Owner: "team", Repo: "repo",
+	}
+	assert.Equal(t,
+		"https://forge.example.com:8443/team/repo.git",
+		httpsWithPort.HTTPCloneURL(),
+	)
 }
 
 func TestHostName(t *testing.T) {

@@ -94,8 +94,21 @@ func Parse(s string) (*ParsedURL, error) {
 // original scheme — useful when constructing forge URLs for users
 // to click (e.g., GitHub's "/compare/..." page) without leaking
 // agent-routed credentials.
+//
+// For ssh-derived URLs (scp-style or ssh://), drops any port suffix
+// on Host: an SSH port is meaningless to HTTPS, and leaving it in
+// produces clickable URLs that 404 (browser trying HTTPS against the
+// SSH daemon — was the bug behind operators clicking
+// "https://gitea.example.com:2223/...").
+//
+// For http/https-derived URLs, preserves the port — those may
+// legitimately use a non-default HTTPS port like :8443.
 func (p *ParsedURL) HTTPCloneURL() string {
-	return fmt.Sprintf("https://%s/%s/%s.git", p.Host, p.Owner, p.Repo)
+	host := p.Host
+	if p.Scheme == "ssh" {
+		host = p.HostName()
+	}
+	return fmt.Sprintf("https://%s/%s/%s.git", host, p.Owner, p.Repo)
 }
 
 // HostName returns Host with any "<host>:<port>" suffix stripped.
