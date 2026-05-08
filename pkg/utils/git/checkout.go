@@ -22,28 +22,24 @@ import (
 
 // Removes any unstaged changes in the current branch. Then checks out to the default branch and
 // fetches all updates.
+//
+// Used by CloneRepo's re-run path to reset an already-cloned repo to a
+// known clean state. CreateAndCheckoutToBranch deliberately does NOT
+// call this — callers there go through CloneRepo first, so the fetch
+// has already happened; double-fetching back-to-back would just burn
+// a YubiKey touch.
 func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	authMethod transport.AuthMethod,
 ) {
-	// Remove any unstaged changes in the current branch.
-	removeUnstagedChanges(ctx, repo, workTree)
-
-	// Checkout to the default branch.
-	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
-	err := workTree.Checkout(&goGit.CheckoutOptions{
-		Branch: plumbing.ReferenceName("refs/heads/" + defaultBranchName),
-		Keep:   false,
-	})
-	assert.AssertErrNil(ctx, err, "Failed checking out to default branch first")
-	slog.InfoContext(ctx, "Checked out to the default branch")
+	checkoutDefaultBranch(ctx, repo, workTree, authMethod)
 
 	// Fetch all the changes.
 	releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
 		"fetch updates from " + originShortName(repo),
 	)
-	err = retryGitOperation(ctx, "fetch latest changes", func() error {
+	err := retryGitOperation(ctx, "fetch latest changes", func() error {
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
 			CABundle: config.ParsedGeneralConfig.Git.CABundle,
@@ -62,6 +58,27 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	slog.InfoContext(ctx, "Fetched latest changes")
 }
 
+// checkoutDefaultBranch removes unstaged changes and checks out the
+// default branch. NO network — relies on local refs being current. Use
+// when the caller knows the repo was just fetched (e.g., immediately
+// after CloneRepo's re-run path) so a second fetch would be redundant
+// and would burn a YubiKey touch for nothing.
+func checkoutDefaultBranch(ctx context.Context,
+	repo *goGit.Repository,
+	workTree *goGit.Worktree,
+	authMethod transport.AuthMethod,
+) {
+	removeUnstagedChanges(ctx, repo, workTree)
+
+	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
+	err := workTree.Checkout(&goGit.CheckoutOptions{
+		Branch: plumbing.ReferenceName("refs/heads/" + defaultBranchName),
+		Keep:   false,
+	})
+	assert.AssertErrNil(ctx, err, "Failed checking out to default branch first")
+	slog.InfoContext(ctx, "Checked out to the default branch")
+}
+
 // Discards all the changes in the current branch and checks out to the default branch first. Then,
 // checks out to a new branhc with the given name.
 // If a branch with that name already exists, then panics.
@@ -75,9 +92,9 @@ func CreateAndCheckoutToBranch(ctx context.Context,
 		slog.String("branch", branch),
 	})
 
-	// Checkout to default branch and fetch latest changes.
-	// All changes in the current branch get discarded.
-	CheckoutToDefaultBranchAndFetchUpdates(ctx, repo, workTree, authMethod)
+	// Checkout to default branch (no fetch — CloneRepo's re-run path
+	// already fetched). All changes in the current branch get discarded.
+	checkoutDefaultBranch(ctx, repo, workTree, authMethod)
 
 	// Error out if the branch already exists.
 	branchRef, err := repo.Reference(plumbing.ReferenceName("refs/heads/"+branch), true)
