@@ -120,8 +120,12 @@ func WaitUntilPRMerged(ctx context.Context,
 			slog.String("from-branch", branchToBeMerged),
 			slog.String("to-branch", defaultBranchName),
 		)
-		fmt.Fprintf(os.Stderr, "\n→ Open and merge: %s\n", prURL)
-		fmt.Fprintf(os.Stderr, "  Then press ENTER (Ctrl+C to abort): ")
+		// Indent the prompt to col 3 to match the substep tree's ├─/└─
+		// branch level. "Open and merge:" sits at the same column as
+		// surrounding "├─ <work>" lines so the eye reads it as part of
+		// the tree.
+		fmt.Fprintf(os.Stderr, "\n   → Open and merge: %s\n", prURL)
+		fmt.Fprintf(os.Stderr, "     Then press ENTER (Ctrl+C to abort): ")
 
 		if err := readLineCtx(ctx, stdin); err != nil {
 			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
@@ -154,7 +158,7 @@ func WaitUntilPRMerged(ctx context.Context,
 		}
 
 		fmt.Fprintf(os.Stderr,
-			"  ✗ Commit %s isn't on %q yet. Merge the PR and try again.\n",
+			"   ✗ Commit %s isn't on %q yet. Merge the PR and try again.\n",
 			commitHash.String()[:8], defaultBranchName,
 		)
 	}
