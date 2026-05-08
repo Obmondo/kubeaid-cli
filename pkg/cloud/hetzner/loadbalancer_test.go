@@ -26,6 +26,7 @@ type fakeLoadBalancerClient struct {
 	attachToNetworkFn        func(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
 	enablePublicInterfaceFn  func(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
 	disablePublicInterfaceFn func(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
+	changeProtectionFn       func(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
 func (f *fakeLoadBalancerClient) Get(ctx context.Context, idOrName string) (*hcloud.LoadBalancer, *hcloud.Response, error) {
@@ -50,6 +51,13 @@ func (f *fakeLoadBalancerClient) EnablePublicInterface(ctx context.Context, load
 
 func (f *fakeLoadBalancerClient) DisablePublicInterface(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error) {
 	return f.disablePublicInterfaceFn(ctx, loadBalancer)
+}
+
+func (f *fakeLoadBalancerClient) ChangeProtection(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error) {
+	if f.changeProtectionFn != nil {
+		return f.changeProtectionFn(ctx, loadBalancer, opts)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
 }
 
 // noopSleep is used to eliminate real delays in waitForLB.

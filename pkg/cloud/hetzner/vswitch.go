@@ -103,6 +103,7 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
 	vSwitchID = createVSwitchResponseBody.ID
 
 	slog.InfoContext(ctx, "Created VSwitch", slog.Int("id", vSwitchID))
+	slog.WarnContext(ctx, "VSwitch deletion protection must be enabled manually in the Hetzner Robot console — Robot API does not support programmatic protection")
 
 	return vSwitchID, nil
 }

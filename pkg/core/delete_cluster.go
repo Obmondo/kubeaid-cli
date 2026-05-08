@@ -17,8 +17,10 @@ import (
 	clusterctlClientLib "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
@@ -101,6 +103,16 @@ func DeleteCluster(ctx context.Context) {
 	if cluster.Spec.Paused {
 		err := managementClusterClient.Update(ctx, cluster)
 		assert.AssertErrNil(ctx, err, "Failed unmarking paused cluster")
+	}
+
+	// When using HCloud, disable deletion protection on critical resources before CAPH
+	// attempts to delete them. Without this, CAPH receives 403 errors and teardown hangs.
+	if globals.CloudProviderName == constants.CloudProviderHetzner && config.UsingHCloud() {
+		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+
+		err := hetznerCloudProvider.DisableDeletionProtection(ctx)
+		assert.AssertErrNil(ctx, err, "Failed disabling deletion protection on HCloud resources")
 	}
 
 	// Delete the Cluster resource from the management cluster.

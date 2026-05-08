@@ -47,7 +47,7 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		return existing, nil
 	}
 
-	_, response, err := h.loadBalancerClient.Create(ctx, hcloud.LoadBalancerCreateOpts{
+	result, response, err := h.loadBalancerClient.Create(ctx, hcloud.LoadBalancerCreateOpts{
 		Name: clusterName,
 		LoadBalancerType: &hcloud.LoadBalancerType{
 			Name:        constants.HCloudLBTypeLB11,
@@ -71,6 +71,19 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		return nil, fmt.Errorf("creating Hetzner LB: unexpected status %d", response.StatusCode)
 	}
 	slog.InfoContext(ctx, "Created Hetzner LB")
+
+	// Protect the KubeAPI LB from accidental deletion.
+	_, response, err = h.loadBalancerClient.ChangeProtection(ctx,
+		result.LoadBalancer,
+		hcloud.LoadBalancerChangeProtectionOpts{Delete: ptr.To(true)},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("enabling deletion protection on Hetzner LB: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("enabling deletion protection on Hetzner LB: unexpected status %d", response.StatusCode)
+	}
+	slog.InfoContext(ctx, "Enabled deletion protection on Hetzner LB")
 
 	lb, err := h.waitForLB(ctx, clusterName, func(lb *hcloud.LoadBalancer) bool {
 		if len(lb.PrivateNet) == 0 {

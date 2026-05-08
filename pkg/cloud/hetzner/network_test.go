@@ -30,8 +30,10 @@ func (f *fakeNetworkClient) Create(ctx context.Context, opts hcloud.NetworkCreat
 }
 
 type fakeServerClient struct {
-	attachToNetworkFn func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
-	listFn            func(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error)
+	attachToNetworkFn  func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
+	listFn             func(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error)
+	getByNameFn        func(ctx context.Context, name string) (*hcloud.Server, *hcloud.Response, error)
+	changeProtectionFn func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
 func (f *fakeServerClient) AttachToNetwork(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error) {
@@ -40,6 +42,20 @@ func (f *fakeServerClient) AttachToNetwork(ctx context.Context, server *hcloud.S
 
 func (f *fakeServerClient) List(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error) {
 	return f.listFn(ctx, opts)
+}
+
+func (f *fakeServerClient) GetByName(ctx context.Context, name string) (*hcloud.Server, *hcloud.Response, error) {
+	if f.getByNameFn != nil {
+		return f.getByNameFn(ctx, name)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
+func (f *fakeServerClient) ChangeProtection(ctx context.Context, server *hcloud.Server, opts hcloud.ServerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error) {
+	if f.changeProtectionFn != nil {
+		return f.changeProtectionFn(ctx, server, opts)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
 }
 
 // Mutates config.ParsedGeneralConfig — sequential only.
