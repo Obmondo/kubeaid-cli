@@ -31,6 +31,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
@@ -52,6 +53,8 @@ It expects the KubeAid Config repository to be already cloned in the temp direct
 */
 func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
+
+	bar := progress.FromCtx(ctx)
 
 	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
 	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
@@ -134,6 +137,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		// Create / update Secret files.
 		createOrUpdateSealedSecretFiles(ctx, templateValues, clusterDir)
 	}
+	bar.Substep("Rendered kubeaid-config files")
 
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
@@ -148,6 +152,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
 	)
+	bar.Substep("Pushed kubeaid-config branch")
 
 	if !args.SkipPRWorkflow {
 		/*
@@ -166,6 +171,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 			args.GitAuthMethod,
 			targetBranchName,
 		)
+		bar.Substep("Confirmed kubeaid-config PR merged")
 	}
 }
 

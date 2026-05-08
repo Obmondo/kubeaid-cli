@@ -71,12 +71,16 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	managementClusterClient, err := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath)
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
-	// Setup the management cluster.
+	// Setup the management cluster. SetupCluster emits its own
+	// substeps (Sealed Secrets install, kubeaid-config render +
+	// PR-merge confirmation, ArgoCD install, per-app sync) so this
+	// outer block doesn't need a single rolled-up "Installed
+	// ArgoCD + sealed-secrets" trailer — the granular substeps tell
+	// the operator exactly which long-running step is in flight.
 	SetupCluster(ctx, SetupClusterArgs{
 		CreateDevEnvArgs: args,
 		ClusterType:      constants.ClusterTypeManagement,
 		ClusterClient:    managementClusterClient,
 		GitAuthMethod:    gitAuthMethod,
 	})
-	bar.Substep("Installed ArgoCD + sealed-secrets on management cluster")
 }

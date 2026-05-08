@@ -25,6 +25,7 @@ import (
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type SetupClusterArgs struct {
@@ -38,6 +39,8 @@ type SetupClusterArgs struct {
 
 func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", args.ClusterType))
+
+	bar := progress.FromCtx(ctx)
 
 	{
 		// Clone the KubeAid fork locally (if not already cloned).
@@ -139,6 +142,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
 	}
+	bar.Substep("Installed Sealed Secrets controller")
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
@@ -148,6 +152,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// Install and setup ArgoCD.
 	err := kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
 	assert.AssertErrNil(ctx, err, "Failed installing and setting up ArgoCD")
+	bar.Substep("Installed and configured ArgoCD")
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 	// Kubernetes Secret will get created.
@@ -168,6 +173,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
 		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
 			slog.String("app", argoCDApp))
+		bar.Substep(fmt.Sprintf("Synced %s ArgoCD app", argoCDApp))
 	}
 
 	// Any cloud provider specific tasks.
