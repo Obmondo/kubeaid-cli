@@ -113,6 +113,19 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
+	// VPN clusters on Hetzner: Traefik is up by now and CCM has
+	// allocated a public LB IP for it. Pause and have the operator
+	// point keycloak.dns / netbird.dns / stun.dns / turn.dns at
+	// that IP — cert-manager's ACME challenges retry with backoff,
+	// so the next retry succeeds once DNS resolves correctly.
+	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
+		bar.Describe("Waiting for ingress-LB DNS")
+		assert.AssertErrNil(ctx,
+			hetzner.WaitForIngressLBDNS(ctx, mainClusterClient),
+			"Failed waiting for ingress-LB DNS",
+		)
+	}
+
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
 	// Keycloak via the admin secret and reconciles the realm +
 	// NetBird OIDC clients. External-mode operators handle their

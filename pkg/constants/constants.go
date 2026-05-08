@@ -264,6 +264,7 @@ const (
 	NamespaceKeycloak      = "keycloakx"
 	NamespaceCloudNativePG = "cnpg-operator"
 	NamespaceNetBird       = "netbird"
+	NamespaceTraefik       = "traefik"
 
 	// keycloakx Service inside NamespaceKeycloak. kubeaid-cli
 	// port-forwards to this Service during bootstrap to call the
