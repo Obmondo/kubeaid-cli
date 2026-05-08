@@ -15,10 +15,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-const (
-	yubikeyTouchActiveSubstep = "👉 Touching YubiKey..."
-	yubikeyTouchedSubstep     = "Touched YubiKey ✓"
-)
+const yubikeyTouchActiveSubstep = "👉 Touching YubiKey..."
 
 // Bar is a single-line spinner with docker-style "log-up" + a tree
 // of indented sub-steps. The transcript reads as:
@@ -144,17 +141,19 @@ func (b *Bar) Substep(text string) {
 }
 
 // RequestYubiKeyTouch emits a transient "👉 Touching YubiKey..."
-// sub-step indicating the spinner is paused on a hardware-touch
-// SSH signature. The returned closure rewrites that line in place
-// to "Touched YubiKey ✓" once the SSH op completes — operator
-// sees the touch as a discrete event in the substep tree, with an
-// audit trail of completed touches.
+// sub-step while the spinner is paused on a hardware-touch SSH
+// signature, then ERASES that line once the SSH op completes —
+// the work sub-step that follows ("Cloned X", "Pushed Y") is the
+// audit trail. We don't keep a permanent "Touched ✓" line because
+// a single major step often does several SSH ops back-to-back; a
+// stack of identical "Touched ✓" lines would crowd out the real
+// progress without adding info.
 //
 // Pair via `defer bar.RequestYubiKeyTouch()()` around the actual
-// SSH op. Caveat: the rewrite assumes no other Substep calls fire
+// SSH op. Caveat: the erase assumes no other Substep calls fire
 // between Request and the closure call, so bracket as tightly as
 // possible around the op — emitting other sub-steps in between
-// will cause the rewrite to target the wrong line.
+// will cause the erase to target the wrong line.
 //
 // No-op (returns a no-op closure) when no YubiKey-backed identity
 // is loaded in the SSH agent — software-only agents never block
@@ -165,15 +164,18 @@ func (b *Bar) RequestYubiKeyTouch() (release func()) {
 	if b == nil || b.bar == nil || !b.hasYubiKey {
 		return func() {}
 	}
+	prevSubstep := b.lastSubstep
 	b.Substep(yubikeyTouchActiveSubstep)
 	return func() {
-		// Rewrite the "Touching..." substep we just printed, in
-		// place, with the "Touched ✓" audit-trail version.
-		// Cursor is at the spinner line; the substep is one row
-		// above.
 		_ = b.bar.Clear()
-		fmt.Fprintf(os.Stderr, "\r\033[F\033[K   ├─ %s\n", yubikeyTouchedSubstep)
-		b.lastSubstep = yubikeyTouchedSubstep
+		// Cursor is at col 0 of the cleared spinner line. Move
+		// up to the "Touching..." substep, blank it; the next
+		// bar render lands the spinner at the now-empty
+		// position so the touch leaves no permanent trace.
+		// Restore the pre-touch lastSubstep so closeSubstepTree's
+		// ├─ → └─ redraw still targets the correct line.
+		fmt.Fprint(os.Stderr, "\033[F\033[2K\r")
+		b.lastSubstep = prevSubstep
 	}
 }
 
