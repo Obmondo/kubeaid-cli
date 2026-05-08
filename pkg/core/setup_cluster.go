@@ -41,12 +41,20 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 	{
 		// Clone the KubeAid fork locally (if not already cloned).
+		// PinnedRef tells CloneRepo to skip the default-branch fetch
+		// dance on re-runs — kubeaid-cli only ever HardResetRepoToRef
+		// against this fixed version, never walks default-branch
+		// history. One narrow fetch instead of pulling every ref + tag
+		// per re-run.
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.URL,
 			args.GitAuthMethod,
+			gitUtils.CloneRepoOptions{
+				PinnedRef: config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
+			},
 		)
 
-		// Hard reset to the KubeAid git ref (tag / branch / commit) from the general config.
+		// Hard reset to the KubeAid git ref (tag / branch) from the general config.
 		gitUtils.HardResetRepoToRef(ctx,
 			kubeAidRepo,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,

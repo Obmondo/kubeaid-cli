@@ -11,13 +11,11 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	goGit "github.com/go-git/go-git/v5"
 	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -42,12 +40,9 @@ func AddCommitAndPushChanges(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed determining git status")
 	slog.InfoContext(ctx, "Determined git status", slog.Any("git-status", status))
 
-	commit, err := workTree.Commit(commitMessage, &goGit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "KubeAid Bootstrap Script",
-			Email: "info@obmondo.com",
-			When:  time.Now(),
-		},
+	author, attributedMessage := OperatorAttribution(commitMessage)
+	commit, err := workTree.Commit(attributedMessage, &goGit.CommitOptions{
+		Author:            author,
 		AllowEmptyCommits: true,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating git commit")

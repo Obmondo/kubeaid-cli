@@ -20,13 +20,27 @@ import (
 )
 
 // Removes any unstaged changes in the current branch. Then checks out to the default branch and
-// fetches all updates.
+// fetches updates for that branch.
 //
-// Used by CloneRepo's re-run path to reset an already-cloned repo to a
-// known clean state. CreateAndCheckoutToBranch deliberately does NOT
-// call this — callers there go through CloneRepo first, so the fetch
-// has already happened; double-fetching back-to-back would just burn
-// a YubiKey touch.
+// Used by CloneRepo's re-run path for repos where kubeaid-cli walks
+// history on the default branch (kubeaid-config — WaitUntilPRMerged's
+// isCommitPresentInBranch needs the default branch's commit graph).
+// Repos that are read-only-at-a-pinned-ref (kubeaid-fork) take the
+// refreshPinnedRef path instead.
+//
+// The fetch is scoped to '+refs/heads/<defaultBranch>:refs/heads/<defaultBranch>'
+// — narrow refspec, no tags. The previous '+refs/*:refs/*' + AllTags
+// pulled every ref + every tag from the operator's kubeaid-config on
+// every re-run, which is wasteful (we only check commit presence on
+// the default branch) and turns out to be brittle: when the operator
+// merges a PR with auto-delete-on-merge, refs/heads/<feature-branch>
+// is gone remotely, and a wildcard refspec then surfaces
+// "couldn't find remote ref" / "some refs were not updated" errors
+// even though our actual target — the default branch — fetched fine.
+//
+// CreateAndCheckoutToBranch deliberately does NOT call this — callers
+// there go through CloneRepo first, so the fetch has already happened;
+// double-fetching back-to-back would just burn a YubiKey touch.
 func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
@@ -34,7 +48,11 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 ) {
 	checkoutDefaultBranch(ctx, repo, workTree, authMethod)
 
-	// Fetch all the changes.
+	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
+	defaultBranchRefSpec := gitConfig.RefSpec(
+		"+refs/heads/" + defaultBranchName + ":refs/heads/" + defaultBranchName,
+	)
+
 	releaseFetchTouch := requestTouchIfAuth(ctx,
 		"fetch updates from "+originShortName(repo), authMethod,
 	)
@@ -42,12 +60,7 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
 			CABundle: config.ParsedGeneralConfig.Git.CABundle,
-
-			// The '+' tells Git to update the reference even if it is not a fast-forward,
-			// like history rewrites.
-			RefSpecs: []gitConfig.RefSpec{"+refs/*:refs/*"},
-
-			Tags: goGit.AllTags,
+			RefSpecs: []gitConfig.RefSpec{defaultBranchRefSpec},
 		})
 	})
 	releaseFetchTouch()
