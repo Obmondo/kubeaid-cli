@@ -204,10 +204,14 @@ func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.N
 //
 //   - The control-plane LB hostname is always required (every
 //     HCloud-VPN cluster sets it).
-//   - keycloak.dns and netbird.dns are only set on VPN clusters with
-//     managed Keycloak; we add them when present so the operator
-//     gets a single consolidated DNS step instead of a second pause
-//     after Keycloak's app starts syncing.
+//   - keycloak.dns is added on VPN clusters with managed Keycloak.
+//   - netbird.dns / netbird.stunDNS / netbird.turnDNS are added on
+//     VPN clusters that host NetBird (Coturn answers STUN/TURN at
+//     stun.<base> / turn.<base>; the netbird Android/iOS clients
+//     resolve these to find the relay path). Consolidating the DNS
+//     wait here means the operator does one batch of A records up
+//     front instead of getting a second pause when Keycloak or
+//     NetBird's Ingress syncs.
 //
 // No-op when no FQDNs have been collected (we wouldn't know what to
 // poll).
@@ -220,6 +224,12 @@ func waitForControlPlaneDNS(ctx context.Context, lbPublicIP string) error {
 	}
 	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
 		fqdns = append(fqdns, cluster.NetBird.DNS)
+		if cluster.NetBird.StunDNS != "" {
+			fqdns = append(fqdns, cluster.NetBird.StunDNS)
+		}
+		if cluster.NetBird.TurnDNS != "" {
+			fqdns = append(fqdns, cluster.NetBird.TurnDNS)
+		}
 	}
 
 	return WaitForDNSResolution(ctx, fqdns, lbPublicIP)

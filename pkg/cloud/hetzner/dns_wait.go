@@ -11,6 +11,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // dnsResolveTimeout caps how long a single resolver query can take —
@@ -51,6 +53,15 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 		return nil
 	}
 
+	// Pause the bar's spinner so its 100ms auto-render goroutine can't
+	// \r-overwrite our per-FQDN status lines (the spinner anchors at
+	// col 0 of the cursor's current line; without pausing, ticks
+	// scribble "⠋ [16s]" prefixes onto our output). Resume on exit so
+	// the next bootstrap step picks up a live spinner.
+	bar := progress.FromCtx(ctx)
+	bar.Pause()
+	defer bar.Resume()
+
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
@@ -64,7 +75,14 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 
 	printDNSWaitHeader(fqdns, expectedIP)
 
+	// Save cursor at the start of the per-tick status block. Each
+	// iteration restores cursor + clears to end of screen, so the
+	// rewrite happens in place — the operator sees one stable status
+	// table that updates, not a wall of accumulating per-tick lines.
+	fmt.Print("\033[s")
+
 	for {
+		fmt.Print("\033[u\033[J")
 		ok := checkAllResolve(ctx, resolver, fqdns, expectedIP)
 		if ok {
 			fmt.Println("DNS verified, continuing.")
