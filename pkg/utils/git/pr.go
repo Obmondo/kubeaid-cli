@@ -114,24 +114,36 @@ func WaitUntilPRMerged(ctx context.Context,
 ) {
 	stdin := bufio.NewReader(os.Stdin)
 	prURL := BuildPRCompareURL(repo, defaultBranchName, branchToBeMerged)
+	bar := progress.FromCtx(ctx)
+
+	slog.InfoContext(ctx, "Waiting for PR merge",
+		slog.String("from-branch", branchToBeMerged),
+		slog.String("to-branch", defaultBranchName),
+	)
 
 	for {
-		slog.InfoContext(ctx, "Waiting for PR merge",
-			slog.String("from-branch", branchToBeMerged),
-			slog.String("to-branch", defaultBranchName),
-		)
-		// Indent the prompt to col 3 to match the substep tree's ├─/└─
-		// branch level. "Open and merge:" sits at the same column as
-		// surrounding "├─ <work>" lines so the eye reads it as part of
-		// the tree.
-		fmt.Fprintf(os.Stderr, "\n   → Open and merge: %s\n", prURL)
+		// Pause the bar so its 100ms auto-render goroutine can't
+		// overwrite the prompt via `\r`. Save cursor at the cleared
+		// spinner line; on success we restore-and-clear there to make
+		// the whole prompt block disappear (auto-hide, same shape as
+		// the YubiKey-touch erase).
+		bar.Pause()
+		fmt.Fprint(os.Stderr, "\033[s")
+		fmt.Fprintf(os.Stderr, "   → Open and merge: %s\n", prURL)
 		fmt.Fprintf(os.Stderr, "     Then press ENTER (Ctrl+C to abort): ")
 
 		if err := readLineCtx(ctx, stdin); err != nil {
 			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
 		}
 
-		releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		// Erase the prompt block (restore cursor + clear to end of
+		// screen) before the spinner resumes — keeps the transcript
+		// clean if verify succeeds; if it fails we'll print an error
+		// below and re-prompt.
+		fmt.Fprint(os.Stderr, "\033[u\033[J")
+		bar.Resume()
+
+		releaseFetchTouch := bar.RequestYubiKeyTouch(
 			"verify PR merge on " + originShortName(repo),
 		)
 		err := retryGitOperation(ctx, "fetch refs to verify PR merge", func() error {

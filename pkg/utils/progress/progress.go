@@ -5,15 +5,33 @@ package progress
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
+
+// pausableWriter wraps an io.Writer with a runtime mute switch. While
+// muted, Write calls report success but discard the bytes — used to
+// silence the progressbar's auto-render goroutine during interactive
+// prompts so the spinner doesn't overwrite the prompt line.
+type pausableWriter struct {
+	inner  io.Writer
+	paused atomic.Bool
+}
+
+func (w *pausableWriter) Write(p []byte) (int, error) {
+	if w.paused.Load() {
+		return len(p), nil
+	}
+	return w.inner.Write(p)
+}
 
 const yubikeyTouchActivePrefix = "👉 Tap YubiKey to "
 
@@ -36,6 +54,7 @@ const yubikeyTouchActivePrefix = "👉 Tap YubiKey to "
 // code and library callers don't have to care.
 type Bar struct {
 	bar         *progressbar.ProgressBar
+	writer      *pausableWriter
 	currentDesc string
 	lastSubstep string
 
@@ -51,16 +70,48 @@ type Bar struct {
 // get a "✓" line of its own — the first Describe call starts the
 // first real step.
 func New(description string) *Bar {
+	pw := &pausableWriter{inner: os.Stderr}
 	bar := progressbar.NewOptions(-1,
-		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionSetWriter(pw),
 		progressbar.OptionSetDescription(description),
 		progressbar.OptionSpinnerType(14),
 		progressbar.OptionClearOnFinish(),
 	)
 	return &Bar{
 		bar:        bar,
+		writer:     pw,
 		hasYubiKey: detectYubiKeyInAgent(),
 	}
+}
+
+// Pause silences the bar's writes to stderr — including the spinner's
+// 100ms auto-render goroutine inside progressbar/v3. Use around
+// interactive stdin prompts so the spinner can't overwrite the prompt
+// line via its `\r`-anchored re-render. Internal state (counters,
+// elapsed time) keeps updating; only the visible output is suppressed.
+//
+// Pair with Resume. Calling Pause clears the spinner line via a direct
+// stderr write so the prompt has a clean line to print into.
+func (b *Bar) Pause() {
+	if b == nil || b.writer == nil {
+		return
+	}
+	b.writer.paused.Store(true)
+	// Bar's own Clear would now be muted by the paused writer. Write
+	// the clear-line + CR escape directly to the un-muted underlying
+	// stderr so the spinner row is visibly cleared before the prompt
+	// prints into it.
+	fmt.Fprint(os.Stderr, "\033[2K\r")
+}
+
+// Resume re-enables the bar's writes. The spinner re-appears on the
+// next render (within ~100ms via the auto-tick goroutine, or sooner
+// if a Substep/Describe call triggers a render).
+func (b *Bar) Resume() {
+	if b == nil || b.writer == nil {
+		return
+	}
+	b.writer.paused.Store(false)
 }
 
 // detectYubiKeyInAgent dials $SSH_AUTH_SOCK and returns true if any
