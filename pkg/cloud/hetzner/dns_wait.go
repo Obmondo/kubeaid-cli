@@ -4,7 +4,6 @@
 package hetzner
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -44,19 +43,16 @@ const dnsTotalTimeout = 5 * time.Minute
 
 
 // WaitForDNSResolution blocks until every fqdn in fqdns resolves to
-// expectedIP through publicResolverAddr, ctx is cancelled, or the
-// operator types 's' + Enter on stdin to skip verification.
+// expectedIP through the OS resolver, ctx is cancelled, or
+// dnsTotalTimeout passes (the wait fails closed — interactive bootstrap
+// can't loop forever on a missing record).
 //
-// Prints per-FQDN status on every poll tick so the operator can see
-// which records are still propagating. Returns nil when all match
-// (the happy path) or when the operator chose to skip; returns
-// ctx.Err() if cancelled (Ctrl+C handled by the caller's signal
-// handler arrives here as context.Canceled).
-//
-// Resolver bypass matters: an operator who runs `dig keycloak.X`
-// locally may see a stale NXDOMAIN cached by their OS / corporate
-// resolver, even though the authoritative zone has the new record.
-// Querying a public resolver directly avoids that false negative.
+// No skip option: bypassing the wait would just push the failure into
+// a later stage (cert-manager's first ACME HTTP-01, NetBird OIDC
+// callback, etc.) where the symptom is harder to diagnose. Better to
+// fail here with a clear "DNS records still not resolving" + cache-
+// flush hint than to half-bootstrap and debug from a downstream pod's
+// 503.
 func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string) error {
 	if len(fqdns) == 0 || expectedIP == "" {
 		return nil
@@ -80,13 +76,9 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	// `nslookup` works fine on the same machine) was confusing.
 	resolver := net.DefaultResolver
 
-	skipCh := make(chan struct{})
-	go watchSkipKey(ctx, skipCh)
-
 	fmt.Println()
-	fmt.Println("Add the following A records to your DNS, then this will continue automatically.")
-	fmt.Printf("Polling every %s, up to %s total; Ctrl+C to abort, 's' + Enter to skip.\n\n",
-		dnsPollInterval, dnsTotalTimeout)
+	fmt.Println("Add the A records shown below to your DNS provider — bootstrap continues automatically once they all resolve.")
+	fmt.Println()
 
 	// Save cursor at the start of the status block — every redraw
 	// restores here + clears to end of screen so the header line +
@@ -133,9 +125,6 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-skipCh:
-			fmt.Println("Skipping DNS verification (operator pressed 's').")
-			return nil
 		case <-time.After(dnsPollInterval):
 		}
 	}
@@ -176,7 +165,7 @@ func renderDNSWaitStatus(attempt, maxAttempts int, elapsed time.Duration, status
 	if remaining < 0 {
 		remaining = 0
 	}
-	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining\n",
+	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining  •  Ctrl+C to abort\n",
 		attempt, maxAttempts,
 		elapsed.Round(time.Second), remaining.Round(time.Second),
 	)
@@ -333,27 +322,3 @@ func asDNSErr(err error, target **net.DNSError) bool {
 	return false
 }
 
-// watchSkipKey closes skipCh when the operator types 's' (case
-// insensitive) on stdin. Returns when ctx is cancelled or when stdin
-// closes.
-//
-// We use line-buffered stdin (the default TTY mode) rather than raw
-// mode: keeps the implementation small and avoids leaving the
-// terminal in a bad state if kubeaid-cli is killed mid-operation.
-// The cost is the operator must press Enter after 's', which is
-// acceptable for a manual skip operation.
-func watchSkipKey(ctx context.Context, skipCh chan<- struct{}) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		if strings.EqualFold(strings.TrimSpace(scanner.Text()), "s") {
-			close(skipCh)
-			return
-		}
-	}
-}
