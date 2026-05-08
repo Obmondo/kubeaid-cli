@@ -80,10 +80,19 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	fmt.Println("Add the following A records to your DNS, then this will continue automatically.")
 	fmt.Printf("Polling every %s; Ctrl+C to abort, 's' + Enter to skip.\n\n", dnsPollInterval)
 
-	// Save cursor at the start of the table block. Each tick restores
-	// cursor + clears to end of screen and re-renders, so the operator
-	// sees one stable table that updates in place.
+	// Save cursor at the start of the table block — every redraw
+	// restores here + clears to end of screen.
 	fmt.Print("\033[s")
+
+	// Render an initial "querying…" table immediately so the operator
+	// gets feedback up front. Without it, the first round of lookups
+	// (up to len(fqdns) * dnsResolveTimeout when records are missing)
+	// leaves the screen looking frozen with just the header text.
+	pending := make([]dnsStatus, len(fqdns))
+	for i, fqdn := range fqdns {
+		pending[i] = dnsStatus{FQDN: fqdn, Pending: true}
+	}
+	fmt.Println(renderDNSStatusTable(pending, expectedIP))
 
 	for {
 		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
@@ -112,9 +121,16 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 // whether to keep polling.
 type dnsStatus struct {
 	FQDN string
-	Got  string // resolved IP; "" when NXDOMAIN
-	Err  error  // non-nil on transport / resolver errors
-	OK   bool   // Got matches the expected IP exactly
+
+	// Pending marks the row as not-yet-queried (only true for the
+	// initial pre-lookup render). Renders as "querying…" with the
+	// neutral cell color, so the operator doesn't see a wall of red
+	// "✗ NXDOMAIN" until we've actually checked.
+	Pending bool
+
+	Got string // resolved IP; "" when NXDOMAIN
+	Err error  // non-nil on transport / resolver errors
+	OK  bool   // Got matches the expected IP exactly
 }
 
 // resolveAll queries every fqdn through resolver and returns one
@@ -169,10 +185,14 @@ func renderDNSStatusTable(statuses []dnsStatus, expectedIP string) string {
 				return headerStyle
 			}
 			if col == 2 { // Status column
-				if statuses[row].OK {
+				switch {
+				case statuses[row].Pending:
+					return cellStyle
+				case statuses[row].OK:
 					return okStyle
+				default:
+					return errStyle
 				}
-				return errStyle
 			}
 			return cellStyle
 		})
@@ -185,6 +205,8 @@ func renderDNSStatusTable(statuses []dnsStatus, expectedIP string) string {
 // linearly.
 func dnsStatusCell(s dnsStatus, expectedIP string) string {
 	switch {
+	case s.Pending:
+		return "querying…"
 	case s.OK:
 		return "✓ " + s.Got
 	case s.Err != nil:
