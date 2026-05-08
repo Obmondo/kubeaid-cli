@@ -4,11 +4,13 @@
 package git
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"log"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -89,6 +91,25 @@ func AddCommitAndPushChanges(ctx context.Context,
 	return commitObject.Hash
 }
 
+// WaitUntilPRMerged blocks until the operator confirms via stdin that
+// they've merged the feature branch into the default branch.
+//
+// The operator sees the PR URL (printed by AddCommitAndPushChanges
+// before this is called), goes to their forge, merges, comes back, and
+// presses ENTER. We then do ONE fetch + ONE commit-presence check to
+// verify the merge actually happened — if it didn't (operator pressed
+// ENTER too early, or merged the wrong branch), we say so and prompt
+// again.
+//
+// Earlier this function polled via a 10-second fetch loop. That meant
+// one YubiKey touch every 10 seconds for as long as the PR sat
+// unmerged — easily 30+ touches if the operator took a few minutes.
+// One touch per ENTER press is far better, and the operator is in
+// control of when it fires.
+//
+// SkipPRWorkflow callers never reach this function — they push directly
+// to the default branch. So this function always runs in interactive
+// mode; no headless variant is needed.
 func WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,
@@ -96,21 +117,26 @@ func WaitUntilPRMerged(ctx context.Context,
 	auth transport.AuthMethod,
 	branchToBeMerged string,
 ) {
+	stdin := bufio.NewReader(os.Stdin)
+
 	for {
-		slog.Info("Waiting for PR to be merged. Sleeping for 10 seconds....",
+		slog.InfoContext(ctx, "Waiting for PR merge",
 			slog.String("from-branch", branchToBeMerged),
 			slog.String("to-branch", defaultBranchName),
 		)
-		select {
-		case <-ctx.Done():
-			assert.AssertErrNil(ctx, ctx.Err(), "Stopped waiting for PR merge")
-		case <-time.After(10 * time.Second):
+		fmt.Fprintf(os.Stderr,
+			"\n→ Merge the PR for branch %q into %q, then press ENTER (Ctrl+C to abort): ",
+			branchToBeMerged, defaultBranchName,
+		)
+
+		if err := readLineCtx(ctx, stdin); err != nil {
+			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
 		}
 
 		releaseFetchTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
-			"check PR merge on " + originShortName(repo),
+			"verify PR merge on " + originShortName(repo),
 		)
-		err := retryGitOperation(ctx, "fetch refs while waiting for PR merge", func() error {
+		err := retryGitOperation(ctx, "fetch refs to verify PR merge", func() error {
 			return repo.FetchContext(ctx, &goGit.FetchOptions{
 				Auth:     auth,
 				RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
@@ -128,15 +154,33 @@ func WaitUntilPRMerged(ctx context.Context,
 		)
 		assert.AssertErrNil(ctx, err, "Failed to get default branch ref")
 
-		commitPresent := isCommitPresentInBranch(
-			repo,
-			commitHash,
-			defaultBranchRef.Hash(),
-		)
-		if commitPresent {
-			slog.Info("Detected branch merged")
+		if isCommitPresentInBranch(repo, commitHash, defaultBranchRef.Hash()) {
+			slog.InfoContext(ctx, "Confirmed PR merged")
 			return
 		}
+
+		fmt.Fprintf(os.Stderr,
+			"  ✗ Commit %s isn't on %q yet. Merge the PR and try again.\n",
+			commitHash.String()[:8], defaultBranchName,
+		)
+	}
+}
+
+// readLineCtx reads one line from r, but cancels and returns ctx.Err()
+// if ctx is cancelled before the read completes (e.g., operator hit
+// Ctrl+C). The blocked stdin read goroutine leaks on cancel — fine,
+// the process is exiting.
+func readLineCtx(ctx context.Context, r *bufio.Reader) error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.ReadString('\n')
+		done <- err
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
 	}
 }
 
