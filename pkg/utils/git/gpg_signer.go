@@ -53,21 +53,39 @@ func (s *gpgAgentSigner) Sign(message io.Reader) ([]byte, error) {
 //
 //   - git config commit.gpgsign == "true" (operator opted in);
 //   - git config user.signingkey is set;
+//   - git config gpg.format is empty or "openpgp" (this signer
+//     doesn't handle ssh-format signatures);
 //   - gpg is on PATH;
-//   - a GPG smartcard is plugged in (`gpg-card status` succeeds).
+//   - a GPG smartcard is plugged in (`gpg --card-status` succeeds).
 //
 // Returns nil otherwise — caller passes nil to leave the commit
-// unsigned. Same shape as the YubiKey-touch hint elsewhere: hardware
-// presence is the trigger, not just configuration. With no card we
-// stay unsigned rather than silently fall back to a software key
-// the operator may not have meant to use for kubeaid-cli's commits.
+// unsigned. With no card we stay unsigned rather than silently fall
+// back to a software key the operator may not have meant to use for
+// kubeaid-cli's commits.
+//
+// When commit.gpgsign IS true but a downstream gate fails, we log
+// at Info level so the operator sees why the commit went through
+// unsigned — debug-only logs hid these "I expected signing, why
+// didn't it sign" cases under the default log level.
 func CommitSigner(ctx context.Context) goGit.Signer {
 	if gitConfigGlobal(ctx, "commit.gpgsign") != "true" {
 		return nil
 	}
+
+	// From here on, the operator has opted into signing — log every
+	// gate failure so they can fix their config without sifting
+	// through debug output.
+	if format := gitConfigGlobal(ctx, "gpg.format"); format != "" && format != "openpgp" {
+		slog.InfoContext(ctx,
+			"commit.gpgsign=true but gpg.format is non-openpgp; this signer only handles openpgp — commits will be unsigned",
+			slog.String("gpg.format", format),
+		)
+		return nil
+	}
 	keyID := gitConfigGlobal(ctx, "user.signingkey")
 	if keyID == "" {
-		slog.DebugContext(ctx, "Skip GPG-signing: user.signingkey unset")
+		slog.InfoContext(ctx,
+			"commit.gpgsign=true but user.signingkey unset; commits will be unsigned")
 		return nil
 	}
 	if _, err := exec.LookPath("gpg"); err != nil {
@@ -78,10 +96,14 @@ func CommitSigner(ctx context.Context) goGit.Signer {
 		return nil
 	}
 	if !gpgCardPresent(ctx) {
-		slog.DebugContext(ctx,
-			"Skip GPG-signing: no GPG smartcard detected (gpg-card status failed)")
+		slog.InfoContext(ctx,
+			"commit.gpgsign=true but no GPG smartcard detected (gpg --card-status failed); commits will be unsigned")
 		return nil
 	}
+
+	slog.InfoContext(ctx, "GPG-signing kubeaid-cli commits",
+		slog.String("user.signingkey", keyID),
+	)
 	return &gpgAgentSigner{keyID: keyID}
 }
 
@@ -100,13 +122,17 @@ func gitConfigGlobal(ctx context.Context, key string) string {
 	return strings.TrimSpace(out.String())
 }
 
-// gpgCardPresent reports whether `gpg-card status` succeeds — i.e.,
-// gpg can talk to a smartcard. Doesn't verify that the configured
-// signingkey actually lives on this card; the signing call itself
-// fails loudly if it doesn't, which is the right place to surface
-// that misconfiguration.
+// gpgCardPresent reports whether `gpg --card-status` succeeds —
+// i.e., gpg can talk to a smartcard. We use the gpg subcommand
+// rather than the standalone `gpg-card` binary because the latter
+// only ships with GnuPG 2.3+; the subcommand has been around since
+// 2.0 and Just Works on the systems kubeaid-cli targets.
+//
+// Doesn't verify that the configured signingkey actually lives on
+// this card; the signing call itself fails loudly if it doesn't,
+// which is the right place to surface that misconfiguration.
 func gpgCardPresent(ctx context.Context) bool {
-	cmd := exec.CommandContext(ctx, "gpg-card", "status")
+	cmd := exec.CommandContext(ctx, "gpg", "--card-status")
 	// Suppress stdout/stderr — we only care about the exit code.
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
