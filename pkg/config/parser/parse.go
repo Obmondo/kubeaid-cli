@@ -131,6 +131,16 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 				AWSSessionToken:    awsCredentials.SessionToken,
 			}
 		}
+
+		// Auto-generate any required-but-blank random secrets
+		// (NetBird keys/passwords, Keycloak admin password etc.)
+		// and persist them back into secrets.yaml. First run mints
+		// fresh values; re-runs are no-ops because the values are
+		// already filled in. See FillMissingSecrets for why
+		// in-secrets.yaml beats both in-cluster get-or-generate
+		// and a separate cache file.
+		err = FillMissingSecrets(ctx)
+		assert.AssertErrNil(ctx, err, "Failed filling missing secrets in secrets.yaml")
 	}
 
 	// Set globals.CloudProvider based on the underlying cloud-provider being used.

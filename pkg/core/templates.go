@@ -15,7 +15,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/keycloak"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -205,39 +204,17 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	if vpnClusterEnabled() {
-		// Cluster client is nil pre-bootstrap; the read-or-generate
-		// helpers fall back to fresh values in that case and the
-		// first SealedSecret sync establishes the stable values.
-		// Re-runs read the persisted values so we never drift from
-		// what's already deployed.
-		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-
-		datastoreKey, err := keycloak.GetOrGenerateBase64Key(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdDatastoreKey,
-			constants.NetBirdDatastoreKeyByteLen,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird datastore encryption key")
-		templateValues.NetBirdDatastoreKey = datastoreKey
-
-		relayPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdRelayPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird relay password")
-		templateValues.NetBirdRelayPassword = relayPwd
-
-		turnPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdTurnPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird TURN password")
-		templateValues.NetBirdTurnPassword = turnPwd
+		// All NetBird random secrets come from secrets.yaml (auto-
+		// generated on first run by parser.FillMissingSecrets, then
+		// stable across re-runs). Replaces the prior
+		// read-or-generate-from-cluster path that produced spurious
+		// SealedSecret diffs whenever the cluster Get failed (timing
+		// window before the SealedSecret reconciled, or kubeconfig
+		// transiently unreachable).
+		netbirdCreds := config.ParsedSecretsConfig.NetBird
+		templateValues.NetBirdDatastoreKey = netbirdCreds.DatastoreEncryptionKey
+		templateValues.NetBirdRelayPassword = netbirdCreds.RelayPassword
+		templateValues.NetBirdTurnPassword = netbirdCreds.TurnPassword
 
 		// postgresDSN is CNPG-generated and only available in-cluster
 		// after the netbird-pgsql Cluster CR is reconciled. On the
@@ -245,7 +222,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		// → render an empty string; bootstrap_cluster.go's
 		// patchNetBirdPostgresDSN step fills it in post-sync. On
 		// re-runs the patched value is read back here so the
-		// SealedSecret in git stays in sync.
+		// SealedSecret in git stays in sync. This is the only field
+		// that genuinely needs a cluster read — kubeaid-cli has no
+		// way to know CNPG's randomly-generated password ahead of
+		// the cluster being up.
+		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+		)
 		templateValues.NetBirdPostgresDSN = readSecretValueOrEmpty(ctx, clusterClient,
 			constants.NamespaceNetBird,
 			constants.SecretNameNetBird,
@@ -255,39 +238,26 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.NetBirdClientID = constants.NetBirdClientID
 		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID
 
-		// netbird-backend OIDC client secret: source depends on mode.
-		//   managed:  read-or-generate; same value passed to
-		//             ReconcileClient so Keycloak stores what NetBird
-		//             expects to envFrom.
-		//   external: operator-supplied via secrets.yaml; we have no
-		//             way to mint or look up the value otherwise. The
-		//             validator (added separately) ensures the field
-		//             is present before bootstrap proceeds.
-		if managedKeycloakEnabled() {
-			nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-				constants.NamespaceNetBird,
-				constants.SecretNameNetBird,
-				constants.SecretKeyNetBirdIDPMgmtSecret,
-			)
-			assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
-			templateValues.NetBirdBackendClientSecret = nbSecret
-		} else if config.ParsedSecretsConfig.Keycloak != nil {
+		// netbird-backend OIDC client secret: source-of-truth is
+		// secrets.yaml.keycloak.netBirdBackendClientSecret in both
+		// modes.
+		//   managed:   FillMissingSecrets generated it; the realm
+		//              reconciler creates the Keycloak client with
+		//              this exact value, and the netbird SealedSecret
+		//              renders the same value here.
+		//   external:  the operator pre-creates the client in their
+		//              external Keycloak and supplies the secret.
+		// Either way: one value, one source, no drift.
+		if config.ParsedSecretsConfig.Keycloak != nil {
 			templateValues.NetBirdBackendClientSecret = config.ParsedSecretsConfig.Keycloak.NetBirdBackendClientSecret
 		}
 	}
 
 	if managedKeycloakEnabled() {
-		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-
-		adminPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceKeycloak,
-			constants.SecretNameKeycloakAdmin,
-			constants.SecretKeyKeycloakPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating Keycloak admin password")
-		templateValues.KeycloakAdminPassword = adminPwd
+		// Same shape as NetBird above — KeycloakAdminPassword is
+		// auto-generated into secrets.yaml on first run and read
+		// directly thereafter.
+		templateValues.KeycloakAdminPassword = config.ParsedSecretsConfig.Keycloak.AdminPassword
 	}
 
 	// Set cloud provider specific values.
