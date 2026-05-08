@@ -11,9 +11,13 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+// obmondoIdentity{Name,Email} is the kubeaid-cli script's git
+// identity — used as the Co-Authored-By trailer when the operator
+// authors, or as the Author of last resort when the operator has
+// no global git user.* configured.
 const (
-	kubeaidScriptName  = "KubeAid Bootstrap Script"
-	kubeaidScriptEmail = "info@obmondo.com"
+	obmondoIdentityName  = "Obmondo"
+	obmondoIdentityEmail = "info@obmondo.com"
 )
 
 // OperatorAttribution returns the Author signature and post-
@@ -22,12 +26,13 @@ const (
 //
 // When the operator has user.name + user.email set in their global
 // git config (~/.gitconfig), the Author is the operator and a
-// Co-Authored-By trailer credits the kubeaid-cli script — same
-// pattern Git uses elsewhere for human-attributed-but-tool-driven
-// commits (and what forges like Gitea/GitHub render as a co-author
-// on the PR page). When global config is missing the script authors
-// directly with no trailer; the trailer would just duplicate the
-// Author line in that case.
+// `Co-Authored-By: Obmondo <info@obmondo.com>` trailer credits the
+// kubeaid-cli script — same pattern Git uses elsewhere for
+// human-attributed-but-tool-driven commits (and what forges like
+// Gitea/GitHub render as a co-author on the PR page). When global
+// config is missing the script authors directly as Obmondo with no
+// trailer; the trailer would just duplicate the Author line in that
+// case.
 //
 // We read GlobalScope only — not Local. kubeaid-cli's commits land
 // in the kubeaid-config repo, which the operator only ever interacts
@@ -42,16 +47,16 @@ func OperatorAttribution(message string) (*object.Signature, string) {
 					Name:  cfg.User.Name,
 					Email: cfg.User.Email,
 					When:  time.Now(),
-				}, message + "\n\nCo-Authored-By: " + kubeaidScriptName +
-					" <" + kubeaidScriptEmail + ">"
+				}, message + "\n\nCo-Authored-By: " + obmondoIdentityName +
+					" <" + obmondoIdentityEmail + ">"
 		}
 	} else {
-		slog.Warn("Failed reading global git config; using KubeAid script identity",
+		slog.Warn("Failed reading global git config; using Obmondo script identity",
 			slog.Any("err", err))
 	}
 	return &object.Signature{
-		Name:  kubeaidScriptName,
-		Email: kubeaidScriptEmail,
+		Name:  obmondoIdentityName,
+		Email: obmondoIdentityEmail,
 		When:  time.Now(),
 	}, message
 }
