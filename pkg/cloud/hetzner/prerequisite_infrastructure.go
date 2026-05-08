@@ -201,42 +201,20 @@ func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.N
 }
 
 // waitForControlPlaneDNS pauses bootstrap until the operator has
-// added the required A records for the cluster's public-facing
-// hostnames — without those records, cert-manager's ACME HTTP-01
-// challenge fails as soon as the keycloakx Ingress syncs, and there
-// is no clean retry.
+// added the A record for the control-plane LB hostname — without
+// it, kubeadm's TLS handshake against the configured endpoint fails
+// at first-boot.
 //
-// The set of FQDNs we wait on depends on what the cluster needs:
-//
-//   - The control-plane LB hostname is always required (every
-//     HCloud-VPN cluster sets it).
-//   - keycloak.dns is added on VPN clusters with managed Keycloak.
-//   - netbird.dns / netbird.stunDNS / netbird.turnDNS are added on
-//     VPN clusters that host NetBird (Coturn answers STUN/TURN at
-//     stun.<base> / turn.<base>; the netbird Android/iOS clients
-//     resolve these to find the relay path). Consolidating the DNS
-//     wait here means the operator does one batch of A records up
-//     front instead of getting a second pause when Keycloak or
-//     NetBird's Ingress syncs.
-//
-// No-op when no FQDNs have been collected (we wouldn't know what to
-// poll).
+// Scope is intentionally JUST the control-plane hostname.
+// keycloak.dns, netbird.dns, stun.dns, turn.dns all point at a
+// SEPARATE ingress LB that doesn't exist yet — Traefik provisions
+// it post-cluster-up. Lumping them in here meant the wait either
+// hung (records pointing at an IP that hadn't been allocated) or
+// passed against the wrong IP (operator pre-pointed everything at
+// the control-plane LB to make the check pass, then had to fix it
+// later anyway). Deferring those records to a post-Traefik check
+// is the correct shape — left as follow-up work.
 func waitForControlPlaneDNS(ctx context.Context, lbPublicIP string) error {
-	cluster := config.ParsedGeneralConfig.Cluster
-
-	fqdns := []string{globals.ControlPlaneHostname}
-	if cluster.Keycloak != nil && cluster.Keycloak.DNS != "" {
-		fqdns = append(fqdns, cluster.Keycloak.DNS)
-	}
-	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
-		fqdns = append(fqdns, cluster.NetBird.DNS)
-		if cluster.NetBird.StunDNS != "" {
-			fqdns = append(fqdns, cluster.NetBird.StunDNS)
-		}
-		if cluster.NetBird.TurnDNS != "" {
-			fqdns = append(fqdns, cluster.NetBird.TurnDNS)
-		}
-	}
-
-	return WaitForDNSResolution(ctx, fqdns, lbPublicIP)
+	return WaitForDNSResolution(ctx,
+		[]string{globals.ControlPlaneHostname}, lbPublicIP)
 }
