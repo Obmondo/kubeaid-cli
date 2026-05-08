@@ -152,6 +152,16 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
 	)
+
+	// AddCommitAndPushChanges returns ZeroHash when the worktree was
+	// already clean — kubeaid-config is up to date, nothing to push,
+	// no noop PR to make the operator merge. Skip the rest of the
+	// dance and surface a clear "already up to date" substep so the
+	// flow still progresses visibly.
+	if commitHash.IsZero() {
+		bar.Substep("kubeaid-config already up to date")
+		return
+	}
 	bar.Substep("Pushed kubeaid-config branch")
 
 	if !args.SkipPRWorkflow {

@@ -40,11 +40,28 @@ func AddCommitAndPushChanges(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed determining git status")
 	slog.InfoContext(ctx, "Determined git status", slog.Any("git-status", status))
 
+	// Skip the whole commit-push-prompt-merge dance when nothing
+	// actually changed. Without this guard, AllowEmptyCommits: true
+	// would create an empty commit, push it, and surface a noop PR
+	// for the operator to merge — exactly the diff-less PR they had
+	// to manually close every re-run after our SealedSecret
+	// idempotency landed. ZeroHash signals "nothing committed" to
+	// the caller; SetupKubeAidConfig short-circuits past
+	// WaitUntilPRMerged on that.
+	if status.IsClean() {
+		slog.InfoContext(ctx, "No changes to commit; skipping push + PR merge")
+		return plumbing.ZeroHash
+	}
+
 	author, attributedMessage := OperatorAttribution(commitMessage)
 	commit, err := workTree.Commit(attributedMessage, &goGit.CommitOptions{
-		Author:            author,
-		Signer:            CommitSigner(ctx),
-		AllowEmptyCommits: true,
+		Author: author,
+		Signer: CommitSigner(ctx),
+		// AllowEmptyCommits stays false (the default) — the
+		// IsClean() guard above is the user-facing check; this is
+		// belt-and-braces in case status reports clean but Commit
+		// disagrees on edge cases (mode-only changes, etc.).
+		AllowEmptyCommits: false,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating git commit")
 
