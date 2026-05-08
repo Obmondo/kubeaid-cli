@@ -97,6 +97,16 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 	} else {
 		assert.AssertErrNil(ctx, err, "Failed cloning repo")
 	}
+
+	// Cache the upstream default branch as a local symbolic ref
+	// (go-git's PlainCloneContext doesn't write refs/remotes/origin/HEAD
+	// itself). Lets GetDefaultBranchName answer from disk on subsequent
+	// calls — saves a remote list-refs round-trip per call, and the
+	// YubiKey touch that goes with it.
+	if head, err := repo.Head(); err == nil {
+		SetRemoteHEADRef(ctx, repo, head.Name().Short())
+	}
+
 	return repo
 }
 
