@@ -139,9 +139,12 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// Install Sealed Secrets.
+	releaseSS := bar.InProgress("Installing Sealed Secrets controller")
 	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
+		releaseSS()
 		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
 	}
+	releaseSS()
 	bar.Substep("Installed Sealed Secrets controller")
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
@@ -150,7 +153,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	})
 
 	// Install and setup ArgoCD.
+	releaseArgoCD := bar.InProgress("Installing and configuring ArgoCD")
 	err := kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
+	releaseArgoCD()
 	assert.AssertErrNil(ctx, err, "Failed installing and setting up ArgoCD")
 	bar.Substep("Installed and configured ArgoCD")
 
@@ -170,7 +175,9 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"secrets",
 	}
 	for _, argoCDApp := range argoCDAppsToBeSynced {
+		release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", argoCDApp))
 		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		release()
 		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
 			slog.String("app", argoCDApp))
 		bar.Substep(fmt.Sprintf("Synced %s ArgoCD app", argoCDApp))

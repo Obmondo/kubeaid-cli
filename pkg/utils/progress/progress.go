@@ -50,6 +50,14 @@ const (
 	// items checked off.
 	substepIndent = "  "
 	substepGlyph  = "✓ "
+
+	// inProgressGlyph fronts a transient "  ↻ <text>" sub-step that
+	// names a long-running step while it's actually running, then
+	// gets erased by the release closure once the work completes
+	// (replaced with a permanent "✓ <text>" via Substep). Different
+	// glyph from substepGlyph so the operator doesn't misread the
+	// transient row as finished work.
+	inProgressGlyph = "↻ "
 )
 
 // completedSubstepStyle dims completed substep rows so the operator's
@@ -231,6 +239,37 @@ func (b *Bar) Substep(text string) {
 		completedSubstepStyle.Render(substepIndent+substepGlyph+text),
 	)
 	b.lastSubstep = text
+}
+
+// InProgress emits a transient "  ↻ <text>" sub-step under the
+// active major-step header for a long-running step that would
+// otherwise look like silent dead time on the spinner — ArgoCD
+// app sync (~30s+ each), Helm install of Sealed Secrets / ArgoCD,
+// kubeaid-config render, etc. The release closure ERASES the line
+// once the step completes; the caller follows up with a
+// permanent "✓ <text>" via Substep so the audit trail still shows
+// the finished work.
+//
+// Pair via `defer bar.InProgress("Syncing X")()` around the
+// long-running call. Same caveat as RequestYubiKeyTouch: the
+// erase assumes no other Substep / InProgress / RequestYubiKeyTouch
+// fires between Request and the closure call, so bracket as
+// tightly as possible.
+func (b *Bar) InProgress(text string) (release func()) {
+	if b == nil || b.bar == nil {
+		return func() {}
+	}
+	prevSubstep := b.lastSubstep
+
+	_ = b.bar.Clear()
+	fmt.Fprintln(os.Stderr, substepIndent+inProgressGlyph+text)
+	b.lastSubstep = inProgressGlyph + text
+
+	return func() {
+		_ = b.bar.Clear()
+		fmt.Fprint(os.Stderr, "\033[F\033[2K\r")
+		b.lastSubstep = prevSubstep
+	}
 }
 
 // RequestYubiKeyTouch emits a transient "👉 Tap YubiKey to <reason>"
