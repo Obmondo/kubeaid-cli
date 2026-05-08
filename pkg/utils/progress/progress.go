@@ -10,7 +10,9 @@ import (
 	"os"
 	"strings"
 	"sync/atomic"
+	"unicode/utf8"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/crypto/ssh/agent"
 
@@ -33,21 +35,46 @@ func (w *pausableWriter) Write(p []byte) (int, error) {
 	return w.inner.Write(p)
 }
 
-const yubikeyTouchActivePrefix = "👉 Tap YubiKey to "
+const (
+	yubikeyTouchActivePrefix = "👉 Tap YubiKey to "
 
-// Bar is a single-line spinner with docker-style "log-up" + a tree
-// of indented sub-steps. The transcript reads as:
+	// majorStepGlyph is the section marker for a major-step header.
+	// Filled circle reads as "section bullet" rather than "completed
+	// outcome" — the major step is the container, individual ✓
+	// substeps inside are the outcomes.
+	majorStepGlyph = "● "
+
+	// substepIndent is what each substep line is prefixed with: two
+	// spaces so the substeps sit visually under the major-step
+	// header, then a "✓ " glyph so completed substeps read as work
+	// items checked off.
+	substepIndent = "  "
+	substepGlyph  = "✓ "
+)
+
+// completedSubstepStyle dims completed substep rows so the operator's
+// eye lands on the spinner / next active block, not on the audit-trail
+// list of finished work. Bold/colored is reserved for active surfaces.
+var completedSubstepStyle = lipgloss.NewStyle().Faint(true)
+
+// majorStepHeaderStyle bolds the "● <step>" header so each section
+// transition reads loud and clear in the transcript.
+var majorStepHeaderStyle = lipgloss.NewStyle().Bold(true)
+
+// Bar is a section-style progress logger. The transcript reads as:
 //
-//	   ├─ Created Network
-//	   ├─ Registered HCloud SSH key
-//	   └─ Created NAT Gateway
-//	✓ Provisioning Hetzner infrastructure
-//	⠴ Detecting Git authentication method  [0s]
+//	● Provisioning Hetzner infrastructure
+//	─────────────────────────────────────
+//	  ✓ Created Hetzner Network
+//	  ✓ Registered HCloud SSH key
+//	  ✓ Created control-plane Load Balancer
+//	⠴   [12s]
 //
-// Major steps log up to "✓ <step>" on transition; sub-steps stream
-// underneath the live spinner as they happen, with the last sub-
-// step before each major-step transition redrawn from "├─" to "└─"
-// so the tree closes correctly.
+// Each major step opens a section: bold "● <step>" header on its own
+// line, then a horizontal rule the same width as the header. Substeps
+// stream below in faint "  ✓ <work>" rows as they complete. The bar's
+// spinner ticks on the line below the section to telegraph "still in
+// the middle of this section".
 //
 // A zero-value Bar{} (returned by FromCtx for contexts with no bar
 // attached) is silently a no-op — every method nil-guards so test
@@ -144,21 +171,22 @@ func detectYubiKeyInAgent() bool {
 	return false
 }
 
-// Describe advances the spinner to the next major step. The new
-// step's header line ("✓ <step>") is printed immediately so any
-// sub-steps that stream below are visually nested under it. When
-// transitioning, the previous step's last sub-step is redrawn from
-// "├─" to "└─" so the tree closes; no separate close line is
-// emitted (the next "✓ <step>" header serves as the implicit
-// boundary).
+// Describe opens a new major-step section. Prints a blank line (when
+// transitioning from a previous section), the bold "● <step>" header,
+// and a horizontal rule whose width matches the header text. Substeps
+// that follow stream below in faint "  ✓ <work>" rows.
 //
 // Top-to-bottom the final transcript reads as:
 //
-//	✓ Provisioning Hetzner infrastructure
-//	   ├─ Created Hetzner Network
-//	   └─ Created NAT Gateway
-//	✓ Creating management cluster
-//	   └─ ...
+//	● Provisioning Hetzner infrastructure
+//	─────────────────────────────────────
+//	  ✓ Created Hetzner Network
+//	  ✓ Created NAT Gateway
+//
+//	● Creating management cluster
+//	──────────────────────────────
+//	  ✓ Cloned kubeaid-config repo
+//	  ⠴   [12s]
 //
 // No-op for repeat Describe calls with the same description.
 func (b *Bar) Describe(description string) {
@@ -168,26 +196,40 @@ func (b *Bar) Describe(description string) {
 	if description == b.currentDesc {
 		return
 	}
+
+	_ = b.bar.Clear()
 	if b.currentDesc != "" {
-		b.closeSubstepTree()
+		// Blank line between sections; the underline is the section's
+		// own opener so we don't need a closing rule on the previous.
+		fmt.Fprintln(os.Stderr)
 	}
 	b.currentDesc = description
-	_ = b.bar.Clear()
-	fmt.Fprintf(os.Stderr, "✓ %s\n", description)
+	b.lastSubstep = ""
+
+	header := majorStepGlyph + description
+	fmt.Fprintln(os.Stderr, majorStepHeaderStyle.Render(header))
+	fmt.Fprintln(os.Stderr, strings.Repeat("─", utf8.RuneCountInString(header)))
+
 	b.refreshCaption()
 	_ = b.bar.Add(1)
 }
 
-// Substep prints "   ├─ <text>" indented under the active major
-// step. Sub-step lines stream in real time; the spinner re-renders
-// underneath them on the next bar update. The last Substep before
-// the next Describe is redrawn as "└─" so the tree closes.
+// Substep prints "  ✓ <text>" in faint style under the active major-
+// step header. Substeps stream below the section's underline as work
+// completes; the bar's spinner re-renders below them on its next tick.
+//
+// Faint styling is applied immediately rather than retroactively
+// (each substep is the audit trail of finished work — there's no
+// "active substep" concept; the bar's spinner is the active surface).
+// Operator's eye scans past the dim list and lands on the spinner.
 func (b *Bar) Substep(text string) {
 	if b == nil || b.bar == nil {
 		return
 	}
 	_ = b.bar.Clear()
-	fmt.Fprintf(os.Stderr, "   ├─ %s\n", text)
+	fmt.Fprintln(os.Stderr,
+		completedSubstepStyle.Render(substepIndent+substepGlyph+text),
+	)
 	b.lastSubstep = text
 }
 
@@ -221,55 +263,43 @@ func (b *Bar) RequestYubiKeyTouch(reason string) (release func()) {
 		return func() {}
 	}
 	prevSubstep := b.lastSubstep
-	b.Substep(yubikeyTouchActivePrefix + reason)
+
+	_ = b.bar.Clear()
+	// Print the touch row directly (NOT through Substep) so it doesn't
+	// get the completed-✓ glyph + faint styling. This is an active
+	// prompt, not finished work — it should look distinct.
+	fmt.Fprintln(os.Stderr, substepIndent+yubikeyTouchActivePrefix+reason)
+	b.lastSubstep = yubikeyTouchActivePrefix + reason
+
 	return func() {
 		_ = b.bar.Clear()
-		// Cursor is at col 0 of the cleared spinner line. Move
-		// up to the "Touching..." substep, blank it; the next
-		// bar render lands the spinner at the now-empty
-		// position so the touch leaves no permanent trace.
-		// Restore the pre-touch lastSubstep so closeSubstepTree's
-		// ├─ → └─ redraw still targets the correct line.
+		// Cursor is at col 0 of the cleared spinner line. Move up
+		// to the "Tap..." row, blank it; the next bar render lands
+		// the spinner at the now-empty position so the touch leaves
+		// no permanent trace. Restore the pre-touch lastSubstep so
+		// any state machinery that consults it sees the right value.
 		fmt.Fprint(os.Stderr, "\033[F\033[2K\r")
 		b.lastSubstep = prevSubstep
 	}
 }
 
-// Finish closes any open sub-step tree and clears the spinner.
-// No final "✓" line is emitted — the last Describe's header
-// already serves as that block's marker.
+// Finish clears the spinner. Substeps are already a flat list under
+// the section header so there's no tree branch to close — the next
+// major-step section's header serves as the implicit boundary.
 func (b *Bar) Finish() {
 	if b == nil || b.bar == nil {
 		return
 	}
-	if b.currentDesc != "" {
-		b.closeSubstepTree()
-		b.currentDesc = ""
-	}
+	b.currentDesc = ""
+	b.lastSubstep = ""
 	_ = b.bar.Finish()
 }
 
-// closeSubstepTree redraws the last sub-step from "├─" to "└─" via
-// ANSI cursor-up + clear-line, so the tree branch closes cleanly
-// before the next major-step block begins. No-op when there were
-// no sub-steps for the current major.
-func (b *Bar) closeSubstepTree() {
-	if b.lastSubstep == "" {
-		return
-	}
-	_ = b.bar.Clear()
-	// Cursor is at the start of the cleared spinner line; the last
-	// sub-step row is one above. Move up, clear it, rewrite as the
-	// closing "└─" branch.
-	fmt.Fprintf(os.Stderr, "\r\033[F\033[K   └─ %s\n", b.lastSubstep)
-	b.lastSubstep = ""
-}
-
-// refreshCaption clears the spinner caption. The major-step
-// header ("✓ <step>") already names the current step at the top
-// of the visible block, and sub-steps fill the middle — repeating
-// the major-step name on the spinner row is redundant noise.
-// Spinner shows only its glyph + elapsed-time counter now.
+// refreshCaption clears the spinner caption. The major-step header
+// ("● <step>") already names the current section at the top of the
+// visible block, and substeps fill the middle — repeating the
+// major-step name on the spinner row is redundant noise. Spinner
+// shows only its glyph + elapsed-time counter now.
 func (b *Bar) refreshCaption() {
 	b.bar.Describe("")
 }
