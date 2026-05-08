@@ -43,7 +43,7 @@ func GetDefaultBranchName(ctx context.Context,
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
-	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch()
+	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch("look up default branch")
 	refs, err := retryGitOperationWithResult(
 		ctx,
 		"list refs for origin remote",

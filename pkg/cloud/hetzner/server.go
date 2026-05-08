@@ -281,7 +281,7 @@ func waitForNATGatewaySSH(ctx context.Context, server *hcloud.Server, privateKey
 	// handshake — agent-routed signatures pause silently for the
 	// touch, and the operator otherwise has no signal that the bar
 	// is waiting on them. No-op when SSH_AUTH_SOCK is unset.
-	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch()
+	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch("SSH into NAT gateway")
 	defer releaseTouchHint()
 
 	for {

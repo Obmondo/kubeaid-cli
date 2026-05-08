@@ -20,7 +20,7 @@ func TestNoopBarIsSafe(t *testing.T) {
 	require.NotPanics(t, func() {
 		b.Describe("step")
 		b.Substep("sub")
-		release := b.RequestYubiKeyTouch()
+		release := b.RequestYubiKeyTouch("test op")
 		release()
 		b.Finish()
 	})
@@ -29,7 +29,7 @@ func TestNoopBarIsSafe(t *testing.T) {
 	require.NotPanics(t, func() {
 		zero.Describe("step")
 		zero.Substep("sub")
-		release := zero.RequestYubiKeyTouch()
+		release := zero.RequestYubiKeyTouch("test op")
 		release()
 		zero.Finish()
 	})

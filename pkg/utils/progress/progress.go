@@ -15,7 +15,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-const yubikeyTouchActiveSubstep = "👉 Touching YubiKey..."
+const yubikeyTouchActivePrefix = "👉 Tap YubiKey to "
 
 // Bar is a single-line spinner with docker-style "log-up" + a tree
 // of indented sub-steps. The transcript reads as:
@@ -140,7 +140,7 @@ func (b *Bar) Substep(text string) {
 	b.lastSubstep = text
 }
 
-// RequestYubiKeyTouch emits a transient "👉 Touching YubiKey..."
+// RequestYubiKeyTouch emits a transient "👉 Tap YubiKey to <reason>"
 // sub-step while the spinner is paused on a hardware-touch SSH
 // signature, then ERASES that line once the SSH op completes —
 // the work sub-step that follows ("Cloned X", "Pushed Y") is the
@@ -149,7 +149,12 @@ func (b *Bar) Substep(text string) {
 // stack of identical "Touched ✓" lines would crowd out the real
 // progress without adding info.
 //
-// Pair via `defer bar.RequestYubiKeyTouch()()` around the actual
+// reason names what the operator is authorizing — "clone repo",
+// "push branch", "fetch updates" — and shows up in the prompt so
+// they know what they're approving. Keep it short (a few words);
+// the prompt is one substep line and shouldn't wrap.
+//
+// Pair via `defer bar.RequestYubiKeyTouch("...")()` around the actual
 // SSH op. Caveat: the erase assumes no other Substep calls fire
 // between Request and the closure call, so bracket as tightly as
 // possible around the op — emitting other sub-steps in between
@@ -160,12 +165,12 @@ func (b *Bar) Substep(text string) {
 // for a hardware touch. Card detection is cached at Bar
 // construction; plugging in the YubiKey mid-bootstrap won't be
 // picked up until next run.
-func (b *Bar) RequestYubiKeyTouch() (release func()) {
+func (b *Bar) RequestYubiKeyTouch(reason string) (release func()) {
 	if b == nil || b.bar == nil || !b.hasYubiKey {
 		return func() {}
 	}
 	prevSubstep := b.lastSubstep
-	b.Substep(yubikeyTouchActiveSubstep)
+	b.Substep(yubikeyTouchActivePrefix + reason)
 	return func() {
 		_ = b.bar.Clear()
 		// Cursor is at col 0 of the cleared spinner line. Move
