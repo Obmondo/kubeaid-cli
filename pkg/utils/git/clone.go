@@ -20,7 +20,6 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // Clones the given git repository, if that isn't already done.
@@ -68,7 +67,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod)
 		CABundle: config.ParsedGeneralConfig.Git.CABundle,
 	}
 
-	defer progress.FromCtx(ctx).RequestYubiKeyTouch("clone " + parsed.Owner + "/" + parsed.Repo)()
+	defer requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repo, authMethod)()
 
 	repo, err := retryGitOperationWithResult(ctx, "clone repository", func() (*goGit.Repository, error) {
 		return goGit.PlainCloneContext(ctx, path, false, opts)
@@ -150,8 +149,8 @@ func initRepo(ctx context.Context,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
 
-	releasePushTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
-		"push init commit to " + originShortName(repo),
+	releasePushTouch := requestTouchIfAuth(ctx,
+		"push init commit to "+originShortName(repo), authMethod,
 	)
 	err = retryGitOperation(ctx, "push init commit", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{

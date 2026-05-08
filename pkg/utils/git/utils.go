@@ -35,6 +35,25 @@ func GetRepoDir(parsedURL *giturl.ParsedURL) string {
 	)
 }
 
+// requestTouchIfAuth returns a touch-release closure that surfaces a
+// "👉 Tap YubiKey to <reason>" sub-step while a git transport op is
+// in flight — but only when authMethod is non-nil. HTTPS-routed
+// operations (CloneRepo nullifies authMethod for HTTPS URLs in
+// clone.go) don't use SSH auth at all, so the YubiKey prompt would be
+// a misleading lie there: the operator's tap can't satisfy a TLS
+// request. Returns a no-op closure in that case.
+//
+// Pair via `defer requestTouchIfAuth(ctx, "...", authMethod)()` around
+// the actual transport call; the underlying RequestYubiKeyTouch is
+// still gated on hasYubiKey, so the touch only renders when there's
+// actually a YubiKey-backed identity loaded in the SSH agent.
+func requestTouchIfAuth(ctx context.Context, reason string, authMethod transport.AuthMethod) func() {
+	if authMethod == nil {
+		return func() {}
+	}
+	return progress.FromCtx(ctx).RequestYubiKeyTouch(reason)
+}
+
 // originShortName returns "owner/repo" for the given repo's origin
 // remote. Used in YubiKey-touch prompts so the operator sees which
 // repository they're authorizing the SSH op against. Falls back to
@@ -124,8 +143,8 @@ func GetDefaultBranchName(ctx context.Context,
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
 
-	releaseListTouch := progress.FromCtx(ctx).RequestYubiKeyTouch(
-		"look up default branch on " + originShortName(repo),
+	releaseListTouch := requestTouchIfAuth(ctx,
+		"look up default branch on "+originShortName(repo), authMethod,
 	)
 	refs, err := retryGitOperationWithResult(
 		ctx,
