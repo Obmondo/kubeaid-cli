@@ -156,20 +156,29 @@ func printStaleCacheHint(w io.Writer, expectedIP string) {
 	fmt.Fprintln(w)
 }
 
-// renderDNSWaitStatus prints the per-tick header (attempt/elapsed/
-// remaining) followed by the lipgloss status table. Wraps both in one
-// helper so the redraw block is a single contiguous write — keeps the
-// cursor save/restore math simple.
+// renderDNSWaitStatus prints the per-tick header (attempt + elapsed +
+// remaining), the lipgloss status table, and a faint bottom hint.
+// All three redraw together each tick so the cursor save/restore math
+// stays simple — restore goes to the line above the header, clear-to-
+// end-of-screen wipes the whole block, then we rewrite from scratch.
+//
+// Ctrl+C lives at the bottom in faint style so it doesn't compete with
+// the timer at the top — matches the PR-merge prompt's hint placement
+// (renderPRMergeBox in pkg/utils/git/pr.go) so operator-facing waits
+// are consistent. Polling here is loop-on-timer rather than wait-for-
+// ENTER like the PR-merge prompt; that's fine because DNS lookups go
+// through the OS resolver and never touch SSH / YubiKey.
 func renderDNSWaitStatus(attempt, maxAttempts int, elapsed time.Duration, statuses []dnsStatus, expectedIP string) {
 	remaining := dnsTotalTimeout - elapsed
 	if remaining < 0 {
 		remaining = 0
 	}
-	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining  •  Ctrl+C to abort\n",
+	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining\n",
 		attempt, maxAttempts,
 		elapsed.Round(time.Second), remaining.Round(time.Second),
 	)
 	fmt.Println(renderDNSStatusTable(statuses, expectedIP))
+	fmt.Println(lipgloss.NewStyle().Faint(true).Render("Press Ctrl+C to abort"))
 }
 
 // dnsStatus is one row of the resolution table — what we asked for vs.
