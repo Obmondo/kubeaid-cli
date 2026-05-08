@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
@@ -20,22 +21,27 @@ import (
 
 // dnsResolveTimeout caps how long a single resolver query can take —
 // keeps the per-tick latency bounded when DNS is unreachable. Each
-// fqdn is queried sequentially, so the worst-case tick takes
-// len(fqdns) * dnsResolveTimeout.
+// fqdn is queried sequentially through each configured resolver, so
+// the worst-case tick takes len(fqdns) * len(resolvers) *
+// dnsResolveTimeout.
 const dnsResolveTimeout = 3 * time.Second
 
 // dnsPollInterval is how long to wait between rechecking the FQDNs
-// when at least one didn't resolve to the expected IP. 5s strikes a
-// balance between operator feedback latency (it's not painful to
-// wait) and not hammering the resolver.
-const dnsPollInterval = 5 * time.Second
+// when at least one didn't resolve to the expected IP. 10s gives
+// the operator time to actually go to their DNS provider, paste the
+// records, and come back without us hammering the resolver in the
+// meantime.
+const dnsPollInterval = 10 * time.Second
 
-// publicResolverAddr is the recursive resolver kubeaid-cli queries
-// instead of the OS's resolver. Hetzner runs their own resolvers; we
-// pick theirs so we're not making the operator's first bootstrap
-// experience also implicitly endorse a third-party resolver. See
-// https://docs.hetzner.com/dns-console/dns/general/recursive-name-servers/.
-const publicResolverAddr = "185.12.64.1:53"
+// dnsTotalTimeout caps the entire wait. Five minutes is enough for
+// most fast-propagating providers (Cloudflare, Route53, Hetzner DNS)
+// plus a generous buffer for the operator to actually paste the
+// records. Past that, we abort the bootstrap with a clear error
+// instead of looping forever — the operator's session is interactive
+// (YubiKey touches), so blocking indefinitely on a missing record is
+// worse than failing fast.
+const dnsTotalTimeout = 5 * time.Minute
+
 
 // WaitForDNSResolution blocks until every fqdn in fqdns resolves to
 // expectedIP through publicResolverAddr, ctx is cancelled, or the
@@ -65,44 +71,63 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	bar.Pause()
 	defer bar.Resume()
 
-	resolver := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: dnsResolveTimeout}
-			return d.DialContext(ctx, network, publicResolverAddr)
-		},
-	}
+	// Use the operator's OS resolver. If they have a stale NXDOMAIN
+	// cached for one of our records, that's a local-cache problem
+	// they need to flush themselves — adding a public-resolver
+	// fallback caused false-negative i/o timeouts on networks that
+	// block egress to 185.12.64.1:53 (corporate firewall, restrictive
+	// VPN), and the symptom (rows stuck on "✗ i/o timeout" while
+	// `nslookup` works fine on the same machine) was confusing.
+	resolver := net.DefaultResolver
 
 	skipCh := make(chan struct{})
 	go watchSkipKey(ctx, skipCh)
 
 	fmt.Println()
 	fmt.Println("Add the following A records to your DNS, then this will continue automatically.")
-	fmt.Printf("Polling every %s; Ctrl+C to abort, 's' + Enter to skip.\n\n", dnsPollInterval)
+	fmt.Printf("Polling every %s, up to %s total; Ctrl+C to abort, 's' + Enter to skip.\n\n",
+		dnsPollInterval, dnsTotalTimeout)
 
-	// Save cursor at the start of the table block — every redraw
-	// restores here + clears to end of screen.
+	// Save cursor at the start of the status block — every redraw
+	// restores here + clears to end of screen so the header line +
+	// table redraw in place rather than scroll.
 	fmt.Print("\033[s")
+
+	maxAttempts := int(dnsTotalTimeout / dnsPollInterval)
+	start := time.Now()
+	deadline := start.Add(dnsTotalTimeout)
 
 	// Render an initial "querying…" table immediately so the operator
 	// gets feedback up front. Without it, the first round of lookups
-	// (up to len(fqdns) * dnsResolveTimeout when records are missing)
+	// (up to len(fqdns) * len(resolvers) * dnsResolveTimeout when
+	// records are missing AND the public resolver is unreachable)
 	// leaves the screen looking frozen with just the header text.
 	pending := make([]dnsStatus, len(fqdns))
 	for i, fqdn := range fqdns {
 		pending[i] = dnsStatus{FQDN: fqdn, Pending: true}
 	}
-	fmt.Println(renderDNSStatusTable(pending, expectedIP))
+	renderDNSWaitStatus(1, maxAttempts, time.Since(start), pending, expectedIP)
 
-	for {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
 
 		fmt.Print("\033[u\033[J")
-		fmt.Println(renderDNSStatusTable(statuses, expectedIP))
+		renderDNSWaitStatus(attempt, maxAttempts, time.Since(start), statuses, expectedIP)
 
 		if allDNSStatusesOK(statuses) {
 			fmt.Println("DNS verified, continuing.")
 			return nil
+		}
+
+		// Bail out cleanly when the deadline is reached after the
+		// last attempt — operator's session is interactive (YubiKey),
+		// so a clear timeout error beats blocking forever. Print the
+		// stale-cache hint to stderr first; if the operator sees the
+		// records in their DNS provider but our resolver still says
+		// NXDOMAIN, a stale local cache is the usual cause.
+		if time.Now().After(deadline) || attempt == maxAttempts {
+			printStaleCacheHint(os.Stderr, expectedIP)
+			return fmt.Errorf("DNS verification timed out after %s", dnsTotalTimeout)
 		}
 
 		select {
@@ -114,6 +139,48 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 		case <-time.After(dnsPollInterval):
 		}
 	}
+	// Unreachable — the loop returns from inside the deadline check.
+	// The compiler can't see that, so spell out the same error.
+	return fmt.Errorf("DNS verification timed out after %s", dnsTotalTimeout)
+}
+
+// printStaleCacheHint writes a short troubleshooting note to w when
+// the wait times out. Two paths cover ~all operator setups:
+//
+//	Linux + systemd-resolved (Ubuntu/Debian/Fedora/Arch defaults)
+//	macOS (mDNSResponder + dscacheutil)
+//
+// We don't try to enumerate every possible setup (nscd, dnsmasq,
+// Unbound, BIND-on-laptop) — those operators know their own resolver
+// and don't need the hint. The two listed cover the muscle-memory
+// case of a freshly-installed records hitting a stale local cache.
+func printStaleCacheHint(w io.Writer, expectedIP string) {
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "DNS records still not resolving to %s.\n\n", expectedIP)
+	fmt.Fprintln(w, "Possible causes:")
+	fmt.Fprintln(w, "  1. The records aren't yet propagated, or are typo'd in your DNS provider.")
+	fmt.Fprintln(w, "  2. Your local resolver has a stale NXDOMAIN cached. Flush it:")
+	fmt.Fprintln(w, "       Linux (systemd-resolved):  sudo resolvectl flush-caches")
+	fmt.Fprintln(w, "       macOS:                     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Fix DNS, then re-run `kubeaid-cli cluster bootstrap`.")
+	fmt.Fprintln(w)
+}
+
+// renderDNSWaitStatus prints the per-tick header (attempt/elapsed/
+// remaining) followed by the lipgloss status table. Wraps both in one
+// helper so the redraw block is a single contiguous write — keeps the
+// cursor save/restore math simple.
+func renderDNSWaitStatus(attempt, maxAttempts int, elapsed time.Duration, statuses []dnsStatus, expectedIP string) {
+	remaining := dnsTotalTimeout - elapsed
+	if remaining < 0 {
+		remaining = 0
+	}
+	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining\n",
+		attempt, maxAttempts,
+		elapsed.Round(time.Second), remaining.Round(time.Second),
+	)
+	fmt.Println(renderDNSStatusTable(statuses, expectedIP))
 }
 
 // dnsStatus is one row of the resolution table — what we asked for vs.
