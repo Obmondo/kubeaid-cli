@@ -11,7 +11,6 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	goGit "github.com/go-git/go-git/v5"
@@ -76,16 +75,12 @@ func AddCommitAndPushChanges(ctx context.Context,
 	)
 
 	// When we didn't push the changes to the default branch, and rather to a feature branch,
-	// prompt the user to create a PR against, and merge those changes into the default branch.
+	// log the create-PR URL so the operator has it in their bootstrap log. WaitUntilPRMerged
+	// also surfaces it at the interactive prompt; the slog line here gives a permanent record.
 	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
 	if branch != defaultBranchName {
-		createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-			strings.TrimSuffix(kubeaidConfigFork.ParsedURL.HTTPCloneURL(), ".git"),
-			kubeaidConfigFork.ParsedURL.Owner, kubeaidConfigFork.ParsedURL.Repo,
-			branch,
-		)
-
-		slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", createPRURL))
+		slog.InfoContext(ctx, "Create and merge PR please",
+			slog.String("URL", BuildPRCompareURL(repo, defaultBranchName, branch)))
 	}
 
 	return commitObject.Hash
@@ -118,16 +113,15 @@ func WaitUntilPRMerged(ctx context.Context,
 	branchToBeMerged string,
 ) {
 	stdin := bufio.NewReader(os.Stdin)
+	prURL := BuildPRCompareURL(repo, defaultBranchName, branchToBeMerged)
 
 	for {
 		slog.InfoContext(ctx, "Waiting for PR merge",
 			slog.String("from-branch", branchToBeMerged),
 			slog.String("to-branch", defaultBranchName),
 		)
-		fmt.Fprintf(os.Stderr,
-			"\n→ Merge the PR for branch %q into %q, then press ENTER (Ctrl+C to abort): ",
-			branchToBeMerged, defaultBranchName,
-		)
+		fmt.Fprintf(os.Stderr, "\n→ Open and merge: %s\n", prURL)
+		fmt.Fprintf(os.Stderr, "  Then press ENTER (Ctrl+C to abort): ")
 
 		if err := readLineCtx(ctx, stdin); err != nil {
 			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")

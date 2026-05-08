@@ -52,6 +52,41 @@ func originShortName(repo *goGit.Repository) string {
 	return parsed.Owner + "/" + parsed.Repo
 }
 
+// BuildPRCompareURL returns a clickable "create PR" URL for the given
+// repo's origin, comparing defaultBranch (base) against featureBranch
+// (head). Format is `<https-base>/compare/<base>...<head>`, which is
+// what GitHub, Gitea, and most other forges accept for a same-repo
+// compare page. kubeaid-cli always pushes the feature branch to the
+// operator's own config repo (head == base repo), so we never need
+// the cross-fork URL form.
+//
+// Panics on internal errors (origin remote unreadable, malformed URL).
+// In practice these are unreachable: callers always invoke this after
+// successfully pushing to origin, so origin must be readable and well-
+// formed. A panic surfaces the bug fast instead of silently degrading
+// to an empty URL the operator can't click.
+//
+// (Aside: some forges support push options like
+// `git push -o merge_request.create` (GitLab) to open the PR
+// automatically, but GitHub doesn't, so we just print the URL and let
+// the operator click it.)
+func BuildPRCompareURL(repo *goGit.Repository, defaultBranch, featureBranch string) string {
+	remote, err := repo.Remote(goGit.DefaultRemoteName)
+	if err != nil {
+		panic("BuildPRCompareURL: get origin remote: " + err.Error())
+	}
+	if len(remote.Config().URLs) == 0 {
+		panic("BuildPRCompareURL: origin remote has no URLs")
+	}
+	originURL := remote.Config().URLs[0]
+	parsed, err := giturl.Parse(originURL)
+	if err != nil {
+		panic("BuildPRCompareURL: parse origin URL " + originURL + ": " + err.Error())
+	}
+	base := strings.TrimSuffix(parsed.HTTPCloneURL(), ".git")
+	return base + "/compare/" + defaultBranch + "..." + featureBranch
+}
+
 // ParseURL is a thin wrapper over giturl.Parse, kept here so callers
 // in the git package can use the shorter `git.ParseURL` name and to
 // preserve the previous package layout.
