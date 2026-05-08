@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: alertmanager-main
   namespace: monitoring
+  labels:
+    kubeaid.io/managed-by: kubeaid
 type: Opaque
 
 stringData:

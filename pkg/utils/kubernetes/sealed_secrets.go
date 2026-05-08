@@ -4,13 +4,18 @@
 package kubernetes
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 
 	sealedSecretsV1Aplha1 "github.com/bitnami-labs/sealed-secrets/pkg/apis/sealedsecrets/v1alpha1"
 	"github.com/bitnami-labs/sealed-secrets/pkg/kubeseal"
@@ -96,64 +101,144 @@ func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFact
 
 // GenerateSealedSecret takes the path to a Kubernetes Secret file. It replaces the contents of
 // that file by generating the corresponding Sealed Secret.
+//
+// Reads the plaintext from disk into a buffer, encrypts via the shared
+// sealPlaintextToBytes helper, atomically writes the sealed YAML back
+// in a single op. The buffer-and-write pattern means there's no
+// transient half-written file on disk — either the original plaintext
+// is there or the sealed output is, never both / neither.
 func GenerateSealedSecret(ctx context.Context, secretFilePath string) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("path", secretFilePath),
 	})
 
-	// Create Sealed Secrets controller client configuration.
-	kubesealClientConfig := newKubesealClientConfigFn()
+	plaintextBytes, err := os.ReadFile(secretFilePath)
+	if err != nil {
+		return fmt.Errorf("reading secret file: %w", err)
+	}
+	sealedBytes, err := sealPlaintextToBytes(ctx, plaintextBytes)
+	if err != nil {
+		return err
+	}
+	if err := renameio.WriteFile(secretFilePath, sealedBytes, 0o600); err != nil {
+		return fmt.Errorf("atomically replacing secret file with sealed secret: %w", err)
+	}
+	return nil
+}
 
-	// Load the Sealed Secrets controller's public key.
+// kubeaidHashHeaderPrefix is the leading-line marker we prepend to every
+// kubeaid-cli-generated SealedSecret YAML. The value after the prefix is
+// the sha256 hex of the rendered plaintext input. SealIfPlaintextChanged
+// reads it on subsequent runs to short-circuit kubeseal regeneration when
+// the plaintext hasn't changed — kubeseal uses a fresh AES key + nonce
+// per Secret, so naive "always re-encrypt" produces git-diff noise on
+// every re-run even when the underlying values are identical.
+const kubeaidHashHeaderPrefix = "# kubeaid-sha256: "
+
+// SealIfPlaintextChanged converts plaintextBytes to a SealedSecret YAML at
+// destinationFilePath — but only when the file's existing kubeaid-sha256
+// header doesn't already match the hash of plaintextBytes. On a cache hit
+// (existing header matches), leaves the file untouched: no kubeseal call,
+// no rewrite, no git diff.
+//
+// On cache miss (header missing, header mismatched, or no file yet),
+// runs kubeseal in memory, prepends the new hash header to the sealed
+// bytes, and writes the result atomically in a single op via renameio —
+// the plaintext never lands on disk and there's no transient half-
+// written file the operator could trip over mid-bootstrap.
+//
+// The header is a YAML comment so the sealed-secrets-controller's
+// reconciler doesn't see it; it's purely a kubeaid-cli-side cache key
+// that happens to live inside the sealed-secret artifact file. Comment
+// vs annotation tradeoff: comment doesn't propagate to the cluster-side
+// Secret on decrypt, doesn't require post-process YAML manipulation,
+// and is one prepended line vs ~30 LOC of structural edits.
+func SealIfPlaintextChanged(ctx context.Context,
+	destinationFilePath string,
+	plaintextBytes []byte,
+) error {
+	newHash := sha256Hex(plaintextBytes)
+
+	if existingHash, err := readKubeaidHashHeader(destinationFilePath); err == nil && existingHash == newHash {
+		slog.InfoContext(ctx, "Sealed secret plaintext unchanged, skipping re-encryption",
+			slog.String("path", destinationFilePath),
+		)
+		return nil
+	}
+
+	sealedBytes, err := sealPlaintextToBytes(ctx, plaintextBytes)
+	if err != nil {
+		return err
+	}
+	header := []byte(kubeaidHashHeaderPrefix + newHash + "\n")
+	out := make([]byte, 0, len(header)+len(sealedBytes))
+	out = append(out, header...)
+	out = append(out, sealedBytes...)
+	return renameio.WriteFile(destinationFilePath, out, 0o600)
+}
+
+// sealPlaintextToBytes runs kubeseal against plaintextBytes and returns
+// the sealed-secret YAML bytes. Centralizes the kubeseal-client setup
+// (load the controller's public key, build a sealing client config,
+// call sealFn) so both GenerateSealedSecret and SealIfPlaintextChanged
+// can produce sealed output without duplicating the wiring or paying
+// the cost of a temp file on disk.
+func sealPlaintextToBytes(ctx context.Context, plaintextBytes []byte) ([]byte, error) {
+	kubesealClientConfig := newKubesealClientConfigFn()
 
 	certReader, err := openCertFn(ctx, kubesealClientConfig,
 		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, "",
 	)
 	if err != nil {
-		return fmt.Errorf("failed reading sealed secrets controller's certificate: %w", err)
+		return nil, fmt.Errorf("reading sealed secrets controller's certificate: %w", err)
 	}
 	defer certReader.Close()
 
 	publicKey, err := parseKeyFn(certReader)
 	if err != nil {
-		return fmt.Errorf("failed retrieving the sealed secrets controller's public key: %w", err)
+		return nil, fmt.Errorf("retrieving sealed secrets controller's public key: %w", err)
 	}
 
-	// Open the file, from where KubeSeal will read the secret.
-	secretFile, err := os.Open(secretFilePath)
-	if err != nil {
-		return fmt.Errorf("failed opening secret file: %w", err)
-	}
-	defer secretFile.Close()
-
-	// Open the file, to where KubeSeal will write the sealed-secret.
-	//
-	// Notice, that it's the same file.
-	// Behind the scenes, a temporary file is created, where kubeseal will write the Sealed Secret.
-	// Contents of the Kubernetes Secret file will then be replaced with that of the temporary
-	// Sealed Secret file.
-	sealedSecretFile, err := renameTempFileFn("", secretFilePath)
-	if err != nil {
-		return fmt.Errorf("failed creating temporary sealed-secret file: %w", err)
-	}
-
-	// Encrypt the secret file.
+	var sealedBuf bytes.Buffer
 	if err := sealFn(kubesealClientConfig,
 		"yaml",
-		secretFile,
-		sealedSecretFile,
+		bytes.NewReader(plaintextBytes),
+		&sealedBuf,
 		publicKey,
 		sealedSecretsV1Aplha1.DefaultScope,
 	); err != nil {
-		if cleanupErr := sealedSecretFile.Cleanup(); cleanupErr != nil {
-			return fmt.Errorf("failed encrypting secret file: %w (cleanup also failed: %v)", err, cleanupErr)
-		}
-		return fmt.Errorf("failed encrypting secret file: %w", err)
+		return nil, fmt.Errorf("encrypting secret: %w", err)
 	}
+	return sealedBuf.Bytes(), nil
+}
 
-	if err := sealedSecretFile.CloseAtomicallyReplace(); err != nil {
-		return fmt.Errorf("failed atomically replacing secret file with sealed secret: %w", err)
+// sha256Hex returns the lowercase-hex sha256 of b. Wraps the awkward
+// sha256.Sum256 + hex.EncodeToString pair so call sites read linearly.
+func sha256Hex(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// readKubeaidHashHeader returns the hex hash from a "# kubeaid-sha256:
+// <hex>" header on the first line of path, or "" when there is no such
+// header (legacy file from before this code shipped, hand-edited file,
+// or a corrupt header). Returns the underlying error only when the file
+// itself can't be opened — a missing-or-malformed header is a cache miss,
+// not a failure.
+func readKubeaidHashHeader(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
 	}
+	defer f.Close()
 
-	return nil
+	scanner := bufio.NewScanner(f)
+	if !scanner.Scan() {
+		return "", scanner.Err()
+	}
+	line := scanner.Text()
+	if !strings.HasPrefix(line, kubeaidHashHeaderPrefix) {
+		return "", nil
+	}
+	return strings.TrimPrefix(line, kubeaidHashHeaderPrefix), nil
 }

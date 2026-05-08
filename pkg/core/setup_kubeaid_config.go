@@ -211,21 +211,40 @@ func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *Templa
 
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid
 // config repository.
+//
+// Renders each Secret template to a buffer (not directly to disk) and hands the
+// plaintext bytes to SealIfPlaintextChanged. That call short-circuits the
+// kubeseal regeneration when the rendered plaintext matches the kubeaid-sha256
+// header on the existing sealed file — kubeseal uses non-deterministic
+// encryption (fresh AES key + nonce per Secret), so without the cache every
+// re-run produces fresh ciphertext and a noisy PR full of identical-by-meaning
+// sealed-secret diffs.
 func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
-	// Get Secret templates.
 	embeddedTemplateNames := getEmbeddedSecretTemplateNames()
 
-	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
 		destinationFilePath := path.Join(
 			clusterDir,
 			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
 		)
-		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 
-		// Encrypt the Secret to a Sealed Secret.
-		if err := kubernetes.GenerateSealedSecret(ctx, destinationFilePath); err != nil {
-			assert.AssertErrNil(ctx, err, "Failed generating sealed secret")
+		ctxWithPath := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+			slog.String("path", destinationFilePath),
+		})
+
+		err := utils.CreateIntermediateDirsForFile(destinationFilePath)
+		assert.AssertErrNil(ctxWithPath, err,
+			"Failed creating intermediate dirs",
+		)
+
+		plaintextBytes := templates.ParseAndExecuteTemplate(ctxWithPath,
+			&KubeaidConfigFileTemplates,
+			path.Join("templates/", embeddedTemplateName),
+			templateValues,
+		)
+
+		if err := kubernetes.SealIfPlaintextChanged(ctxWithPath, destinationFilePath, plaintextBytes); err != nil {
+			assert.AssertErrNil(ctxWithPath, err, "Failed generating sealed secret")
 		}
 	}
 }

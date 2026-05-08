@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: netbird
   namespace: netbird
+  labels:
+    kubeaid.io/managed-by: kubeaid
 type: Opaque
 stringData:
   idpClientID: {{ .NetBirdClientID }}

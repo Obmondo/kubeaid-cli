@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: hetzner-ssh-keypair
   namespace: {{ .CAPIClusterNamespace }}
+  labels:
+    kubeaid.io/managed-by: kubeaid
 stringData:
   sshkey-name: {{ .HetznerConfig.SSHKeyPair.Name }}
   ssh-privatekey: |
