@@ -317,11 +317,17 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case hetznerConfig.Mode == constants.HetznerModeBareMetal:
 			templateValues.ControlPlaneEndpoint = hetznerConfig.ControlPlane.BareMetal.Endpoint.Host
 
-		// HCloud / Hetzner hybrid cluster with a VPN cluster. The
-		// control-plane LB is pre-provisioned; endpoint is the
-		// hostname when configured (clients resolve via CoreDNS to
-		// the LB private IP), else the private IP directly.
-		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && (hetznerConfig.HCloudVPNCluster != nil)):
+		// HCloud / Hetzner hybrid clusters where kubeaid-cli pre-
+		// provisions the control-plane LB. Endpoint is the hostname
+		// when configured (clients resolve via CoreDNS to the LB
+		// private IP), else the private IP directly. Two cases land
+		// here:
+		//   - cluster.type=vpn: this cluster IS the VPN — public LB.
+		//   - HCloudVPNCluster set: workload connecting to a VPN —
+		//     private LB sitting behind NetBird.
+		// Workload clusters not on a VPN don't pre-provision and
+		// fall through (CAPI handles their LB lifecycle on its own).
+		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned()):
 			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
 			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
 			templateValues.ControlPlaneExtraCertSANs = hetznerConfig.ControlPlane.HCloud.LoadBalancer.ExtraCertSANs
@@ -561,13 +567,38 @@ func shouldValidateOIDCNow() bool {
 // hcloudControlPlaneEndpointSet reports whether kubeaid-cli should
 // render the cluster-side coredns-custom ConfigMap for resolving
 // the apiserver endpoint. True only when the operator configured
-// loadBalancer.endpoint on an HCloud control-plane.
+// loadBalancer.endpoint AND the LB has been pre-provisioned (i.e.,
+// globals.ControlPlaneLBPrivateIP is populated). Without the IP, the
+// hosts block would render empty and is useless.
 func hcloudControlPlaneEndpointSet() bool {
 	h := config.ParsedGeneralConfig.Cloud.Hetzner
 	if h == nil || h.ControlPlane.HCloud == nil {
 		return false
 	}
-	return h.ControlPlane.HCloud.LoadBalancer.Endpoint != ""
+	if h.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+		return false
+	}
+	return globals.ControlPlaneLBPrivateIP != ""
+}
+
+// hetznerControlPlaneLBPreProvisioned reports whether kubeaid-cli
+// pre-creates the HCloud control-plane LB (so globals.ControlPlaneLB*
+// are populated by template-render time). Mirrors the Hetzner-side
+// gate in prerequisite_infrastructure.go's shouldPreCreateControlPlaneLB:
+//
+//	cluster.type=vpn        — this cluster IS the VPN (public LB).
+//	HCloudVPNCluster set    — workload connecting to VPN (private LB).
+//
+// Used in getTemplateValues to decide whether to populate
+// ControlPlaneEndpoint / ControlPlaneLB* from globals vs. fall through
+// to the default (CAPI-managed) path.
+func hetznerControlPlaneLBPreProvisioned() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	h := config.ParsedGeneralConfig.Cloud.Hetzner
+	if h == nil {
+		return false
+	}
+	return cluster.Type == constants.ClusterTypeVPN || h.HCloudVPNCluster != nil
 }
 
 // teleportAgentEnabled reports whether the teleport-kube-agent ArgoCD App

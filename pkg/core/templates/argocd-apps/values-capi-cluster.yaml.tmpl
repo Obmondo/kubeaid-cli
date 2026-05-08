@@ -111,16 +111,19 @@ hetzner:
   controlPlane:
     regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
-    {{/* On HCloud-VPN clusters kubeaid-cli pre-provisions the control-plane LB
-         before CAPI starts. The chart consumes:
+    {{/* When kubeaid-cli pre-provisions the control-plane LB (cluster.type=vpn,
+         or workload connecting to an existing HCloudVPNCluster), the chart
+         consumes the pre-created LB instead of letting CAPI auto-create one:
            - endpoint.host    : kubeadm controlPlaneEndpoint, kubeconfig server
            - extraCertSANs    : merged with endpoint.host into kubeadm's
              apiServer.certSANs so clients hitting mesh-side hostnames (e.g.
              NetBird-form names) don't trip x509 cert-name mismatches.
            - loadBalancer.privateIP / bootstrapPublicIP : used in a postKubeadmCommand
-             that patches kube-system/coredns to resolve the endpoint to both IPs. */}}
+             that patches kube-system/coredns to resolve the endpoint to both IPs.
+         For workload-not-on-VPN clusters this block is skipped and CAPI
+         handles LB lifecycle on its own. */}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
+    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
     {{- if .ControlPlaneExtraCertSANs }}
