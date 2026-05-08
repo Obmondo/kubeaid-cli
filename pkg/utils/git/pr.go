@@ -43,6 +43,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	author, attributedMessage := OperatorAttribution(commitMessage)
 	commit, err := workTree.Commit(attributedMessage, &goGit.CommitOptions{
 		Author:            author,
+		Signer:            CommitSigner(ctx),
 		AllowEmptyCommits: true,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating git commit")

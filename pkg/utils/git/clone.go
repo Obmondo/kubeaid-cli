@@ -344,6 +344,7 @@ func initRepo(ctx context.Context,
 	author, attributedMessage := OperatorAttribution("chore : init")
 	_, err = workTree.Commit(attributedMessage, &goGit.CommitOptions{
 		Author:            author,
+		Signer:            CommitSigner(ctx),
 		AllowEmptyCommits: true,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
