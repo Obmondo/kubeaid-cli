@@ -12,6 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
+
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
@@ -54,10 +57,10 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	}
 
 	// Pause the bar's spinner so its 100ms auto-render goroutine can't
-	// \r-overwrite our per-FQDN status lines (the spinner anchors at
-	// col 0 of the cursor's current line; without pausing, ticks
-	// scribble "⠋ [16s]" prefixes onto our output). Resume on exit so
-	// the next bootstrap step picks up a live spinner.
+	// \r-overwrite our table rows (the spinner anchors at col 0 of the
+	// cursor's current line; without pausing, ticks scribble "⠋ [16s]"
+	// across the table). Resume on exit so the next bootstrap step
+	// picks up a live spinner.
 	bar := progress.FromCtx(ctx)
 	bar.Pause()
 	defer bar.Resume()
@@ -73,18 +76,22 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	skipCh := make(chan struct{})
 	go watchSkipKey(ctx, skipCh)
 
-	printDNSWaitHeader(fqdns, expectedIP)
+	fmt.Println()
+	fmt.Println("Add the following A records to your DNS, then this will continue automatically.")
+	fmt.Printf("Polling every %s; Ctrl+C to abort, 's' + Enter to skip.\n\n", dnsPollInterval)
 
-	// Save cursor at the start of the per-tick status block. Each
-	// iteration restores cursor + clears to end of screen, so the
-	// rewrite happens in place — the operator sees one stable status
-	// table that updates, not a wall of accumulating per-tick lines.
+	// Save cursor at the start of the table block. Each tick restores
+	// cursor + clears to end of screen and re-renders, so the operator
+	// sees one stable table that updates in place.
 	fmt.Print("\033[s")
 
 	for {
+		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
+
 		fmt.Print("\033[u\033[J")
-		ok := checkAllResolve(ctx, resolver, fqdns, expectedIP)
-		if ok {
+		fmt.Println(renderDNSStatusTable(statuses, expectedIP))
+
+		if allDNSStatusesOK(statuses) {
 			fmt.Println("DNS verified, continuing.")
 			return nil
 		}
@@ -100,41 +107,101 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	}
 }
 
-func printDNSWaitHeader(fqdns []string, expectedIP string) {
-	fmt.Println()
-	fmt.Println("Add the following A records to your DNS, then this will continue automatically:")
-	for _, fqdn := range fqdns {
-		fmt.Printf("  %-40s A   %s\n", fqdn, expectedIP)
-	}
-	fmt.Println()
-	fmt.Printf("Polling every %s; Ctrl+C to abort, 's' + Enter to skip.\n", dnsPollInterval)
-	fmt.Println()
+// dnsStatus is one row of the resolution table — what we asked for vs.
+// what came back. Used both to render the lipgloss table and to decide
+// whether to keep polling.
+type dnsStatus struct {
+	FQDN string
+	Got  string // resolved IP; "" when NXDOMAIN
+	Err  error  // non-nil on transport / resolver errors
+	OK   bool   // Got matches the expected IP exactly
 }
 
-// checkAllResolve queries every fqdn and prints its current
-// resolution. Returns true when every fqdn resolves to expectedIP.
-// One miss (NXDOMAIN, wrong IP, query error) is enough to return
-// false — the loop will retry on the next tick.
-func checkAllResolve(ctx context.Context, resolver *net.Resolver, fqdns []string, expectedIP string) bool {
-	allOK := true
+// resolveAll queries every fqdn through resolver and returns one
+// dnsStatus per fqdn. Pure (besides DNS I/O) — separated from rendering
+// so the table renderer can be unit-tested without network.
+func resolveAll(ctx context.Context, resolver *net.Resolver, fqdns []string, expectedIP string) []dnsStatus {
+	out := make([]dnsStatus, 0, len(fqdns))
 	for _, fqdn := range fqdns {
 		got, err := lookupA(ctx, resolver, fqdn)
-		switch {
-		case err != nil:
-			fmt.Printf("  %-40s %s\n", fqdn, "lookup failed: "+err.Error())
-			allOK = false
-		case got == "":
-			fmt.Printf("  %-40s NXDOMAIN\n", fqdn)
-			allOK = false
-		case got != expectedIP:
-			fmt.Printf("  %-40s %s (expected %s)\n", fqdn, got, expectedIP)
-			allOK = false
-		default:
-			fmt.Printf("  %-40s %s ✓\n", fqdn, got)
+		out = append(out, dnsStatus{
+			FQDN: fqdn,
+			Got:  got,
+			Err:  err,
+			OK:   err == nil && got == expectedIP,
+		})
+	}
+	return out
+}
+
+func allDNSStatusesOK(statuses []dnsStatus) bool {
+	for _, s := range statuses {
+		if !s.OK {
+			return false
 		}
 	}
-	fmt.Println()
-	return allOK
+	return true
+}
+
+// renderDNSStatusTable lays the dnsStatus rows out as a lipgloss table
+// with a rounded border (same visual style as the K8s profile picker).
+// The Status column is colored — green when the row's OK, red
+// otherwise — so the operator can scan a long table at a glance.
+func renderDNSStatusTable(statuses []dnsStatus, expectedIP string) string {
+	headers := []string{"FQDN", "Expected A", "Status"}
+
+	rows := make([][]string, 0, len(statuses))
+	for _, s := range statuses {
+		rows = append(rows, []string{s.FQDN, expectedIP, dnsStatusCell(s, expectedIP)})
+	}
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	cellStyle := lipgloss.NewStyle().Padding(0, 1)
+	okStyle := cellStyle.Foreground(lipgloss.Color("42"))    // green
+	errStyle := cellStyle.Foreground(lipgloss.Color("203"))  // red
+
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		Headers(headers...).
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return headerStyle
+			}
+			if col == 2 { // Status column
+				if statuses[row].OK {
+					return okStyle
+				}
+				return errStyle
+			}
+			return cellStyle
+		})
+
+	return t.Render()
+}
+
+// dnsStatusCell formats a single Status-column cell. Keeps the
+// branching out of renderDNSStatusTable so the rendering loop reads
+// linearly.
+func dnsStatusCell(s dnsStatus, expectedIP string) string {
+	switch {
+	case s.OK:
+		return "✓ " + s.Got
+	case s.Err != nil:
+		msg := s.Err.Error()
+		// Lookup errors on net.DNSError include the resolver lookup
+		// path (e.g., "lookup foo.example.com: i/o timeout") which
+		// duplicates the FQDN already in the first column. Strip
+		// that prefix so the cell stays readable.
+		if i := strings.Index(msg, ": "); i >= 0 && strings.HasPrefix(msg, "lookup ") {
+			msg = msg[i+2:]
+		}
+		return "✗ " + msg
+	case s.Got == "":
+		return "✗ NXDOMAIN"
+	default:
+		return "✗ " + s.Got + " (expected " + expectedIP + ")"
+	}
 }
 
 // lookupA returns the first IPv4 A record for fqdn through the given
