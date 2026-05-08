@@ -13,6 +13,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	goGit "github.com/go-git/go-git/v5"
 	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -129,8 +130,8 @@ func WaitUntilPRMerged(ctx context.Context,
 		// the YubiKey-touch erase).
 		bar.Pause()
 		fmt.Fprint(os.Stderr, "\033[s")
-		fmt.Fprintf(os.Stderr, "   → Open and merge: %s\n", prURL)
-		fmt.Fprintf(os.Stderr, "     Then press ENTER (Ctrl+C to abort): ")
+		fmt.Fprintln(os.Stderr, renderPRMergeBox(prURL))
+		fmt.Fprint(os.Stderr, "> ")
 
 		if err := readLineCtx(ctx, stdin); err != nil {
 			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
@@ -213,4 +214,36 @@ func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plum
 	}
 
 	return false
+}
+
+// renderPRMergeBox lays the PR-merge prompt out as a lipgloss bordered
+// box with the same rounded-border style as the K8s profile picker and
+// DNS-wait table — keeps the operator-facing surfaces visually
+// consistent. Inside the box: a bold action header, the URL on its
+// own line in cyan + underlined so iTerm2/gnome-terminal/Alacritty
+// auto-detect it as clickable, and a faint hint line at the bottom.
+//
+// The caller prints '> ' below the rendered box; that's where the
+// operator's ENTER lands. On success the whole block (box + prompt
+// row + typed input) is erased via the existing \033[u\033[J
+// auto-hide.
+func renderPRMergeBox(prURL string) string {
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	urlStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")). // bright blue
+		Underline(true)
+	hintStyle := lipgloss.NewStyle().Faint(true)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		headerStyle.Render("Open and merge in your browser:"),
+		"  "+urlStyle.Render(prURL),
+		"",
+		hintStyle.Render("Press ENTER once merged  •  Ctrl+C to abort"),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Render(content)
 }
