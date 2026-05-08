@@ -221,16 +221,26 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// When using ClusterAPI to provision the main cluster.
 	if kubernetes.UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
+		releaseCAPIOp := bar.InProgress("Syncing cluster-api-operator ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		releaseCAPIOp()
 		assert.AssertErrNil(ctx, err, "Failed syncing cluster-api-operator ArgoCD app")
+		bar.Substep("Synced cluster-api-operator ArgoCD app")
 
 		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
 		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 		//        Provider component first.
+		releaseInfra := bar.InProgress(
+			fmt.Sprintf("Syncing %s infrastructure provider", globals.CloudProviderName),
+		)
 		syncInfrastructureProvider(ctx, args.ClusterClient)
+		releaseInfra()
+		bar.Substep(
+			fmt.Sprintf("Synced %s infrastructure provider", globals.CloudProviderName),
+		)
 	}
 
 	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
