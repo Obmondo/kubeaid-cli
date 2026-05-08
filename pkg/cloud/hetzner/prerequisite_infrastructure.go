@@ -60,10 +60,21 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		}
 		bar.Substep("Registered HCloud SSH key")
 
-		// Pre-create the control-plane LB before the NAT gateway so the
-		// operator gets the bootstrap public IP early — they can add the
-		// DNS A record (needed for ACME issuance once Keycloak/NetBird
-		// come up) while the rest of the prereqs and CAPI infra spin up.
+		// Create the NAT gateway BEFORE the LB pre-create + DNS-wait
+		// block. NAT only depends on the Hetzner network + SSH key,
+		// not on the LB or on DNS resolution; running it earlier means
+		// the operator isn't watching the spinner spend an extra
+		// minute provisioning NAT after they've finished pasting DNS
+		// A records.
+		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
+			return fmt.Errorf("creating NAT gateway: %w", err)
+		}
+		bar.Substep("Created NAT Gateway")
+
+		// Pre-create the control-plane LB. The DNS-wait it triggers is
+		// the longest blocking step in this phase (operator-driven —
+		// they go to their DNS provider and add A records), so it
+		// always sits last in the prerequisite block.
 		// Two cases need a pre-created LB:
 		//   - cluster.type=vpn: this cluster IS the VPN; its apiserver
 		//     sits on a public LB so external clients can bootstrap
@@ -79,11 +90,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 				return err
 			}
 		}
-
-		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
-			return fmt.Errorf("creating NAT gateway: %w", err)
-		}
-		bar.Substep("Created NAT Gateway")
 	}
 
 	if config.UsingHetznerBareMetal() {
