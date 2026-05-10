@@ -82,8 +82,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar.Describe("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	// Provision and setup the main cluster.
-	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
+	if kubernetes.UsingClusterAPI() && !kubernetes.IsClusterctlMoveExecuted(ctx) {
+		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app (on management)")
+		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+		releaseSync()
+		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app on management")
+		bar.Substep("Synced capi-cluster ArgoCD app (on management)")
+	}
+
 	bar.Describe("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
 		BootstrapClusterArgs: &args,
@@ -317,15 +325,6 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 
 	managementClusterClient, clientErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfig)
 	assert.AssertErrNil(ctx, clientErr, "Failed constructing Kubernetes cluster client")
-
-	// Sync the complete capi-cluster ArgoCD App.
-	releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app")
-	syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
-	releaseSync()
-	assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app")
-	bar.Substep("Synced capi-cluster ArgoCD app")
 
 	if config.UsingHetznerBareMetal() {
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
