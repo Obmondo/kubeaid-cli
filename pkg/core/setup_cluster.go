@@ -292,15 +292,22 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	})
 
 	// Wait for a Pod labelled `cluster.x-k8s.io/provider=
-	// infrastructure-<name>` (the convention CAPI Operator uses for
-	// the Deployments it creates from an InfrastructureProvider CR)
-	// to reach Running. The previous check — "first pod listed in
-	// the namespace is Running" — was fragile: a Pending pod at
-	// index 0 (alphabetic ordering puts caph- before capi-) would
-	// keep the wait pinned even after other pods were happily
+	// infrastructure-<providerName>` to reach Running. CAPI Operator
+	// stamps this label on every Deployment it materialises from an
+	// InfrastructureProvider CR — same convention across CAPA
+	// (infrastructure-aws), CAPZ (infrastructure-azure), CAPH
+	// (infrastructure-hetzner), and any future provider kubeaid-cli
+	// supports. The label is the right gate: it identifies THE pod
+	// we're waiting on without coupling to image names or
+	// Deployment names which differ per provider.
+	//
+	// The previous check — "first pod listed in the namespace is
+	// Running" — was fragile: a Pending provider pod at index 0
+	// (alphabetic ordering puts caph- / capa- / capz- before capi-)
+	// would keep the wait pinned even after other pods were happily
 	// running, AND a stray Running pod from any earlier sync (capi-
 	// controller-manager, the operator itself) would falsely satisfy
-	// the wait before CAPH was actually deployed.
+	// the wait before the provider was actually deployed.
 	//
 	// Iterate matching pods, return Running on the first hit. Also
 	// drop the poll interval from 1m → 15s — minute-granular
