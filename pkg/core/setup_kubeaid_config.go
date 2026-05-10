@@ -193,14 +193,16 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 
-	// Add KubePrometheus specific templates.
-	// Then execute the Obmondo's KubePrometheus build script.
+	// Add the KubePrometheus ArgoCD App template name to the
+	// render list — buildKubePrometheus depends on this file
+	// existing on disk with the right kubeaid.io/version label
+	// (build.sh inside the container reads it to verify the
+	// pinned kubeaid version matches the local checkout). Order
+	// matters: render the templates FIRST, then run build.sh.
 	if !skipMonitoringSetup {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TemplateNameKubePrometheusArgoCDApp,
 		)
-
-		buildKubePrometheus(ctx, clusterDir, templateValues)
 	}
 
 	// Create a file from each template.
@@ -210,6 +212,15 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
 		)
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
+	}
+
+	// Now that kube-prometheus.yaml is on disk with the current
+	// KubeaidFork.Version label, run the build script. Reading a
+	// stale-from-previous-bootstrap version label was the cause of
+	// `Pinned kubeaid version 'X.Y.Z' not found locally` after a
+	// version bump.
+	if !skipMonitoringSetup {
+		buildKubePrometheus(ctx, clusterDir, templateValues)
 	}
 }
 
