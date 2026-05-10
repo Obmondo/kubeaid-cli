@@ -111,29 +111,23 @@ hetzner:
   controlPlane:
     regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
-    {{/* When kubeaid-cli pre-provisions the control-plane LB (cluster.type=vpn,
-         or workload connecting to an existing HCloudVPNCluster), the chart
-         consumes the pre-created LB instead of letting CAPI auto-create one:
-           - endpoint.host    : kubeadm controlPlaneEndpoint, kubeconfig server
-           - extraCertSANs    : merged with endpoint.host into kubeadm's
-             apiServer.certSANs so clients hitting mesh-side hostnames (e.g.
-             NetBird-form names) don't trip x509 cert-name mismatches.
-           - loadBalancer.privateIP / bootstrapPublicIP : used in a postKubeadmCommand
-             that patches kube-system/coredns to resolve the endpoint to both IPs.
-         For workload-not-on-VPN clusters this block is skipped and CAPI
-         handles LB lifecycle on its own. */}}
+    {{/* When kubeaid-cli pre-provisions the control-plane LB
+         (cluster.type=vpn, or workload connecting to an existing
+         HCloudVPNCluster), pass the operator-supplied hostname as
+         controlPlane.endpoint.host. CAPH consumes this as the
+         kubeadm controlPlaneEndpoint / kubeconfig server URL.
+         The pre-created LB's IPs (private + bootstrap public) are
+         operator-managed (DNS A records the operator added during
+         the WaitForDNSResolution step), so the chart doesn't need
+         to know them — only the FQDN matters. The chart's schema
+         enforces this: only endpoint.host is permitted at this
+         level. extraCertSANs / loadBalancer.{privateIP,
+         bootstrapPublicIP} were chart fields in an earlier
+         schema; the chart no longer consumes them. */}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
     {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
-    {{- if .ControlPlaneExtraCertSANs }}
-    extraCertSANs: {{ .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
-    {{- end }}
-    loadBalancer:
-      privateIP: {{ .ControlPlaneLBPrivateIP }}
-      {{- if .ControlPlaneLBBootstrapPublicIP }}
-      bootstrapPublicIP: {{ .ControlPlaneLBBootstrapPublicIP }}
-      {{- end }}
     {{- end }}
     {{- end }}
 
@@ -141,9 +135,31 @@ hetzner:
     {{- if eq .HetznerConfig.Mode "bare-metal" }}
     bareMetal: {{ .HetznerConfig.ControlPlane.BareMetal | toIndentYAML 2 | nindent 6 }}
 
-    {{/* Handling control-plane in HCloud. */}}
+    {{/* Handling control-plane in HCloud. Render the fields the
+         chart's schema actually permits — machineType, replicas,
+         loadBalancer.{enabled,region}. Don't dump the whole
+         HCloudControlPlane struct via toIndentYAML: it includes
+         LoadBalancer.{Endpoint, ExtraCertSANs} which the chart
+         schema rejects (chart's loadBalancer is just enabled +
+         region; the endpoint hostname goes at
+         controlPlane.endpoint.host above).
+
+         For VPN-cluster bootstraps where kubeaid-cli pre-created
+         the LB itself, force loadBalancer.enabled=false here so
+         CAPH doesn't ALSO try to create a load-balancer; the
+         operator's pre-created LB + endpoint.host above are what
+         we want CAPH to consume. */}}
     {{- else }}
-    hcloud: {{ .HetznerConfig.ControlPlane.HCloud | toIndentYAML 2 | nindent 6 }}
+    hcloud:
+      machineType: {{ .HetznerConfig.ControlPlane.HCloud.MachineType }}
+      replicas: {{ .HetznerConfig.ControlPlane.HCloud.Replicas }}
+      loadBalancer:
+        {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+        enabled: false
+        {{- else }}
+        enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}
+        {{- end }}
+        region: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Region }}
     {{- end }}
 
   nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
