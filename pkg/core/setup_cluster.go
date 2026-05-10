@@ -12,6 +12,7 @@ import (
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterctlV1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -290,20 +291,45 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		slog.String("namespace", capiClusterNamespace),
 	})
 
-	err = wait.PollUntilContextCancel(ctx, time.Minute, false,
+	// Wait for a Pod labelled `cluster.x-k8s.io/provider=
+	// infrastructure-<name>` (the convention CAPI Operator uses for
+	// the Deployments it creates from an InfrastructureProvider CR)
+	// to reach Running. The previous check — "first pod listed in
+	// the namespace is Running" — was fragile: a Pending pod at
+	// index 0 (alphabetic ordering puts caph- before capi-) would
+	// keep the wait pinned even after other pods were happily
+	// running, AND a stray Running pod from any earlier sync (capi-
+	// controller-manager, the operator itself) would falsely satisfy
+	// the wait before CAPH was actually deployed.
+	//
+	// Iterate matching pods, return Running on the first hit. Also
+	// drop the poll interval from 1m → 15s — minute-granular
+	// polling on an interactive bootstrap means the operator can
+	// stare at a stale spinner for nearly a full minute after the
+	// pod actually came up.
+	providerLabel := labels.SelectorFromSet(labels.Set{
+		"cluster.x-k8s.io/provider": fmt.Sprintf("infrastructure-%s", providerName),
+	})
+	err = wait.PollUntilContextCancel(ctx, 15*time.Second, true,
 		func(ctx context.Context) (bool, error) {
 			podList := &coreV1.PodList{}
-			err := clusterClient.List(ctx, podList, &client.ListOptions{
-				Namespace: capiClusterNamespace,
-			})
-			assert.AssertErrNil(ctx, err, "Failed listing pods")
-
-			if (len(podList.Items) > 0) && (podList.Items[0].Status.Phase == coreV1.PodRunning) {
-				return true, nil
+			if err := clusterClient.List(ctx, podList, &client.ListOptions{
+				Namespace:     capiClusterNamespace,
+				LabelSelector: providerLabel,
+			}); err != nil {
+				slog.WarnContext(ctx, "Listing infrastructure-provider pods failed; will retry",
+					slog.Any("err", err),
+				)
+				return false, nil
 			}
-
+			for i := range podList.Items {
+				if podList.Items[i].Status.Phase == coreV1.PodRunning {
+					return true, nil
+				}
+			}
 			slog.InfoContext(ctx,
-				"Waiting for the infrastructure provider component pod to come up",
+				"Still waiting for the infrastructure provider controller pod",
+				slog.Int("matching-pods", len(podList.Items)),
 			)
 			return false, nil
 		},
