@@ -31,6 +31,7 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
+	k8sRetry "k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -81,21 +82,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 		time.Sleep(10 * time.Second)
 	}
 
-	// Label and annotate the CRD for Helm ownership.
-	crd := &apiextensionsv1.CustomResourceDefinition{}
-	if err := clusterClient.Get(ctx, types.NamespacedName{Name: "appprojects.argoproj.io"}, crd); err != nil {
-		return fmt.Errorf("failed getting AppProject CRD: %w", err)
-	}
-	if crd.Labels == nil {
-		crd.Labels = make(map[string]string)
-	}
-	crd.Labels["app.kubernetes.io/managed-by"] = "Helm"
-	if crd.Annotations == nil {
-		crd.Annotations = make(map[string]string)
-	}
-	crd.Annotations["meta.helm.sh/release-name"] = constants.ReleaseNameArgoCD
-	crd.Annotations["meta.helm.sh/release-namespace"] = constants.NamespaceArgoCD
-	if err := clusterClient.Update(ctx, crd); err != nil {
+	if err := labelAppProjectCRDForHelm(ctx, clusterClient); err != nil {
 		return fmt.Errorf("failed updating AppProject CRD labels/annotations: %w", err)
 	}
 
@@ -235,6 +222,26 @@ func NewArgoCDClient(ctx context.Context, clusterClient client.Client) (apiclien
 	argoCDClient = apiclient.NewClientOrDie(argoCDClientOpts)
 
 	return argoCDClient, nil
+}
+
+func labelAppProjectCRDForHelm(ctx context.Context, clusterClient client.Client) error {
+	return k8sRetry.RetryOnConflict(k8sRetry.DefaultRetry, func() error {
+		crd := &apiextensionsv1.CustomResourceDefinition{}
+		if err := clusterClient.Get(ctx, types.NamespacedName{Name: "appprojects.argoproj.io"}, crd); err != nil {
+			return fmt.Errorf("getting AppProject CRD: %w", err)
+		}
+		if crd.Labels == nil {
+			crd.Labels = make(map[string]string)
+		}
+		crd.Labels["app.kubernetes.io/managed-by"] = "Helm"
+		if crd.Annotations == nil {
+			crd.Annotations = make(map[string]string)
+		}
+		crd.Annotations["meta.helm.sh/release-name"] = constants.ReleaseNameArgoCD
+		crd.Annotations["meta.helm.sh/release-namespace"] = constants.NamespaceArgoCD
+
+		return clusterClient.Update(ctx, crd)
+	})
 }
 
 // CreateArgoCDProject creates an ArgoCD Project with the given name.

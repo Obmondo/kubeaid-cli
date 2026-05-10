@@ -16,8 +16,14 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcStatus "google.golang.org/grpc/status"
 	coreV1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
@@ -92,6 +98,33 @@ func alwaysSynced() *fakeArgoCDAppClient {
 	}
 }
 
+func appProjectCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:        "appprojects.argoproj.io",
+			Labels:      map[string]string{"existing-label": "keep"},
+			Annotations: map[string]string{"existing-annotation": "keep"},
+		},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "argoproj.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   "appprojects",
+				Singular: "appproject",
+				Kind:     "AppProject",
+			},
+			Scope: apiextensionsv1.NamespaceScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{Type: "object"},
+				},
+			}},
+		},
+	}
+}
+
 type fakeProjectServiceClient struct {
 	createResp *argoCDV1Alpha1.AppProject
 	createErr  error
@@ -143,6 +176,87 @@ func (f *fakeProjectServiceClient) GetSyncWindowsState(context.Context, *project
 
 func (f *fakeProjectServiceClient) ListLinks(context.Context, *project.ListProjectLinksRequest, ...grpc.CallOption) (*application.LinksResponse, error) {
 	return nil, nil
+}
+
+func TestLabelAppProjectCRDForHelm(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	require.NoError(t, apiextensionsv1.AddToScheme(scheme))
+
+	fakeClient := crFake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(appProjectCRD()).
+		Build()
+
+	err := labelAppProjectCRDForHelm(context.Background(), fakeClient)
+	require.NoError(t, err)
+
+	got := &apiextensionsv1.CustomResourceDefinition{}
+	require.NoError(t, fakeClient.Get(
+		context.Background(),
+		types.NamespacedName{Name: "appprojects.argoproj.io"},
+		got,
+	))
+	assert.Equal(t, "keep", got.Labels["existing-label"])
+	assert.Equal(t, "Helm", got.Labels["app.kubernetes.io/managed-by"])
+	assert.Equal(t, "keep", got.Annotations["existing-annotation"])
+	assert.Equal(t, constants.ReleaseNameArgoCD, got.Annotations["meta.helm.sh/release-name"])
+	assert.Equal(t, constants.NamespaceArgoCD, got.Annotations["meta.helm.sh/release-namespace"])
+}
+
+func TestLabelAppProjectCRDForHelmRetriesOnConflict(t *testing.T) {
+	t.Parallel()
+
+	scheme := newTestScheme(t)
+	require.NoError(t, apiextensionsv1.AddToScheme(scheme))
+
+	updates := 0
+	fakeClient := crFake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(appProjectCRD()).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+				updates++
+				if updates == 1 {
+					current := &apiextensionsv1.CustomResourceDefinition{}
+					if err := c.Get(ctx, types.NamespacedName{Name: obj.GetName()}, current); err != nil {
+						return err
+					}
+					current.Annotations["other-controller"] = "updated"
+					if err := c.Update(ctx, current); err != nil {
+						return err
+					}
+
+					return k8sAPIErrors.NewConflict(
+						schema.GroupResource{
+							Group:    "apiextensions.k8s.io",
+							Resource: "customresourcedefinitions",
+						},
+						obj.GetName(),
+						errors.New("stale resource version"),
+					)
+				}
+
+				return c.Update(ctx, obj, opts...)
+			},
+		}).
+		Build()
+
+	err := labelAppProjectCRDForHelm(context.Background(), fakeClient)
+	require.NoError(t, err)
+	assert.Equal(t, 2, updates)
+
+	got := &apiextensionsv1.CustomResourceDefinition{}
+	require.NoError(t, fakeClient.Get(
+		context.Background(),
+		types.NamespacedName{Name: "appprojects.argoproj.io"},
+		got,
+	))
+	assert.Equal(t, "updated", got.Annotations["other-controller"])
+	assert.Equal(t, "Helm", got.Labels["app.kubernetes.io/managed-by"])
+	assert.Equal(t, constants.ReleaseNameArgoCD, got.Annotations["meta.helm.sh/release-name"])
+	assert.Equal(t, constants.NamespaceArgoCD, got.Annotations["meta.helm.sh/release-namespace"])
 }
 
 func TestCreateArgoCDProject(t *testing.T) {
