@@ -82,16 +82,39 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 		return stdoutOutput, nil
 
 	default:
-		slog.DebugContext(ctx, "Command execution failed. Output : \n"+stdoutOutput)
+		// Two error sources to fold together:
+		//   - commandExecutionStatus.Error: only set when go-cmd
+		//     itself failed to run the process (e.g. exec.Lookup).
+		//     Often nil for "ran fine, exited non-zero" — formatting
+		//     it via %w in that case yields the unhelpful
+		//     "%!w(<nil>)" the operator sees.
+		//   - stderrOutput: what bash/the command actually said.
+		// Build a message that's useful regardless of which side has
+		// the info, plus the exit code so the operator can look up
+		// the failing command's exit semantics.
+		slog.DebugContext(ctx, "Command execution failed. Output : \n"+stdoutOutput,
+			slog.String("stderr", stderrOutput),
+			slog.Int("exit-code", commandExecutionStatus.Exit),
+		)
 
-		err := fmt.Errorf("%s: %w", stderrOutput, commandExecutionStatus.Error)
-		return stdoutOutput, err
+		stderrTrimmed := strings.TrimSpace(stderrOutput)
+		if stderrTrimmed == "" {
+			stderrTrimmed = "(no stderr output)"
+		}
+		if commandExecutionStatus.Error != nil {
+			return stdoutOutput, fmt.Errorf("command exited %d: %s: %w",
+				commandExecutionStatus.Exit, stderrTrimmed, commandExecutionStatus.Error)
+		}
+		return stdoutOutput, fmt.Errorf("command exited %d: %s",
+			commandExecutionStatus.Exit, stderrTrimmed)
 	}
 }
 
 func (l *LocalCommandExecutor) MustExecute(ctx context.Context, command string) string {
 	output, err := l.Execute(ctx, command)
-	assert.AssertErrNil(ctx, err, "Command execution failed")
+	assert.AssertErrNil(ctx, err, "Command execution failed",
+		slog.String("command", command),
+	)
 
 	return output
 }
