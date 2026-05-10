@@ -273,15 +273,12 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	bar := progress.FromCtx(ctx)
 
-	// Sync cluster-autoscaler ArgoCD App. The upstream chart
-	// supports many providers (AWS, Azure, GCE, Cluster API,
-	// Hetzner Cloud, Civo, Vultr, …), but each one needs its
-	// own values + identity wiring in the kubeaid chart. AWS,
-	// Azure, and Local already have what's needed; Hetzner's
-	// autoscaler-side wiring isn't in place yet, so a sync there
-	// just leaves a permanently-OutOfSync ArgoCD App. Skip
-	// Hetzner until the chart side catches up.
-	if globals.CloudProviderName != constants.CloudProviderHetzner {
+	// Sync cluster-autoscaler on AWS or Azure workload clusters.
+	// Skip Hetzner (chart wiring not in place), bare-metal (no
+	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
+	if !vpnClusterEnabled() &&
+		(globals.CloudProviderName == constants.CloudProviderAWS ||
+			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
