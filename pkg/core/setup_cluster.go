@@ -233,14 +233,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
 		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 		//        Provider component first.
-		releaseInfra := bar.InProgress(
-			fmt.Sprintf("Syncing %s infrastructure provider", globals.CloudProviderName),
-		)
+		//
+		// syncInfrastructureProvider emits its own ↻/✓ pair for each
+		// of its two stages — the ArgoCD sync and the pod-running
+		// wait — so the operator can tell at a glance whether time
+		// is being spent in sync or in waiting for the controller
+		// pod to come up. Don't add an outer wrapper here; that
+		// would just cover both stages with one generic line.
 		syncInfrastructureProvider(ctx, args.ClusterClient)
-		releaseInfra()
-		bar.Substep(
-			fmt.Sprintf("Synced %s infrastructure provider", globals.CloudProviderName),
-		)
 	}
 
 	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
@@ -249,7 +249,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
 // infrastructure specific CRDs to be installed and pod to be running.
 func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client) {
+	bar := progress.FromCtx(ctx)
+	providerName := globals.CloudProviderName
+
 	// Sync the Infrastructure Provider component.
+	releaseSync := bar.InProgress(
+		fmt.Sprintf("Syncing %s infrastructure-provider component", providerName),
+	)
 	err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
@@ -259,12 +265,26 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 			},
 		},
 	)
+	releaseSync()
 	assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster infrastructure provider ArgoCD app")
+	bar.Substep(
+		fmt.Sprintf("Synced %s infrastructure-provider component", providerName),
+	)
 
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
 	// Wait for the infrastructure specific CRDs to be installed and infrastructure provider component
-	// pod to be running.
+	// pod to be running. This is the slow part — kubeaid-cli has
+	// just told the cluster to install the CAPI Operator
+	// InfrastructureProvider CR; the operator pulls the controller
+	// image, creates the Deployment, scheduler runs the Pod, image
+	// pull happens, container starts. On a cold node-pull this can
+	// take several minutes. Surface it as its own ↻ substep so the
+	// operator sees we're waiting on the cluster, not stuck on a
+	// kubeaid-cli call.
+	releaseWait := bar.InProgress(
+		fmt.Sprintf("Waiting for %s controller pod to be Running in %s", providerName, capiClusterNamespace),
+	)
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("namespace", capiClusterNamespace),
@@ -288,8 +308,12 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 			return false, nil
 		},
 	)
+	releaseWait()
 	assert.AssertErrNil(ctx, err,
 		"Failed waiting for the infrastructure provider component to come up",
+	)
+	bar.Substep(
+		fmt.Sprintf("%s controller pod Running", providerName),
 	)
 }
 
