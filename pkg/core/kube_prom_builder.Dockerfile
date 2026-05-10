@@ -5,9 +5,22 @@
 # (jsonnet, jb, gojsontoyaml, jq, util-linux's column) live only in
 # this small image.
 #
-# kubeaid-cli embeds this file at build time and feeds it to
-# `docker build` over stdin on first run; subsequent runs hit the
+# kubeaid-cli embeds this file at build time and feeds it to the
+# Docker SDK's ImageBuild on first run; subsequent runs hit the
 # docker layer cache.
+#
+# Multi-stage build: stage 1 has Go (~360 MB) only to build the
+# jsonnet toolchain from source — Alpine's apk repo doesn't ship
+# pinned versions of jb or gojsontoyaml, and we want exact versions
+# to keep cluster-side rendering reproducible. Stage 2 is a clean
+# alpine that COPY's just the three statically-linked binaries.
+# Final image is ~135 MB on disk vs. ~605 MB if go stayed.
+FROM golang:1.23-alpine AS builder
+
+RUN go install github.com/google/go-jsonnet/cmd/jsonnet@v0.21.0 \
+ && go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0 \
+ && go install github.com/brancz/gojsontoyaml@v0.1.0
+
 
 FROM alpine:3.22
 
@@ -16,23 +29,11 @@ RUN apk add --no-cache \
       git \
       jq \
       util-linux \
-      go \
       ca-certificates
 
-# jsonnet (go-jsonnet by Google).
-RUN go install github.com/google/go-jsonnet/cmd/jsonnet@v0.21.0 && \
-    mv /root/go/bin/jsonnet /usr/local/bin/
-
-# jsonnet-bundler (jb).
-RUN go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.6.0 && \
-    mv /root/go/bin/jb /usr/local/bin/
-
-# gojsontoyaml.
-RUN go install github.com/brancz/gojsontoyaml@v0.1.0 && \
-    mv /root/go/bin/gojsontoyaml /usr/local/bin/
-
-# Drop go now that the binaries are baked in — saves ~400MB.
-RUN apk del go && rm -rf /root/go /root/.cache /var/cache/apk/*
+COPY --from=builder /go/bin/jsonnet       /usr/local/bin/jsonnet
+COPY --from=builder /go/bin/jb            /usr/local/bin/jb
+COPY --from=builder /go/bin/gojsontoyaml  /usr/local/bin/gojsontoyaml
 
 # Run as a non-root user so files created in the bind-mounted
 # cluster_dir end up with the operator's uid (kubeaid-cli passes
