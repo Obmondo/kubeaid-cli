@@ -113,21 +113,37 @@ hetzner:
 
     {{/* When kubeaid-cli pre-provisions the control-plane LB
          (cluster.type=vpn, or workload connecting to an existing
-         HCloudVPNCluster), pass the operator-supplied hostname as
-         controlPlane.endpoint.host. CAPH consumes this as the
-         kubeadm controlPlaneEndpoint / kubeconfig server URL.
-         The pre-created LB's IPs (private + bootstrap public) are
-         operator-managed (DNS A records the operator added during
-         the WaitForDNSResolution step), so the chart doesn't need
-         to know them — only the FQDN matters. The chart's schema
-         enforces this: only endpoint.host is permitted at this
-         level. extraCertSANs / loadBalancer.{privateIP,
-         bootstrapPublicIP} were chart fields in an earlier
-         schema; the chart no longer consumes them. */}}
+         HCloudVPNCluster), the chart consumes the pre-created LB
+         instead of letting CAPH auto-create one:
+           - endpoint.host    : kubeadm controlPlaneEndpoint,
+                                kubeconfig server, HetznerCluster
+                                spec.controlPlaneEndpoint.host.
+           - extraCertSANs    : merged with endpoint.host into
+                                kubeadm's apiServer.certSANs so
+                                clients hitting mesh-side hostnames
+                                (e.g. NetBird-form names) don't
+                                trip x509 cert-name mismatches.
+                                Consumed by KubeadmControlPlane.yaml.
+           - loadBalancer.privateIP / bootstrapPublicIP : runtime
+                                info kubeaid-cli surfaces about the
+                                pre-created LB. Currently informational
+                                in the chart schema; future templates
+                                may consume them for postKubeadm
+                                CoreDNS hosts patching.
+         For workload-not-on-VPN clusters this whole block is
+         skipped and CAPH handles LB lifecycle on its own. */}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
     {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
+    {{- if .ControlPlaneExtraCertSANs }}
+    extraCertSANs: {{ .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
+    {{- end }}
+    loadBalancer:
+      privateIP: {{ .ControlPlaneLBPrivateIP }}
+      {{- if .ControlPlaneLBBootstrapPublicIP }}
+      bootstrapPublicIP: {{ .ControlPlaneLBBootstrapPublicIP }}
+      {{- end }}
     {{- end }}
     {{- end }}
 
