@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -387,14 +385,6 @@ func runKubePrometheusBuilder(
 		return fmt.Errorf("creating docker client: %w", err)
 	}
 	defer func() { _ = cli.Close() }()
-
-	// Optional: pull image first.
-	pullReader, err := cli.ImagePull(ctx, builderImage, image.PullOptions{})
-	if err != nil {
-		return fmt.Errorf("pulling builder image %q: %w", builderImage, err)
-	}
-	_, _ = io.Copy(io.Discard, pullReader)
-	_ = pullReader.Close()
 
 	cmd := []string{
 		fmt.Sprintf("%s/build/kube-prometheus/build.sh", kubeAidDir),
