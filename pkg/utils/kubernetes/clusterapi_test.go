@@ -33,7 +33,10 @@ const (
 	testCapiClusterNamespace = "capi-cluster"
 )
 
-// newClusterAPITestScheme builds a scheme that includes coreV1 and cluster-api types.
+// newClusterAPITestScheme builds a scheme that includes coreV1 and
+// cluster-api types. summarizeCAPIStatus is intentionally cloud-agnostic
+// — it reads only Cluster + Machine, never provider-specific types —
+// so we don't register CAPH/CAPA/CAPZ scheme here.
 func newClusterAPITestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
@@ -252,15 +255,21 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			origName := config.ParsedGeneralConfig.Cluster.Name
 			origObmondo := config.ParsedGeneralConfig.Obmondo
-			origInterval := waitForProvisioningPollInterval
+			origPoll := capiWaitPollInterval
+			origTotal := capiWaitTotalTimeout
 			t.Cleanup(func() {
 				config.ParsedGeneralConfig.Cluster.Name = origName
 				config.ParsedGeneralConfig.Obmondo = origObmondo
-				waitForProvisioningPollInterval = origInterval
+				capiWaitPollInterval = origPoll
+				capiWaitTotalTimeout = origTotal
 			})
 			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			config.ParsedGeneralConfig.Obmondo = nil
-			waitForProvisioningPollInterval = 100 * time.Millisecond
+			// Sub-second polling + tight total so the test exercises
+			// both the success-on-first-tick path and the timeout path
+			// without sleeping for minutes.
+			capiWaitPollInterval = 50 * time.Millisecond
+			capiWaitTotalTimeout = 2 * time.Second
 
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
@@ -278,6 +287,218 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestSummarizeCAPIStatus exercises the helper directly so we can assert
+// on the row content + ready flag without sitting through the wait loop.
+// Three cases match the live-wait scenarios an operator hits — all
+// driven by Cluster + Machine status alone (no provider-specific
+// objects), since the Machine controller already aggregates infra-side
+// status into the Machine's own v1beta2 conditions:
+//   - happy path: cluster Provisioned + Ready, Machine Running → ready=true.
+//   - in-progress: Machine Provisioning, v1beta2 Ready=False with a
+//     bullet rollup → ready=false, Status surfaces the rollup's first line.
+//   - failure: Machine v1beta2 InfrastructureReady=False with a placement
+//     error → ready=false, row.Failed=true (Phase=Failed), Status carries
+//     the error so the operator can abort/diagnose.
+func TestSummarizeCAPIStatus(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+
+	tests := []struct {
+		name             string
+		preExist         []runtime.Object
+		wantReady        bool
+		wantRowCount     int
+		wantClusterPhase string
+		wantFailedRow    bool
+		wantStatusSubstr string // substring expected in some row's Status column
+	}{
+		{
+			name: "happy path — cluster provisioned and ready, machine running",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+			},
+			wantReady:        true,
+			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			name: "in progress — machine v1beta2 Ready=False with bullet rollup",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{
+								Type:   clusterAPIV1Beta1.ReadyCondition,
+								Status: "False",
+								Reason: "WaitingForControlPlaneInitialized",
+							},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								// Available has empty Message → must be skipped.
+								{Type: "Available", Status: metaV1.ConditionFalse, Reason: "NotReady"},
+								// Ready carries the rollup with the actual error.
+								{
+									Type:    "Ready",
+									Status:  metaV1.ConditionFalse,
+									Reason:  "NotReady",
+									Message: "* InfrastructureReady: Server is starting\n* NodeHealthy: Waiting for control plane",
+								},
+							},
+						},
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+			wantStatusSubstr: "InfrastructureReady: Server is starting",
+		},
+		{
+			// Real-world Hetzner case: Machine is still Phase=Provisioning
+			// because CAPH keeps retrying the transient placement error,
+			// but the InfrastructureReady condition's Reason is
+			// "ServerCreateFailedReason" — operators want this row red
+			// even though Phase isn't "Failed".
+			name: "failure — Machine Phase=Provisioning with ServerCreateFailedReason",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-broken",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Available", Status: metaV1.ConditionFalse, Reason: "NotReady"},
+								{
+									Type:    "InfrastructureReady",
+									Status:  metaV1.ConditionFalse,
+									Reason:  "ServerCreateFailedReason",
+									Message: "error during placement (resource_unavailable, abc123)",
+								},
+							},
+						},
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+			wantFailedRow:    true,
+			wantStatusSubstr: "error during placement (resource_unavailable",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origName := config.ParsedGeneralConfig.Cluster.Name
+			origObmondo := config.ParsedGeneralConfig.Obmondo
+			t.Cleanup(func() {
+				config.ParsedGeneralConfig.Cluster.Name = origName
+				config.ParsedGeneralConfig.Obmondo = origObmondo
+			})
+			config.ParsedGeneralConfig.Cluster.Name = testClusterName
+			config.ParsedGeneralConfig.Obmondo = nil
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			rows, ready, err := summarizeCAPIStatus(context.Background(), fakeClient)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantReady, ready)
+			require.Len(t, rows, tc.wantRowCount)
+
+			// First row is always the Cluster.
+			assert.Equal(t, "Cluster/"+testClusterName, rows[0].Resource)
+			assert.Equal(t, tc.wantClusterPhase, rows[0].Phase)
+
+			if tc.wantFailedRow {
+				foundFailed := false
+				for _, r := range rows {
+					if r.Failed {
+						foundFailed = true
+						break
+					}
+				}
+				assert.True(t, foundFailed, "expected at least one row with Failed=true")
+			}
+
+			if tc.wantStatusSubstr != "" {
+				found := false
+				for _, r := range rows {
+					if assert.ObjectsAreEqual(r.Status, tc.wantStatusSubstr) ||
+						containsSubstr(r.Status, tc.wantStatusSubstr) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "expected some row.Status to contain %q; rows=%+v", tc.wantStatusSubstr, rows)
+			}
+		})
+	}
+}
+
+// containsSubstr is a tiny helper to keep the assertion readable —
+// strings.Contains is fine but pulling in the import for one call site
+// inflates the test diff.
+func containsSubstr(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
 }
 
 func TestWaitForMainClusterToBeReady(t *testing.T) {

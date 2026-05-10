@@ -78,19 +78,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// cluster" which is the first step that actually uses it.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Create and setup the management cluster.
+	// Create and setup the management cluster. The capi-cluster sync
+	// is folded into SetupCluster so it runs before the
+	// "Management cluster ready" box, not after it.
 	bar.Describe("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
-
-	if kubernetes.UsingClusterAPI() && !kubernetes.IsClusterctlMoveExecuted(ctx) {
-		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app (on management)")
-		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
-			[]*argoCDV1Alpha1.SyncOperationResource{},
-		)
-		releaseSync()
-		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app on management")
-		bar.Substep("Synced capi-cluster ArgoCD app (on management)")
-	}
 
 	bar.Describe("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
@@ -341,13 +333,13 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 		}
 	}
 
-	// Wait for the main cluster to be provisioned.
-	releaseProvision := bar.InProgress("Waiting for main cluster Machines to come up")
+	// Wait for the main cluster to be provisioned. The wait function
+	// owns the screen for its duration — pauses our spinner, renders a
+	// live status table, leaves the final tick in scrollback as the
+	// audit trail. So no bar.InProgress wrap here.
 	if err := kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
-		releaseProvision()
 		assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
 	}
-	releaseProvision()
 	bar.Substep("Main cluster Machines provisioned")
 
 	// Save kubeconfig locally.

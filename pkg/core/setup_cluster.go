@@ -245,6 +245,24 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		syncInfrastructureProvider(ctx, args.ClusterClient)
 	}
 
+	// Sync the capi-cluster ArgoCD app on the management cluster so
+	// the Cluster + Machine + InfrastructureCluster resources land
+	// before we print "Management cluster ready" — that box is the
+	// "all done with management cluster" marker, so the substep
+	// belongs above it. Skipped on the main cluster (post-pivot the
+	// resources are already there) and on bare-metal (no CAPI).
+	if args.ClusterType == constants.ClusterTypeManagement &&
+		kubernetes.UsingClusterAPI() &&
+		!kubernetes.IsClusterctlMoveExecuted(ctx) {
+		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app (on management)")
+		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+		releaseSync()
+		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app on management")
+		bar.Substep("Synced capi-cluster ArgoCD app (on management)")
+	}
+
 	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
 }
 
@@ -401,12 +419,9 @@ func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 		"",
 		" 1.  export KUBECONFIG="+clusterKubeconfigPath,
 		"",
-		" 2.  kubectl -n argocd get secret \\",
-		"       argocd-initial-admin-secret \\",
-		"       -o jsonpath='{.data.password}' | base64 -d",
+		" 2.  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
 		"",
-		" 3.  kubectl -n argocd port-forward \\",
-		"       svc/argocd-server 8080:443",
+		" 3.  kubectl -n argocd port-forward svc/argocd-server 8080:443",
 		"",
 		" 4.  Open "+urlStyle.Render("https://localhost:8080")+"  (user: admin)",
 	)
