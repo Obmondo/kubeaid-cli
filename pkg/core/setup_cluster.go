@@ -10,6 +10,7 @@ import (
 	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -361,39 +362,57 @@ func getInfrastructureProviderName() string {
 	return infrastructureProviderName
 }
 
+// printHelpTextForArgoCDDashboardAccess renders the post-bootstrap
+// "how to open the ArgoCD admin UI" steps as a lipgloss rounded-
+// border box so it matches the visual language of the PR-merge
+// prompt (renderPRMergeBox), the K8s version picker, and the
+// DNS-wait table — all of which the operator has already seen as
+// boxed surfaces during the same bootstrap. Cyan + underlined URL
+// styling is auto-detected as a clickable link by iTerm2 / gnome-
+// terminal / Alacritty / kitty so the operator can cmd-click
+// instead of copy-pasting.
 func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 	clusterKubeconfigPath := constants.OutputPathManagementClusterHostKubeconfig
 	if clusterType == constants.ClusterTypeMain {
 		clusterKubeconfigPath = constants.OutputPathMainClusterKubeconfig
 	}
 
-	// Print out help text for the user to access ArgoCD admin dashboard.
-	helpText := fmt.Sprintf(
-		`
-Finished setting up %s cluster.
+	// Title-case the cluster type for the box header. Two callers
+	// only ever ("management" / "main"), so a switch is clearer than
+	// pulling in the (deprecated) strings.Title.
+	clusterTypeTitle := clusterType
+	switch clusterType {
+	case constants.ClusterTypeManagement:
+		clusterTypeTitle = "Management"
+	case constants.ClusterTypeMain:
+		clusterTypeTitle = "Main"
+	}
 
-To access the ArgoCD admin dashboard :
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	urlStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")). // bright blue — match renderPRMergeBox
+		Underline(true)
 
-  (1) In your host machine's terminal, navigate to the directory from where you executed the
-      script (you'll notice the outputs/ directory there). Do :
-
-        export KUBECONFIG=%s
-
-  (2) Retrieve the ArgoCD admin password :
-
-        echo "ArgoCD admin password : "
-        kubectl get secret argocd-initial-admin-secret --namespace argocd \
-          -o jsonpath="{.data.password}" | base64 -d
-        echo
-
-  (3) Port forward ArgoCD server :
-
-        kubectl port-forward svc/argocd-server --namespace argocd 8080:443
-
-  (4) Visit https://localhost:8080 in a browser and login to ArgoCD as admin.
-    `,
-		clusterType,
-		clusterKubeconfigPath,
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		headerStyle.Render("✓ "+clusterTypeTitle+" cluster ready"),
+		"",
+		headerStyle.Render("ArgoCD admin dashboard"),
+		"",
+		" 1.  export KUBECONFIG="+clusterKubeconfigPath,
+		"",
+		" 2.  kubectl -n argocd get secret \\",
+		"       argocd-initial-admin-secret \\",
+		"       -o jsonpath='{.data.password}' | base64 -d",
+		"",
+		" 3.  kubectl -n argocd port-forward \\",
+		"       svc/argocd-server 8080:443",
+		"",
+		" 4.  Open "+urlStyle.Render("https://localhost:8080")+"  (user: admin)",
 	)
-	fmt.Println(helpText) //nolint: forbidigo, revive
+
+	fmt.Println(lipgloss.NewStyle(). //nolint:forbidigo
+						Border(lipgloss.RoundedBorder()).
+						Padding(0, 1).
+						Render(content))
 }
