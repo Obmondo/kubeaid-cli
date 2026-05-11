@@ -254,13 +254,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	if args.ClusterType == constants.ClusterTypeManagement &&
 		kubernetes.UsingClusterAPI() &&
 		!kubernetes.IsClusterctlMoveExecuted(ctx) {
-		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app (on management)")
+		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app")
 		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseSync()
-		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app on management")
-		bar.Substep("Synced capi-cluster ArgoCD app (on management)")
+		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app")
+		bar.Substep("Synced capi-cluster ArgoCD app")
 	}
 
 	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
