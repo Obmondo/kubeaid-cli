@@ -17,22 +17,40 @@ import (
 )
 
 type fakeNetworkClient struct {
-	getFn    func(ctx context.Context, idOrName string) (*hcloud.Network, *hcloud.Response, error)
-	createFn func(ctx context.Context, opts hcloud.NetworkCreateOpts) (*hcloud.Network, *hcloud.Response, error)
+	getFn      func(ctx context.Context, idOrName string) (*hcloud.Network, *hcloud.Response, error)
+	getByIDFn  func(ctx context.Context, id int) (*hcloud.Network, *hcloud.Response, error)
+	createFn   func(ctx context.Context, opts hcloud.NetworkCreateOpts) (*hcloud.Network, *hcloud.Response, error)
+	addRouteFn func(ctx context.Context, network *hcloud.Network, opts hcloud.NetworkAddRouteOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
 func (f *fakeNetworkClient) Get(ctx context.Context, idOrName string) (*hcloud.Network, *hcloud.Response, error) {
 	return f.getFn(ctx, idOrName)
 }
 
+func (f *fakeNetworkClient) GetByID(ctx context.Context, id int) (*hcloud.Network, *hcloud.Response, error) {
+	if f.getByIDFn != nil {
+		return f.getByIDFn(ctx, id)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
 func (f *fakeNetworkClient) Create(ctx context.Context, opts hcloud.NetworkCreateOpts) (*hcloud.Network, *hcloud.Response, error) {
 	return f.createFn(ctx, opts)
+}
+
+func (f *fakeNetworkClient) AddRoute(ctx context.Context, network *hcloud.Network, opts hcloud.NetworkAddRouteOpts) (*hcloud.Action, *hcloud.Response, error) {
+	if f.addRouteFn != nil {
+		return f.addRouteFn(ctx, network, opts)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
 }
 
 type fakeServerClient struct {
 	attachToNetworkFn  func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
 	listFn             func(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error)
 	getByNameFn        func(ctx context.Context, name string) (*hcloud.Server, *hcloud.Response, error)
+	getByIDFn          func(ctx context.Context, id int) (*hcloud.Server, *hcloud.Response, error)
+	createFn           func(ctx context.Context, opts hcloud.ServerCreateOpts) (hcloud.ServerCreateResult, *hcloud.Response, error)
 	changeProtectionFn func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
@@ -49,6 +67,20 @@ func (f *fakeServerClient) GetByName(ctx context.Context, name string) (*hcloud.
 		return f.getByNameFn(ctx, name)
 	}
 	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
+func (f *fakeServerClient) GetByID(ctx context.Context, id int) (*hcloud.Server, *hcloud.Response, error) {
+	if f.getByIDFn != nil {
+		return f.getByIDFn(ctx, id)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
+func (f *fakeServerClient) Create(ctx context.Context, opts hcloud.ServerCreateOpts) (hcloud.ServerCreateResult, *hcloud.Response, error) {
+	if f.createFn != nil {
+		return f.createFn(ctx, opts)
+	}
+	return hcloud.ServerCreateResult{}, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
 }
 
 func (f *fakeServerClient) ChangeProtection(ctx context.Context, server *hcloud.Server, opts hcloud.ServerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error) {

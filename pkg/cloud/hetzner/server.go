@@ -111,7 +111,7 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
 
-	server, response, err := h.hcloudClient.Server.GetByName(ctx, serverName)
+	server, response, err := h.serverClient.GetByName(ctx, serverName)
 	if err != nil {
 		return nil, fmt.Errorf("searching for NAT gateway server %q: %w", serverName, err)
 	}
@@ -151,16 +151,23 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 	for _, location := range constants.HCloudARMLocations {
 		opts.Location = &hcloud.Location{Name: location}
 
-		result, response, err := h.hcloudClient.Server.Create(ctx, opts)
+		result, response, err := h.serverClient.Create(ctx, opts)
 		switch {
 		case err == nil && response.StatusCode == http.StatusCreated:
 			slog.InfoContext(ctx, "Created NAT Gateway server",
 				slog.String("location", location))
 
-			// Protect the NAT Gateway from accidental deletion.
+			// Protect the NAT Gateway from accidental deletion AND
+			// rebuild. Hetzner's API requires both flags to be sent
+			// together (the action rejects requests that toggle only
+			// one with `'delete' and 'rebuild' field required to be
+			// the same value`).
 			_, response, err = h.serverClient.ChangeProtection(ctx,
 				result.Server,
-				hcloud.ServerChangeProtectionOpts{Delete: ptr.To(true)},
+				hcloud.ServerChangeProtectionOpts{
+					Delete:  ptr.To(true),
+					Rebuild: ptr.To(true),
+				},
 			)
 			if err != nil {
 				return nil, fmt.Errorf("enabling deletion protection on NAT Gateway server: %w", err)
@@ -209,12 +216,17 @@ func isHCloudResourceUnavailable(err error) bool {
 // in the network egress through it. No-op when the route already
 // exists.
 func (h *Hetzner) ensureNATRouteOnNetwork(ctx context.Context, networkID int, server *hcloud.Server) error {
-	network, response, err := h.hcloudClient.Network.GetByID(ctx, networkID)
+	network, response, err := h.networkClient.GetByID(ctx, networkID)
 	if err != nil {
 		return fmt.Errorf("getting Hetzner network %d: %w", networkID, err)
 	}
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("getting Hetzner network %d: unexpected status %d", networkID, response.StatusCode)
+	}
+
+	gatewayIP, err := h.ensureServerAttachedToNetwork(ctx, server, networkID)
+	if err != nil {
+		return err
 	}
 
 	for _, route := range network.Routes {
@@ -224,14 +236,14 @@ func (h *Hetzner) ensureNATRouteOnNetwork(ctx context.Context, networkID int, se
 		}
 	}
 
-	_, response, err = h.hcloudClient.Network.AddRoute(ctx, &hcloud.Network{ID: networkID},
+	_, response, err = h.networkClient.AddRoute(ctx, &hcloud.Network{ID: networkID},
 		hcloud.NetworkAddRouteOpts{
 			Route: hcloud.NetworkRoute{
 				Destination: &net.IPNet{
 					IP:   net.IPv4(0, 0, 0, 0),
 					Mask: net.CIDRMask(0, 32),
 				},
-				Gateway: server.PrivateNet[0].IP,
+				Gateway: gatewayIP,
 			},
 		},
 	)
@@ -240,6 +252,73 @@ func (h *Hetzner) ensureNATRouteOnNetwork(ctx context.Context, networkID int, se
 	}
 	if response.StatusCode != http.StatusCreated {
 		return fmt.Errorf("registering NAT gateway route on network %d: unexpected status %d", networkID, response.StatusCode)
+	}
+	return nil
+}
+
+// ensureServerAttachedToNetwork resolves the server's private IP in
+// networkID. Hetzner's `Server.Create` with `Networks: [...]` returns
+// before the attachment action completes, so the returned server's
+// `PrivateNet` is often still empty for a few seconds. Same story on
+// re-runs where `Server.GetByName`'s response races with an in-flight
+// attach. We poll `GetByID` until the attachment shows up, then fall
+// back to an explicit `AttachToNetwork` for the genuinely-orphaned
+// case (manual console deletion that left a different server stale).
+func (h *Hetzner) ensureServerAttachedToNetwork(ctx context.Context, server *hcloud.Server, networkID int) (net.IP, error) {
+	if ip := privateIPOnNetwork(server, networkID); ip != nil {
+		return ip, nil
+	}
+
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		fresh, _, err := h.serverClient.GetByID(ctx, server.ID)
+		if err != nil {
+			return nil, fmt.Errorf("re-fetching NAT gateway server %d: %w", server.ID, err)
+		}
+		if fresh == nil {
+			return nil, fmt.Errorf("NAT gateway server %d not found on re-fetch", server.ID)
+		}
+		if ip := privateIPOnNetwork(fresh, networkID); ip != nil {
+			return ip, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+
+	// Hetzner's auto-attach (via Networks in CreateOpts) didn't fire
+	// within the deadline — likely a stale orphan. Attempt an
+	// explicit attach.
+	slog.InfoContext(ctx, "NAT gateway server still not attached to network after polling; attaching explicitly",
+		slog.Int64("server-id", int64(server.ID)),
+		slog.Int("network-id", networkID),
+	)
+	_, _, err := h.serverClient.AttachToNetwork(ctx, server, hcloud.ServerAttachToNetworkOpts{
+		Network: &hcloud.Network{ID: networkID},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("attaching NAT gateway server %d to network %d: %w", server.ID, networkID, err)
+	}
+
+	attached, _, err := h.serverClient.GetByID(ctx, server.ID)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetching NAT gateway server %d after attach: %w", server.ID, err)
+	}
+	if ip := privateIPOnNetwork(attached, networkID); ip != nil {
+		return ip, nil
+	}
+	return nil, fmt.Errorf("NAT gateway server %d still not attached to network %d after explicit attach", server.ID, networkID)
+}
+
+// privateIPOnNetwork returns the server's private IP within networkID,
+// or nil when the server has no attachment to that network.
+func privateIPOnNetwork(server *hcloud.Server, networkID int) net.IP {
+	for _, pn := range server.PrivateNet {
+		if pn.Network != nil && pn.Network.ID == networkID {
+			return pn.IP
+		}
 	}
 	return nil
 }
