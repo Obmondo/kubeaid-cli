@@ -8,7 +8,7 @@ cilium:
   hostFirewall:
     enabled: true
 
-  {{/*
+  {{- /*
     (1) HCloud instances always have the eth0 network interface.
 
       And, if they're part of an HCloud network, then they'll also have an enp+ network
@@ -25,7 +25,7 @@ cilium:
       We'll add support for VSwitch later.
 
     (2) Hetzner bare-metal servers have only the enp+ / eno+ network interface.
-  */}}
+  */ -}}
   {{- if .HetznerConfig }}
   extraArgs:
     - "--devices=eth+,enp+,eno+"

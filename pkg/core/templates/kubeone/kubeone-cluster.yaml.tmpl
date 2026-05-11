@@ -9,7 +9,7 @@ cloudProvider:
 versions:
   kubernetes: {{ .K8sVersion }}
 
-apiEndpoint: {{ .BareMetalConfig.ControlPlane.Endpoint | toIndentYAML 2 | nindent 2 }}
+apiEndpoint: {{- .BareMetalConfig.ControlPlane.Endpoint | toIndentYAML 2 | nindent 2 }}
 
 controlPlane:
   hosts:
@@ -71,8 +71,8 @@ staticWorkers:
       privateAddress: {{ $host.PrivateAddress }}
       {{- end }}
 
-      labels: {{ $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
-      taints: {{ $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
+      labels: {{- $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
+      taints: {{- $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
   {{- end }}
   {{- end }}
 
