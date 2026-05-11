@@ -80,31 +80,39 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	fmt.Println("Add the A records shown below to your DNS provider — bootstrap continues automatically once they all resolve.")
 	fmt.Println()
 
-	// Save cursor at the start of the status block — every redraw
-	// restores here + clears to end of screen so the header line +
-	// table redraw in place rather than scroll.
-	fmt.Print("\033[s")
-
 	maxAttempts := int(dnsTotalTimeout / dnsPollInterval)
 	start := time.Now()
 	deadline := start.Add(dnsTotalTimeout)
 
+	// Track the height of the last-rendered dynamic block so we can
+	// wipe exactly that many lines on the next tick. `\033[s` /
+	// `\033[u` cursor save/restore drifts once the saved position
+	// scrolls past the viewport (each tick then leaks into scrollback);
+	// cursor-up + clear-to-end is deterministic because we know what
+	// we printed last time.
+	prevBlockLines := 0
+
 	// Render an initial "querying…" table immediately so the operator
 	// gets feedback up front. Without it, the first round of lookups
-	// (up to len(fqdns) * len(resolvers) * dnsResolveTimeout when
-	// records are missing AND the public resolver is unreachable)
+	// (up to len(fqdns) * dnsResolveTimeout when records are missing)
 	// leaves the screen looking frozen with just the header text.
 	pending := make([]dnsStatus, len(fqdns))
 	for i, fqdn := range fqdns {
 		pending[i] = dnsStatus{FQDN: fqdn, Pending: true}
 	}
-	renderDNSWaitStatus(1, maxAttempts, time.Since(start), pending, expectedIP)
+	initialBlock := buildDNSWaitBlock(1, maxAttempts, time.Since(start), pending, expectedIP)
+	fmt.Print(initialBlock)
+	prevBlockLines = strings.Count(initialBlock, "\n")
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
 
-		fmt.Print("\033[u\033[J")
-		renderDNSWaitStatus(attempt, maxAttempts, time.Since(start), statuses, expectedIP)
+		block := buildDNSWaitBlock(attempt, maxAttempts, time.Since(start), statuses, expectedIP)
+		if prevBlockLines > 0 {
+			fmt.Printf("\033[%dF\033[J", prevBlockLines)
+		}
+		fmt.Print(block)
+		prevBlockLines = strings.Count(block, "\n")
 
 		if allDNSStatusesOK(statuses) {
 			// No "DNS verified" trailer — the all-green status column
@@ -158,29 +166,25 @@ func printStaleCacheHint(w io.Writer, expectedIP string) {
 	fmt.Fprintln(w)
 }
 
-// renderDNSWaitStatus prints the per-tick header (attempt + elapsed +
-// remaining + Ctrl+C hint) and the lipgloss status table. Both redraw
-// together each tick so the cursor save/restore math stays simple —
-// restore goes to the line above the header, clear-to-end-of-screen
-// wipes the whole block, then we rewrite from scratch.
+// buildDNSWaitBlock returns the per-tick render — the header line
+// (attempt + elapsed + remaining + Ctrl+C hint) plus the lipgloss
+// status table — as a single string ending in a newline. Returning a
+// string (not printing directly) lets the caller count lines for the
+// cursor-up wipe on the next tick.
 //
 // Ctrl+C rides on the same line as the timer (top of the redraw block)
 // rather than as a separate footer; the bottom-footer placement
 // duplicated visual weight with the table border below it.
-//
-// Polling here is loop-on-timer rather than wait-for-ENTER like the
-// PR-merge prompt; that's fine because DNS lookups go through the OS
-// resolver and never touch SSH / YubiKey.
-func renderDNSWaitStatus(attempt, maxAttempts int, elapsed time.Duration, statuses []dnsStatus, expectedIP string) {
+func buildDNSWaitBlock(attempt, maxAttempts int, elapsed time.Duration, statuses []dnsStatus, expectedIP string) string {
 	remaining := dnsTotalTimeout - elapsed
 	if remaining < 0 {
 		remaining = 0
 	}
-	fmt.Printf("Attempt %d/%d  •  %s elapsed  •  %s remaining  •  Ctrl+C to abort\n",
+	header := fmt.Sprintf("Attempt %d/%d  •  %s elapsed  •  %s remaining  •  Ctrl+C to abort\n",
 		attempt, maxAttempts,
 		elapsed.Round(time.Second), remaining.Round(time.Second),
 	)
-	fmt.Println(renderDNSStatusTable(statuses, expectedIP))
+	return header + renderDNSStatusTable(statuses, expectedIP) + "\n"
 }
 
 // dnsStatus is one row of the resolution table — what we asked for vs.
