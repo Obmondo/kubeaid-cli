@@ -137,8 +137,8 @@ func TestHydrateKeycloakDefaults(t *testing.T) {
 	})
 }
 
-func TestHydrateManagedKeycloakOIDC(t *testing.T) {
-	t.Run("derives issuer URL and client ID for managed Keycloak", func(t *testing.T) {
+func TestHydrateKeycloakOIDC(t *testing.T) {
+	t.Run("derives issuer URL and client ID for managed Keycloak (VPN cluster)", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
 			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
@@ -147,7 +147,7 @@ func TestHydrateManagedKeycloakOIDC(t *testing.T) {
 				Realm: "acme",
 			}
 
-			hydrateManagedKeycloakOIDC()
+			hydrateKeycloakOIDC()
 
 			oidc := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
 			require.NotNil(t, oidc)
@@ -155,6 +155,26 @@ func TestHydrateManagedKeycloakOIDC(t *testing.T) {
 			assert.Equal(t, "kubernetes-acme-vpn", oidc.ClientID)
 			assert.Equal(t, "email", oidc.UsernameClaim)
 			assert.Equal(t, "groups", oidc.GroupsClaim)
+		})
+	})
+
+	t.Run("derives issuer URL and client ID for external Keycloak (workload cluster)", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Name = "acme-staging"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  constants.KeycloakModeExternal,
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+
+			hydrateKeycloakOIDC()
+
+			oidc := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
+			require.NotNil(t, oidc,
+				"workload+external should also auto-derive — same parent VPN's Keycloak")
+			assert.Equal(t, "https://keycloak.vpn.acme.com/realms/acme", oidc.IssuerURL)
+			assert.Equal(t, "kubernetes-acme-staging", oidc.ClientID)
 		})
 	})
 
@@ -174,26 +194,10 @@ func TestHydrateManagedKeycloakOIDC(t *testing.T) {
 			}
 			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = explicit
 
-			hydrateManagedKeycloakOIDC()
+			hydrateKeycloakOIDC()
 
 			assert.Same(t, explicit, config.ParsedGeneralConfig.Cluster.APIServer.OIDC,
 				"explicit OIDC block must not be replaced")
-		})
-	})
-
-	t.Run("external Keycloak is left alone", func(t *testing.T) {
-		withFreshKeycloakConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
-			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
-				Mode:  constants.KeycloakModeExternal,
-				DNS:   "auth.acme.com",
-				Realm: "acme",
-			}
-
-			hydrateManagedKeycloakOIDC()
-
-			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC,
-				"external mode: operator declares apiServer.oidc themselves")
 		})
 	})
 
@@ -201,7 +205,7 @@ func TestHydrateManagedKeycloakOIDC(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
 			config.ParsedGeneralConfig.Cluster.Name = "workload"
 
-			hydrateManagedKeycloakOIDC()
+			hydrateKeycloakOIDC()
 
 			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC)
 		})
@@ -219,7 +223,7 @@ func TestHydrateManagedKeycloakOIDC(t *testing.T) {
 			// clear error later. Don't paper over it here.
 			hydrateKeycloakDefaults()
 
-			hydrateManagedKeycloakOIDC()
+			hydrateKeycloakOIDC()
 
 			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC)
 		})
@@ -299,18 +303,34 @@ func TestValidateKeycloakConfig(t *testing.T) {
 		})
 	})
 
-	t.Run("workload cluster with keycloak block fails (any mode)", func(t *testing.T) {
+	t.Run("workload cluster with managed keycloak is rejected", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
 			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
-				Mode:  "managed",
+				Mode:  constants.KeycloakModeManaged,
 				DNS:   "keycloak.vpn.acme.com",
 				Realm: "acme",
 			}
 
 			err := validateKeycloakConfig()
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), "cluster.keycloak is only valid when cluster.type=vpn")
+			assert.Contains(t, err.Error(), "only VPN clusters host Keycloak")
+		})
+	})
+
+	t.Run("workload cluster with external keycloak passes", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Name = "acme-staging"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  constants.KeycloakModeExternal,
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+			// No netbird/ACME/backend-secret needed on workload —
+			// those VPN-only invariants don't apply here.
+
+			require.NoError(t, validateKeycloakConfig())
 		})
 	})
 

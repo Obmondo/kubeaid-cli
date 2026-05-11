@@ -93,15 +93,17 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// publicsuffix). Validation of the typed block happens after
 		// defaults so error messages reference the user-visible value.
 		//
-		// Must run before hydrateManagedKeycloakOIDC and
+		// Must run before hydrateKeycloakOIDC and
 		// hydrateWithOIDCOptions: both read the resolved realm.
 		hydrateKeycloakDefaults()
 
-		// For managed Keycloak, fill cluster.apiServer.oidc from the
-		// cluster.keycloak block so the operator doesn't have to
-		// repeat the derivable issuer URL + client ID. No-op when
-		// the OIDC block is already set explicitly.
-		hydrateManagedKeycloakOIDC()
+		// Fill cluster.apiServer.oidc from the cluster.keycloak block
+		// so the operator doesn't have to repeat the derivable issuer
+		// URL + client ID. Fires for both modes — managed (VPN host)
+		// and external (workload cluster referencing a parent VPN's
+		// Keycloak, or VPN using an operator-managed Keycloak). No-op
+		// when the OIDC block is already set explicitly.
+		hydrateKeycloakOIDC()
 
 		// Translate the typed apiServer.oidc block (if any) into the
 		// corresponding kube-apiserver AuthenticationConfiguration

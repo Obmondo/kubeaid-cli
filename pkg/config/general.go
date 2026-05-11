@@ -124,16 +124,28 @@ type (
 		// Configuration options for the Kubernetes API server.
 		APIServer APIServerConfig `yaml:"apiServer"`
 
-		// Keycloak declares the Keycloak instance this cluster hosts.
-		// Only meaningful when cluster.type=vpn — VPN clusters host
-		// Keycloak; workload clusters do not, and must leave this
-		// block unset. A workload cluster's kube-apiserver instead
-		// authenticates against an existing Keycloak by setting
-		// apiServer.oidc (issuer URL + client ID) directly in its own
-		// general.yaml; kubeaid-cli prompts for those values during
-		// workload-cluster setup. There is no automatic inheritance
-		// between clusters — every cluster's OIDC config is explicit
-		// in its own general.yaml.
+		// Keycloak declares the Keycloak instance this cluster
+		// authenticates against. Semantics depend on cluster.type:
+		//
+		//   - cluster.type=vpn (required block):
+		//       mode=managed  → kubeaid-cli installs Keycloak on
+		//                       this cluster.
+		//       mode=external → operator runs Keycloak elsewhere.
+		//
+		//   - cluster.type=workload (optional block):
+		//       mode=external only → the cluster's kube-apiserver
+		//                            trusts this Keycloak for OIDC.
+		//                            kubeaid-cli derives
+		//                            apiServer.oidc.{issuerUrl,
+		//                            clientId} from this block;
+		//                            explicit apiServer.oidc still
+		//                            wins. Workload clusters never
+		//                            host Keycloak — mode=managed is
+		//                            rejected.
+		//
+		// Omitting the block on a workload cluster boots it without
+		// OIDC; users authenticate with admin.conf (the workload
+		// bootstrap prints a warning).
 		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
 		// NetBird declares the NetBird Management instance this VPN
@@ -235,10 +247,9 @@ type (
 	// user-facing.
 	KeycloakConfig struct {
 		// Mode is "managed" (kubeaid-cli installs Keycloak via the
-		// keycloakx Helm chart on this cluster) or "external" (Keycloak
-		// is already running elsewhere; supply DNS only). Only managed
-		// is supported by the current bootstrap flow; external is
-		// reserved for a future branch.
+		// keycloakx Helm chart on this cluster — VPN clusters only)
+		// or "external" (Keycloak is already running elsewhere;
+		// supply DNS only). Workload clusters must use external.
 		Mode string `yaml:"mode" validate:"oneof=managed external"`
 
 		// DNS is the public hostname Keycloak is reachable at, e.g.
