@@ -129,6 +129,15 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 	// deterministic: we know exactly what we printed last time.
 	prevBlockLines := 0
 
+	redraw := func(attempt int, rows []capiStatusRow) {
+		block := buildCAPIWaitBlock(attempt, maxAttempts, time.Since(start), rows)
+		if prevBlockLines > 0 {
+			fmt.Printf("\033[%dF\033[J", prevBlockLines)
+		}
+		fmt.Print(block)
+		prevBlockLines = strings.Count(block, "\n")
+	}
+
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		rows, ready, err := summarizeCAPIStatus(ctx, managementClusterClient)
 		if err != nil {
@@ -139,12 +148,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 			slog.WarnContext(ctx, "Failed reading CAPI status; will retry next tick", slog.Any("error", err))
 		}
 
-		block := buildCAPIWaitBlock(attempt, maxAttempts, time.Since(start), rows)
-		if prevBlockLines > 0 {
-			fmt.Printf("\033[%dF\033[J", prevBlockLines)
-		}
-		fmt.Print(block)
-		prevBlockLines = strings.Count(block, "\n")
+		redraw(attempt, rows)
 
 		if ready {
 			return nil
@@ -154,10 +158,19 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 			return fmt.Errorf("main cluster did not reach Provisioned+Ready within %s", capiWaitTotalTimeout)
 		}
 
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(capiWaitPollInterval):
+		// Tick once per second between API polls so the elapsed /
+		// remaining counter keeps moving — without this the screen
+		// freezes for the full 15 s poll interval and reads as
+		// "stuck". The table content stays the same; only the
+		// per-tick header line gets a fresh timestamp.
+		nextPoll := time.Now().Add(capiWaitPollInterval)
+		for time.Now().Before(nextPoll) {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Second):
+			}
+			redraw(attempt, rows)
 		}
 	}
 	// Unreachable — the loop returns from inside the deadline check.
