@@ -149,6 +149,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		args.GitAuthMethod,
 		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
+		defaultBranchName,
 	)
 
 	// AddCommitAndPushChanges returns ZeroHash when the worktree was

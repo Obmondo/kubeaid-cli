@@ -24,6 +24,13 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
+// defaultBranchName is the fork's default branch (e.g. "main") — passed
+// in by the caller rather than re-discovered inside this function. The
+// caller already called GetDefaultBranchName once during its own setup
+// (setup_kubeaid_config.go / upgrade_cluster.go); passing the value
+// through avoids a second remote.ListContext call right after the push,
+// which over SSH triggers a separate "look up default branch on <fork>"
+// YubiKey touch on every commit-push cycle.
 func AddCommitAndPushChanges(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
@@ -31,6 +38,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	authMethod transport.AuthMethod,
 	clusterName string,
 	commitMessage string,
+	defaultBranchName string,
 ) plumbing.Hash {
 	kubeaidConfigFork := config.ParsedGeneralConfig.Forks.KubeaidConfigFork
 
@@ -92,7 +100,6 @@ func AddCommitAndPushChanges(ctx context.Context,
 	// When we didn't push the changes to the default branch, and rather to a feature branch,
 	// log the create-PR URL so the operator has it in their bootstrap log. WaitUntilPRMerged
 	// also surfaces it at the interactive prompt; the slog line here gives a permanent record.
-	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
 	if branch != defaultBranchName {
 		slog.InfoContext(ctx, "Create and merge PR please",
 			slog.String("URL", BuildPRCompareURL(repo, defaultBranchName, branch)))

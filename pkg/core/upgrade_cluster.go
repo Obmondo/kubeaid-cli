@@ -176,6 +176,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 		gitAuthMethod,
 		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
+		defaultBranchName,
 	)
 
 	if !args.SkipPRWorkflow {
