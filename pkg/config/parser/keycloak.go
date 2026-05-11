@@ -38,6 +38,54 @@ func hydrateKeycloakDefaults() {
 	}
 }
 
+// hydrateManagedKeycloakOIDC fills cluster.apiServer.oidc from the
+// cluster.keycloak block when Keycloak is managed by this bootstrap
+// run. The values are 100% derivable (issuer URL from keycloak DNS +
+// realm; client ID from cluster name), so requiring the operator to
+// repeat them in apiServer.oidc is friction with no upside.
+//
+// Skipped when:
+//   - cluster.keycloak is absent or not managed (external Keycloak's
+//     issuer URL and client ID are the operator's to declare)
+//   - keycloak.dns or keycloak.realm is empty (hydrateKeycloakDefaults
+//     must run first; an undeducible realm fails validation later
+//     with a clearer error than a half-filled OIDC block would)
+//   - cluster.apiServer.oidc is already set (explicit operator
+//     configuration beats derived defaults — same precedence rule
+//     as every other hydrate helper in this package)
+//
+// Run AFTER hydrateKeycloakDefaults (so the realm is filled) and
+// BEFORE hydrateWithOIDCOptions (so the AuthenticationConfiguration
+// pipeline picks up the derived values).
+func hydrateManagedKeycloakOIDC() {
+	cluster := &config.ParsedGeneralConfig.Cluster
+	kc := cluster.Keycloak
+	if kc == nil || kc.Mode != constants.KeycloakModeManaged {
+		return
+	}
+	if kc.DNS == "" || kc.Realm == "" || cluster.Name == "" {
+		return
+	}
+	if cluster.APIServer.OIDC != nil {
+		return
+	}
+
+	cluster.APIServer.OIDC = &config.OIDCConfig{
+		IssuerURL:     "https://" + kc.DNS + "/realms/" + kc.Realm,
+		ClientID:      kubernetesClientIDPrefix + cluster.Name,
+		UsernameClaim: "email",
+		GroupsClaim:   "groups",
+	}
+}
+
+// kubernetesClientIDPrefix mirrors keycloak.kubernetesClientIDPrefix
+// — the Keycloak `kubernetes-<cluster>` OIDC client created by
+// keycloak.ReconcileKubernetes. Duplicated as a constant here
+// rather than imported because pkg/config/parser intentionally has
+// no dependency on pkg/keycloak (the parser runs before any
+// Keycloak admin API is touched).
+const kubernetesClientIDPrefix = "kubernetes-"
+
 // deriveRealm returns the first dot-separated segment of the
 // effective TLD-plus-one for host. Empty string if host is empty,
 // has no public suffix, or is otherwise unworkable — the caller's

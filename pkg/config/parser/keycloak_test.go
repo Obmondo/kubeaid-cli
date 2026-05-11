@@ -137,6 +137,95 @@ func TestHydrateKeycloakDefaults(t *testing.T) {
 	})
 }
 
+func TestHydrateManagedKeycloakOIDC(t *testing.T) {
+	t.Run("derives issuer URL and client ID for managed Keycloak", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  constants.KeycloakModeManaged,
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+
+			hydrateManagedKeycloakOIDC()
+
+			oidc := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
+			require.NotNil(t, oidc)
+			assert.Equal(t, "https://keycloak.vpn.acme.com/realms/acme", oidc.IssuerURL)
+			assert.Equal(t, "kubernetes-acme-vpn", oidc.ClientID)
+			assert.Equal(t, "email", oidc.UsernameClaim)
+			assert.Equal(t, "groups", oidc.GroupsClaim)
+		})
+	})
+
+	t.Run("explicit apiServer.oidc wins over derived defaults", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  constants.KeycloakModeManaged,
+				DNS:   "keycloak.vpn.acme.com",
+				Realm: "acme",
+			}
+			explicit := &config.OIDCConfig{
+				IssuerURL:     "https://override.example/realms/x",
+				ClientID:      "custom-client",
+				UsernameClaim: "preferred_username",
+				GroupsClaim:   "roles",
+			}
+			config.ParsedGeneralConfig.Cluster.APIServer.OIDC = explicit
+
+			hydrateManagedKeycloakOIDC()
+
+			assert.Same(t, explicit, config.ParsedGeneralConfig.Cluster.APIServer.OIDC,
+				"explicit OIDC block must not be replaced")
+		})
+	})
+
+	t.Run("external Keycloak is left alone", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  constants.KeycloakModeExternal,
+				DNS:   "auth.acme.com",
+				Realm: "acme",
+			}
+
+			hydrateManagedKeycloakOIDC()
+
+			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC,
+				"external mode: operator declares apiServer.oidc themselves")
+		})
+	})
+
+	t.Run("no-op when keycloak block is unset", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Name = "workload"
+
+			hydrateManagedKeycloakOIDC()
+
+			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC)
+		})
+	})
+
+	t.Run("no-op when realm cannot be derived", func(t *testing.T) {
+		withFreshKeycloakConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode: constants.KeycloakModeManaged,
+				DNS:  "localhost",
+			}
+			// hydrateKeycloakDefaults can't derive a realm from
+			// "localhost"; validateKeycloakConfig fails with a
+			// clear error later. Don't paper over it here.
+			hydrateKeycloakDefaults()
+
+			hydrateManagedKeycloakOIDC()
+
+			assert.Nil(t, config.ParsedGeneralConfig.Cluster.APIServer.OIDC)
+		})
+	})
+}
+
 func TestValidateKeycloakConfig(t *testing.T) {
 	t.Run("vpn cluster without keycloak block fails", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
