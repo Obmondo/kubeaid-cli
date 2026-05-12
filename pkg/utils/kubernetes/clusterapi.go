@@ -120,22 +120,26 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 	start := time.Now()
 	deadline := start.Add(capiWaitTotalTimeout)
 
-	// Track the height of the last-rendered dynamic block so we can
-	// surgically wipe exactly that many lines on the next tick.
+	// Track the last-rendered block so we can re-measure its visible
+	// height (which depends on the *current* terminal width) and
+	// surgically wipe exactly that many rows on the next tick.
 	// `\033[s` / `\033[u` cursor save/restore turned out unreliable in
 	// practice — once the saved position scrolls past the viewport the
 	// restore lands somewhere unpredictable, and the previous render
 	// leaks into scrollback. Cursor-up + clear-to-end is more
-	// deterministic: we know exactly what we printed last time.
-	prevBlockLines := 0
+	// deterministic, but the up-count has to account for line
+	// wrapping (operator splits a tmux pane mid-run → narrower width →
+	// previously-single-line rows now occupy two rows each) — see
+	// progress.RenderedLineCount.
+	prevBlock := ""
 
 	redraw := func(attempt int, rows []capiStatusRow) {
 		block := buildCAPIWaitBlock(attempt, maxAttempts, time.Since(start), rows)
-		if prevBlockLines > 0 {
-			fmt.Printf("\033[%dF\033[J", prevBlockLines)
+		if prevBlock != "" {
+			fmt.Printf("\033[%dF\033[J", progress.RenderedLineCount(prevBlock))
 		}
 		fmt.Print(block)
-		prevBlockLines = strings.Count(block, "\n")
+		prevBlock = block
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {

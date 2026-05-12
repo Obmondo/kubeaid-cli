@@ -84,13 +84,16 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	start := time.Now()
 	deadline := start.Add(dnsTotalTimeout)
 
-	// Track the height of the last-rendered dynamic block so we can
-	// wipe exactly that many lines on the next tick. `\033[s` /
-	// `\033[u` cursor save/restore drifts once the saved position
-	// scrolls past the viewport (each tick then leaks into scrollback);
-	// cursor-up + clear-to-end is deterministic because we know what
-	// we printed last time.
-	prevBlockLines := 0
+	// Track the last-rendered block so we can re-measure its visible
+	// height (which depends on the *current* terminal width) and wipe
+	// exactly that many rows on the next tick. `\033[s` / `\033[u`
+	// cursor save/restore drifts once the saved position scrolls past
+	// the viewport (each tick then leaks into scrollback); cursor-up
+	// + clear-to-end is deterministic, but the up-count has to
+	// account for wrapping (operator splits a tmux pane mid-run →
+	// narrower width → single-line rows wrap to two) — see
+	// progress.RenderedLineCount.
+	prevBlock := ""
 
 	// Render an initial "querying…" table immediately so the operator
 	// gets feedback up front. Without it, the first round of lookups
@@ -102,17 +105,17 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	}
 	initialBlock := buildDNSWaitBlock(1, maxAttempts, time.Since(start), pending, expectedIP)
 	fmt.Print(initialBlock)
-	prevBlockLines = strings.Count(initialBlock, "\n")
+	prevBlock = initialBlock
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
 
 		block := buildDNSWaitBlock(attempt, maxAttempts, time.Since(start), statuses, expectedIP)
-		if prevBlockLines > 0 {
-			fmt.Printf("\033[%dF\033[J", prevBlockLines)
+		if prevBlock != "" {
+			fmt.Printf("\033[%dF\033[J", progress.RenderedLineCount(prevBlock))
 		}
 		fmt.Print(block)
-		prevBlockLines = strings.Count(block, "\n")
+		prevBlock = block
 
 		if allDNSStatusesOK(statuses) {
 			// No "DNS verified" trailer — the all-green status column
