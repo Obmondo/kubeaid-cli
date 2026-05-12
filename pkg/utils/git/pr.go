@@ -258,14 +258,15 @@ func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plum
 // DNS-wait table — keeps the operator-facing surfaces visually
 // consistent.
 //
-// Width handling: the box width is the longest line, which is the URL.
-// Long PR URLs (`compare/<base>...kubeaid-<cluster>-<unix-ts>`) overflow
-// narrow terminals and break the border render. When the URL would
-// stretch the box past the terminal width, we move the URL to its own
-// line outside the box. Most terminals (gnome-terminal, iTerm2,
-// Alacritty, kitty) still detect a wrapped URL as clickable when the
-// link is on a single logical line; the visual wrap is the
-// terminal's own soft-wrap.
+// Width handling: the box always takes the full terminal width, so
+// the URL stays inside it even when the PR URL is long enough that a
+// minimally-sized box would have it spill out (the failure mode the
+// previous code went out of its way to allow — it ended up looking
+// like the URL had escaped the box entirely). With an explicit
+// Width(termWidth-2), lipgloss soft-wraps long URLs across lines
+// inside the box; terminals that support OSC 8 hyperlinks keep
+// click-through working across the wrap, and ones that don't still
+// have the URL visible as plain text the operator can select/copy.
 //
 // The caller prints '> ' below the rendered box; that's where the
 // operator's ENTER lands. On success the whole block (box + prompt
@@ -278,41 +279,21 @@ func renderPRMergeBox(prURL string) string {
 		Underline(true)
 	hintStyle := lipgloss.NewStyle().Faint(true)
 
-	termWidth := terminalWidth()
-	// URL line: 2-space indent + url. Box adds 2 border chars + 2
-	// padding chars => 4 chars of overhead.
-	urlLineWidth := 2 + len(prURL)
-	urlFitsInBox := urlLineWidth+4 <= termWidth
-
-	if urlFitsInBox {
-		content := lipgloss.JoinVertical(
-			lipgloss.Left,
-			headerStyle.Render("Open and merge in your browser:"),
-			"  "+urlStyle.Render(prURL),
-			"",
-			hintStyle.Render("Press ENTER once merged  •  Ctrl+C to abort"),
-		)
-		return lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			Padding(0, 1).
-			Render(content)
-	}
-
-	// URL too long for the terminal — render a compact box without
-	// the URL inside, then the URL on its own line below where
-	// terminal-native soft-wrap can take over without stretching
-	// the border.
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
-		headerStyle.Render("Open and merge the PR in your browser."),
+		headerStyle.Render("Open and merge in your browser:"),
+		urlStyle.Render(prURL),
 		"",
 		hintStyle.Render("Press ENTER once merged  •  Ctrl+C to abort"),
 	)
-	box := lipgloss.NewStyle().
+	// Box border + side padding = 4 cells of overhead; subtract from
+	// the terminal width so lipgloss's internal wrap targets the
+	// content area, not the outer dimensions.
+	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		Padding(0, 1).
-		Render(content)
-	return box + "\n\n  " + urlStyle.Render(prURL)
+		Width(terminalWidth() - 4)
+	return boxStyle.Render(content)
 }
 
 // terminalWidth returns the current terminal width via x/term, or 80
