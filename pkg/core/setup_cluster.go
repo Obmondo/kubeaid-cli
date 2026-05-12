@@ -149,6 +149,46 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	releaseSS()
 	bar.Substep("Installed Sealed Secrets controller")
 
+	// Wait for the controller to be Ready before any caller tries to
+	// apply a SealedSecret — otherwise the SealedSecret lands but its
+	// plain Secret doesn't materialise, and the failure surfaces
+	// downstream as a cryptic ArgoCD repo-server error.
+	releaseWait := bar.InProgress("Waiting for Sealed Secrets controller Ready")
+	if err := kubernetes.WaitForSealedSecretsControllerReady(ctx,
+		args.ClusterClient, 5*time.Minute,
+	); err != nil {
+		releaseWait()
+		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not Ready")
+	}
+	releaseWait()
+	bar.Substep("Sealed Secrets controller Ready")
+
+	// On main-cluster setup, copy the active sealed-secrets keys from
+	// the management cluster so the main controller can decrypt every
+	// SealedSecret kubeaid-cli sealed against the management
+	// controller during Phase 0. Without this, the per-file
+	// kubeaid-sha256 cache skips re-sealing on the main cluster's
+	// run and leaves SealedSecrets in kubeaid-config undecryptable
+	// (mgmt KEY-A vs main KEY-B mismatch). Mirrors the DR-restore
+	// flow above; one mechanism for both fresh-bootstrap and recovery.
+	if args.ClusterType == constants.ClusterTypeMain {
+		releaseCopy := bar.InProgress("Copying sealed-secrets keys from management to main")
+		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+		mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed constructing management cluster client")
+
+		if err := kubernetes.CopySealedSecretsKeysFromManagement(ctx,
+			mgmtClient, args.ClusterClient,
+		); err != nil {
+			releaseCopy()
+			assert.AssertErrNil(ctx, err, "Failed copying sealed-secrets keys")
+		}
+		releaseCopy()
+		bar.Substep("Copied sealed-secrets keys from management to main")
+	}
+
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
 		GitAuthMethod:    args.GitAuthMethod,
