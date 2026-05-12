@@ -289,7 +289,52 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 		return fmt.Errorf("writing config files: %w", err)
 	}
 
+	printWorkloadNetBirdNextSteps(cfg)
+
 	return nil
+}
+
+// printWorkloadNetBirdNextSteps prints two manual steps the operator
+// has to do before `kubeaid-cli bootstrap` can finish on a workload
+// cluster that opted into Keycloak (and therefore wants its kube-API
+// behind the NetBird mesh). No-op for VPN clusters and for workload
+// clusters that opted out of Keycloak — both flows are self-contained.
+//
+// Manual on purpose (decision: operator generates the setup key in
+// the parent NetBird's UI and pastes it into secrets.yaml; kubeaid-cli
+// never speaks to the NetBird Mgmt API). Same applies to NetBird group
+// ACLs — operator owns the parent NetBird's NBPolicy / group config.
+func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
+	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.EnableOIDC {
+		return
+	}
+
+	// Derive the typical NetBird Mgmt URL from the Keycloak DNS by
+	// swapping the leading "keycloak." label for "netbird." — Obmondo's
+	// VPN clusters expose both on the same base domain. Fall through
+	// to a placeholder if the prefix doesn't match (operator's
+	// off-pattern Keycloak DNS).
+	netbirdURL := "<your NetBird Mgmt URL>"
+	if strings.HasPrefix(cfg.KeycloakDNS, "keycloak.") {
+		netbirdURL = "https://netbird." + strings.TrimPrefix(cfg.KeycloakDNS, "keycloak.")
+	}
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
+	fmt.Fprintln(os.Stderr, "  Two manual steps before `kubeaid-cli bootstrap`:")
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "  1. Generate a NetBird setup key for this cluster's nodes:")
+	fmt.Fprintf(os.Stderr, "       %s  →  Setup Keys  →  Create key\n", netbirdURL)
+	fmt.Fprintln(os.Stderr, "     Paste the generated value into secrets.yaml under:")
+	fmt.Fprintln(os.Stderr, "       netbird:")
+	fmt.Fprintln(os.Stderr, "         setupKey: <paste here>")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "  2. Configure NetBird group ACLs so your laptop can reach the new cluster:")
+	fmt.Fprintf(os.Stderr, "       In %s, ensure a NBPolicy lets your laptop's group reach\n", netbirdURL)
+	fmt.Fprintf(os.Stderr, "       the cluster peer (typically the group %q) on TCP 6443.\n", "k8s-"+cfg.ClusterName)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 }
 
 // runBasicsForm shows Step 1 — provider, cluster name, and cluster kind.
