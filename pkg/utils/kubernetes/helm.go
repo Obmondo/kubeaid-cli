@@ -38,11 +38,6 @@ type HelmInstallRunner interface {
 	Run(chrt *chart.Chart, vals map[string]any) (*release.Release, error)
 }
 
-// HelmUninstallRunner runs a single Helm uninstall operation.
-type HelmUninstallRunner interface {
-	Run(name string) (*release.UninstallReleaseResponse, error)
-}
-
 // HelmListRunner lists Helm releases.
 type HelmListRunner interface {
 	Run() ([]*release.Release, error)
@@ -51,10 +46,13 @@ type HelmListRunner interface {
 // HelmActionFactory creates per-operation runners.
 // Production wires this to *action.Configuration; tests provide a fake.
 type HelmActionFactory interface {
-	// NewInstall returns a runner configured for the given release name and namespace.
-	NewInstall(releaseName, namespace string) HelmInstallRunner
-	// NewUninstall returns a runner for uninstalling a named release.
-	NewUninstall() HelmUninstallRunner
+	// NewInstall returns a runner configured for the given release name and
+	// namespace. replace=true tells Helm to adopt and re-apply an existing
+	// non-deployed release record (failed / pending-* / superseded) without
+	// uninstalling its in-cluster resources first — used by
+	// helmInstallWithFactory to recover from a stuck previous install while
+	// preserving state like the sealed-secrets master-key Secret.
+	NewInstall(releaseName, namespace string, replace bool) HelmInstallRunner
 	// NewList returns a runner that lists releases matching the given filter.
 	NewList(filter string) HelmListRunner
 	// LoadChart loads a Helm chart from the given filesystem path.
@@ -66,20 +64,14 @@ type realHelmFactory struct {
 	cfg *action.Configuration
 }
 
-func (f *realHelmFactory) NewInstall(releaseName, namespace string) HelmInstallRunner {
+func (f *realHelmFactory) NewInstall(releaseName, namespace string, replace bool) HelmInstallRunner {
 	act := action.NewInstall(f.cfg)
 	act.ReleaseName = releaseName
 	act.Namespace = namespace
 	act.CreateNamespace = true
 	act.Timeout = 10 * time.Minute
 	act.Wait = true
-	return act
-}
-
-func (f *realHelmFactory) NewUninstall() HelmUninstallRunner {
-	act := action.NewUninstall(f.cfg)
-	act.Timeout = 10 * time.Minute
-	act.Wait = true
+	act.Replace = replace
 	return act
 }
 
@@ -129,16 +121,20 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 		return nil
 	}
 
-	// CASE : Helm chart installation is stuck in pending-install state. So delete it first.
-	//        Then we'll try to install it again.
-	if (existingHelmRelease != nil) &&
-		(existingHelmRelease.Info.Status == release.StatusPendingInstall) {
-		slog.InfoContext(ctx, "Uninstalling Helm chart, stuck in pending-install state")
-
-		uninstaller := factory.NewUninstall()
-		if _, err := uninstaller.Run(args.ReleaseName); err != nil {
-			return fmt.Errorf("failed uninstalling helm chart: %w", err)
-		}
+	// CASE : Helm chart release exists in any non-deployed state (pending-install,
+	//        pending-upgrade, pending-rollback, failed, uninstalling, superseded).
+	//        A naive install would fail with "cannot re-use a name that is still
+	//        in use". Use action.Install.Replace=true to adopt and re-apply the
+	//        existing release record instead of uninstalling — that preserves
+	//        in-cluster resources we want to keep (e.g. the sealed-secrets
+	//        master-key Secret; deleting it would invalidate every SealedSecret
+	//        in kubeaid-config). StatusDeployed was short-circuited above.
+	replaceExisting := existingHelmRelease != nil
+	if replaceExisting {
+		slog.InfoContext(ctx,
+			"Recovering Helm release stuck in non-deployed state — re-using existing in-cluster resources",
+			slog.String("status", string(existingHelmRelease.Info.Status)),
+		)
 	}
 
 	// Load and install the Helm chart.
@@ -163,7 +159,7 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	// Install the Helm chart.
 	slog.InfoContext(ctx, "Installing Helm chart....")
 
-	installer := factory.NewInstall(args.ReleaseName, args.Namespace)
+	installer := factory.NewInstall(args.ReleaseName, args.Namespace, replaceExisting)
 	if _, err = installer.Run(chrt, valuesMap); err != nil {
 		return fmt.Errorf("failed installing helm chart: %w", err)
 	}

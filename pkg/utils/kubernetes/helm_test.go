@@ -39,9 +39,10 @@ func (f *fakeListRunner) Run() ([]*release.Release, error) {
 }
 
 type fakeInstallRunner struct {
-	called bool
-	vals   map[string]any
-	err    error
+	called  bool
+	replace bool
+	vals    map[string]any
+	err     error
 }
 
 func (f *fakeInstallRunner) Run(_ *chart.Chart, vals map[string]any) (*release.Release, error) {
@@ -53,30 +54,18 @@ func (f *fakeInstallRunner) Run(_ *chart.Chart, vals map[string]any) (*release.R
 	return &release.Release{}, nil
 }
 
-type fakeUninstallRunner struct {
-	called bool
-	err    error
-}
-
-func (f *fakeUninstallRunner) Run(_ string) (*release.UninstallReleaseResponse, error) {
-	f.called = true
-	if f.err != nil {
-		return nil, f.err
-	}
-	return &release.UninstallReleaseResponse{}, nil
-}
-
 type fakeHelmFactory struct {
 	lister      *fakeListRunner
 	installer   *fakeInstallRunner
-	uninstaller *fakeUninstallRunner
 	chartToLoad *chart.Chart
 	chartErr    error
 }
 
-func (f *fakeHelmFactory) NewInstall(_, _ string) HelmInstallRunner { return f.installer }
-func (f *fakeHelmFactory) NewUninstall() HelmUninstallRunner        { return f.uninstaller }
-func (f *fakeHelmFactory) NewList(_ string) HelmListRunner          { return f.lister }
+func (f *fakeHelmFactory) NewInstall(_, _ string, replace bool) HelmInstallRunner {
+	f.installer.replace = replace
+	return f.installer
+}
+func (f *fakeHelmFactory) NewList(_ string) HelmListRunner { return f.lister }
 
 func (f *fakeHelmFactory) LoadChart(_ string) (*chart.Chart, error) {
 	return f.chartToLoad, f.chartErr
@@ -190,9 +179,8 @@ func TestFindExistingHelmRelease(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			factory := &fakeHelmFactory{
-				lister:      tc.lister,
-				installer:   &fakeInstallRunner{},
-				uninstaller: &fakeUninstallRunner{},
+				lister:    tc.lister,
+				installer: &fakeInstallRunner{},
 			}
 
 			got := findExistingHelmRelease(context.Background(), factory, tc.args)
@@ -224,56 +212,54 @@ func TestHelmInstallWithFactory(t *testing.T) {
 		chartToLoad     *chart.Chart
 		chartErr        error
 		installErr      error
-		uninstallErr    error
 		values          *values.Options
 		wantInstalled   bool
-		wantUninstalled bool
+		wantReplace     bool
 		wantValsKey     string
 		wantErr         bool
 		wantErrContains string
 	}{
 		{
-			name: "already deployed — skips install and uninstall",
+			name: "already deployed — skips install",
 			releases: []*release.Release{
 				makeRelease(relName, ns, release.StatusDeployed),
 			},
-			wantInstalled:   false,
-			wantUninstalled: false,
+			wantInstalled: false,
+			wantReplace:   false,
 		},
 		{
-			name:            "no existing release — fresh install",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: false,
+			name:          "no existing release — fresh install with Replace=false",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
+			wantReplace:   false,
 		},
 		{
-			name: "pending-install — cleans up then reinstalls",
+			name: "pending-install — recovers via Replace=true (no uninstall)",
 			releases: []*release.Release{
 				makeRelease(relName, ns, release.StatusPendingInstall),
 			},
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: true,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
+			wantReplace:   true,
 		},
 		{
-			name:            "non-nil Values — merges and passes to installer",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			values:          &values.Options{Values: []string{"foo=bar"}},
-			wantInstalled:   true,
-			wantUninstalled: false,
-			wantValsKey:     "foo",
-		},
-		{
-			name: "pending-install — uninstall fails returns error",
+			name: "failed — recovers via Replace=true (no uninstall)",
 			releases: []*release.Release{
-				makeRelease(relName, ns, release.StatusPendingInstall),
+				makeRelease(relName, ns, release.StatusFailed),
 			},
-			uninstallErr:    errors.New("uninstall timeout"),
-			wantUninstalled: true,
-			wantErr:         true,
-			wantErrContains: "failed uninstalling helm chart",
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
+			wantReplace:   true,
+		},
+		{
+			name:          "non-nil Values — merges and passes to installer",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			values:        &values.Options{Values: []string{"foo=bar"}},
+			wantInstalled: true,
+			wantReplace:   false,
+			wantValsKey:   "foo",
 		},
 		{
 			name:            "LoadChart fails returns error",
@@ -298,11 +284,9 @@ func TestHelmInstallWithFactory(t *testing.T) {
 			t.Parallel()
 
 			installer := &fakeInstallRunner{err: tc.installErr}
-			uninstaller := &fakeUninstallRunner{err: tc.uninstallErr}
 			factory := &fakeHelmFactory{
 				lister:      singleResponseLister(tc.releases),
 				installer:   installer,
-				uninstaller: uninstaller,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -321,7 +305,8 @@ func TestHelmInstallWithFactory(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
-			assert.Equal(t, tc.wantUninstalled, uninstaller.called)
+			assert.Equal(t, tc.wantReplace, installer.replace,
+				"installer.Replace should reflect whether we're recovering a stuck release")
 			if tc.wantValsKey != "" {
 				require.NotNil(t, installer.vals)
 				assert.Contains(t, installer.vals, tc.wantValsKey)

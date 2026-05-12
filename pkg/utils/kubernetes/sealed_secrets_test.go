@@ -46,12 +46,11 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 		chartErr        error
 		installErr      error
 		wantInstalled   bool
-		wantUninstalled bool
 		wantErr         bool
 		wantErrContains string
 	}{
 		{
-			name: "release already deployed -- skips install and uninstall",
+			name: "release already deployed -- skips install",
 			releases: []*release.Release{
 				makeRelease(
 					constants.ReleaseNameSealedSecrets,
@@ -59,15 +58,13 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 					release.StatusDeployed,
 				),
 			},
-			wantInstalled:   false,
-			wantUninstalled: false,
+			wantInstalled: false,
 		},
 		{
-			name:            "no existing release -- fresh install succeeds",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: false,
+			name:          "no existing release -- fresh install succeeds",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
 		},
 		{
 			name:            "LoadChart fails -- propagates error",
@@ -90,11 +87,9 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			installer := &fakeInstallRunner{err: tc.installErr}
-			uninstaller := &fakeUninstallRunner{}
 			factory := &fakeHelmFactory{
 				lister:      singleResponseLister(tc.releases),
 				installer:   installer,
-				uninstaller: uninstaller,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -108,7 +103,6 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
-			assert.Equal(t, tc.wantUninstalled, uninstaller.called)
 		})
 	}
 }
