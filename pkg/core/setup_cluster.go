@@ -75,6 +75,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"obmondo",
 		"traefik",
 		"system",
+		// sealed-secrets is created up front (not via Helm's
+		// CreateNamespace=true) so we can pre-seed the controller's key
+		// material before the chart syncs. The Helm install below is a
+		// no-op against an existing ns.
+		constants.NamespaceSealedSecrets,
 	}
 	// When obmondo.monitoring is on, the `secrets` ArgoCD App (sync-order 10)
 	// applies obmondo-clientcert as a SealedSecret in the monitoring namespace.
@@ -112,13 +117,22 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", namespace))
 	}
 
-	// When recovering a cluster, restore the Sealed Secrets controller private keys.
-	if args.IsPartOfDisasterRecovery {
-		// Create the sealed-secrets namespace.
-		err := kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
-		assert.AssertErrNil(ctx, err, "Failed creating namespace",
-			slog.String("namespace", constants.NamespaceSealedSecrets))
-
+	// Seed sealed-secrets controller key material BEFORE the chart
+	// installs the controller. Two sources:
+	//
+	//   - DR recovery: restore key Secrets from the backup bucket.
+	//   - Main-cluster bootstrap (non-DR): copy active key Secrets
+	//     from the management cluster so the main controller can
+	//     decrypt every SealedSecret kubeaid-cli sealed against the
+	//     management controller during Phase 0.
+	//
+	// Doing this BEFORE Helm install means the controller's pod boots
+	// with the existing keys already present — sealed-secrets-controller
+	// uses them directly and skips generating a fresh "KEY-B", leaving
+	// the cluster with one canonical key. Same shape as the prior DR
+	// flow; the only addition is the management→main path.
+	switch {
+	case args.IsPartOfDisasterRecovery:
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
 			sealedSecretsKeysBackupBucketName,
@@ -131,48 +145,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		 Because of which, doing kubectl apply for the second time errors out, thus hindering
 		 the script's idempotency.
 		*/
-		err = kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
+		err := kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
 		assert.AssertErrNil(ctx, err, "Failed restoring sealed secrets private keys")
 
 		slog.InfoContext(ctx,
 			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
-	}
 
-	// Install Sealed Secrets.
-	releaseSS := bar.InProgress("Installing Sealed Secrets controller")
-	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
-		releaseSS()
-		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
-	}
-	releaseSS()
-	bar.Substep("Installed Sealed Secrets controller")
-
-	// Wait for the controller to be Ready before any caller tries to
-	// apply a SealedSecret — otherwise the SealedSecret lands but its
-	// plain Secret doesn't materialise, and the failure surfaces
-	// downstream as a cryptic ArgoCD repo-server error.
-	releaseWait := bar.InProgress("Waiting for Sealed Secrets controller Ready")
-	if err := kubernetes.WaitForSealedSecretsControllerReady(ctx,
-		args.ClusterClient, 5*time.Minute,
-	); err != nil {
-		releaseWait()
-		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not Ready")
-	}
-	releaseWait()
-	bar.Substep("Sealed Secrets controller Ready")
-
-	// On main-cluster setup, copy the active sealed-secrets keys from
-	// the management cluster so the main controller can decrypt every
-	// SealedSecret kubeaid-cli sealed against the management
-	// controller during Phase 0. Without this, the per-file
-	// kubeaid-sha256 cache skips re-sealing on the main cluster's
-	// run and leaves SealedSecrets in kubeaid-config undecryptable
-	// (mgmt KEY-A vs main KEY-B mismatch). Mirrors the DR-restore
-	// flow above; one mechanism for both fresh-bootstrap and recovery.
-	if args.ClusterType == constants.ClusterTypeMain {
-		releaseCopy := bar.InProgress("Copying sealed-secrets keys from management to main")
+	case args.ClusterType == constants.ClusterTypeMain:
+		releaseCopy := bar.InProgress("Seeding sealed-secrets keys from management cluster")
 		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
 
@@ -183,11 +165,38 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			mgmtClient, args.ClusterClient,
 		); err != nil {
 			releaseCopy()
-			assert.AssertErrNil(ctx, err, "Failed copying sealed-secrets keys")
+			assert.AssertErrNil(ctx, err, "Failed seeding sealed-secrets keys")
 		}
 		releaseCopy()
-		bar.Substep("Copied sealed-secrets keys from management to main")
+		bar.Substep("Seeded sealed-secrets keys from management cluster")
 	}
+
+	// Install Sealed Secrets. Helm install brings up the controller,
+	// which discovers any keys we pre-seeded above and uses them as-is.
+	releaseSS := bar.InProgress("Installing Sealed Secrets controller")
+	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
+		releaseSS()
+		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
+	}
+	releaseSS()
+	bar.Substep("Installed Sealed Secrets controller")
+
+	// Block until the controller is actually Ready — Helm-install
+	// returning success means manifests applied, not that the pod is
+	// scheduled and serving the decryption API. Without this gate,
+	// SealedSecret applies that follow can land before decryption is
+	// online, and the failure surfaces downstream as a cryptic ArgoCD
+	// repo-server error ("SSH agent requested but SSH_AUTH_SOCK not
+	// specified") several spinner-steps in.
+	releaseWait := bar.InProgress("Waiting for Sealed Secrets controller Ready")
+	if err := kubernetes.WaitForSealedSecretsControllerReady(ctx,
+		args.ClusterClient, 5*time.Minute,
+	); err != nil {
+		releaseWait()
+		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not Ready")
+	}
+	releaseWait()
+	bar.Substep("Sealed Secrets controller Ready")
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
@@ -210,11 +219,21 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", kubernetes.GetCapiClusterNamespace()))
 	}
 
-	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
+	// Sync the Root, Secrets and CertManager ArgoCD Apps one by one.
+	//
+	// Order matters: root is the app-of-apps and just creates the child
+	// Applications (no resource churn). secrets runs SECOND so every
+	// downstream SealedSecret in kubeaid-config gets applied + decrypted
+	// before its consumer chart syncs — cert-manager (Issuer Secrets),
+	// netbird (envFromSecret), keycloakx (admin Secret), etc. all find
+	// their backing Secret already in place when their app finally
+	// syncs. Before this flip, cert-manager could race the secrets app
+	// and end up in a brief CrashLoopBackOff waiting for its CA-key
+	// Secret to materialise.
 	argoCDAppsToBeSynced := []string{
 		constants.ArgoCDAppRoot,
-		"cert-manager",
 		"secrets",
+		"cert-manager",
 	}
 	for _, argoCDApp := range argoCDAppsToBeSynced {
 		release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", argoCDApp))
