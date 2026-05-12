@@ -4,11 +4,13 @@
 package prompt
 
 import (
+	"context"
 	_ "embed"
 	"errors"
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 
@@ -50,15 +52,18 @@ type PromptedConfig struct {
 	OIDCIssuerURL string
 	OIDCClientID  string
 
-	// VPN-cluster fields. Populated only when the operator chose
-	// the "VPN cluster" kind at the cluster-kind prompt — i.e.
-	// cluster.type=vpn. Render the cluster.keycloak /
-	// cluster.netbird / cluster.acmeEmail blocks in general.yaml.
-	// Empty for workload clusters.
-	KeycloakMode string // "managed" | "external"
-	KeycloakDNS  string
-	NetBirdDNS   string
-	ACMEEmail    string
+	// Keycloak reference fields. Populated for VPN clusters
+	// (always — kubeaid-cli installs or references Keycloak) and
+	// for workload clusters that opted into Keycloak login at the
+	// OIDC prompt. Render the cluster.keycloak.{mode,dns,realm}
+	// block in general.yaml.
+	KeycloakMode  string // "managed" | "external"
+	KeycloakDNS   string
+	KeycloakRealm string
+
+	// VPN-only fields — populated only for cluster.type=vpn.
+	NetBirdDNS string
+	ACMEEmail  string
 
 	// NetBirdBackendClientSecret is collected only when KeycloakMode
 	// is "external" — kubeaid-cli has no way to mint or look up the
@@ -237,11 +242,12 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 
 			// Derive OIDC from Keycloak DNS — no separate prompt needed for VPN clusters.
 			cfg.EnableOIDC = true
-			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + deriveRealmFromDNS(cfg.KeycloakDNS)
+			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
+			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + cfg.KeycloakRealm
 			cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
 		} else {
-			if err := runOIDCForm(cfg); err != nil {
-				return fmt.Errorf("collecting OIDC config: %w", err)
+			if err := runWorkloadKeycloakForm(cfg); err != nil {
+				return fmt.Errorf("collecting workload Keycloak config: %w", err)
 			}
 		}
 
@@ -448,32 +454,110 @@ func runVPNEndpointsForm(cfg *PromptedConfig) error {
 	).Run()
 }
 
-// runOIDCForm shows the OIDC group (workload clusters only).
-func runOIDCForm(cfg *PromptedConfig) error {
-	// Build the issuer and client ID inputs unconditionally; they are
-	// shown only when EnableOIDC is true, gated by a separate group with
-	// WithHideFunc.
-	oidcDetailsGroup := huh.NewGroup(
-		huh.NewInput().
-			Title("OIDC issuer URL (e.g. https://keycloak.example/realms/clusters):").
-			Value(&cfg.OIDCIssuerURL).
-			Validate(httpsURL),
-		huh.NewInput().
-			TitleFunc(func() string {
-				return fmt.Sprintf("OIDC client ID for this cluster (e.g. kubernetes-%s):", cfg.ClusterName)
-			}, &cfg.ClusterName).
-			Value(&cfg.OIDCClientID).
-			Validate(nonEmpty),
-	).WithHideFunc(func() bool { return !cfg.EnableOIDC })
-
-	return huh.NewForm(
+// runWorkloadKeycloakForm shows the workload-cluster Keycloak group
+// (Step 2c). Operator picks whether to wire OIDC at all; if yes,
+// supplies the parent Keycloak's DNS / realm / client ID. kubeaid-cli
+// then probes the realm's discovery endpoint to catch typos and
+// NetBird-down cases before bootstrap kicks off.
+//
+// When the operator opts out (use admin.conf only), no keycloak block
+// is rendered into general.yaml and the bootstrap prints a warning
+// that sharing admin.conf isn't best practice.
+//
+// The kubernetes-<cluster> OIDC client is the operator's responsibility
+// to create in the referenced Keycloak (public PKCE, redirect URIs
+// http://localhost:8000 + http://localhost:18000). The probe only
+// verifies the realm is reachable; it doesn't check the client exists.
+func runWorkloadKeycloakForm(cfg *PromptedConfig) error {
+	if err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().
-				Title("Enable OIDC (Keycloak) authentication on kube-apiserver?").
+				Title("Authenticate kubectl users via Keycloak (OIDC)?").
+				Description("Recommended for shared clusters. Choosing No falls back to admin.conf, which all users share — fine for solo work, not for production.").
+				Affirmative("Yes — use Keycloak").
+				Negative("No — admin.conf only").
 				Value(&cfg.EnableOIDC),
-		).Title("OIDC (optional)").Description("Step 2/4"),
-		oidcDetailsGroup,
-	).Run()
+		).Title("OIDC (optional)").Description("Step 2c/4"),
+	).Run(); err != nil {
+		return err
+	}
+
+	if !cfg.EnableOIDC {
+		cfg.KeycloakDNS = ""
+		cfg.KeycloakRealm = ""
+		cfg.OIDCIssuerURL = ""
+		cfg.OIDCClientID = ""
+		return nil
+	}
+
+	if cfg.OIDCClientID == "" {
+		cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
+	}
+	cfg.KeycloakMode = constants.KeycloakModeExternal
+
+	// Form + probe loop. Each iteration re-runs the form pre-filled
+	// with the last values so an operator who fat-fingered a name
+	// can fix it without retyping the rest.
+	for {
+		if err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewInput().
+					Title("Keycloak DNS (e.g. keycloak.vpn.acme.com):").
+					Value(&cfg.KeycloakDNS).
+					Validate(nonEmpty),
+				huh.NewInput().
+					Title("Keycloak realm (blank = derive from DNS via publicsuffix):").
+					Value(&cfg.KeycloakRealm),
+				huh.NewInput().
+					TitleFunc(func() string {
+						return fmt.Sprintf("OIDC client ID (must exist as a public PKCE client in the realm, e.g. kubernetes-%s):", cfg.ClusterName)
+					}, &cfg.ClusterName).
+					Value(&cfg.OIDCClientID).
+					Validate(nonEmpty),
+			).Title("Keycloak for workload OIDC").Description("Step 2c/4"),
+		).Run(); err != nil {
+			return err
+		}
+
+		if strings.TrimSpace(cfg.KeycloakRealm) == "" {
+			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
+		}
+
+		probeErr := probeOIDCIssuer(context.Background(), cfg.KeycloakDNS, cfg.KeycloakRealm)
+		if probeErr == nil {
+			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + cfg.KeycloakRealm
+			return nil
+		}
+
+		// Probe failed — show the operator what we saw and let them
+		// choose between retrying (loop runs again, form pre-filled)
+		// and skipping OIDC entirely.
+		retry := true
+		if err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewNote().
+					Title("Cannot reach Keycloak").
+					Description(renderProbeOIDCError(probeErr)),
+				huh.NewConfirm().
+					Title("Try again?").
+					Affirmative("Edit and retry").
+					Negative("Skip OIDC (use admin.conf)").
+					Value(&retry),
+			),
+		).Run(); err != nil {
+			return err
+		}
+
+		if !retry {
+			cfg.EnableOIDC = false
+			cfg.KeycloakDNS = ""
+			cfg.KeycloakRealm = ""
+			cfg.KeycloakMode = ""
+			cfg.OIDCIssuerURL = ""
+			cfg.OIDCClientID = ""
+			return nil
+		}
+	}
 }
 
 // runGitSSHForm shows Step 4 — ArgoCD deploy key, config repo URL, and (when

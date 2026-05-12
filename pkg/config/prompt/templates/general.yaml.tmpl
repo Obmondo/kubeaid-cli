@@ -43,10 +43,15 @@ cluster:
     #   issuerUrl: https://keycloak.example/realms/clusters
     #   clientId:  kubernetes-{{ .ClusterName }}
 {{- end }}
-{{- if eq .ClusterType "vpn" }}
+{{- if .KeycloakDNS }}
   keycloak:
     mode: {{ .KeycloakMode }}
     dns: {{ .KeycloakDNS }}
+{{- if .KeycloakRealm }}
+    realm: {{ .KeycloakRealm }}
+{{- end }}
+{{- end }}
+{{- if eq .ClusterType "vpn" }}
   netbird:
     dns: {{ .NetBirdDNS }}
 {{- end }}

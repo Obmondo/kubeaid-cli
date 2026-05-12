@@ -33,7 +33,7 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.sendLine("e2e-baremetal")
 
 	// Step 2 — OIDC form: decline OIDC (default No).
-	c.expectString("Enable OIDC")
+	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
 	// Step 3 — Bare-metal has no credential form (sets defaults programmatically).
@@ -101,7 +101,7 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.sendLine("e2e-local")
 
 	// Step 2 — OIDC form: decline OIDC (default No).
-	c.expectString("Enable OIDC")
+	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
 	// Step 3 — Local has no credential form.
@@ -162,7 +162,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.sendLine("e2e-aws")
 
 	// Step 2 — OIDC: decline (default No).
-	c.expectString("Enable OIDC")
+	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
 	// Step 3 — AWS credentials form.
@@ -259,7 +259,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.sendLine("e2eazure")
 
 	// Step 2 — OIDC: decline (default No).
-	c.expectString("Enable OIDC")
+	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
 	// Step 3 — Azure credentials (all in one group + HA confirm).
@@ -349,7 +349,7 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.acceptDefault()
 
 	// Step 2 — OIDC: decline (default No; VPN would auto-configure OIDC).
-	c.expectString("Enable OIDC")
+	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
 	// Step 3 — Hetzner credentials form: mode + token + SSH key + HA.
