@@ -107,6 +107,19 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		utils.MustGetEnv(constants.EnvNameKubeconfig))
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
+	// Hetzner: kubectl-apply the kube-system/cloud-credentials Secret
+	// directly so the HCloud CCM can start before sealed-secrets-
+	// controller is up. Mirrors the keycloak-admin pattern; breaks
+	// the taint ↔ sealed-secrets ↔ CCM bootstrap cycle. No-op for
+	// other cloud providers.
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		bar.Describe("Applying HCloud cloud-credentials Secret")
+		assert.AssertErrNil(ctx,
+			ensureHCloudCredentialsSecret(ctx, mainClusterClient),
+			"Failed applying HCloud cloud-credentials Secret",
+		)
+	}
+
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
 		bar.Describe("Setting up disaster recovery")
