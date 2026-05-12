@@ -46,6 +46,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// on VPN clusters.
 	printWorkloadOIDCBanner(ctx)
 
+	// Workload + private Keycloak: bail early if the operator isn't on
+	// the NetBird mesh. The OIDC discovery probe below would otherwise
+	// fail with a cryptic DNS error half-a-spinner later.
+	assert.AssertErrNil(ctx, requireOperatorOnNetBird(ctx),
+		"NetBird preflight failed")
+
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
 	// discovery endpoint before any infrastructure is touched.
 	// Catches typo'd issuer URLs / unreachable Keycloak before

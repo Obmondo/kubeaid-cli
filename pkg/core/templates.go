@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -559,6 +561,59 @@ func printWorkloadOIDCBanner(ctx context.Context) {
 			"in that realm before running `kubeaid-cli login` — see the doc for "+
 			"the create-client click-through.",
 	)
+}
+
+// fetchNetBirdStatus is the test seam for requireOperatorOnNetBird —
+// tests assign it before exercising the gate to avoid shelling out
+// to a real `netbird` binary. Defaults to the real status fetcher.
+var fetchNetBirdStatus = netbird.FetchStatus
+
+// requireOperatorOnNetBird hard-fails the bootstrap when the
+// operator's laptop isn't connected to the NetBird mesh AND the
+// cluster about to be bootstrapped depends on mesh reachability
+// (workload cluster + cluster.keycloak set — the Keycloak realm
+// almost certainly lives on a private DNS reachable only through
+// NetBird, and the OIDC discovery probe would fail later with a
+// cryptic DNS error).
+//
+// Skipped when:
+//   - cluster.type != workload (VPN clusters provision their own
+//     Keycloak; the operator doesn't need the mesh to reach it
+//     during bootstrap)
+//   - cluster.keycloak is unset (no Keycloak to reach, the cluster
+//     boots admin.conf-only — already covered by the workload OIDC
+//     banner's WARN line)
+//
+// Returns an error suitable for assert.AssertErrNil — callers
+// surface it to the bootstrap pipeline so the failure happens before
+// any infrastructure is touched.
+func requireOperatorOnNetBird(ctx context.Context) error {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeWorkload || cluster.Keycloak == nil {
+		return nil
+	}
+
+	status, err := fetchNetBirdStatus(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"querying NetBird daemon: %w — install netbird from "+
+				"https://netbird.io and run `netbird up` against %s before "+
+				"running `kubeaid-cli bootstrap` (the workload cluster's "+
+				"Keycloak at %s is only reachable through the mesh)",
+			err, cluster.Keycloak.DNS, cluster.Keycloak.DNS,
+		)
+	}
+
+	if status.DaemonStatus != netbird.DaemonStatusConnected {
+		return fmt.Errorf(
+			"NetBird daemon status is %q, not %q — run `netbird up` to "+
+				"connect to the mesh; the workload cluster's Keycloak at %s is "+
+				"only reachable through NetBird",
+			status.DaemonStatus, netbird.DaemonStatusConnected, cluster.Keycloak.DNS,
+		)
+	}
+
+	return nil
 }
 
 // shouldValidateOIDCNow reports whether the pre-flight OIDC
