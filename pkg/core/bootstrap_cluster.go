@@ -40,6 +40,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	defer bar.Finish()
 	ctx = progress.WithBar(ctx, bar)
 
+	// Workload-cluster banner: names the OIDC client the operator
+	// must have pre-created in their Keycloak realm, or warns about
+	// the admin.conf fallback when no Keycloak is referenced. No-op
+	// on VPN clusters.
+	printWorkloadOIDCBanner(ctx)
+
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
 	// discovery endpoint before any infrastructure is touched.
 	// Catches typo'd issuer URLs / unreachable Keycloak before

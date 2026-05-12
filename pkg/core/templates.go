@@ -515,6 +515,52 @@ func vpnClusterEnabled() bool {
 	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
 }
 
+// printWorkloadOIDCBanner emits a one-time, operator-facing banner
+// near the start of BootstrapCluster for workload-cluster runs:
+//
+//   - When cluster.keycloak is set: names the OIDC client the operator
+//     must have created in their Keycloak realm
+//     (kubernetes-<cluster.name>, public PKCE) and points at the doc
+//     with the exact steps. Read-only check — kubeaid-cli does NOT
+//     touch the operator's Keycloak admin API; the OIDC discovery
+//     probe runs separately and validates realm reachability only.
+//
+//   - When cluster.keycloak is absent: warns that the cluster will
+//     boot without OIDC and all users share admin.conf. Acceptable
+//     for solo / dev clusters; bad practice for shared / production.
+//
+// No-op for VPN clusters — those run their own managed-Keycloak
+// reconciler later in the bootstrap and don't need this banner.
+func printWorkloadOIDCBanner(ctx context.Context) {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeWorkload {
+		return
+	}
+
+	if cluster.Keycloak == nil {
+		slog.WarnContext(ctx,
+			"No cluster.keycloak block — bootstrap will continue without OIDC. "+
+				"Operators authenticate via admin.conf, which is shared and bypasses "+
+				"per-user RBAC. Not best practice for shared clusters. See "+
+				"docs/workload-cluster-keycloak.md for the OIDC alternative.",
+		)
+		return
+	}
+
+	clientID := "kubernetes-" + cluster.Name
+	slog.InfoContext(ctx,
+		"Workload OIDC pre-flight",
+		slog.String("realm_issuer", "https://"+cluster.Keycloak.DNS+"/realms/"+cluster.Keycloak.Realm),
+		slog.String("expected_client_id", clientID),
+		slog.String("doc", "docs/workload-cluster-keycloak.md"),
+	)
+	slog.InfoContext(ctx,
+		"Make sure a public PKCE OIDC client with the exact ID above exists "+
+			"in that realm before running `kubeaid-cli login` — see the doc for "+
+			"the create-client click-through.",
+	)
+}
+
 // shouldValidateOIDCNow reports whether the pre-flight OIDC
 // discovery probe should run at the start of bootstrap. True when
 // apiServer.oidc is configured AND we aren't standing Keycloak up
