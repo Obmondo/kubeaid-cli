@@ -447,6 +447,17 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
+	// Workload cluster + Keycloak: render the netbird-operator app
+	// so the operator can declaratively manage NBSetupKey / NBPolicy
+	// resources after bootstrap (private kube-API via the parent
+	// VPN's NetBird mesh). VPN clusters get their own NetBird stack
+	// (above) which includes the operator implicitly.
+	if workloadNetBirdOperatorEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.NetBirdOperatorTemplateNames...,
+		)
+	}
+
 	// Managed Keycloak only: kubeaid-cli installs the keycloakx
 	// chart on this cluster and runs the gocloak realm reconciler
 	// post-sync. External-mode VPN clusters skip this — the
@@ -495,6 +506,24 @@ func managedKeycloakEnabled() bool {
 		return false
 	}
 	return cluster.Keycloak.Mode == constants.KeycloakModeManaged
+}
+
+// workloadNetBirdOperatorEnabled reports whether kubeaid-cli should
+// render the netbird-operator ArgoCD app on a workload cluster.
+//
+// True when cluster.type=workload AND cluster.keycloak is set. The
+// keycloak gate is the proxy for "operator wants private kube-API
+// behind a mesh": if they're already routing OIDC through a parent
+// VPN's Keycloak, they almost certainly want kube-API on the same
+// mesh. Operators on admin.conf-only (no keycloak block) explicitly
+// opted out of mesh routing — skip the operator install entirely.
+//
+// VPN clusters get the operator implicitly via NetBirdNonSecretTemplateNames
+// (the netbird chart's kubeaid-addons subdep) — this helper is
+// workload-only.
+func workloadNetBirdOperatorEnabled() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
 }
 
 // vpnClusterEnabled reports whether kubeaid-cli should render the

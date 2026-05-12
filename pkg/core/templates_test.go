@@ -231,6 +231,51 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	}
 }
 
+func TestWorkloadNetBirdOperatorEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		clusterType string
+		keycloak    *config.KeycloakConfig
+		want        bool
+	}{
+		{
+			name:        "workload + keycloak block: true",
+			clusterType: constants.ClusterTypeWorkload,
+			keycloak:    &config.KeycloakConfig{Mode: "external", DNS: "kc.acme.com"},
+			want:        true,
+		},
+		{
+			name:        "workload + no keycloak: false (admin.conf-only path)",
+			clusterType: constants.ClusterTypeWorkload,
+			keycloak:    nil,
+			want:        false,
+		},
+		{
+			name:        "vpn cluster: false (gets the operator via the netbird chart)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    &config.KeycloakConfig{Mode: "managed", DNS: "kc.acme.com"},
+			want:        false,
+		},
+		{
+			name:        "vpn cluster, no keycloak: false (nil-safe)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    nil,
+			want:        false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.Type = tc.clusterType
+				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
+
+				assert.Equal(t, tc.want, workloadNetBirdOperatorEnabled())
+			})
+		})
+	}
+}
+
 func TestRequireOperatorOnNetBird(t *testing.T) {
 	keycloakBlock := &config.KeycloakConfig{
 		Mode:  "external",
