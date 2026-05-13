@@ -3,14 +3,16 @@
 
 package prompt
 
-type localPrompter struct {
-	baseProvider
-}
+type localPrompter struct{}
 
 func newLocalProvider() *localPrompter {
-	return &localPrompter{} // questionsFunc is nil, so only promptSSHAuth runs
+	return &localPrompter{}
 }
 
 func (p *localPrompter) SummaryLines(_ *PromptedConfig) []string {
+	return nil
+}
+
+func (p *localPrompter) RunCredentialsForm(_ *PromptedConfig, _ *autoDetectedConfig) error {
 	return nil
 }

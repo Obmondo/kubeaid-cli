@@ -234,6 +234,19 @@ var NetBirdNonSecretTemplateNames = []string{
 	"argocd-apps/values-netbird.yaml.tmpl",
 }
 
+// NetBird Kubernetes Operator. Rendered on workload clusters that
+// opted into Keycloak login (cluster.type=workload AND
+// cluster.keycloak set) so the cluster has the operator + CRDs
+// available for operator-applied NBSetupKey / NBPolicy resources.
+// Values overlay is intentionally empty — wiring (managementURL, API
+// key) is the operator's responsibility post-bootstrap. Sync-order
+// 10 — early, so the CRDs land before any operator-applied NB*
+// resource.
+var NetBirdOperatorTemplateNames = []string{
+	"argocd-apps/templates/netbird-operator.yaml.tmpl",
+	"argocd-apps/values-netbird-operator.yaml.tmpl",
+}
+
 // Managed-Keycloak template names. Included only when
 // cluster.type=vpn AND cluster.keycloak.mode=managed — kubeaid-cli
 // installs Keycloak via the keycloakx Helm chart on this cluster.

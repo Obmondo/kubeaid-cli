@@ -4,12 +4,17 @@
 package core
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
 )
 
 // withFreshGeneralConfig swaps ParsedGeneralConfig for the duration of fn
@@ -21,6 +26,39 @@ func withFreshGeneralConfig(t *testing.T, fn func()) {
 	config.ParsedGeneralConfig = &config.GeneralConfig{}
 
 	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
+
+	fn()
+}
+
+// withStubbedNetBirdStatus temporarily replaces fetchNetBirdStatus
+// with stub for tests that exercise requireOperatorOnNetBird's gates
+// without shelling out to a real netbird binary. Restored on cleanup.
+func withStubbedNetBirdStatus(t *testing.T, stub func(ctx context.Context) (*netbird.Status, error)) {
+	t.Helper()
+	orig := fetchNetBirdStatus
+	fetchNetBirdStatus = stub
+	t.Cleanup(func() { fetchNetBirdStatus = orig })
+}
+
+// withFreshGlobals snapshots and clears the package-level globals for
+// the duration of fn — used by tests that exercise predicates depending
+// on globals.ControlPlaneLB* state.
+func withFreshGlobals(t *testing.T, fn func()) {
+	t.Helper()
+
+	origPrivIP := globals.ControlPlaneLBPrivateIP
+	origPubIP := globals.ControlPlaneLBBootstrapPublicIP
+	origHostname := globals.ControlPlaneHostname
+
+	globals.ControlPlaneLBPrivateIP = ""
+	globals.ControlPlaneLBBootstrapPublicIP = ""
+	globals.ControlPlaneHostname = ""
+
+	t.Cleanup(func() {
+		globals.ControlPlaneLBPrivateIP = origPrivIP
+		globals.ControlPlaneLBBootstrapPublicIP = origPubIP
+		globals.ControlPlaneHostname = origHostname
+	})
 
 	fn()
 }
@@ -128,6 +166,7 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	tests := []struct {
 		name    string
 		hetzner *config.HetznerConfig
+		lbIP    string // populated to globals.ControlPlaneLBPrivateIP
 		want    bool
 	}{
 		{
@@ -150,7 +189,7 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "HCloud control-plane with endpoint set: true",
+			name: "endpoint set but LB not pre-provisioned: false (would render empty hosts block)",
 			hetzner: &config.HetznerConfig{
 				ControlPlane: config.HetznerControlPlane{
 					HCloud: &config.HCloudControlPlane{
@@ -160,6 +199,21 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 					},
 				},
 			},
+			lbIP: "",
+			want: false,
+		},
+		{
+			name: "HCloud control-plane with endpoint set + LB pre-provisioned: true",
+			hetzner: &config.HetznerConfig{
+				ControlPlane: config.HetznerControlPlane{
+					HCloud: &config.HCloudControlPlane{
+						LoadBalancer: config.HCloudControlPlaneLoadBalancer{
+							Endpoint: "api.acme.com",
+						},
+					},
+				},
+			},
+			lbIP: "10.0.0.5",
 			want: true,
 		},
 	}
@@ -167,9 +221,123 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			withFreshGeneralConfig(t, func() {
-				config.ParsedGeneralConfig.Cloud.Hetzner = tc.hetzner
-				assert.Equal(t, tc.want, hcloudControlPlaneEndpointSet())
+				withFreshGlobals(t, func() {
+					config.ParsedGeneralConfig.Cloud.Hetzner = tc.hetzner
+					globals.ControlPlaneLBPrivateIP = tc.lbIP
+					assert.Equal(t, tc.want, hcloudControlPlaneEndpointSet())
+				})
 			})
 		})
 	}
+}
+
+func TestWorkloadNetBirdOperatorEnabled(t *testing.T) {
+	tests := []struct {
+		name        string
+		clusterType string
+		keycloak    *config.KeycloakConfig
+		want        bool
+	}{
+		{
+			name:        "workload + keycloak block: true",
+			clusterType: constants.ClusterTypeWorkload,
+			keycloak:    &config.KeycloakConfig{Mode: "external", DNS: "kc.acme.com"},
+			want:        true,
+		},
+		{
+			name:        "workload + no keycloak: false (admin.conf-only path)",
+			clusterType: constants.ClusterTypeWorkload,
+			keycloak:    nil,
+			want:        false,
+		},
+		{
+			name:        "vpn cluster: false (gets the operator via the netbird chart)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    &config.KeycloakConfig{Mode: "managed", DNS: "kc.acme.com"},
+			want:        false,
+		},
+		{
+			name:        "vpn cluster, no keycloak: false (nil-safe)",
+			clusterType: constants.ClusterTypeVPN,
+			keycloak:    nil,
+			want:        false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.Type = tc.clusterType
+				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
+
+				assert.Equal(t, tc.want, workloadNetBirdOperatorEnabled())
+			})
+		})
+	}
+}
+
+func TestRequireOperatorOnNetBird(t *testing.T) {
+	keycloakBlock := &config.KeycloakConfig{
+		Mode:  "external",
+		DNS:   "keycloak.vpn.acme.com",
+		Realm: "acme",
+	}
+
+	t.Run("no-op for VPN cluster", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			// fetchNetBirdStatus must not be called — leave it
+			// pointing at the real shell-out; if the gate falls
+			// through it will fail loudly.
+			require.NoError(t, requireOperatorOnNetBird(context.Background()))
+		})
+	})
+
+	t.Run("no-op for workload without keycloak block", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = nil
+			require.NoError(t, requireOperatorOnNetBird(context.Background()))
+		})
+	})
+
+	t.Run("workload + keycloak + connected daemon: passes", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				return &netbird.Status{DaemonStatus: netbird.DaemonStatusConnected}, nil
+			})
+			require.NoError(t, requireOperatorOnNetBird(context.Background()))
+		})
+	})
+
+	t.Run("workload + keycloak + daemon disconnected: fails with actionable hint", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				return &netbird.Status{DaemonStatus: "Disconnected"}, nil
+			})
+			err := requireOperatorOnNetBird(context.Background())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "netbird up")
+			assert.Contains(t, err.Error(), keycloakBlock.DNS)
+		})
+	})
+
+	t.Run("workload + keycloak + daemon binary missing: fails with install hint", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				return nil, errors.New("exec: \"netbird\": executable file not found in $PATH")
+			})
+			err := requireOperatorOnNetBird(context.Background())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "netbird.io")
+			assert.Contains(t, err.Error(), keycloakBlock.DNS)
+		})
+	})
 }

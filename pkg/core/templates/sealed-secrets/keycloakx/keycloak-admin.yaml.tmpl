@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: keycloak-admin
   namespace: keycloakx
+  labels:
+    kubeaid.io/managed-by: kubeaid
 stringData:
   username: admin
   KEYCLOAK_PASSWORD: {{ .KeycloakAdminPassword }}

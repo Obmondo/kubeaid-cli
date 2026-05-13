@@ -51,8 +51,14 @@ func (h *Hetzner) DisableDeletionProtection(ctx context.Context) error {
 		return fmt.Errorf("looking up NAT Gateway server: unexpected status %d", response.StatusCode)
 	}
 	if server != nil && server.Protection.Delete {
+		// Hetzner requires Delete and Rebuild protection flags to be
+		// sent together (`'delete' and 'rebuild' field required to be
+		// the same value`), so toggle both off.
 		_, response, err = h.serverClient.ChangeProtection(ctx, server,
-			hcloud.ServerChangeProtectionOpts{Delete: ptr.To(false)},
+			hcloud.ServerChangeProtectionOpts{
+				Delete:  ptr.To(false),
+				Rebuild: ptr.To(false),
+			},
 		)
 		if err != nil {
 			return fmt.Errorf("disabling deletion protection on NAT Gateway server: %w", err)

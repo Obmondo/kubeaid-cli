@@ -14,8 +14,8 @@ cluster-api-operator:
       namespace: {{ .CAPIClusterNamespace }}
       createNamespace: false
 
-{{/* We're using Workload Identity in case of Azure.
-     And will soon use IRSA for AWS. */}}
+{{- /* We're using Workload Identity in case of Azure.
+     And will soon use IRSA for AWS. */ -}}
 {{- if not .AzureConfig }}
   configSecret:
     name: cloud-credentials

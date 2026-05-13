@@ -4,10 +4,10 @@
 package config
 
 import (
-	gogiturl "github.com/kubescape/go-git-url"
 	coreV1 "k8s.io/api/core/v1"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 )
 
 var (
@@ -50,12 +50,11 @@ type (
 		// SSH username.
 		SSHUsername string `yaml:"sshUsername" validate:"notblank" default:"git"`
 
-		// Either make KubeAid CLI use the given SSH private key.
+		// Either a private key file path or useSSHAgent=true. The
+		// embedded struct supplies both yaml fields plus the
+		// hydrated PublicKey/Fingerprint, so a YubiKey-backed agent
+		// flow and a file-backed flow share one schema.
 		*SSHKeyPairConfig `yaml:",inline"`
-
-		// Or, make KubeAid CLI use the SSH Agent.
-		// So, you (the one who runs KubeAid CLI) can use your YubiKey.
-		UseSSHAgent bool `yaml:"useSSHAgent"`
 
 		// Additional SSH known hosts.
 		// Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
@@ -76,7 +75,7 @@ type (
 	KubeAidForkConfig struct {
 		// KubeAid repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL gogiturl.IGitURL
+		ParsedURL *giturl.ParsedURL
 
 		// KubeAid git ref (tag / branch / commit).
 		Version string `yaml:"version"`
@@ -86,7 +85,7 @@ type (
 	KubeaidConfigForkConfig struct {
 		// KubeAid Config repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL gogiturl.IGitURL
+		ParsedURL *giturl.ParsedURL
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
 		// Config files for this cluster will be contained.
@@ -125,16 +124,28 @@ type (
 		// Configuration options for the Kubernetes API server.
 		APIServer APIServerConfig `yaml:"apiServer"`
 
-		// Keycloak declares the Keycloak instance this cluster hosts.
-		// Only meaningful when cluster.type=vpn — VPN clusters host
-		// Keycloak; workload clusters do not, and must leave this
-		// block unset. A workload cluster's kube-apiserver instead
-		// authenticates against an existing Keycloak by setting
-		// apiServer.oidc (issuer URL + client ID) directly in its own
-		// general.yaml; kubeaid-cli prompts for those values during
-		// workload-cluster setup. There is no automatic inheritance
-		// between clusters — every cluster's OIDC config is explicit
-		// in its own general.yaml.
+		// Keycloak declares the Keycloak instance this cluster
+		// authenticates against. Semantics depend on cluster.type:
+		//
+		//   - cluster.type=vpn (required block):
+		//       mode=managed  → kubeaid-cli installs Keycloak on
+		//                       this cluster.
+		//       mode=external → operator runs Keycloak elsewhere.
+		//
+		//   - cluster.type=workload (optional block):
+		//       mode=external only → the cluster's kube-apiserver
+		//                            trusts this Keycloak for OIDC.
+		//                            kubeaid-cli derives
+		//                            apiServer.oidc.{issuerUrl,
+		//                            clientId} from this block;
+		//                            explicit apiServer.oidc still
+		//                            wins. Workload clusters never
+		//                            host Keycloak — mode=managed is
+		//                            rejected.
+		//
+		// Omitting the block on a workload cluster boots it without
+		// OIDC; users authenticate with admin.conf (the workload
+		// bootstrap prints a warning).
 		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
 		// NetBird declares the NetBird Management instance this VPN
@@ -236,10 +247,9 @@ type (
 	// user-facing.
 	KeycloakConfig struct {
 		// Mode is "managed" (kubeaid-cli installs Keycloak via the
-		// keycloakx Helm chart on this cluster) or "external" (Keycloak
-		// is already running elsewhere; supply DNS only). Only managed
-		// is supported by the current bootstrap flow; external is
-		// reserved for a future branch.
+		// keycloakx Helm chart on this cluster — VPN clusters only)
+		// or "external" (Keycloak is already running elsewhere;
+		// supply DNS only). Workload clusters must use external.
 		Mode string `yaml:"mode" validate:"oneof=managed external"`
 
 		// DNS is the public hostname Keycloak is reachable at, e.g.
@@ -358,7 +368,25 @@ type (
 	}
 
 	SSHKeyPairConfig struct {
-		PrivateKeyFilePath string `yaml:"privateKeyFilePath" validate:"notblank"`
+		// PrivateKeyFilePath is the on-disk SSH private key
+		// kubeaid-cli reads to derive PublicKey + Fingerprint and
+		// (for cloud-side SSH connections like the Hetzner NAT
+		// gateway setup) to authenticate the SSH session. Required
+		// when UseSSHAgent is false; ignored when UseSSHAgent is
+		// true (the agent owns the private key — yubikey case —
+		// so there's nothing on disk to point at). Cross-field
+		// validation in pkg/config/parser/validate.go enforces
+		// "exactly one is set".
+		PrivateKeyFilePath string `yaml:"privateKeyFilePath"`
+
+		// UseSSHAgent flips the SSH key sourcing from "read a file
+		// from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+		// the agent for its loaded identities". The first identity
+		// supplies PublicKey + Fingerprint; the SSH client (kubeone)
+		// signs through the agent socket so yubikey-resident
+		// private keys never need to be exported.
+		UseSSHAgent bool `yaml:"useSSHAgent"`
+
 		//nolint:gosec // This struct intentionally stores hydrated SSH key material.
 		PrivateKey,
 

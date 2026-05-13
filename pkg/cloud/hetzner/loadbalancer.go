@@ -43,6 +43,14 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 				return nil, fmt.Errorf("enabling public interface on existing LB: %w", err)
 			}
 		}
+		// Heal LBs created by an older kubeaid-cli that didn't add
+		// the service + label-selector target — re-runs against an
+		// existing-but-unwired LB are the common case for operators
+		// who hit this bug pre-fix.
+		existing, err = h.ensureControlPlaneLBServiceAndTarget(ctx, existing, clusterName)
+		if err != nil {
+			return nil, fmt.Errorf("ensuring service/target on existing LB: %w", err)
+		}
 		slog.InfoContext(ctx, "Hetzner LB already exists")
 		return existing, nil
 	}
@@ -97,7 +105,141 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("waiting for LB readiness after creation: %w", err)
 	}
+
+	lb, err = h.ensureControlPlaneLBServiceAndTarget(ctx, lb, clusterName)
+	if err != nil {
+		return nil, err
+	}
 	return lb, nil
+}
+
+// ensureControlPlaneLBServiceAndTarget wires the LB so kube-apiserver
+// traffic from the controlPlaneEndpoint actually reaches the control-
+// plane nodes:
+//
+//  1. A TCP service on port 6443 → backend 6443, with a TCP health
+//     check on the same port. Without this the LB has no listener for
+//     6443 and returns TCP RST ("connection refused") to anyone hitting
+//     api.<host>:6443 — including kubeadm's `upload-config` phase
+//     which uses the controlPlaneEndpoint, breaking bootstrap before
+//     the cluster ever comes up.
+//
+//  2. A label-selector target keyed on `caph-cluster-<name>=owned`
+//     AND `machine_type=control_plane`. CAPH stamps both labels on the
+//     HCloud servers it creates for the control plane (server.go:1569
+//     in CAPH v1.1.0-alpha.5); the kubeaid-cli-managed NAT gateway
+//     only has the first label, so the `machine_type` half ensures we
+//     don't accidentally route apiserver traffic to the NAT gateway.
+//     UsePrivateIP=true because we're talking to backends across the
+//     attached Hetzner Network.
+//
+// Idempotent: pre-checks `lb.Services` for an existing 6443 listener
+// and `lb.Targets` for an existing label-selector target with the
+// same selector — skips the API call when either is already present.
+// Necessary on re-runs of the bootstrap.
+//
+// Why we own this instead of CAPH: for VPN clusters, kubeaid-cli
+// pre-provisions the LB (so it can sit private-only on the Hetzner
+// Network), and the kubeaid chart sets `loadBalancer.enabled=false`
+// to stop CAPH creating a second LB. That setting also disables
+// CAPH's normal service/target management, so this responsibility
+// falls to kubeaid-cli.
+func (h *Hetzner) ensureControlPlaneLBServiceAndTarget(
+	ctx context.Context, lb *hcloud.LoadBalancer, clusterName string,
+) (*hcloud.LoadBalancer, error) {
+	if !lbHasServiceOnPort(lb, controlPlaneAPIServerPort) {
+		_, response, err := h.loadBalancerClient.AddService(ctx, lb,
+			hcloud.LoadBalancerAddServiceOpts{
+				Protocol:        hcloud.LoadBalancerServiceProtocolTCP,
+				ListenPort:      ptr.To(controlPlaneAPIServerPort),
+				DestinationPort: ptr.To(controlPlaneAPIServerPort),
+				HealthCheck: &hcloud.LoadBalancerAddServiceOptsHealthCheck{
+					Protocol: hcloud.LoadBalancerServiceProtocolTCP,
+					Port:     ptr.To(controlPlaneAPIServerPort),
+					Interval: ptr.To(15 * time.Second),
+					Timeout:  ptr.To(10 * time.Second),
+					Retries:  ptr.To(3),
+				},
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("adding kube-apiserver service to Hetzner LB: %w", err)
+		}
+		if response == nil {
+			return nil, fmt.Errorf("adding kube-apiserver service to Hetzner LB: nil response")
+		}
+		if response.StatusCode != http.StatusCreated {
+			return nil, fmt.Errorf("adding kube-apiserver service to Hetzner LB: unexpected status %d", response.StatusCode)
+		}
+		slog.InfoContext(ctx, "Added kube-apiserver service to Hetzner LB")
+	}
+
+	selector := controlPlaneLBTargetSelector(clusterName)
+	if !lbHasLabelSelectorTarget(lb, selector) {
+		_, response, err := h.loadBalancerClient.AddLabelSelectorTarget(ctx, lb,
+			hcloud.LoadBalancerAddLabelSelectorTargetOpts{
+				Selector:     selector,
+				UsePrivateIP: ptr.To(true),
+			},
+		)
+		if err != nil {
+			return nil, fmt.Errorf("adding control-plane target to Hetzner LB: %w", err)
+		}
+		if response == nil {
+			return nil, fmt.Errorf("adding control-plane target to Hetzner LB: nil response")
+		}
+		if response.StatusCode != http.StatusCreated {
+			return nil, fmt.Errorf("adding control-plane target to Hetzner LB: unexpected status %d", response.StatusCode)
+		}
+		slog.InfoContext(ctx, "Added control-plane label-selector target to Hetzner LB",
+			slog.String("selector", selector))
+	}
+
+	// Re-fetch so the returned LB reflects the new service + target.
+	refreshed, err := h.getLB(ctx, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("re-fetching LB after service/target wiring: %w", err)
+	}
+	if refreshed != nil {
+		return refreshed, nil
+	}
+	return lb, nil
+}
+
+// controlPlaneAPIServerPort is the standard kube-apiserver port.
+// Hardcoded — every kubeaid-cli-bootstrapped cluster uses 6443.
+const controlPlaneAPIServerPort = 6443
+
+// controlPlaneLBTargetSelector returns the Hetzner LB target selector
+// that picks only CAPH-created control-plane servers. See the
+// ensureControlPlaneLBServiceAndTarget comment for the full reasoning.
+func controlPlaneLBTargetSelector(clusterName string) string {
+	return fmt.Sprintf("%s=owned,machine_type=control_plane",
+		controlPlaneLBOwnershipLabel(clusterName))
+}
+
+// lbHasServiceOnPort reports whether lb already has a service listening
+// on listenPort. Idempotency check for ensureControlPlaneLBServiceAndTarget.
+func lbHasServiceOnPort(lb *hcloud.LoadBalancer, listenPort int) bool {
+	for _, s := range lb.Services {
+		if s.ListenPort == listenPort {
+			return true
+		}
+	}
+	return false
+}
+
+// lbHasLabelSelectorTarget reports whether lb already has a
+// label-selector target with the given selector. Idempotency check.
+func lbHasLabelSelectorTarget(lb *hcloud.LoadBalancer, selector string) bool {
+	for _, t := range lb.Targets {
+		if t.Type == hcloud.LoadBalancerTargetTypeLabelSelector &&
+			t.LabelSelector != nil &&
+			t.LabelSelector.Selector == selector {
+			return true
+		}
+	}
+	return false
 }
 
 // SetControlPlaneLBPublicInterface ensures the LB's public interface

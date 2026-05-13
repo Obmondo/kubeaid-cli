@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log/slog"
 	"os"
 
@@ -15,7 +16,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/keycloak"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
@@ -205,39 +206,17 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	if vpnClusterEnabled() {
-		// Cluster client is nil pre-bootstrap; the read-or-generate
-		// helpers fall back to fresh values in that case and the
-		// first SealedSecret sync establishes the stable values.
-		// Re-runs read the persisted values so we never drift from
-		// what's already deployed.
-		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-
-		datastoreKey, err := keycloak.GetOrGenerateBase64Key(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdDatastoreKey,
-			constants.NetBirdDatastoreKeyByteLen,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird datastore encryption key")
-		templateValues.NetBirdDatastoreKey = datastoreKey
-
-		relayPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdRelayPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird relay password")
-		templateValues.NetBirdRelayPassword = relayPwd
-
-		turnPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdTurnPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird TURN password")
-		templateValues.NetBirdTurnPassword = turnPwd
+		// All NetBird random secrets come from secrets.yaml (auto-
+		// generated on first run by parser.FillMissingSecrets, then
+		// stable across re-runs). Replaces the prior
+		// read-or-generate-from-cluster path that produced spurious
+		// SealedSecret diffs whenever the cluster Get failed (timing
+		// window before the SealedSecret reconciled, or kubeconfig
+		// transiently unreachable).
+		netbirdCreds := config.ParsedSecretsConfig.NetBird
+		templateValues.NetBirdDatastoreKey = netbirdCreds.DatastoreEncryptionKey
+		templateValues.NetBirdRelayPassword = netbirdCreds.RelayPassword
+		templateValues.NetBirdTurnPassword = netbirdCreds.TurnPassword
 
 		// postgresDSN is CNPG-generated and only available in-cluster
 		// after the netbird-pgsql Cluster CR is reconciled. On the
@@ -245,7 +224,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		// → render an empty string; bootstrap_cluster.go's
 		// patchNetBirdPostgresDSN step fills it in post-sync. On
 		// re-runs the patched value is read back here so the
-		// SealedSecret in git stays in sync.
+		// SealedSecret in git stays in sync. This is the only field
+		// that genuinely needs a cluster read — kubeaid-cli has no
+		// way to know CNPG's randomly-generated password ahead of
+		// the cluster being up.
+		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
+			constants.OutputPathMainClusterKubeconfig,
+		)
 		templateValues.NetBirdPostgresDSN = readSecretValueOrEmpty(ctx, clusterClient,
 			constants.NamespaceNetBird,
 			constants.SecretNameNetBird,
@@ -255,39 +240,26 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.NetBirdClientID = constants.NetBirdClientID
 		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID
 
-		// netbird-backend OIDC client secret: source depends on mode.
-		//   managed:  read-or-generate; same value passed to
-		//             ReconcileClient so Keycloak stores what NetBird
-		//             expects to envFrom.
-		//   external: operator-supplied via secrets.yaml; we have no
-		//             way to mint or look up the value otherwise. The
-		//             validator (added separately) ensures the field
-		//             is present before bootstrap proceeds.
-		if managedKeycloakEnabled() {
-			nbSecret, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-				constants.NamespaceNetBird,
-				constants.SecretNameNetBird,
-				constants.SecretKeyNetBirdIDPMgmtSecret,
-			)
-			assert.AssertErrNil(ctx, err, "Failed reading/generating NetBird backend client secret")
-			templateValues.NetBirdBackendClientSecret = nbSecret
-		} else if config.ParsedSecretsConfig.Keycloak != nil {
+		// netbird-backend OIDC client secret: source-of-truth is
+		// secrets.yaml.keycloak.netBirdBackendClientSecret in both
+		// modes.
+		//   managed:   FillMissingSecrets generated it; the realm
+		//              reconciler creates the Keycloak client with
+		//              this exact value, and the netbird SealedSecret
+		//              renders the same value here.
+		//   external:  the operator pre-creates the client in their
+		//              external Keycloak and supplies the secret.
+		// Either way: one value, one source, no drift.
+		if config.ParsedSecretsConfig.Keycloak != nil {
 			templateValues.NetBirdBackendClientSecret = config.ParsedSecretsConfig.Keycloak.NetBirdBackendClientSecret
 		}
 	}
 
 	if managedKeycloakEnabled() {
-		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-
-		adminPwd, err := keycloak.GetOrGenerateClientSecret(ctx, clusterClient,
-			constants.NamespaceKeycloak,
-			constants.SecretNameKeycloakAdmin,
-			constants.SecretKeyKeycloakPassword,
-		)
-		assert.AssertErrNil(ctx, err, "Failed reading/generating Keycloak admin password")
-		templateValues.KeycloakAdminPassword = adminPwd
+		// Same shape as NetBird above — KeycloakAdminPassword is
+		// auto-generated into secrets.yaml on first run and read
+		// directly thereafter.
+		templateValues.KeycloakAdminPassword = config.ParsedSecretsConfig.Keycloak.AdminPassword
 	}
 
 	// Set cloud provider specific values.
@@ -317,11 +289,17 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case hetznerConfig.Mode == constants.HetznerModeBareMetal:
 			templateValues.ControlPlaneEndpoint = hetznerConfig.ControlPlane.BareMetal.Endpoint.Host
 
-		// HCloud / Hetzner hybrid cluster with a VPN cluster. The
-		// control-plane LB is pre-provisioned; endpoint is the
-		// hostname when configured (clients resolve via CoreDNS to
-		// the LB private IP), else the private IP directly.
-		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && (hetznerConfig.HCloudVPNCluster != nil)):
+		// HCloud / Hetzner hybrid clusters where kubeaid-cli pre-
+		// provisions the control-plane LB. Endpoint is the hostname
+		// when configured (clients resolve via CoreDNS to the LB
+		// private IP), else the private IP directly. Two cases land
+		// here:
+		//   - cluster.type=vpn: this cluster IS the VPN — public LB.
+		//   - HCloudVPNCluster set: workload connecting to a VPN —
+		//     private LB sitting behind NetBird.
+		// Workload clusters not on a VPN don't pre-provision and
+		// fall through (CAPI handles their LB lifecycle on its own).
+		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned()):
 			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
 			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
 			templateValues.ControlPlaneExtraCertSANs = hetznerConfig.ControlPlane.HCloud.LoadBalancer.ExtraCertSANs
@@ -469,6 +447,17 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
+	// Workload cluster + Keycloak: render the netbird-operator app
+	// so the operator can declaratively manage NBSetupKey / NBPolicy
+	// resources after bootstrap (private kube-API via the parent
+	// VPN's NetBird mesh). VPN clusters get their own NetBird stack
+	// (above) which includes the operator implicitly.
+	if workloadNetBirdOperatorEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.NetBirdOperatorTemplateNames...,
+		)
+	}
+
 	// Managed Keycloak only: kubeaid-cli installs the keycloakx
 	// chart on this cluster and runs the gocloak realm reconciler
 	// post-sync. External-mode VPN clusters skip this — the
@@ -519,6 +508,24 @@ func managedKeycloakEnabled() bool {
 	return cluster.Keycloak.Mode == constants.KeycloakModeManaged
 }
 
+// workloadNetBirdOperatorEnabled reports whether kubeaid-cli should
+// render the netbird-operator ArgoCD app on a workload cluster.
+//
+// True when cluster.type=workload AND cluster.keycloak is set. The
+// keycloak gate is the proxy for "operator wants private kube-API
+// behind a mesh": if they're already routing OIDC through a parent
+// VPN's Keycloak, they almost certainly want kube-API on the same
+// mesh. Operators on admin.conf-only (no keycloak block) explicitly
+// opted out of mesh routing — skip the operator install entirely.
+//
+// VPN clusters get the operator implicitly via NetBirdNonSecretTemplateNames
+// (the netbird chart's kubeaid-addons subdep) — this helper is
+// workload-only.
+func workloadNetBirdOperatorEnabled() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
+}
+
 // vpnClusterEnabled reports whether kubeaid-cli should render the
 // VPN-cluster-wide infrastructure: cnpg (for NetBird's Postgres),
 // traefik (for NetBird's Ingress), the netbird /
@@ -539,16 +546,159 @@ func vpnClusterEnabled() bool {
 	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
 }
 
+// printWorkloadOIDCBanner emits a one-time, operator-facing banner
+// near the start of BootstrapCluster for workload-cluster runs:
+//
+//   - When cluster.keycloak is set: names the OIDC client the operator
+//     must have created in their Keycloak realm
+//     (kubernetes-<cluster.name>, public PKCE) and points at the doc
+//     with the exact steps. Read-only check — kubeaid-cli does NOT
+//     touch the operator's Keycloak admin API; the OIDC discovery
+//     probe runs separately and validates realm reachability only.
+//
+//   - When cluster.keycloak is absent: warns that the cluster will
+//     boot without OIDC and all users share admin.conf. Acceptable
+//     for solo / dev clusters; bad practice for shared / production.
+//
+// No-op for VPN clusters — those run their own managed-Keycloak
+// reconciler later in the bootstrap and don't need this banner.
+func printWorkloadOIDCBanner(ctx context.Context) {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeWorkload {
+		return
+	}
+
+	if cluster.Keycloak == nil {
+		slog.WarnContext(ctx,
+			"No cluster.keycloak block — bootstrap will continue without OIDC. "+
+				"Operators authenticate via admin.conf, which is shared and bypasses "+
+				"per-user RBAC. Not best practice for shared clusters. See "+
+				"docs/workload-cluster-keycloak.md for the OIDC alternative.",
+		)
+		return
+	}
+
+	clientID := "kubernetes-" + cluster.Name
+	slog.InfoContext(ctx,
+		"Workload OIDC pre-flight",
+		slog.String("realm_issuer", "https://"+cluster.Keycloak.DNS+"/realms/"+cluster.Keycloak.Realm),
+		slog.String("expected_client_id", clientID),
+		slog.String("doc", "docs/workload-cluster-keycloak.md"),
+	)
+	slog.InfoContext(ctx,
+		"Make sure a public PKCE OIDC client with the exact ID above exists "+
+			"in that realm before running `kubeaid-cli login` — see the doc for "+
+			"the create-client click-through.",
+	)
+}
+
+// fetchNetBirdStatus is the test seam for requireOperatorOnNetBird —
+// tests assign it before exercising the gate to avoid shelling out
+// to a real `netbird` binary. Defaults to the real status fetcher.
+var fetchNetBirdStatus = netbird.FetchStatus
+
+// requireOperatorOnNetBird hard-fails the bootstrap when the
+// operator's laptop isn't connected to the NetBird mesh AND the
+// cluster about to be bootstrapped depends on mesh reachability
+// (workload cluster + cluster.keycloak set — the Keycloak realm
+// almost certainly lives on a private DNS reachable only through
+// NetBird, and the OIDC discovery probe would fail later with a
+// cryptic DNS error).
+//
+// Skipped when:
+//   - cluster.type != workload (VPN clusters provision their own
+//     Keycloak; the operator doesn't need the mesh to reach it
+//     during bootstrap)
+//   - cluster.keycloak is unset (no Keycloak to reach, the cluster
+//     boots admin.conf-only — already covered by the workload OIDC
+//     banner's WARN line)
+//
+// Returns an error suitable for assert.AssertErrNil — callers
+// surface it to the bootstrap pipeline so the failure happens before
+// any infrastructure is touched.
+func requireOperatorOnNetBird(ctx context.Context) error {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeWorkload || cluster.Keycloak == nil {
+		return nil
+	}
+
+	status, err := fetchNetBirdStatus(ctx)
+	if err != nil {
+		return fmt.Errorf(
+			"querying NetBird daemon: %w — install netbird from "+
+				"https://netbird.io and run `netbird up` against %s before "+
+				"running `kubeaid-cli bootstrap` (the workload cluster's "+
+				"Keycloak at %s is only reachable through the mesh)",
+			err, cluster.Keycloak.DNS, cluster.Keycloak.DNS,
+		)
+	}
+
+	if status.DaemonStatus != netbird.DaemonStatusConnected {
+		return fmt.Errorf(
+			"NetBird daemon status is %q, not %q — run `netbird up` to "+
+				"connect to the mesh; the workload cluster's Keycloak at %s is "+
+				"only reachable through NetBird",
+			status.DaemonStatus, netbird.DaemonStatusConnected, cluster.Keycloak.DNS,
+		)
+	}
+
+	return nil
+}
+
+// shouldValidateOIDCNow reports whether the pre-flight OIDC
+// discovery probe should run at the start of bootstrap. True when
+// apiServer.oidc is configured AND we aren't standing Keycloak up
+// in this same bootstrap run (managed-Keycloak issuer doesn't
+// exist yet — kubeaid-cli probes it via in-cluster port-forward
+// later, after the keycloakx app syncs). Mirrors the internal
+// skip in parser.ValidateOIDCDiscovery so the progress-bar spinner
+// step is suppressed at the outer level too.
+func shouldValidateOIDCNow() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.APIServer.OIDC == nil {
+		return false
+	}
+	if cluster.Keycloak != nil && cluster.Keycloak.Mode == constants.KeycloakModeManaged {
+		return false
+	}
+	return true
+}
+
 // hcloudControlPlaneEndpointSet reports whether kubeaid-cli should
 // render the cluster-side coredns-custom ConfigMap for resolving
 // the apiserver endpoint. True only when the operator configured
-// loadBalancer.endpoint on an HCloud control-plane.
+// loadBalancer.endpoint AND the LB has been pre-provisioned (i.e.,
+// globals.ControlPlaneLBPrivateIP is populated). Without the IP, the
+// hosts block would render empty and is useless.
 func hcloudControlPlaneEndpointSet() bool {
 	h := config.ParsedGeneralConfig.Cloud.Hetzner
 	if h == nil || h.ControlPlane.HCloud == nil {
 		return false
 	}
-	return h.ControlPlane.HCloud.LoadBalancer.Endpoint != ""
+	if h.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+		return false
+	}
+	return globals.ControlPlaneLBPrivateIP != ""
+}
+
+// hetznerControlPlaneLBPreProvisioned reports whether kubeaid-cli
+// pre-creates the HCloud control-plane LB (so globals.ControlPlaneLB*
+// are populated by template-render time). Mirrors the Hetzner-side
+// gate in prerequisite_infrastructure.go's shouldPreCreateControlPlaneLB:
+//
+//	cluster.type=vpn        — this cluster IS the VPN (public LB).
+//	HCloudVPNCluster set    — workload connecting to VPN (private LB).
+//
+// Used in getTemplateValues to decide whether to populate
+// ControlPlaneEndpoint / ControlPlaneLB* from globals vs. fall through
+// to the default (CAPI-managed) path.
+func hetznerControlPlaneLBPreProvisioned() bool {
+	cluster := config.ParsedGeneralConfig.Cluster
+	h := config.ParsedGeneralConfig.Cloud.Hetzner
+	if h == nil {
+		return false
+	}
+	return cluster.Type == constants.ClusterTypeVPN || h.HCloudVPNCluster != nil
 }
 
 // teleportAgentEnabled reports whether the teleport-kube-agent ArgoCD App

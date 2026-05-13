@@ -8,7 +8,6 @@ import (
 	"crypto/rsa"
 	"errors"
 	"io"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,27 +24,8 @@ import (
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 )
-
-// stubGitURL satisfies gogiturl.IGitURL with fixed, non-empty values so that
-// utils.GetKubeAidDir() can build a path without panicking.
-// The path it produces does not need to exist on disk -- helmInstallWithFactory
-// returns early before reaching loader.Load when a matching deployed release is found.
-type stubGitURL struct{}
-
-func (stubGitURL) GetHostName() string     { return "github.com" }
-func (stubGitURL) GetProvider() string     { return "github" }
-func (stubGitURL) GetBranchName() string   { return "main" }
-func (stubGitURL) GetOwnerName() string    { return "Obmondo" }
-func (stubGitURL) GetPath() string         { return "" }
-func (stubGitURL) GetRepoName() string     { return "KubeAid" }
-func (stubGitURL) GetHttpCloneURL() string { return "" }
-func (stubGitURL) Parse(_ string) error    { return nil }
-func (stubGitURL) GetURL() *url.URL        { return &url.URL{} }
-func (stubGitURL) SetBranchName(_ string)  {}
-func (stubGitURL) SetOwnerName(_ string)   {}
-func (stubGitURL) SetPath(_ string)        {}
-func (stubGitURL) SetRepoName(_ string)    {}
 
 // ── installSealedSecretsWithFactory ──────────────────────────────────────────
 
@@ -53,7 +33,11 @@ func (stubGitURL) SetRepoName(_ string)    {}
 func TestInstallSealedSecretsWithFactory(t *testing.T) {
 	orig := config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL
 	t.Cleanup(func() { config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = orig })
-	config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = stubGitURL{}
+	config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = &giturl.ParsedURL{
+		Host:  "github.com",
+		Owner: "Obmondo",
+		Repo:  "KubeAid",
+	}
 
 	tests := []struct {
 		name            string
@@ -62,12 +46,11 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 		chartErr        error
 		installErr      error
 		wantInstalled   bool
-		wantUninstalled bool
 		wantErr         bool
 		wantErrContains string
 	}{
 		{
-			name: "release already deployed -- skips install and uninstall",
+			name: "release already deployed -- skips install",
 			releases: []*release.Release{
 				makeRelease(
 					constants.ReleaseNameSealedSecrets,
@@ -75,15 +58,13 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 					release.StatusDeployed,
 				),
 			},
-			wantInstalled:   false,
-			wantUninstalled: false,
+			wantInstalled: false,
 		},
 		{
-			name:            "no existing release -- fresh install succeeds",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: false,
+			name:          "no existing release -- fresh install succeeds",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
 		},
 		{
 			name:            "LoadChart fails -- propagates error",
@@ -106,11 +87,9 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			installer := &fakeInstallRunner{err: tc.installErr}
-			uninstaller := &fakeUninstallRunner{}
 			factory := &fakeHelmFactory{
 				lister:      singleResponseLister(tc.releases),
 				installer:   installer,
-				uninstaller: uninstaller,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -124,7 +103,6 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
-			assert.Equal(t, tc.wantUninstalled, uninstaller.called)
 		})
 	}
 }

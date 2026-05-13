@@ -10,8 +10,10 @@ import (
 	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterctlV1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -25,6 +27,7 @@ import (
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type SetupClusterArgs struct {
@@ -39,14 +42,24 @@ type SetupClusterArgs struct {
 func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	slog.InfoContext(ctx, "Setting up cluster....", slog.String("cluster-type", args.ClusterType))
 
+	bar := progress.FromCtx(ctx)
+
 	{
 		// Clone the KubeAid fork locally (if not already cloned).
+		// PinnedRef tells CloneRepo to skip the default-branch fetch
+		// dance on re-runs — kubeaid-cli only ever HardResetRepoToRef
+		// against this fixed version, never walks default-branch
+		// history. One narrow fetch instead of pulling every ref + tag
+		// per re-run.
 		kubeAidRepo := gitUtils.CloneRepo(ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.URL,
 			args.GitAuthMethod,
+			gitUtils.CloneRepoOptions{
+				PinnedRef: config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
+			},
 		)
 
-		// Hard reset to the KubeAid git ref (tag / branch / commit) from the general config.
+		// Hard reset to the KubeAid git ref (tag / branch) from the general config.
 		gitUtils.HardResetRepoToRef(ctx,
 			kubeAidRepo,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
@@ -62,6 +75,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		"obmondo",
 		"traefik",
 		"system",
+		// sealed-secrets is created up front (not via Helm's
+		// CreateNamespace=true) so we can pre-seed the controller's key
+		// material before the chart syncs. The Helm install below is a
+		// no-op against an existing ns.
+		constants.NamespaceSealedSecrets,
 	}
 	// When obmondo.monitoring is on, the `secrets` ArgoCD App (sync-order 10)
 	// applies obmondo-clientcert as a SealedSecret in the monitoring namespace.
@@ -99,13 +117,22 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", namespace))
 	}
 
-	// When recovering a cluster, restore the Sealed Secrets controller private keys.
-	if args.IsPartOfDisasterRecovery {
-		// Create the sealed-secrets namespace.
-		err := kubernetes.CreateNamespace(ctx, constants.NamespaceSealedSecrets, args.ClusterClient)
-		assert.AssertErrNil(ctx, err, "Failed creating namespace",
-			slog.String("namespace", constants.NamespaceSealedSecrets))
-
+	// Seed sealed-secrets controller key material BEFORE the chart
+	// installs the controller. Two sources:
+	//
+	//   - DR recovery: restore key Secrets from the backup bucket.
+	//   - Main-cluster bootstrap (non-DR): copy active key Secrets
+	//     from the management cluster so the main controller can
+	//     decrypt every SealedSecret kubeaid-cli sealed against the
+	//     management controller during Phase 0.
+	//
+	// Doing this BEFORE Helm install means the controller's pod boots
+	// with the existing keys already present — sealed-secrets-controller
+	// uses them directly and skips generating a fresh "KEY-B", leaving
+	// the cluster with one canonical key. Same shape as the prior DR
+	// flow; the only addition is the management→main path.
+	switch {
+	case args.IsPartOfDisasterRecovery:
 		sealedSecretsKeysBackupBucketName := config.ParsedGeneralConfig.Cloud.DisasterRecovery.SealedSecretsBackupsBucketName
 		sealedSecretsKeysDirPath := utils.GetDownloadedStorageBucketContentsDir(
 			sealedSecretsKeysBackupBucketName,
@@ -118,19 +145,76 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		 Because of which, doing kubectl apply for the second time errors out, thus hindering
 		 the script's idempotency.
 		*/
-		err = kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
+		err := kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
 		assert.AssertErrNil(ctx, err, "Failed restoring sealed secrets private keys")
 
 		slog.InfoContext(ctx,
 			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
+
+	case args.ClusterType == constants.ClusterTypeMain:
+		releaseCopy := bar.InProgress("Seeding sealed-secrets keys from management cluster")
+		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+		mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed constructing management cluster client")
+
+		if err := kubernetes.CopySealedSecretsKeysFromManagement(ctx,
+			mgmtClient, args.ClusterClient,
+		); err != nil {
+			releaseCopy()
+			assert.AssertErrNil(ctx, err, "Failed seeding sealed-secrets keys")
+		}
+		releaseCopy()
+		bar.Substep("Seeded sealed-secrets keys from management cluster")
 	}
 
-	// Install Sealed Secrets.
+	// Install Sealed Secrets. Helm install brings up the controller,
+	// which discovers any keys we pre-seeded above and uses them as-is.
+	releaseSS := bar.InProgress("Installing Sealed Secrets controller")
 	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
+		releaseSS()
 		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
 	}
+	releaseSS()
+	bar.Substep("Installed Sealed Secrets controller")
+
+	// Verify the controller is actually serving — talk to the API
+	// server, not Helm's release record. Two independent checks with
+	// independent recovery actions:
+	//   (1) every active sealed-secrets key Secret on mgmt is present
+	//       on main; if not, re-run the copy.
+	//   (2) the controller Deployment is fully Available; if not,
+	//       run Install.Replace=true to force a fresh apply (covers
+	//       the "Helm thinks deployed but Deployment was manually
+	//       removed" case Helm can't otherwise detect).
+	// One reinstall retry budget; rich diagnostic on final failure.
+	//
+	// Mgmt-cluster setup phase doesn't have a separate mgmt client to
+	// compare against, so we use the same client on both sides — the
+	// parity check trivially passes (same set, same count). The
+	// Deployment-health check still earns its keep.
+	mgmtClientForHealthCheck := args.ClusterClient
+	if args.ClusterType == constants.ClusterTypeMain {
+		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+		mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed constructing management cluster client for health check")
+		mgmtClientForHealthCheck = mgmtClient
+	}
+
+	releaseHealth := bar.InProgress("Verifying Sealed Secrets controller health")
+	if err := kubernetes.EnsureSealedSecretsHealthy(ctx,
+		mgmtClientForHealthCheck, args.ClusterClient,
+	); err != nil {
+		releaseHealth()
+		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not healthy")
+	}
+	releaseHealth()
+	bar.Substep("Sealed Secrets controller healthy")
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
@@ -138,8 +222,11 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	})
 
 	// Install and setup ArgoCD.
+	releaseArgoCD := bar.InProgress("Installing and configuring ArgoCD")
 	err := kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
+	releaseArgoCD()
 	assert.AssertErrNil(ctx, err, "Failed installing and setting up ArgoCD")
+	bar.Substep("Installed and configured ArgoCD")
 
 	// Create the capi-cluster / capi-cluster-<customer-id> namespace, where the 'cloud-credentials'
 	// Kubernetes Secret will get created.
@@ -150,16 +237,29 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", kubernetes.GetCapiClusterNamespace()))
 	}
 
-	// Sync the Root, CertManager and Secrets ArgoCD Apps one by one.
+	// Sync the Root, Secrets and CertManager ArgoCD Apps one by one.
+	//
+	// Order matters: root is the app-of-apps and just creates the child
+	// Applications (no resource churn). secrets runs SECOND so every
+	// downstream SealedSecret in kubeaid-config gets applied + decrypted
+	// before its consumer chart syncs — cert-manager (Issuer Secrets),
+	// netbird (envFromSecret), keycloakx (admin Secret), etc. all find
+	// their backing Secret already in place when their app finally
+	// syncs. Before this flip, cert-manager could race the secrets app
+	// and end up in a brief CrashLoopBackOff waiting for its CA-key
+	// Secret to materialise.
 	argoCDAppsToBeSynced := []string{
 		constants.ArgoCDAppRoot,
-		"cert-manager",
 		"secrets",
+		"cert-manager",
 	}
 	for _, argoCDApp := range argoCDAppsToBeSynced {
+		release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", argoCDApp))
 		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		release()
 		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
 			slog.String("app", argoCDApp))
+		bar.Substep(fmt.Sprintf("Synced %s ArgoCD app", argoCDApp))
 	}
 
 	// Any cloud provider specific tasks.
@@ -200,16 +300,44 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// When using ClusterAPI to provision the main cluster.
 	if kubernetes.UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
+		releaseCAPIOp := bar.InProgress("Syncing cluster-api-operator ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		releaseCAPIOp()
 		assert.AssertErrNil(ctx, err, "Failed syncing cluster-api-operator ArgoCD app")
+		bar.Substep("Synced cluster-api-operator ArgoCD app")
 
 		//nolint:godox
 		// Sync the Infrastructure Provider component of the capi-cluster ArgoCD App.
 		// TODO : Use ArgoCD sync waves so that we don't need to explicitly sync the Infrastructure
 		//        Provider component first.
+		//
+		// syncInfrastructureProvider emits its own ↻/✓ pair for each
+		// of its two stages — the ArgoCD sync and the pod-running
+		// wait — so the operator can tell at a glance whether time
+		// is being spent in sync or in waiting for the controller
+		// pod to come up. Don't add an outer wrapper here; that
+		// would just cover both stages with one generic line.
 		syncInfrastructureProvider(ctx, args.ClusterClient)
+	}
+
+	// Sync the capi-cluster ArgoCD app on the management cluster so
+	// the Cluster + Machine + InfrastructureCluster resources land
+	// before we print "Management cluster ready" — that box is the
+	// "all done with management cluster" marker, so the substep
+	// belongs above it. Skipped on the main cluster (post-pivot the
+	// resources are already there) and on bare-metal (no CAPI).
+	if args.ClusterType == constants.ClusterTypeManagement &&
+		kubernetes.UsingClusterAPI() &&
+		!kubernetes.IsClusterctlMoveExecuted(ctx) {
+		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app")
+		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+			[]*argoCDV1Alpha1.SyncOperationResource{},
+		)
+		releaseSync()
+		assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster ArgoCD app")
+		bar.Substep("Synced capi-cluster ArgoCD app")
 	}
 
 	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
@@ -218,7 +346,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
 // infrastructure specific CRDs to be installed and pod to be running.
 func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client) {
+	bar := progress.FromCtx(ctx)
+	providerName := globals.CloudProviderName
+
 	// Sync the Infrastructure Provider component.
+	releaseSync := bar.InProgress(
+		fmt.Sprintf("Syncing %s infrastructure-provider component", providerName),
+	)
 	err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
@@ -228,37 +362,87 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 			},
 		},
 	)
+	releaseSync()
 	assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster infrastructure provider ArgoCD app")
+	bar.Substep(
+		fmt.Sprintf("Synced %s infrastructure-provider component", providerName),
+	)
 
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
 	// Wait for the infrastructure specific CRDs to be installed and infrastructure provider component
-	// pod to be running.
+	// pod to be running. This is the slow part — kubeaid-cli has
+	// just told the cluster to install the CAPI Operator
+	// InfrastructureProvider CR; the operator pulls the controller
+	// image, creates the Deployment, scheduler runs the Pod, image
+	// pull happens, container starts. On a cold node-pull this can
+	// take several minutes. Surface it as its own ↻ substep so the
+	// operator sees we're waiting on the cluster, not stuck on a
+	// kubeaid-cli call.
+	releaseWait := bar.InProgress(
+		fmt.Sprintf("Waiting for %s controller pod to be Running in %s", providerName, capiClusterNamespace),
+	)
 
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("namespace", capiClusterNamespace),
 	})
 
-	err = wait.PollUntilContextCancel(ctx, time.Minute, false,
+	// Wait for a Pod labelled `cluster.x-k8s.io/provider=
+	// infrastructure-<providerName>` to reach Running. CAPI Operator
+	// stamps this label on every Deployment it materialises from an
+	// InfrastructureProvider CR — same convention across CAPA
+	// (infrastructure-aws), CAPZ (infrastructure-azure), CAPH
+	// (infrastructure-hetzner), and any future provider kubeaid-cli
+	// supports. The label is the right gate: it identifies THE pod
+	// we're waiting on without coupling to image names or
+	// Deployment names which differ per provider.
+	//
+	// The previous check — "first pod listed in the namespace is
+	// Running" — was fragile: a Pending provider pod at index 0
+	// (alphabetic ordering puts caph- / capa- / capz- before capi-)
+	// would keep the wait pinned even after other pods were happily
+	// running, AND a stray Running pod from any earlier sync (capi-
+	// controller-manager, the operator itself) would falsely satisfy
+	// the wait before the provider was actually deployed.
+	//
+	// Iterate matching pods, return Running on the first hit. Also
+	// drop the poll interval from 1m → 15s — minute-granular
+	// polling on an interactive bootstrap means the operator can
+	// stare at a stale spinner for nearly a full minute after the
+	// pod actually came up.
+	providerLabel := labels.SelectorFromSet(labels.Set{
+		"cluster.x-k8s.io/provider": fmt.Sprintf("infrastructure-%s", providerName),
+	})
+	err = wait.PollUntilContextCancel(ctx, 15*time.Second, true,
 		func(ctx context.Context) (bool, error) {
 			podList := &coreV1.PodList{}
-			err := clusterClient.List(ctx, podList, &client.ListOptions{
-				Namespace: capiClusterNamespace,
-			})
-			assert.AssertErrNil(ctx, err, "Failed listing pods")
-
-			if (len(podList.Items) > 0) && (podList.Items[0].Status.Phase == coreV1.PodRunning) {
-				return true, nil
+			if err := clusterClient.List(ctx, podList, &client.ListOptions{
+				Namespace:     capiClusterNamespace,
+				LabelSelector: providerLabel,
+			}); err != nil {
+				slog.WarnContext(ctx, "Listing infrastructure-provider pods failed; will retry",
+					slog.Any("err", err),
+				)
+				return false, nil
 			}
-
+			for i := range podList.Items {
+				if podList.Items[i].Status.Phase == coreV1.PodRunning {
+					return true, nil
+				}
+			}
 			slog.InfoContext(ctx,
-				"Waiting for the infrastructure provider component pod to come up",
+				"Still waiting for the infrastructure provider controller pod",
+				slog.Int("matching-pods", len(podList.Items)),
 			)
 			return false, nil
 		},
 	)
+	releaseWait()
 	assert.AssertErrNil(ctx, err,
 		"Failed waiting for the infrastructure provider component to come up",
+	)
+	bar.Substep(
+		fmt.Sprintf("%s controller pod Running", providerName),
 	)
 }
 
@@ -273,39 +457,54 @@ func getInfrastructureProviderName() string {
 	return infrastructureProviderName
 }
 
+// printHelpTextForArgoCDDashboardAccess renders the post-bootstrap
+// "how to open the ArgoCD admin UI" steps as a lipgloss rounded-
+// border box so it matches the visual language of the PR-merge
+// prompt (renderPRMergeBox), the K8s version picker, and the
+// DNS-wait table — all of which the operator has already seen as
+// boxed surfaces during the same bootstrap. Cyan + underlined URL
+// styling is auto-detected as a clickable link by iTerm2 / gnome-
+// terminal / Alacritty / kitty so the operator can cmd-click
+// instead of copy-pasting.
 func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 	clusterKubeconfigPath := constants.OutputPathManagementClusterHostKubeconfig
 	if clusterType == constants.ClusterTypeMain {
 		clusterKubeconfigPath = constants.OutputPathMainClusterKubeconfig
 	}
 
-	// Print out help text for the user to access ArgoCD admin dashboard.
-	helpText := fmt.Sprintf(
-		`
-Finished setting up %s cluster.
+	// Title-case the cluster type for the box header. Two callers
+	// only ever ("management" / "main"), so a switch is clearer than
+	// pulling in the (deprecated) strings.Title.
+	clusterTypeTitle := clusterType
+	switch clusterType {
+	case constants.ClusterTypeManagement:
+		clusterTypeTitle = "Management"
+	case constants.ClusterTypeMain:
+		clusterTypeTitle = "Main"
+	}
 
-To access the ArgoCD admin dashboard :
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	urlStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")). // bright blue — match renderPRMergeBox
+		Underline(true)
 
-  (1) In your host machine's terminal, navigate to the directory from where you executed the
-      script (you'll notice the outputs/ directory there). Do :
-
-        export KUBECONFIG=%s
-
-  (2) Retrieve the ArgoCD admin password :
-
-        echo "ArgoCD admin password : "
-        kubectl get secret argocd-initial-admin-secret --namespace argocd \
-          -o jsonpath="{.data.password}" | base64 -d
-        echo
-
-  (3) Port forward ArgoCD server :
-
-        kubectl port-forward svc/argocd-server --namespace argocd 8080:443
-
-  (4) Visit https://localhost:8080 in a browser and login to ArgoCD as admin.
-    `,
-		clusterType,
-		clusterKubeconfigPath,
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		headerStyle.Render("✓ "+clusterTypeTitle+" cluster ready"),
+		"",
+		headerStyle.Render("ArgoCD admin dashboard"),
+		"",
+		" 1.  export KUBECONFIG="+clusterKubeconfigPath,
+		"",
+		" 2.  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
+		"",
+		" 3.  kubectl -n argocd port-forward svc/argocd-server 8080:443",
+		"",
+		" 4.  Open "+urlStyle.Render("https://localhost:8080")+"  (user: admin)",
 	)
-	fmt.Println(helpText) //nolint: forbidigo, revive
+
+	fmt.Println(lipgloss.NewStyle(). //nolint:forbidigo
+						Border(lipgloss.RoundedBorder()).
+						Padding(0, 1).
+						Render(content))
 }

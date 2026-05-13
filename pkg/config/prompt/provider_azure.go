@@ -6,16 +6,14 @@ package prompt
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/huh"
 )
 
-type azurePrompter struct {
-	baseProvider
-}
+type azurePrompter struct{}
 
 func newAzureProvider() *azurePrompter {
-	p := &azurePrompter{}
-	p.questionsFunc = p.promptAzureQuestions
-	return p
+	return &azurePrompter{}
 }
 
 func (p *azurePrompter) SummaryLines(cfg *PromptedConfig) []string {
@@ -27,28 +25,53 @@ func (p *azurePrompter) SummaryLines(cfg *PromptedConfig) []string {
 	}
 }
 
-func (p *azurePrompter) promptAzureQuestions(cfg *PromptedConfig) error {
-	// Provider credentials come first, immediately after cluster name.
-	if err := requiredInput("Tenant ID:", &cfg.AzureTenantID); err != nil {
-		return err
-	}
-
-	if err := requiredInput("Subscription ID:", &cfg.AzureSubscriptionID); err != nil {
-		return err
-	}
-
-	if err := requiredInput("Client ID:", &cfg.AzureClientID); err != nil {
-		return err
-	}
-
-	if err := requiredPassword("Client Secret:", &cfg.AzureClientSecret); err != nil {
-		return err
-	}
-
+func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
 	// Default location, smallest general-purpose VM, and disk size.
-	cfg.AzureLocation = "westeurope"
-	cfg.AzureCPVMSize = "Standard_B2s"
-	cfg.AzureCPDiskSizeGB = "128"
+	if cfg.AzureLocation == "" {
+		cfg.AzureLocation = "westeurope"
+	}
+	if cfg.AzureCPVMSize == "" {
+		cfg.AzureCPVMSize = "Standard_B2s"
+	}
+	if cfg.AzureCPDiskSizeGB == "" {
+		cfg.AzureCPDiskSizeGB = "128"
+	}
+
+	haChoice := cfg.AzureCPReplicas != "1"
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Tenant ID:").
+				Value(&cfg.AzureTenantID).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("Subscription ID:").
+				Value(&cfg.AzureSubscriptionID).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("Client ID:").
+				Value(&cfg.AzureClientID).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("Client Secret:").
+				EchoMode(huh.EchoModePassword).
+				Value(&cfg.AzureClientSecret).
+				Validate(nonEmpty),
+			huh.NewConfirm().
+				Title("Enable high availability for the control plane?").
+				Value(&haChoice),
+		).Title("Azure credentials").Description("Step 3/4"),
+	).Run()
+	if err != nil {
+		return err
+	}
+
+	if haChoice {
+		cfg.AzureCPReplicas = "3"
+	} else {
+		cfg.AzureCPReplicas = "1"
+	}
 
 	// Auto-generate storage account name from cluster name.
 	// Azure requires: 3-24 chars, lowercase alphanumeric only.
@@ -63,13 +86,6 @@ func (p *azurePrompter) promptAzureQuestions(cfg *PromptedConfig) error {
 		name = name[:24]
 	}
 	cfg.AzureStorageAccount = name
-
-	replicas, err := promptHAControlPlane()
-	if err != nil {
-		return err
-	}
-
-	cfg.AzureCPReplicas = replicas
 
 	return nil
 }

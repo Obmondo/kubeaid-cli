@@ -38,14 +38,36 @@ type BootstrapClusterArgs struct {
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar := progress.New("Bootstrapping cluster")
 	defer bar.Finish()
+	ctx = progress.WithBar(ctx, bar)
+
+	// Workload-cluster banner: names the OIDC client the operator
+	// must have pre-created in their Keycloak realm, or warns about
+	// the admin.conf fallback when no Keycloak is referenced. No-op
+	// on VPN clusters.
+	printWorkloadOIDCBanner(ctx)
+
+	// Workload + private Keycloak: bail early if the operator isn't on
+	// the NetBird mesh. The OIDC discovery probe below would otherwise
+	// fail with a cryptic DNS error half-a-spinner later.
+	assert.AssertErrNil(ctx, requireOperatorOnNetBird(ctx),
+		"NetBird preflight failed")
 
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
-	// discovery endpoint before any infrastructure is touched. Catches
-	// typo'd issuer URLs / unreachable Keycloak before Hetzner VMs
-	// (etc.) are provisioned.
-	bar.Describe("Validating OIDC issuer")
-	assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
-		"OIDC issuer validation failed")
+	// discovery endpoint before any infrastructure is touched.
+	// Catches typo'd issuer URLs / unreachable Keycloak before
+	// Hetzner VMs (etc.) are provisioned.
+	//
+	// Skipped entirely (no spinner step) when:
+	//   - apiServer.oidc isn't set, OR
+	//   - cluster.keycloak.mode == managed (the issuer is provisioned
+	//     by THIS bootstrap run; probing now would NXDOMAIN /
+	//     TLS-mismatch). ValidateOIDCDiscovery has the same internal
+	//     skip but the spinner step would still flash.
+	if shouldValidateOIDCNow() {
+		bar.Describe("Validating OIDC issuer")
+		assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
+			"OIDC issuer validation failed")
+	}
 
 	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
 	// NOTE : Though HCloud has an official Terraform provider which can be imported into a
@@ -63,16 +85,17 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		)
 	}
 
-	// Detect git authentication method.
-	bar.Describe("Detecting Git authentication method")
+	// Detect git authentication method. Fast (no network), so no
+	// separate spinner step — folded into "Creating management
+	// cluster" which is the first step that actually uses it.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 
-	// Create and setup the management cluster.
+	// Create and setup the management cluster. The capi-cluster sync
+	// is folded into SetupCluster so it runs before the
+	// "Management cluster ready" box, not after it.
 	bar.Describe("Creating management cluster")
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
-	// Provision and setup the main cluster.
-	// The KUBECONFIG environment variable is also set to the main cluster's kubeconfig.
 	bar.Describe("Provisioning main cluster")
 	provisionAndSetupMainCluster(ctx, ProvisionAndSetupMainClusterArgs{
 		BootstrapClusterArgs: &args,
@@ -83,6 +106,19 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	mainClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		utils.MustGetEnv(constants.EnvNameKubeconfig))
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
+
+	// Hetzner: kubectl-apply the kube-system/cloud-credentials Secret
+	// directly so the HCloud CCM can start before sealed-secrets-
+	// controller is up. Mirrors the keycloak-admin pattern; breaks
+	// the taint ↔ sealed-secrets ↔ CCM bootstrap cycle. No-op for
+	// other cloud providers.
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		bar.Describe("Applying HCloud cloud-credentials Secret")
+		assert.AssertErrNil(ctx,
+			ensureHCloudCredentialsSecret(ctx, mainClusterClient),
+			"Failed applying HCloud cloud-credentials Secret",
+		)
+	}
 
 	// Setup Disaster Recovery, if the user wants.
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil && globals.CloudProvider != nil {
@@ -102,6 +138,19 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
+	// VPN clusters on Hetzner: Traefik is up by now and CCM has
+	// allocated a public LB IP for it. Pause and have the operator
+	// point keycloak.dns / netbird.dns / stun.dns / turn.dns at
+	// that IP — cert-manager's ACME challenges retry with backoff,
+	// so the next retry succeeds once DNS resolves correctly.
+	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
+		bar.Describe("Waiting for ingress-LB DNS")
+		assert.AssertErrNil(ctx,
+			hetzner.WaitForIngressLBDNS(ctx, mainClusterClient),
+			"Failed waiting for ingress-LB DNS",
+		)
+	}
+
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
 	// Keycloak via the admin secret and reconciles the realm +
 	// NetBird OIDC clients. External-mode operators handle their
@@ -109,10 +158,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// kubeaid/argocd-helm-charts/netbird/README.md).
 	if managedKeycloakEnabled() {
 		bar.Describe("Reconciling NetBird's resources in Keycloak")
-		assert.AssertErrNil(ctx,
-			reconcileNetBirdInKeycloak(ctx, mainClusterClient),
-			"Failed reconciling NetBird in Keycloak",
-		)
+		releaseRealm := bar.InProgress("Logging into Keycloak admin and reconciling realm + clients")
+		err := reconcileNetBirdInKeycloak(ctx, mainClusterClient)
+		releaseRealm()
+		assert.AssertErrNil(ctx, err, "Failed reconciling NetBird in Keycloak")
+		bar.Substep("Reconciled NetBird's resources in Keycloak")
 	}
 
 	// Both Keycloak modes: NetBird Mgmt's postgresDSN can only be
@@ -120,10 +170,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// in-cluster, so this patch is mode-independent.
 	if vpnClusterEnabled() {
 		bar.Describe("Patching NetBird Secret with CNPG-generated postgres DSN")
-		assert.AssertErrNil(ctx,
-			patchNetBirdPostgresDSN(ctx, mainClusterClient),
-			"Failed patching NetBird postgres DSN",
-		)
+		releaseDSN := bar.InProgress("Reading CNPG app credentials and patching netbird Secret")
+		err := patchNetBirdPostgresDSN(ctx, mainClusterClient)
+		releaseDSN()
+		assert.AssertErrNil(ctx, err, "Failed patching NetBird postgres DSN")
+		bar.Substep("Patched NetBird Secret with postgres DSN")
 	}
 
 	// When we have setup Disaster Recovery,
@@ -132,11 +183,16 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		bar.Describe("Creating initial backups")
 
 		// Create the first Velero backup.
-		if err := kubernetes.CreateBackup(ctx, "init", mainClusterClient); err != nil {
-			assert.AssertErrNil(ctx, err, "Failed creating initial Velero backup")
+		releaseVelero := bar.InProgress("Creating initial Velero backup")
+		veleroErr := kubernetes.CreateBackup(ctx, "init", mainClusterClient)
+		releaseVelero()
+		if veleroErr != nil {
+			assert.AssertErrNil(ctx, veleroErr, "Failed creating initial Velero backup")
 		}
+		bar.Substep("Created initial Velero backup")
 
 		// Create first Sealed Secrets backup.
+		releaseSS := bar.InProgress("Triggering Sealed Secrets backup CRONJob")
 		err = kubernetes.TriggerCRONJob(ctx,
 			types.NamespacedName{
 				Name:      constants.CRONJobNameBackupSealedSecrets,
@@ -144,7 +200,9 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			},
 			mainClusterClient,
 		)
+		releaseSS()
 		assert.AssertErrNil(ctx, err, "Failed triggering Sealed Secrets backup CRONJob")
+		bar.Substep("Triggered Sealed Secrets backup CRONJob")
 	}
 
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
@@ -238,30 +296,40 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		pivotCluster(ctx)
 	}
 
-	//nolint:staticcheck
-	// Sync cluster-autoscaler ArgoCD App,
-	// if not using Hetzner in bare-metal mode.
-	if !((globals.CloudProviderName == constants.CloudProviderHetzner) &&
-		(config.ParsedGeneralConfig.Cloud.Hetzner.Mode == constants.HetznerModeBareMetal)) {
+	bar := progress.FromCtx(ctx)
 
+	// Sync cluster-autoscaler on AWS or Azure workload clusters.
+	// Skip Hetzner (chart wiring not in place), bare-metal (no
+	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
+	if !vpnClusterEnabled() &&
+		(globals.CloudProviderName == constants.CloudProviderAWS ||
+			globals.CloudProviderName == constants.CloudProviderAzure) {
+		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		releaseAuto()
 		assert.AssertErrNil(ctx, err, "Failed syncing cluster-autoscaler ArgoCD app")
+		bar.Substep("Synced cluster-autoscaler ArgoCD app")
 	}
 
 	// Sync the external-snapshotter ArgoCD App,
 	// if not using Hetzner (since currently we don't support setting up disaster recovery for
 	// Hetzner 🥴).
 	if globals.CloudProviderName != constants.CloudProviderHetzner {
+		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
+		releaseSnap()
 		assert.AssertErrNil(ctx, err, "Failed syncing external-snapshotter ArgoCD app")
+		bar.Substep("Synced external-snapshotter ArgoCD app")
 	}
 }
 
 func provisionMainClusterUsingClusterAPI(ctx context.Context) {
+	bar := progress.FromCtx(ctx)
+
 	// Determine whether 'clusterctl move' has been executed or not.
 	// If yes, then we don't need to do anything.
 	isClusterctlMoveExecuted := kubernetes.IsClusterctlMoveExecuted(ctx)
@@ -274,12 +342,6 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 
 	managementClusterClient, clientErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfig)
 	assert.AssertErrNil(ctx, clientErr, "Failed constructing Kubernetes cluster client")
-
-	// Sync the complete capi-cluster ArgoCD App.
-	syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
-		[]*argoCDV1Alpha1.SyncOperationResource{},
-	)
-	assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app")
 
 	if config.UsingHetznerBareMetal() {
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
@@ -296,15 +358,20 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 		}
 	}
 
-	// Wait for the main cluster to be provisioned.
+	// Wait for the main cluster to be provisioned. The wait function
+	// owns the screen for its duration — pauses our spinner, renders a
+	// live status table, leaves the final tick in scrollback as the
+	// audit trail. So no bar.InProgress wrap here.
 	if err := kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
 	}
+	bar.Substep("Main cluster Machines provisioned")
 
 	// Save kubeconfig locally.
 	if err := kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed saving provisioned cluster kubeconfig")
 	}
+	bar.Substep("Saved provisioned cluster kubeconfig")
 
 	slog.InfoContext(ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
@@ -313,6 +380,7 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 }
 
 func pivotCluster(ctx context.Context) {
+	bar := progress.FromCtx(ctx)
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
 
 	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
@@ -344,6 +412,7 @@ func pivotCluster(ctx context.Context) {
 	pivotMgmtKubeconfig, pivotErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 	assert.AssertErrNil(ctx, pivotErr, "Failed getting management cluster kubeconfig path")
 
+	releasePivot := bar.InProgress("Running clusterctl move (mgmt → main)")
 	err = clusterctlClient.Move(ctx, client.MoveOptions{
 		FromKubeconfig: client.Kubeconfig{
 			Path: pivotMgmtKubeconfig,
@@ -355,8 +424,10 @@ func pivotCluster(ctx context.Context) {
 
 		Namespace: capiClusterNamespace,
 	})
+	releasePivot()
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 	slog.InfoContext(ctx, "Pivoted the cluster by executing 'clusterctl move'")
+	bar.Substep("Pivoted ClusterAPI to main cluster (clusterctl move)")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

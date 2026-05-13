@@ -264,6 +264,19 @@ const (
 	NamespaceKeycloak      = "keycloakx"
 	NamespaceCloudNativePG = "cnpg-operator"
 	NamespaceNetBird       = "netbird"
+	NamespaceTraefik       = "traefik"
+	NamespaceKubeSystem    = "kube-system"
+
+	// SecretNameCloudCredentials is the Secret the HCloud Cloud
+	// Controller Manager, HCloud CSI driver, and Cluster Autoscaler
+	// all read for their Hetzner API token. kubeaid-cli pre-creates it
+	// directly on the main cluster during bootstrap so the CCM can
+	// start before sealed-secrets-controller is up — see
+	// pkg/core/hcloud_credentials.go for the chicken-and-egg this
+	// breaks. The same SealedSecret is also rendered into
+	// kubeaid-config so the cluster state remains declaratively
+	// captured for DR.
+	SecretNameCloudCredentials = "cloud-credentials"
 
 	// keycloakx Service inside NamespaceKeycloak. kubeaid-cli
 	// port-forwards to this Service during bootstrap to call the

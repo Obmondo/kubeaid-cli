@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: teleport-kube-agent-join-token
   namespace: obmondo
+  labels:
+    kubeaid.io/managed-by: kubeaid
 type: Opaque
 
 stringData:

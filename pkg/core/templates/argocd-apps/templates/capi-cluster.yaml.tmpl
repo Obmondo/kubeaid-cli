@@ -41,7 +41,7 @@ spec:
     {{- end }}
 
     {{- if or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid") }}
-    {{/* After the disks are wiped, CAPH removes the annotation. */}}
+    {{- /* After the disks are wiped, CAPH removes the annotation. */ -}}
     - group: infrastructure.cluster.x-k8s.io
       kind: HetznerBareMetalHost
       jsonPointers:

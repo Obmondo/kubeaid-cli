@@ -73,11 +73,21 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 	}
 
 	cluster := config.ParsedGeneralConfig.Cluster
-	return reconciler.ReconcileNetBird(ctx, keycloak.NetBirdSpec{
+	if err := reconciler.ReconcileNetBird(ctx, keycloak.NetBirdSpec{
 		Realm:                cluster.Keycloak.Realm,
-		VPNClusterName:       cluster.Name,
 		NetBirdMgmtURL:       "https://" + cluster.NetBird.DNS,
 		NetBirdBackendSecret: nbBackendSecret,
+	}); err != nil {
+		return err
+	}
+
+	// Reconcile the kubernetes-<cluster> OIDC client for kubelogin in
+	// the same realm. Inherits the NetBird api scope so kubelogin
+	// tokens share the audience mapper.
+	return reconciler.ReconcileKubernetes(ctx, keycloak.KubernetesSpec{
+		Realm:         cluster.Keycloak.Realm,
+		ClusterName:   cluster.Name,
+		DefaultScopes: []string{keycloak.NetBirdAPIScopeName},
 	})
 }
 

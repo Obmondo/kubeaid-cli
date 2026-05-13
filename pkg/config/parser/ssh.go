@@ -8,10 +8,12 @@ import (
 	"crypto"
 	"encoding/pem"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -88,9 +90,31 @@ func hydrateSSHKeyPairConfigs() {
 	}
 }
 
-// Reads and validates an SSH key-pair from the provided file paths.
-// The key-pair is then stored in the SSH key config struct itself.
+// Reads and validates an SSH key-pair. Two sourcing paths:
+//
+//  1. UseSSHAgent=false (default): read PrivateKeyFilePath as an
+//     OpenSSH private key, parse it, derive PublicKey + Fingerprint
+//     from the parsed key. PrivateKey is the raw bytes (used by the
+//     Hetzner NAT-gateway SSH client when no agent is available).
+//
+//  2. UseSSHAgent=true: dial SSH_AUTH_SOCK and ask the agent for
+//     its loaded identities. The private key stays in the agent
+//     (yubikey hardware module); PrivateKey field stays empty and
+//     downstream SSH clients authenticate via the agent socket
+//     instead.
+//
+// Either path populates PublicKey + Fingerprint so the rest of the
+// pipeline (HCloud SSH key upload, sealed-secret rendering, etc.)
+// is sourcing-agnostic.
 func hydrateSSHKeyPairConfig(sshKeyPairConfig *config.SSHKeyPairConfig) {
+	if sshKeyPairConfig.UseSSHAgent {
+		hydrateSSHKeyPairFromAgent(sshKeyPairConfig)
+		return
+	}
+	hydrateSSHKeyPairFromFile(sshKeyPairConfig)
+}
+
+func hydrateSSHKeyPairFromFile(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
 		slog.String("private-key-file-path", sshKeyPairConfig.PrivateKeyFilePath),
 	})
@@ -124,4 +148,33 @@ func hydrateSSHKeyPairConfig(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	sshKeyPairConfig.PublicKey = string(ssh.MarshalAuthorizedKey(parsedPublicKey))
 
 	sshKeyPairConfig.Fingerprint = ssh.FingerprintLegacyMD5(parsedPublicKey)
+}
+
+func hydrateSSHKeyPairFromAgent(sshKeyPairConfig *config.SSHKeyPairConfig) {
+	ctx := context.Background()
+
+	socketPath := os.Getenv(constants.EnvNameSSHAuthSock)
+	assert.Assert(ctx, socketPath != "",
+		"useSSHAgent=true but SSH_AUTH_SOCK is unset — start ssh-agent or plug in your yubikey")
+
+	conn, err := net.Dial("unix", socketPath)
+	assert.AssertErrNil(ctx, err, "Failed dialling SSH agent socket")
+	defer conn.Close()
+
+	identities, err := agent.NewClient(conn).List()
+	assert.AssertErrNil(ctx, err, "Failed listing SSH agent identities")
+	assert.Assert(ctx, len(identities) > 0,
+		"SSH agent has no keys loaded (yubikey unplugged?), but useSSHAgent=true was set in config")
+
+	// Use the first identity. Operators with multiple keys loaded
+	// can hint via load order; kubeaid-cli doesn't guess between
+	// them. *agent.Key satisfies ssh.PublicKey, so we hand it
+	// straight to the OpenSSH marshallers.
+	key := identities[0]
+
+	sshKeyPairConfig.PublicKey = string(ssh.MarshalAuthorizedKey(key))
+	sshKeyPairConfig.Fingerprint = ssh.FingerprintLegacyMD5(key)
+	// PrivateKey stays empty — downstream consumers (Hetzner NAT
+	// gateway SSH client) detect this and route through the agent
+	// socket via os.Getenv(SSH_AUTH_SOCK).
 }

@@ -3,6 +3,8 @@ kind: Secret
 metadata:
   name: obmondo-clientcert
   namespace: monitoring
+  labels:
+    kubeaid.io/managed-by: kubeaid
 type: kubernetes.io/tls
 
 data:

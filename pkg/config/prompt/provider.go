@@ -4,35 +4,18 @@
 package prompt
 
 import (
-	"fmt"
-
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-// ProviderPrompter collects provider-specific (and provider-relevant common) config.
+// ProviderPrompter collects provider-specific credentials and config.
 type ProviderPrompter interface {
-	// PromptConfig asks all questions needed for this provider and populates cfg.
-	PromptConfig(cfg *PromptedConfig, detected *autoDetectedConfig) error
+	// RunCredentialsForm shows the provider-specific Step 3 form and
+	// populates provider credential fields on cfg. It also handles the
+	// SSH auth form (Step 4 precursor) for providers that need it.
+	RunCredentialsForm(cfg *PromptedConfig, detected *autoDetectedConfig) error
 
-	// SummaryLines returns provider-specific configuration details for the summary box.
+	// SummaryLines returns provider-specific lines for the summary box.
 	SummaryLines(cfg *PromptedConfig) []string
-}
-
-// baseProvider handles the common PromptConfig flow: provider questions → SSH auth.
-// Embed this in provider structs and set questionsFunc to eliminate boilerplate.
-type baseProvider struct {
-	questionsFunc func(*PromptedConfig) error
-}
-
-// PromptConfig runs the standard flow: ask provider-specific questions, then handle SSH auth.
-func (b *baseProvider) PromptConfig(cfg *PromptedConfig, detected *autoDetectedConfig) error {
-	if b.questionsFunc != nil {
-		if err := b.questionsFunc(cfg); err != nil {
-			return fmt.Errorf("collecting provider config: %w", err)
-		}
-	}
-
-	return promptSSHAuth(cfg, detected)
 }
 
 func prompterForProvider(provider string) ProviderPrompter {

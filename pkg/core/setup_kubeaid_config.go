@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -31,6 +29,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
 )
 
@@ -52,6 +51,8 @@ It expects the KubeAid Config repository to be already cloned in the temp direct
 */
 func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
+
+	bar := progress.FromCtx(ctx)
 
 	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
 	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
@@ -134,6 +135,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		// Create / update Secret files.
 		createOrUpdateSealedSecretFiles(ctx, templateValues, clusterDir)
 	}
+	bar.Substep("Rendered kubeaid-config files")
 
 	// Add, commit and push the changes.
 	commitMessage := fmt.Sprintf(
@@ -147,7 +149,19 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		args.GitAuthMethod,
 		config.ParsedGeneralConfig.Cluster.Name,
 		commitMessage,
+		defaultBranchName,
 	)
+
+	// AddCommitAndPushChanges returns ZeroHash when the worktree was
+	// already clean — kubeaid-config is up to date, nothing to push,
+	// no noop PR to make the operator merge. Skip the rest of the
+	// dance and surface a clear "already up to date" substep so the
+	// flow still progresses visibly.
+	if commitHash.IsZero() {
+		bar.Substep("kubeaid-config already up to date")
+		return
+	}
+	bar.Substep("Pushed kubeaid-config branch")
 
 	if !args.SkipPRWorkflow {
 		/*
@@ -166,6 +180,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 			args.GitAuthMethod,
 			targetBranchName,
 		)
+		bar.Substep("Confirmed kubeaid-config PR merged")
 	}
 }
 
@@ -179,14 +194,16 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	// Get non Secret templates.
 	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
 
-	// Add KubePrometheus specific templates.
-	// Then execute the Obmondo's KubePrometheus build script.
+	// Add the KubePrometheus ArgoCD App template name to the
+	// render list — buildKubePrometheus depends on this file
+	// existing on disk with the right kubeaid.io/version label
+	// (build.sh inside the container reads it to verify the
+	// pinned kubeaid version matches the local checkout). Order
+	// matters: render the templates FIRST, then run build.sh.
 	if !skipMonitoringSetup {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TemplateNameKubePrometheusArgoCDApp,
 		)
-
-		buildKubePrometheus(ctx, clusterDir, templateValues)
 	}
 
 	// Create a file from each template.
@@ -196,6 +213,15 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
 		)
 		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
+	}
+
+	// Now that kube-prometheus.yaml is on disk with the current
+	// KubeaidFork.Version label, run the build script. Reading a
+	// stale-from-previous-bootstrap version label was the cause of
+	// `Pinned kubeaid version 'X.Y.Z' not found locally` after a
+	// version bump.
+	if !skipMonitoringSetup {
+		buildKubePrometheus(ctx, clusterDir, templateValues)
 	}
 }
 
@@ -211,21 +237,40 @@ func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *Templa
 
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid
 // config repository.
+//
+// Renders each Secret template to a buffer (not directly to disk) and hands the
+// plaintext bytes to SealIfPlaintextChanged. That call short-circuits the
+// kubeseal regeneration when the rendered plaintext matches the kubeaid-sha256
+// header on the existing sealed file — kubeseal uses non-deterministic
+// encryption (fresh AES key + nonce per Secret), so without the cache every
+// re-run produces fresh ciphertext and a noisy PR full of identical-by-meaning
+// sealed-secret diffs.
 func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
-	// Get Secret templates.
 	embeddedTemplateNames := getEmbeddedSecretTemplateNames()
 
-	// Create a file from each template.
 	for _, embeddedTemplateName := range embeddedTemplateNames {
 		destinationFilePath := path.Join(
 			clusterDir,
 			strings.TrimSuffix(embeddedTemplateName, ".tmpl"),
 		)
-		createFileFromTemplate(ctx, destinationFilePath, embeddedTemplateName, templateValues)
 
-		// Encrypt the Secret to a Sealed Secret.
-		if err := kubernetes.GenerateSealedSecret(ctx, destinationFilePath); err != nil {
-			assert.AssertErrNil(ctx, err, "Failed generating sealed secret")
+		ctxWithPath := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+			slog.String("path", destinationFilePath),
+		})
+
+		err := utils.CreateIntermediateDirsForFile(destinationFilePath)
+		assert.AssertErrNil(ctxWithPath, err,
+			"Failed creating intermediate dirs",
+		)
+
+		plaintextBytes := templates.ParseAndExecuteTemplate(ctxWithPath,
+			&KubeaidConfigFileTemplates,
+			path.Join("templates/", embeddedTemplateName),
+			templateValues,
+		)
+
+		if err := kubernetes.SealIfPlaintextChanged(ctxWithPath, destinationFilePath, plaintextBytes); err != nil {
+			assert.AssertErrNil(ctxWithPath, err, "Failed generating sealed secret")
 		}
 	}
 }
@@ -352,14 +397,6 @@ func runKubePrometheusBuilder(
 		return fmt.Errorf("creating docker client: %w", err)
 	}
 	defer func() { _ = cli.Close() }()
-
-	// Optional: pull image first.
-	pullReader, err := cli.ImagePull(ctx, builderImage, image.PullOptions{})
-	if err != nil {
-		return fmt.Errorf("pulling builder image %q: %w", builderImage, err)
-	}
-	_, _ = io.Copy(io.Discard, pullReader)
-	_ = pullReader.Close()
 
 	cmd := []string{
 		fmt.Sprintf("%s/build/kube-prometheus/build.sh", kubeAidDir),

@@ -22,26 +22,15 @@ func TestReconcileNetBird_RequiredFields(t *testing.T) {
 		{
 			name: "missing realm",
 			spec: NetBirdSpec{
-				VPNClusterName:       "acme-vpn",
 				NetBirdMgmtURL:       "https://nb.acme.com",
 				NetBirdBackendSecret: "s",
 			},
 			want: "spec.Realm",
 		},
 		{
-			name: "missing vpn cluster name",
-			spec: NetBirdSpec{
-				Realm:                "acme",
-				NetBirdMgmtURL:       "https://nb.acme.com",
-				NetBirdBackendSecret: "s",
-			},
-			want: "spec.VPNClusterName",
-		},
-		{
 			name: "missing mgmt URL",
 			spec: NetBirdSpec{
 				Realm:                "acme",
-				VPNClusterName:       "acme-vpn",
 				NetBirdBackendSecret: "s",
 			},
 			want: "spec.NetBirdMgmtURL",
@@ -50,7 +39,6 @@ func TestReconcileNetBird_RequiredFields(t *testing.T) {
 			name: "missing backend secret",
 			spec: NetBirdSpec{
 				Realm:          "acme",
-				VPNClusterName: "acme-vpn",
 				NetBirdMgmtURL: "https://nb.acme.com",
 			},
 			want: "spec.NetBirdBackendSecret",
@@ -87,7 +75,6 @@ func TestReconcileNetBird_HappyPathAndIdempotent(t *testing.T) {
 
 	spec := NetBirdSpec{
 		Realm:                "acme",
-		VPNClusterName:       "acme-vpn",
 		NetBirdMgmtURL:       "https://nb.acme.com",
 		NetBirdBackendSecret: "pre-generated-secret-from-kubeaid-cli",
 	}
@@ -115,7 +102,6 @@ func TestReconcileNetBird_BackendSecretIsHonored(t *testing.T) {
 
 	require.NoError(t, r.ReconcileNetBird(context.Background(), NetBirdSpec{
 		Realm:                "acme",
-		VPNClusterName:       "acme-vpn",
 		NetBirdMgmtURL:       "https://nb.acme.com",
 		NetBirdBackendSecret: preSet,
 	}))
@@ -130,31 +116,4 @@ func TestReconcileNetBird_BackendSecretIsHonored(t *testing.T) {
 		}
 	}
 	t.Fatalf("netbird-backend client not found")
-}
-
-func TestReconcileNetBird_KubernetesClientUsesVPNClusterName(t *testing.T) {
-	t.Parallel()
-
-	r, fake := newTestReconciler(t)
-	require.NoError(t, r.ReconcileRealm(context.Background(), "acme"))
-	_, err := r.ReconcileClient(context.Background(), "acme", ClientSpec{
-		ClientID:     realmManagementClientID,
-		PublicClient: false,
-	})
-	require.NoError(t, err)
-
-	require.NoError(t, r.ReconcileNetBird(context.Background(), NetBirdSpec{
-		Realm:                "acme",
-		VPNClusterName:       "acme-vpn",
-		NetBirdMgmtURL:       "https://nb.acme.com",
-		NetBirdBackendSecret: "x",
-	}))
-
-	want := "kubernetes-acme-vpn"
-	for _, c := range fake.clients["acme"] {
-		if c.ClientID != nil && *c.ClientID == want {
-			return
-		}
-	}
-	t.Fatalf("expected client %q in realm 'acme'", want)
 }

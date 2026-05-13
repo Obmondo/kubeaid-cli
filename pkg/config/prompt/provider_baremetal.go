@@ -3,24 +3,19 @@
 
 package prompt
 
-type bareMetalPrompter struct {
-	baseProvider
-}
+type bareMetalPrompter struct{}
 
 func newBareMetalProvider() *bareMetalPrompter {
-	p := &bareMetalPrompter{}
-	p.questionsFunc = p.promptBareMetalQuestions
-	return p
+	return &bareMetalPrompter{}
 }
 
 func (p *bareMetalPrompter) SummaryLines(_ *PromptedConfig) []string {
 	return nil
 }
 
-func (p *bareMetalPrompter) promptBareMetalQuestions(cfg *PromptedConfig) error {
+func (p *bareMetalPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
 	cfg.BareMetalSSHPort = "22"
 	cfg.BareMetalEndpointHost = cfg.ClusterName
 	cfg.BareMetalEndpointPort = "6443"
-
 	return nil
 }

@@ -38,6 +38,65 @@ func hydrateKeycloakDefaults() {
 	}
 }
 
+// hydrateKeycloakOIDC fills cluster.apiServer.oidc from the
+// cluster.keycloak block. The values are 100% derivable (issuer URL
+// from keycloak DNS + realm; client ID from cluster name), so
+// requiring the operator to repeat them in apiServer.oidc is friction
+// with no upside.
+//
+// Fires for both modes:
+//   - managed (VPN clusters that host their own Keycloak): the
+//     post-bootstrap reconciler also creates the matching
+//     kubernetes-<cluster> OIDC client on the same Keycloak via
+//     keycloak.ReconcileKubernetes.
+//   - external (workload clusters referencing a parent VPN's
+//     Keycloak, or VPN clusters using an operator-managed Keycloak
+//     elsewhere): the kubernetes-<cluster> client must already exist
+//     in the referenced Keycloak (or be reconciled by a separate
+//     workload-bootstrap step against the referenced admin API).
+//
+// Skipped when:
+//   - cluster.keycloak is absent (no OIDC for this cluster)
+//   - keycloak.dns or keycloak.realm is empty
+//     (hydrateKeycloakDefaults must run first; an undeducible realm
+//     fails validation later with a clearer error than a half-filled
+//     OIDC block would)
+//   - cluster.apiServer.oidc is already set (explicit operator
+//     configuration beats derived defaults — same precedence rule as
+//     every other hydrate helper in this package)
+//
+// Run AFTER hydrateKeycloakDefaults (so the realm is filled) and
+// BEFORE hydrateWithOIDCOptions (so the AuthenticationConfiguration
+// pipeline picks up the derived values).
+func hydrateKeycloakOIDC() {
+	cluster := &config.ParsedGeneralConfig.Cluster
+	kc := cluster.Keycloak
+	if kc == nil {
+		return
+	}
+	if kc.DNS == "" || kc.Realm == "" || cluster.Name == "" {
+		return
+	}
+	if cluster.APIServer.OIDC != nil {
+		return
+	}
+
+	cluster.APIServer.OIDC = &config.OIDCConfig{
+		IssuerURL:     "https://" + kc.DNS + "/realms/" + kc.Realm,
+		ClientID:      kubernetesClientIDPrefix + cluster.Name,
+		UsernameClaim: "email",
+		GroupsClaim:   "groups",
+	}
+}
+
+// kubernetesClientIDPrefix mirrors keycloak.kubernetesClientIDPrefix
+// — the Keycloak `kubernetes-<cluster>` OIDC client created by
+// keycloak.ReconcileKubernetes. Duplicated as a constant here
+// rather than imported because pkg/config/parser intentionally has
+// no dependency on pkg/keycloak (the parser runs before any
+// Keycloak admin API is touched).
+const kubernetesClientIDPrefix = "kubernetes-"
+
 // deriveRealm returns the first dot-separated segment of the
 // effective TLD-plus-one for host. Empty string if host is empty,
 // has no public suffix, or is otherwise unworkable — the caller's
@@ -60,46 +119,51 @@ func deriveRealm(host string) string {
 // validateKeycloakConfig enforces the cross-field rules that
 // struct-tag validation can't express:
 //
-//   - cluster.type=vpn => keycloak block is mandatory
-//   - cluster.keycloak block => only valid with cluster.type=vpn
-//     (a workload cluster cannot host its own Keycloak nor a NetBird
-//     mesh; workload clusters use apiServer.oidc directly to point at
-//     a parent VPN cluster's Keycloak)
-//   - mode in {managed, external}; mode-independent fields below
-//     apply to both because VPN clusters need the same surrounding
-//     infrastructure (NetBird mesh, traefik+LE for the Mgmt ingress)
-//     regardless of where Keycloak itself runs.
+//   - cluster.type=vpn => keycloak block is mandatory (the VPN
+//     cluster ALWAYS runs on top of Keycloak, managed or external)
+//   - cluster.type=workload + keycloak block => mode must be
+//     external. Workload clusters never host Keycloak; they only
+//     reference one (typically a parent VPN cluster's) for OIDC
+//     derivation.
+//   - cluster.type=workload + no keycloak block => allowed; the
+//     cluster boots without OIDC and the operator authenticates with
+//     admin.conf (the workload bootstrap also prints a warning).
+//   - mode in {managed, external}; VPN-only invariants (NetBird,
+//     ACME, external-backend secret) only apply when type=vpn.
 //
 // The mode only switches whether kubeaid-cli installs the keycloakx
 // chart, runs the gocloak realm reconciler, and writes the
 // keycloak-admin SealedSecret. Everything else (cnpg for Postgres,
 // traefik, cert-manager LE issuer, netbird Secret, post-sync DSN
-// patch) is needed in both modes.
+// patch) is needed by both modes — but only on VPN clusters.
 func validateKeycloakConfig() error {
 	cluster := &config.ParsedGeneralConfig.Cluster
+	cfg := cluster.Keycloak
 
-	if cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak == nil {
+	if cluster.Type == constants.ClusterTypeVPN && cfg == nil {
 		return errors.New(
 			"cluster.keycloak is required when cluster.type=vpn — VPN clusters always run on top of a Keycloak (managed by kubeaid-cli or external)",
 		)
 	}
 
-	cfg := cluster.Keycloak
 	if cfg == nil {
 		return nil
-	}
-
-	if cluster.Type != constants.ClusterTypeVPN {
-		return fmt.Errorf(
-			"cluster.keycloak is only valid when cluster.type=vpn (got %q) — workload clusters inherit OIDC from a parent VPN cluster via apiServer.oidc",
-			cluster.Type,
-		)
 	}
 
 	if cfg.Mode != constants.KeycloakModeManaged && cfg.Mode != constants.KeycloakModeExternal {
 		return fmt.Errorf(
 			"cluster.keycloak.mode must be %q or %q (got %q)",
 			constants.KeycloakModeManaged, constants.KeycloakModeExternal, cfg.Mode,
+		)
+	}
+
+	// Workload clusters can reference a Keycloak (external mode
+	// only). They never host Keycloak themselves, so managed mode is
+	// invalid; the keycloakx chart only deploys on VPN clusters.
+	if cluster.Type != constants.ClusterTypeVPN && cfg.Mode != constants.KeycloakModeExternal {
+		return fmt.Errorf(
+			"cluster.keycloak.mode must be %q on workload clusters — only VPN clusters host Keycloak (got %q)",
+			constants.KeycloakModeExternal, cfg.Mode,
 		)
 	}
 
@@ -112,6 +176,15 @@ func validateKeycloakConfig() error {
 			"cluster.keycloak.realm could not be derived from DNS %q — set it explicitly",
 			cfg.DNS,
 		)
+	}
+
+	// Workload+external clusters only use the keycloak block as a
+	// reference for OIDC derivation. They don't run NetBird Mgmt,
+	// don't mint TLS certs for a Keycloak/NetBird Ingress, and don't
+	// write the netbird-backend SealedSecret — so the VPN-only
+	// invariants below don't apply.
+	if cluster.Type != constants.ClusterTypeVPN {
+		return nil
 	}
 
 	// Both modes need the netbird block (every VPN cluster runs the

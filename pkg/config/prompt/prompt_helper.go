@@ -6,36 +6,21 @@ package prompt
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path"
 	"strings"
 
-	"github.com/charmbracelet/huh"
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-// printSectionHeader prints a section title inside a rounded rectangle.
-//
-//	╭───────────────────────────────╮
-//	│   Cluster Configuration       │
-//	╰───────────────────────────────╯
-func printSectionHeader(title string) {
-	fmt.Println()
-	padding := 3
-	inner := len(title) + padding*2 // equal padding on both sides
-	fmt.Printf("  ╭%s╮\n", strings.Repeat("─", inner))
-	pad := strings.Repeat(" ", padding)
-	fmt.Printf("  │%s%s%s│\n", pad, title, pad)
-	fmt.Printf("  ╰%s╯\n", strings.Repeat("─", inner))
-	fmt.Println()
-}
-
-// printSummaryAndConfirm renders the configuration summary box and asks for confirmation.
-func printSummaryAndConfirm(cfg *PromptedConfig) error {
+// printSummary renders the configuration summary box.
+func printSummary(cfg *PromptedConfig) {
 	lines := []string{
 		fmt.Sprintf("  Cluster:       %s (%s)", cfg.ClusterName, cfg.ClusterType),
 		fmt.Sprintf("  K8s version:   %s (auto-detected)", cfg.K8sVersion),
@@ -70,17 +55,6 @@ func printSummaryAndConfirm(cfg *PromptedConfig) error {
 
 	fmt.Println()
 	printBox("Configuration Summary", lines)
-
-	var confirmed bool
-	if err := confirm("Looks good?", true, &confirmed); err != nil {
-		return err
-	}
-
-	if !confirmed {
-		return fmt.Errorf("configuration not confirmed by user")
-	}
-
-	return nil
 }
 
 // printBox renders lines inside a rounded-corner box with a title in the top border.
@@ -204,32 +178,12 @@ func wrapLine(line string, maxWidth int) []string {
 	return result
 }
 
-// promptSSHPrivateKeyPath asks for an SSH private key file path and validates that the
-// file exists and looks like a PEM-encoded private key. Validation errors are shown
-// inline by huh, which keeps the user on the prompt until a valid path is entered.
-// If a well-known SSH key is found (~/.ssh/id_ed25519 or ~/.ssh/id_rsa), it is offered
-// as the default.
-func promptSSHPrivateKeyPath(dest *string, message string) error {
-	*dest = detectSSHKeyPath()
-
-	if err := huh.NewInput().
-		Title(message).
-		Value(dest).
-		Validate(validateSSHKeyPath).
-		Run(); err != nil {
-		return err
-	}
-
-	printRecap(message, *dest)
-	return nil
-}
-
-func validateSSHKeyPath(path string) error {
-	if strings.TrimSpace(path) == "" {
+func validateSSHKeyPath(p string) error {
+	if strings.TrimSpace(p) == "" {
 		return errRequired
 	}
 
-	keyPath := expandTilde(path)
+	keyPath := expandTilde(p)
 
 	data, err := os.ReadFile(keyPath)
 	if err != nil {
@@ -256,30 +210,87 @@ func validateSSHPrivateKey(data []byte) error {
 	return nil
 }
 
-// detectSSHKeyPath returns the path to the first well-known SSH private key found,
-// preferring ed25519 over RSA. Returns "" if none is found.
+// detectSSHKeyPath returns the path to the first SSH private key
+// the operator has on this machine. Lookup order:
+//
+//  1. ~/.ssh/id_ed25519 then ~/.ssh/id_rsa (the standard names).
+//  2. Whatever the SSH agent (yubikey or ssh-add'd key) reports
+//     via `ssh-add -L`. Each line's 3rd field is typically the
+//     original key file path the agent was given — match on a
+//     real file under ~/.ssh and return that.
+//
+// Returns "" when nothing matches; caller's huh form falls back
+// to an empty input the operator can fill in by hand.
 func detectSSHKeyPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
 
-	candidates := []string{
+	for _, p := range []string{
 		path.Join(home, ".ssh", "id_ed25519"),
 		path.Join(home, ".ssh", "id_rsa"),
-	}
-
-	for _, p := range candidates {
-		data, err := os.ReadFile(p)
-		if err != nil {
-			continue
-		}
-		if strings.Contains(string(data), "PRIVATE KEY") {
+	} {
+		if isPrivateKeyFile(p) {
 			return "~/.ssh/" + path.Base(p)
 		}
 	}
 
+	// Standard names didn't hit. If the agent has identities
+	// loaded (yubikey, or any ssh-add'd key), one of them is
+	// almost certainly the key the operator wants for this
+	// cluster — peek at the agent's public-key listing for path
+	// hints.
+	if p := detectAgentSSHKeyPath(home); p != "" {
+		return p
+	}
+
 	return ""
+}
+
+// detectAgentSSHKeyPath dials SSH_AUTH_SOCK and asks the agent
+// for its loaded identities. For each identity whose comment is
+// an absolute file path under home, return the first one whose
+// corresponding private-key file exists. Returns "" if no agent
+// / no agent keys / no comment matches a real file (yubikey-only
+// setups where the comment is the card serial fall here).
+func detectAgentSSHKeyPath(home string) string {
+	socketPath := os.Getenv(constants.EnvNameSSHAuthSock)
+	if socketPath == "" {
+		return ""
+	}
+	conn, err := net.Dial("unix", socketPath)
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	identities, err := agent.NewClient(conn).List()
+	if err != nil {
+		return ""
+	}
+	for _, key := range identities {
+		if !strings.HasPrefix(key.Comment, home+"/") {
+			continue
+		}
+		if isPrivateKeyFile(key.Comment) {
+			// Prefer the home-relative form since the rest of
+			// the prompt collects ~/-style paths.
+			return "~" + strings.TrimPrefix(key.Comment, home)
+		}
+	}
+	return ""
+}
+
+// isPrivateKeyFile reports whether path exists and contains the
+// "PRIVATE KEY" marker that's common to PEM and OpenSSH-format
+// private keys.
+func isPrivateKeyFile(p string) bool {
+	data, err := os.ReadFile(p)
+	if err != nil {
+		return false
+	}
+	return strings.Contains(string(data), "PRIVATE KEY")
 }
 
 // expandTilde resolves a leading ~ to the user's home directory.

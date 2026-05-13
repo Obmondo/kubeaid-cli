@@ -4,6 +4,12 @@ git:
 {{- if and (not .UseSSHAgent) .SSHKeyPath }}
   privateKeyFilePath: {{ .SSHKeyPath }}
 {{- end }}
+{{- if .GitKnownHosts }}
+  knownHosts:
+{{- range .GitKnownHosts }}
+    - "{{ . }}"
+{{- end }}
+{{- end }}
 
 forkURLs:
   kubeaid:
@@ -37,17 +43,24 @@ cluster:
     #   issuerUrl: https://keycloak.example/realms/clusters
     #   clientId:  kubernetes-{{ .ClusterName }}
 {{- end }}
-{{- if eq .ClusterType "vpn" }}
+{{- if .KeycloakDNS }}
   keycloak:
     mode: {{ .KeycloakMode }}
     dns: {{ .KeycloakDNS }}
+{{- if .KeycloakRealm }}
+    realm: {{ .KeycloakRealm }}
+{{- end }}
+{{- end }}
+{{- if eq .ClusterType "vpn" }}
   netbird:
     dns: {{ .NetBirdDNS }}
 {{- end }}
   argoCD:
     deployKeys:
+{{- if .KubeaidIsSSH }}
       kubeaid:
         privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
+{{- end }}
       kubeaidConfig:
         privateKeyFilePath: {{ .KubeaidConfigDeployKeyPath }}
 {{- if .KubePrometheusVersion }}
@@ -86,7 +99,11 @@ cloud:
     mode: {{ .HetznerMode }}
     sshKeyPair:
       name: {{ .HetznerSSHKeyName }}
+{{- if .UseSSHAgent }}
+      useSSHAgent: true
+{{- else }}
       privateKeyFilePath: {{ .HetznerSSHKeyPath }}
+{{- end }}
 {{- if or (eq .HetznerMode "hcloud") (eq .HetznerMode "hybrid") }}
     hcloud:
       zone: {{ .HetznerHCloudZone }}

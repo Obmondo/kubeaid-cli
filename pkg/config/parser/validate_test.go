@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -946,14 +947,49 @@ func TestValidateConfigHelpers(t *testing.T) {
 			wantErrSub: "Hetzner",
 		},
 		{
-			name:       "KubeAid fork version is required for non-local providers",
-			validate:   func() error { return validateKubeAidForkVersion("", constants.CloudProviderAWS) },
+			name: "KubeAid fork version is required for non-local providers",
+			validate: func() error {
+				return validateKubeAidForkVersion(t.Context(),
+					config.KubeAidForkConfig{Version: ""}, constants.CloudProviderAWS)
+			},
 			wantErr:    true,
 			wantErrSub: "non-local",
 		},
 		{
-			name:     "KubeAid fork version is optional for local provider",
-			validate: func() error { return validateKubeAidForkVersion("", constants.CloudProviderLocal) },
+			name: "KubeAid fork version is optional for local provider",
+			validate: func() error {
+				return validateKubeAidForkVersion(t.Context(),
+					config.KubeAidForkConfig{Version: ""}, constants.CloudProviderLocal)
+			},
+		},
+		{
+			name: "KubeAid fork version rejects literal latest",
+			validate: func() error {
+				return validateKubeAidForkVersion(t.Context(),
+					config.KubeAidForkConfig{Version: "latest"}, constants.CloudProviderLocal)
+			},
+			wantErr:    true,
+			wantErrSub: "latest",
+		},
+		{
+			name: "KubeAid fork version rejects 40-char hex commit hash",
+			validate: func() error {
+				return validateKubeAidForkVersion(t.Context(),
+					config.KubeAidForkConfig{Version: "0123456789abcdef0123456789abcdef01234567"},
+					constants.CloudProviderLocal)
+			},
+			wantErr:    true,
+			wantErrSub: "commit hash",
+		},
+		{
+			name: "KubeAid fork version rejects 64-char hex commit hash",
+			validate: func() error {
+				return validateKubeAidForkVersion(t.Context(),
+					config.KubeAidForkConfig{Version: strings.Repeat("a", 64)},
+					constants.CloudProviderLocal)
+			},
+			wantErr:    true,
+			wantErrSub: "commit hash",
 		},
 		{
 			name: "additional users rejects ubuntu user",

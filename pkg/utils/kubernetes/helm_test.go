@@ -53,30 +53,39 @@ func (f *fakeInstallRunner) Run(_ *chart.Chart, vals map[string]any) (*release.R
 	return &release.Release{}, nil
 }
 
-type fakeUninstallRunner struct {
+type fakeUpgradeRunner struct {
 	called bool
+	name   string
+	vals   map[string]any
 	err    error
 }
 
-func (f *fakeUninstallRunner) Run(_ string) (*release.UninstallReleaseResponse, error) {
+func (f *fakeUpgradeRunner) Run(name string, _ *chart.Chart, vals map[string]any) (*release.Release, error) {
 	f.called = true
+	f.name = name
+	f.vals = vals
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &release.UninstallReleaseResponse{}, nil
+	return &release.Release{}, nil
 }
 
 type fakeHelmFactory struct {
 	lister      *fakeListRunner
 	installer   *fakeInstallRunner
-	uninstaller *fakeUninstallRunner
+	upgrader    *fakeUpgradeRunner
 	chartToLoad *chart.Chart
 	chartErr    error
 }
 
 func (f *fakeHelmFactory) NewInstall(_, _ string) HelmInstallRunner { return f.installer }
-func (f *fakeHelmFactory) NewUninstall() HelmUninstallRunner        { return f.uninstaller }
-func (f *fakeHelmFactory) NewList(_ string) HelmListRunner          { return f.lister }
+func (f *fakeHelmFactory) NewUpgrade(_ string) HelmUpgradeRunner {
+	if f.upgrader == nil {
+		f.upgrader = &fakeUpgradeRunner{}
+	}
+	return f.upgrader
+}
+func (f *fakeHelmFactory) NewList(_ string) HelmListRunner { return f.lister }
 
 func (f *fakeHelmFactory) LoadChart(_ string) (*chart.Chart, error) {
 	return f.chartToLoad, f.chartErr
@@ -190,9 +199,8 @@ func TestFindExistingHelmRelease(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			factory := &fakeHelmFactory{
-				lister:      tc.lister,
-				installer:   &fakeInstallRunner{},
-				uninstaller: &fakeUninstallRunner{},
+				lister:    tc.lister,
+				installer: &fakeInstallRunner{},
 			}
 
 			got := findExistingHelmRelease(context.Background(), factory, tc.args)
@@ -224,56 +232,48 @@ func TestHelmInstallWithFactory(t *testing.T) {
 		chartToLoad     *chart.Chart
 		chartErr        error
 		installErr      error
-		uninstallErr    error
 		values          *values.Options
 		wantInstalled   bool
-		wantUninstalled bool
 		wantValsKey     string
 		wantErr         bool
 		wantErrContains string
 	}{
 		{
-			name: "already deployed — skips install and uninstall",
+			name: "already deployed — skips install",
 			releases: []*release.Release{
 				makeRelease(relName, ns, release.StatusDeployed),
 			},
-			wantInstalled:   false,
-			wantUninstalled: false,
+			wantInstalled: false,
 		},
 		{
-			name:            "no existing release — fresh install",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: false,
+			name:          "no existing release — fresh install",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
 		},
 		{
-			name: "pending-install — cleans up then reinstalls",
+			name: "pending-install — install errors directing caller at upgrade",
 			releases: []*release.Release{
 				makeRelease(relName, ns, release.StatusPendingInstall),
 			},
-			chartToLoad:     minimalChart(),
-			wantInstalled:   true,
-			wantUninstalled: true,
-		},
-		{
-			name:            "non-nil Values — merges and passes to installer",
-			releases:        nil,
-			chartToLoad:     minimalChart(),
-			values:          &values.Options{Values: []string{"foo=bar"}},
-			wantInstalled:   true,
-			wantUninstalled: false,
-			wantValsKey:     "foo",
-		},
-		{
-			name: "pending-install — uninstall fails returns error",
-			releases: []*release.Release{
-				makeRelease(relName, ns, release.StatusPendingInstall),
-			},
-			uninstallErr:    errors.New("uninstall timeout"),
-			wantUninstalled: true,
 			wantErr:         true,
-			wantErrContains: "failed uninstalling helm chart",
+			wantErrContains: "install-only",
+		},
+		{
+			name: "failed — install errors directing caller at upgrade",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusFailed),
+			},
+			wantErr:         true,
+			wantErrContains: "install-only",
+		},
+		{
+			name:          "non-nil Values — merges and passes to installer",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			values:        &values.Options{Values: []string{"foo=bar"}},
+			wantInstalled: true,
+			wantValsKey:   "foo",
 		},
 		{
 			name:            "LoadChart fails returns error",
@@ -298,11 +298,9 @@ func TestHelmInstallWithFactory(t *testing.T) {
 			t.Parallel()
 
 			installer := &fakeInstallRunner{err: tc.installErr}
-			uninstaller := &fakeUninstallRunner{err: tc.uninstallErr}
 			factory := &fakeHelmFactory{
 				lister:      singleResponseLister(tc.releases),
 				installer:   installer,
-				uninstaller: uninstaller,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -321,10 +319,115 @@ func TestHelmInstallWithFactory(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
-			assert.Equal(t, tc.wantUninstalled, uninstaller.called)
 			if tc.wantValsKey != "" {
 				require.NotNil(t, installer.vals)
 				assert.Contains(t, installer.vals, tc.wantValsKey)
+			}
+		})
+	}
+}
+
+func TestHelmUpgradeWithFactory(t *testing.T) {
+	t.Parallel()
+
+	const (
+		relName = "sealed-secrets"
+		ns      = "sealed-secrets"
+	)
+
+	tests := []struct {
+		name            string
+		releases        []*release.Release
+		chartToLoad     *chart.Chart
+		chartErr        error
+		upgradeErr      error
+		values          *values.Options
+		wantUpgraded    bool
+		wantValsKey     string
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name: "existing deployed release — upgrade succeeds",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusDeployed),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			name: "existing failed release — upgrade re-applies",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusFailed),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			name:            "no existing release — upgrade refuses, suggests install",
+			releases:        nil,
+			wantErr:         true,
+			wantErrContains: "not found",
+		},
+		{
+			name:        "non-nil Values — merges and passes to upgrader",
+			releases:    []*release.Release{makeRelease(relName, ns, release.StatusDeployed)},
+			chartToLoad: minimalChart(),
+			values:      &values.Options{Values: []string{"foo=bar"}},
+			wantUpgraded: true,
+			wantValsKey: "foo",
+		},
+		{
+			name:            "LoadChart fails returns error",
+			releases:        []*release.Release{makeRelease(relName, ns, release.StatusDeployed)},
+			chartErr:        errors.New("corrupt chart archive"),
+			wantErr:         true,
+			wantErrContains: "failed loading helm chart",
+		},
+		{
+			name:            "upgrade fails returns error",
+			releases:        []*release.Release{makeRelease(relName, ns, release.StatusDeployed)},
+			chartToLoad:     minimalChart(),
+			upgradeErr:      errors.New("connection refused"),
+			wantUpgraded:    true,
+			wantErr:         true,
+			wantErrContains: "failed upgrading helm chart",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			upgrader := &fakeUpgradeRunner{err: tc.upgradeErr}
+			factory := &fakeHelmFactory{
+				lister:      singleResponseLister(tc.releases),
+				installer:   &fakeInstallRunner{}, // not used here, but interface needs it
+				upgrader:    upgrader,
+				chartToLoad: tc.chartToLoad,
+				chartErr:    tc.chartErr,
+			}
+
+			err := helmUpgradeWithFactory(context.Background(), factory, &HelmInstallArgs{
+				ChartPath:   t.TempDir(),
+				ReleaseName: relName,
+				Namespace:   ns,
+				Values:      tc.values,
+			})
+
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrContains)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantUpgraded, upgrader.called)
+			if tc.wantUpgraded {
+				assert.Equal(t, relName, upgrader.name, "Run should pass the release name")
+			}
+			if tc.wantValsKey != "" {
+				require.NotNil(t, upgrader.vals)
+				assert.Contains(t, upgrader.vals, tc.wantValsKey)
 			}
 		})
 	}

@@ -39,6 +39,32 @@ type k8sLifecycle struct {
 	ReleaseDate string    `json:"releaseDate"`
 	Support     maybeDate `json:"support"`
 	EOL         string    `json:"eol"`
+	Latest      string    `json:"latest"`
+}
+
+// K8sLatestPerCycle returns a snapshot of the embedded EOL data as
+// a map of cycle string ("1.35") to the latest known patch version
+// ("1.35.4"). The prompt package's K8s profile picker uses this to
+// resolve concrete versions per profile when dl.k8s.io is unreachable
+// or to seed the "patch level" of the latest two minor releases.
+func K8sLatestPerCycle() (map[string]string, error) {
+	entries, err := lifecyclesFn()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(entries))
+	for cycle, e := range entries {
+		out[cycle] = e.Latest
+	}
+	return out, nil
+}
+
+// LatestStableK8sRelease re-exports the embedded fetch wrapper so
+// the prompt package can probe dl.k8s.io without duplicating the
+// HTTP boilerplate. Empty string + non-nil error on transport
+// failure — caller is expected to fall back to embedded EOL data.
+func LatestStableK8sRelease() (string, error) {
+	return latestStableK8sReleaseFn()
 }
 
 type maybeDate string

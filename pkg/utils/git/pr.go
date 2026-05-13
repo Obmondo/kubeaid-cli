@@ -4,24 +4,33 @@
 package git
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"log"
 	"log/slog"
-	"strings"
-	"time"
+	"os"
 
+	"github.com/charmbracelet/lipgloss"
+	"golang.org/x/term"
 	goGit "github.com/go-git/go-git/v5"
 	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
+// defaultBranchName is the fork's default branch (e.g. "main") — passed
+// in by the caller rather than re-discovered inside this function. The
+// caller already called GetDefaultBranchName once during its own setup
+// (setup_kubeaid_config.go / upgrade_cluster.go); passing the value
+// through avoids a second remote.ListContext call right after the push,
+// which over SSH triggers a separate "look up default branch on <fork>"
+// YubiKey touch on every commit-push cycle.
 func AddCommitAndPushChanges(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
@@ -29,6 +38,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	authMethod transport.AuthMethod,
 	clusterName string,
 	commitMessage string,
+	defaultBranchName string,
 ) plumbing.Hash {
 	kubeaidConfigFork := config.ParsedGeneralConfig.Forks.KubeaidConfigFork
 
@@ -39,19 +49,37 @@ func AddCommitAndPushChanges(ctx context.Context,
 	assert.AssertErrNil(ctx, err, "Failed determining git status")
 	slog.InfoContext(ctx, "Determined git status", slog.Any("git-status", status))
 
-	commit, err := workTree.Commit(commitMessage, &goGit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "KubeAid Bootstrap Script",
-			Email: "info@obmondo.com",
-			When:  time.Now(),
-		},
-		AllowEmptyCommits: true,
+	// Skip the whole commit-push-prompt-merge dance when nothing
+	// actually changed. Without this guard, AllowEmptyCommits: true
+	// would create an empty commit, push it, and surface a noop PR
+	// for the operator to merge — exactly the diff-less PR they had
+	// to manually close every re-run after our SealedSecret
+	// idempotency landed. ZeroHash signals "nothing committed" to
+	// the caller; SetupKubeAidConfig short-circuits past
+	// WaitUntilPRMerged on that.
+	if status.IsClean() {
+		slog.InfoContext(ctx, "No changes to commit; skipping push + PR merge")
+		return plumbing.ZeroHash
+	}
+
+	author, attributedMessage := OperatorAttribution(commitMessage)
+	commit, err := workTree.Commit(attributedMessage, &goGit.CommitOptions{
+		Author: author,
+		Signer: CommitSigner(ctx),
+		// AllowEmptyCommits stays false (the default) — the
+		// IsClean() guard above is the user-facing check; this is
+		// belt-and-braces in case status reports clean but Commit
+		// disagrees on edge cases (mode-only changes, etc.).
+		AllowEmptyCommits: false,
 	})
 	assert.AssertErrNil(ctx, err, "Failed creating git commit")
 
 	commitObject, err := repo.CommitObject(commit)
 	assert.AssertErrNil(ctx, err, "Failed getting commit object")
 
+	releasePushTouch := requestTouchIfAuth(ctx,
+		"push branch to "+originShortName(repo), authMethod,
+	)
 	err = retryGitOperation(ctx, "push branch to origin", func() error {
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: "origin",
@@ -62,6 +90,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 			},
 		})
 	})
+	releasePushTouch()
 	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
 
 	slog.InfoContext(ctx, "Added, committed and pushed changes",
@@ -69,21 +98,35 @@ func AddCommitAndPushChanges(ctx context.Context,
 	)
 
 	// When we didn't push the changes to the default branch, and rather to a feature branch,
-	// prompt the user to create a PR against, and merge those changes into the default branch.
-	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
+	// log the create-PR URL so the operator has it in their bootstrap log. WaitUntilPRMerged
+	// also surfaces it at the interactive prompt; the slog line here gives a permanent record.
 	if branch != defaultBranchName {
-		createPRURL := fmt.Sprintf("%s/compare/main...%s:%s:%s",
-			strings.TrimSuffix(kubeaidConfigFork.ParsedURL.GetHttpCloneURL(), ".git"),
-			kubeaidConfigFork.ParsedURL.GetOwnerName(), kubeaidConfigFork.ParsedURL.GetRepoName(),
-			branch,
-		)
-
-		slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", createPRURL))
+		slog.InfoContext(ctx, "Create and merge PR please",
+			slog.String("URL", BuildPRCompareURL(repo, defaultBranchName, branch)))
 	}
 
 	return commitObject.Hash
 }
 
+// WaitUntilPRMerged blocks until the operator confirms via stdin that
+// they've merged the feature branch into the default branch.
+//
+// The operator sees the PR URL (printed by AddCommitAndPushChanges
+// before this is called), goes to their forge, merges, comes back, and
+// presses ENTER. We then do ONE fetch + ONE commit-presence check to
+// verify the merge actually happened — if it didn't (operator pressed
+// ENTER too early, or merged the wrong branch), we say so and prompt
+// again.
+//
+// Earlier this function polled via a 10-second fetch loop. That meant
+// one YubiKey touch every 10 seconds for as long as the PR sat
+// unmerged — easily 30+ touches if the operator took a few minutes.
+// One touch per ENTER press is far better, and the operator is in
+// control of when it fires.
+//
+// SkipPRWorkflow callers never reach this function — they push directly
+// to the default branch. So this function always runs in interactive
+// mode; no headless variant is needed.
 func WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,
@@ -91,24 +134,64 @@ func WaitUntilPRMerged(ctx context.Context,
 	auth transport.AuthMethod,
 	branchToBeMerged string,
 ) {
+	stdin := bufio.NewReader(os.Stdin)
+	prURL := BuildPRCompareURL(repo, defaultBranchName, branchToBeMerged)
+	bar := progress.FromCtx(ctx)
+
+	slog.InfoContext(ctx, "Waiting for PR merge",
+		slog.String("from-branch", branchToBeMerged),
+		slog.String("to-branch", defaultBranchName),
+	)
+
 	for {
-		slog.Info("Waiting for PR to be merged. Sleeping for 10 seconds....",
-			slog.String("from-branch", branchToBeMerged),
-			slog.String("to-branch", defaultBranchName),
-		)
-		select {
-		case <-ctx.Done():
-			assert.AssertErrNil(ctx, ctx.Err(), "Stopped waiting for PR merge")
-		case <-time.After(10 * time.Second):
+		// Pause the bar so its 100ms auto-render goroutine can't
+		// overwrite the prompt via `\r`. Save cursor at the cleared
+		// spinner line; on success we restore-and-clear there to make
+		// the whole prompt block disappear (auto-hide, same shape as
+		// the YubiKey-touch erase).
+		bar.Pause()
+		fmt.Fprint(os.Stderr, "\033[s")
+		fmt.Fprintln(os.Stderr, renderPRMergeBox(prURL))
+		fmt.Fprint(os.Stderr, "> ")
+
+		if err := readLineCtx(ctx, stdin); err != nil {
+			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
 		}
 
-		err := retryGitOperation(ctx, "fetch refs while waiting for PR merge", func() error {
+		// Erase the prompt block (restore cursor + clear to end of
+		// screen) before the spinner resumes — keeps the transcript
+		// clean if verify succeeds; if it fails we'll print an error
+		// below and re-prompt.
+		fmt.Fprint(os.Stderr, "\033[u\033[J")
+		bar.Resume()
+
+		releaseFetchTouch := requestTouchIfAuth(ctx,
+			"verify PR merge on "+originShortName(repo), auth,
+		)
+		// Targeted refspec: only fetch the default branch, force-update
+		// it locally. The previous "refs/*:refs/*" form tried to update
+		// every local ref — including refs/heads/<feature-branch>, which
+		// gets auto-deleted on the remote when the operator merges with
+		// "delete branch after merge" enabled. With no '+' prefix, the
+		// can't-update on the now-stale feature-branch ref made go-git
+		// flag the WHOLE fetch as failed with "some refs were not
+		// updated", even though refs/heads/<defaultBranch> updated fine.
+		// Net effect: the operator merges the PR, kubeaid-cli kills
+		// itself one second later. The targeted refspec sidesteps this:
+		// we only need the default branch ref to check commit presence,
+		// not anything else.
+		err := retryGitOperation(ctx, "fetch refs to verify PR merge", func() error {
 			return repo.FetchContext(ctx, &goGit.FetchOptions{
-				Auth:     auth,
-				RefSpecs: []goGitConfig.RefSpec{"refs/*:refs/*"},
+				Auth: auth,
+				RefSpecs: []goGitConfig.RefSpec{
+					goGitConfig.RefSpec(
+						"+refs/heads/" + defaultBranchName + ":refs/heads/" + defaultBranchName,
+					),
+				},
 				CABundle: config.ParsedGeneralConfig.Git.CABundle,
 			})
 		})
+		releaseFetchTouch()
 		if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
 			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")
 		}
@@ -119,15 +202,33 @@ func WaitUntilPRMerged(ctx context.Context,
 		)
 		assert.AssertErrNil(ctx, err, "Failed to get default branch ref")
 
-		commitPresent := isCommitPresentInBranch(
-			repo,
-			commitHash,
-			defaultBranchRef.Hash(),
-		)
-		if commitPresent {
-			slog.Info("Detected branch merged")
+		if isCommitPresentInBranch(repo, commitHash, defaultBranchRef.Hash()) {
+			slog.InfoContext(ctx, "Confirmed PR merged")
 			return
 		}
+
+		fmt.Fprintf(os.Stderr,
+			"   ✗ Commit %s isn't on %q yet. Merge the PR and try again.\n",
+			commitHash.String()[:8], defaultBranchName,
+		)
+	}
+}
+
+// readLineCtx reads one line from r, but cancels and returns ctx.Err()
+// if ctx is cancelled before the read completes (e.g., operator hit
+// Ctrl+C). The blocked stdin read goroutine leaks on cancel — fine,
+// the process is exiting.
+func readLineCtx(ctx context.Context, r *bufio.Reader) error {
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.ReadString('\n')
+		done <- err
+	}()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-done:
+		return err
 	}
 }
 
@@ -150,4 +251,59 @@ func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plum
 	}
 
 	return false
+}
+
+// renderPRMergeBox lays the PR-merge prompt out as a lipgloss bordered
+// box with the same rounded-border style as the K8s profile picker and
+// DNS-wait table — keeps the operator-facing surfaces visually
+// consistent.
+//
+// Width handling: the box always takes the full terminal width, so
+// the URL stays inside it even when the PR URL is long enough that a
+// minimally-sized box would have it spill out (the failure mode the
+// previous code went out of its way to allow — it ended up looking
+// like the URL had escaped the box entirely). With an explicit
+// Width(termWidth-2), lipgloss soft-wraps long URLs across lines
+// inside the box; terminals that support OSC 8 hyperlinks keep
+// click-through working across the wrap, and ones that don't still
+// have the URL visible as plain text the operator can select/copy.
+//
+// The caller prints '> ' below the rendered box; that's where the
+// operator's ENTER lands. On success the whole block (box + prompt
+// row + typed input) is erased via the existing \033[u\033[J
+// auto-hide.
+func renderPRMergeBox(prURL string) string {
+	headerStyle := lipgloss.NewStyle().Bold(true)
+	urlStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("39")). // bright blue
+		Underline(true)
+	hintStyle := lipgloss.NewStyle().Faint(true)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		headerStyle.Render("Open and merge in your browser:"),
+		urlStyle.Render(prURL),
+		"",
+		hintStyle.Render("Press ENTER once merged  •  Ctrl+C to abort"),
+	)
+	// Box border + side padding = 4 cells of overhead; subtract from
+	// the terminal width so lipgloss's internal wrap targets the
+	// content area, not the outer dimensions.
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Width(terminalWidth() - 4)
+	return boxStyle.Render(content)
+}
+
+// terminalWidth returns the current terminal width via x/term, or 80
+// as a sensible default when stderr isn't a TTY (e.g. CI logs, piped
+// output). Used to decide whether the PR-merge box's URL fits inline
+// or needs to spill outside the border.
+func terminalWidth() int {
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
+	if err != nil || width <= 0 {
+		return 80
+	}
+	return width
 }

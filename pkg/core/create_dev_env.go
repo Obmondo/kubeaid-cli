@@ -15,6 +15,7 @@ import (
 	gitUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes/k3d"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type CreateDevEnvArgs struct {
@@ -27,6 +28,8 @@ type CreateDevEnvArgs struct {
 }
 
 func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
+	bar := progress.FromCtx(ctx)
+
 	// Detect git authentication method.
 	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx)
 
@@ -42,6 +45,7 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 
 	// Ensure that the KubeAid Config repo is cloned locally.
 	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	bar.Substep("Cloned kubeaid-config repo")
 
 	// When using the Bare Metal provider, no management cluster is needed.
 	// We just need to create the KubeOne config file.
@@ -62,11 +66,17 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	// Ensure that the K3D management cluster is created.
 	err = k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
 	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
+	bar.Substep("Created k3d management cluster")
 
 	managementClusterClient, err := kubernetes.CreateKubernetesClient(ctx, managementClusterKubeconfigPath)
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
-	// Setup the management cluster.
+	// Setup the management cluster. SetupCluster emits its own
+	// substeps (Sealed Secrets install, kubeaid-config render +
+	// PR-merge confirmation, ArgoCD install, per-app sync) so this
+	// outer block doesn't need a single rolled-up "Installed
+	// ArgoCD + sealed-secrets" trailer — the granular substeps tell
+	// the operator exactly which long-running step is in flight.
 	SetupCluster(ctx, SetupClusterArgs{
 		CreateDevEnvArgs: args,
 		ClusterType:      constants.ClusterTypeManagement,

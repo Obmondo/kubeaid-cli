@@ -39,6 +39,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type ArgoCDAppClient interface {
@@ -132,7 +133,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 			Upsert: true,
 			Certificates: &argoCDV1Aplha1.RepositoryCertificateList{
 				Items: []argoCDV1Aplha1.RepositoryCertificate{{
-					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.GetURL().Host,
+					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.HostName(),
 					CertType:   "https",
 					CertData:   config.ParsedGeneralConfig.Git.CABundle,
 				}},
@@ -395,8 +396,7 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
 	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
-	err := m.syncArgoCDApp(ctx, constants.ArgoCDAppRoot, noResources)
-	if err != nil {
+	if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRoot, noResources); err != nil {
 		return err
 	}
 
@@ -408,13 +408,13 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 		//        We need to add the corresponding ArgoCD App and values file templates first.
 
 	case constants.CloudProviderAzure:
-		if err := m.syncArgoCDApp(ctx, constants.ArgoCDAppAzureDiskCSIDriver, noResources); err != nil {
+		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppAzureDiskCSIDriver, noResources); err != nil {
 			return err
 		}
 
 	case constants.CloudProviderHetzner:
 		if config.UsingHCloud() {
-			if err := m.syncArgoCDApp(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
+			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
 				return err
 			}
 		}
@@ -422,13 +422,13 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 		if config.UsingHetznerBareMetal() {
 			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
 
-			if err := m.syncArgoCDApp(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
+			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
 				return err
 			}
 		}
 
 	case constants.CloudProviderBareMetal:
-		if err := m.syncArgoCDApp(ctx, constants.ArgoCDAppLocalPVProvisioner, noResources); err != nil {
+		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppLocalPVProvisioner, noResources); err != nil {
 			return err
 		}
 	}
@@ -436,7 +436,7 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 	// Sync the KubePrometheus ArgoCD App, if monitoring setup is enabled.
 	// Some ArgoCD Apps depend on the CRDs coming from the KubePrometheus ArgoCD App.
 	if !skipMonitoringSetup {
-		if err := m.syncArgoCDApp(ctx, constants.ArgoCDAppKubePrometheus, noResources); err != nil {
+		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppKubePrometheus, noResources); err != nil {
 			return err
 		}
 	}
@@ -449,11 +449,33 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 	}
 
 	for _, item := range response.Items {
-		if err := m.syncArgoCDApp(ctx, item.Name, noResources); err != nil {
+		if err := m.syncArgoCDAppWithProgress(ctx, item.Name, noResources); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+// syncArgoCDAppWithProgress wraps syncArgoCDApp with the
+// "↻ Syncing X" / "✓ Synced X" sub-step pair so the operator sees
+// which app is in flight at any given moment. Used by
+// syncAllArgoCDApps where the loop visits a dozen+ apps in
+// sequence — without per-app progress markers the spinner sits
+// silent for minutes between log lines.
+func (m *ArgoCDAppManager) syncArgoCDAppWithProgress(
+	ctx context.Context,
+	name string,
+	resources []*argoCDV1Aplha1.SyncOperationResource,
+) error {
+	bar := progress.FromCtx(ctx)
+	release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", name))
+	if err := m.syncArgoCDApp(ctx, name, resources); err != nil {
+		release()
+		return err
+	}
+	release()
+	bar.Substep(fmt.Sprintf("Synced %s ArgoCD app", name))
 	return nil
 }
 

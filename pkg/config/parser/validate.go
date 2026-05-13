@@ -10,11 +10,16 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
 	"unicode"
 
+	gogit "github.com/go-git/go-git/v5"
+	gogitConfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
+	gogitMemory "github.com/go-git/go-git/v5/storage/memory"
 	validatorV10 "github.com/go-playground/validator/v10"
 	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
@@ -27,6 +32,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
 )
 
@@ -95,7 +101,7 @@ func validateConfigFields(
 			return nil
 		},
 		func() error {
-			return validateKubeAidForkVersion(generalConfig.Forks.KubeaidFork.Version, cloudProviderName)
+			return validateKubeAidForkVersion(ctx, generalConfig.Forks.KubeaidFork, cloudProviderName)
 		},
 		func() error { return validateAdditionalUsers(generalConfig.Cluster.AdditionalUsers) },
 		func() error { return validateKnownHostsEntries(ctx, generalConfig.Git.KnownHosts) },
@@ -142,11 +148,98 @@ func validateConfigStructTags(
 	return nil
 }
 
-func validateKubeAidForkVersion(kubeAidForkVersion, cloudProviderName string) error {
-	if cloudProviderName != constants.CloudProviderLocal && kubeAidForkVersion == "" {
+// commitHashPattern matches a git commit hash — either the full 40
+// hex chars (SHA-1) or a 64-char SHA-256 once git ever moves us
+// there. We reject these as kubeaid-fork pin values so the rest of
+// the codebase can rely on `version` being a tag or branch only.
+// That assumption unlocks shallow clones (Depth: 1 +
+// ReferenceName: refs/tags/<v> or refs/heads/<v>) — kubeaid-fork is
+// read-only on our side, we never walk its history, no reason to
+// download more than the tagged tree.
+//
+// Commit-hash pinning was a dev-setup convenience that nobody uses
+// in production. Removing it cuts ~hundreds of MB off first-time
+// kubeaid-fork clones and lets re-run fetches scope to the one ref
+// the operator actually pinned.
+var commitHashPattern = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
+
+// validateKubeAidForkVersion enforces the rules on cluster.forks.kubeaid.version:
+//
+//   - Required for non-local providers.
+//   - Cannot be the literal "latest" — operators who want the latest
+//     tag should run `kubeaid-cli setup` (which auto-detects the latest
+//     stable release via the GitHub releases API and writes a concrete
+//     tag to general.yaml). A floating "latest" pin in committed config
+//     means the same general.yaml produces a different cluster on
+//     different days; not the contract we want.
+//   - Cannot be a commit hash — see commitHashPattern docstring above.
+//   - For HTTPS-form fork URLs, must resolve to an existing tag or
+//     branch on the remote. We probe via remote.ListContext at validate
+//     time so a typo'd version fails fast — before kubeaid-cli has done
+//     any irreversible work like provisioning Hetzner infra. SSH-form
+//     URLs skip the probe (would need auth setup + a YubiKey touch at
+//     validation time, both unwelcome before the bootstrap proper).
+//
+// Empty version (allowed for the local provider) skips all checks.
+func validateKubeAidForkVersion(ctx context.Context, kubeAidFork config.KubeAidForkConfig, cloudProviderName string) error {
+	version := kubeAidFork.Version
+	if cloudProviderName != constants.CloudProviderLocal && version == "" {
 		return errors.New("KubeAid fork version is required for non-local providers")
 	}
+	if version == "" {
+		return nil
+	}
+	if strings.EqualFold(version, "latest") {
+		return errors.New(
+			`KubeAid fork version "latest" is not accepted; use a concrete tag (run "kubeaid-cli setup" to autofill the latest stable release tag) or a branch name`,
+		)
+	}
+	if commitHashPattern.MatchString(version) {
+		return fmt.Errorf(
+			"KubeAid fork version %q looks like a commit hash; pinning to a commit is no longer supported. Use a tag (e.g. v0.21.5) or a branch name (e.g. main); if you need a specific commit, tag it upstream first",
+			version,
+		)
+	}
+	if giturl.IsHTTP(kubeAidFork.URL) {
+		if err := probeKubeAidForkVersionExists(ctx, kubeAidFork.URL, version); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// probeKubeAidForkVersionExists ls-remotes the given HTTPS URL and
+// returns an error when version isn't a tag or branch on the remote.
+// Catches typos and non-existent versions before the bootstrap touches
+// any infra. Public-repo HTTPS only — no auth. SSH callers don't reach
+// this function.
+func probeKubeAidForkVersionExists(ctx context.Context, url, version string) error {
+	probeCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	remote := gogit.NewRemote(gogitMemory.NewStorage(), &gogitConfig.RemoteConfig{
+		Name: gogit.DefaultRemoteName,
+		URLs: []string{url},
+	})
+	refs, err := remote.ListContext(probeCtx, &gogit.ListOptions{})
+	if err != nil {
+		return fmt.Errorf(
+			"probing %s for KubeAid fork version %q: %w (network issue, or version refers to a private repo on an HTTPS URL)",
+			url, version, err,
+		)
+	}
+
+	wantTag := plumbing.NewTagReferenceName(version)
+	wantBranch := plumbing.NewBranchReferenceName(version)
+	for _, ref := range refs {
+		if ref.Name() == wantTag || ref.Name() == wantBranch {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"KubeAid fork version %q not found as a tag or branch on %s — check for typos, or push the tag upstream first",
+		version, url,
+	)
 }
 
 func validateAdditionalUsers(additionalUsers []config.UserConfig) error {

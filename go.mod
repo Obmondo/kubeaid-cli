@@ -10,7 +10,9 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage v1.8.1
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.1
 	github.com/Azure/azure-workload-identity v1.5.1
+	github.com/Nerzal/gocloak/v13 v13.9.0
 	github.com/argoproj/argo-cd/v2 v2.14.20
+	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.288.0
@@ -22,6 +24,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/creack/pty v1.1.24
 	github.com/creasty/defaults v1.8.0
+	github.com/docker/docker v28.5.2+incompatible
 	github.com/fatih/color v1.18.0
 	github.com/go-cmd/cmd v1.4.3
 	github.com/go-git/go-git/v5 v5.18.0
@@ -32,7 +35,6 @@ require (
 	github.com/google/renameio v1.0.1
 	github.com/hetznercloud/hcloud-go v1.59.2
 	github.com/k3d-io/k3d/v5 v5.8.3
-	github.com/kubescape/go-git-url v0.0.30
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mikefarah/yq/v4 v4.50.1
 	github.com/muesli/termenv v0.16.0
@@ -63,6 +65,7 @@ require (
 	sigs.k8s.io/cluster-api-provider-aws/v2 v2.11.1
 	sigs.k8s.io/cluster-api-provider-azure v1.22.4
 	sigs.k8s.io/controller-runtime v0.21.0
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -82,7 +85,6 @@ require (
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Masterminds/squirrel v1.5.4 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Nerzal/gocloak/v13 v13.9.0 // indirect
 	github.com/ProtonMail/go-crypto v1.3.0 // indirect
 	github.com/Zxilly/go-size-analyzer v1.11.0 // indirect
 	github.com/ZxillyFork/gore v0.0.0-20260213142603-6d34e9fbcd04 // indirect
@@ -95,7 +97,6 @@ require (
 	github.com/alecthomas/kong v1.14.0 // indirect
 	github.com/alecthomas/participle/v2 v2.1.4 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
-	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1 // indirect
 	github.com/argoproj/pkg v0.13.7-0.20230626144333-d56162821bd1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/asaskevich/govalidator/v11 v11.0.2-0.20250122183457-e11347878e23 // indirect
@@ -144,7 +145,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.2 // indirect
-	github.com/chainguard-dev/git-urls v1.0.2 // indirect
 	github.com/charmbracelet/bubbles v1.0.0 // indirect
 	github.com/charmbracelet/bubbletea v1.3.10 // indirect
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
@@ -176,7 +176,6 @@ require (
 	github.com/dlclark/regexp2 v1.11.4 // indirect
 	github.com/docker/cli v28.5.2+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/docker/docker v28.5.2+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -425,7 +424,6 @@ require (
 	sigs.k8s.io/kustomize/kyaml v0.20.1 // indirect
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.7.0 // indirect
-	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
 replace (

@@ -9,7 +9,7 @@ global:
     repo: {{ .KubeaidFork.URL }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigFork.URL }}
-  additionalUsers: {{ .AdditionalUsers | toYAML | nindent 4 }}
+  additionalUsers: {{- .AdditionalUsers | toYAML | nindent 4 }}
 
 {{- if .AWSConfig }}
 provider:
@@ -42,11 +42,11 @@ aws:
       id: {{ .AWSConfig.ControlPlane.AMI.ID }}
     {{- if .ClusterConfig.APIServer }}
     apiServer:
-      extraArgs: {{ .ClusterConfig.APIServer.ExtraArgs | toYaml | nindent 8 }}
-      extraVolumes: {{ .ClusterConfig.APIServer.ExtraVolumes | toYaml | nindent 8 }}
-      files: {{ .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
+      extraArgs: {{- .ClusterConfig.APIServer.ExtraArgs | toYaml | nindent 8 }}
+      extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYaml | nindent 8 }}
+      files: {{- .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
     {{- end }}
-  nodeGroups: {{ .AWSConfig.NodeGroups | toYaml | nindent 4 }}
+  nodeGroups: {{- .AWSConfig.NodeGroups | toYaml | nindent 4 }}
 {{- end }}
 
 {{- if .AzureConfig }}
@@ -68,11 +68,11 @@ azure:
   serviceAccountIssuer:
     url: {{ .ServiceAccountIssuerURL }}
 
-  canonicalUbuntuImage: {{ .AzureConfig.CanonicalUbuntuImage | toIndentYAML 2 | nindent 4 }}
+  canonicalUbuntuImage: {{- .AzureConfig.CanonicalUbuntuImage | toIndentYAML 2 | nindent 4 }}
 
-  controlPlane: {{ .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
+  controlPlane: {{- .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 
-  nodeGroups: {{ .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+  nodeGroups: {{- .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
 {{- end }}
 
 {{- if .HetznerConfig }}
@@ -108,22 +108,35 @@ hetzner:
   {{- end }}
 
   controlPlane:
-    regions: {{ .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
+    regions: {{- .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
-    {{/* On HCloud-VPN clusters kubeaid-cli pre-provisions the control-plane LB
-         before CAPI starts. The chart consumes:
-           - endpoint.host    : kubeadm controlPlaneEndpoint, kubeconfig server
-           - extraCertSANs    : merged with endpoint.host into kubeadm's
-             apiServer.certSANs so clients hitting mesh-side hostnames (e.g.
-             NetBird-form names) don't trip x509 cert-name mismatches.
-           - loadBalancer.privateIP / bootstrapPublicIP : used in a postKubeadmCommand
-             that patches kube-system/coredns to resolve the endpoint to both IPs. */}}
+    {{- /* When kubeaid-cli pre-provisions the control-plane LB
+         (cluster.type=vpn, or workload connecting to an existing
+         HCloudVPNCluster), the chart consumes the pre-created LB
+         instead of letting CAPH auto-create one:
+           - endpoint.host    : kubeadm controlPlaneEndpoint,
+                                kubeconfig server, HetznerCluster
+                                spec.controlPlaneEndpoint.host.
+           - extraCertSANs    : merged with endpoint.host into
+                                kubeadm's apiServer.certSANs so
+                                clients hitting mesh-side hostnames
+                                (e.g. NetBird-form names) don't
+                                trip x509 cert-name mismatches.
+                                Consumed by KubeadmControlPlane.yaml.
+           - loadBalancer.privateIP / bootstrapPublicIP : runtime
+                                info kubeaid-cli surfaces about the
+                                pre-created LB. Currently informational
+                                in the chart schema; future templates
+                                may consume them for postKubeadm
+                                CoreDNS hosts patching.
+         For workload-not-on-VPN clusters this whole block is
+         skipped and CAPH handles LB lifecycle on its own. */ -}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
+    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
     {{- if .ControlPlaneExtraCertSANs }}
-    extraCertSANs: {{ .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
+    extraCertSANs: {{- .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
     {{- end }}
     loadBalancer:
       privateIP: {{ .ControlPlaneLBPrivateIP }}
@@ -133,14 +146,36 @@ hetzner:
     {{- end }}
     {{- end }}
 
-    {{/* Handling control-plane in Hetzner bare-metal. */}}
+    {{- /* Handling control-plane in Hetzner bare-metal. */ -}}
     {{- if eq .HetznerConfig.Mode "bare-metal" }}
-    bareMetal: {{ .HetznerConfig.ControlPlane.BareMetal | toIndentYAML 2 | nindent 6 }}
+    bareMetal: {{- .HetznerConfig.ControlPlane.BareMetal | toIndentYAML 2 | nindent 6 }}
 
-    {{/* Handling control-plane in HCloud. */}}
+    {{- /* Handling control-plane in HCloud. Render the fields the
+         chart's schema actually permits — machineType, replicas,
+         loadBalancer.{enabled,region}. Don't dump the whole
+         HCloudControlPlane struct via toIndentYAML: it includes
+         LoadBalancer.{Endpoint, ExtraCertSANs} which the chart
+         schema rejects (chart's loadBalancer is just enabled +
+         region; the endpoint hostname goes at
+         controlPlane.endpoint.host above).
+
+         For VPN-cluster bootstraps where kubeaid-cli pre-created
+         the LB itself, force loadBalancer.enabled=false here so
+         CAPH doesn't ALSO try to create a load-balancer; the
+         operator's pre-created LB + endpoint.host above are what
+         we want CAPH to consume. */ -}}
     {{- else }}
-    hcloud: {{ .HetznerConfig.ControlPlane.HCloud | toIndentYAML 2 | nindent 6 }}
+    hcloud:
+      machineType: {{ .HetznerConfig.ControlPlane.HCloud.MachineType }}
+      replicas: {{ .HetznerConfig.ControlPlane.HCloud.Replicas }}
+      loadBalancer:
+        {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+        enabled: false
+        {{- else }}
+        enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}
+        {{- end }}
+        region: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Region }}
     {{- end }}
 
-  nodeGroups: {{ .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+  nodeGroups: {{- .HetznerConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
 {{- end }}

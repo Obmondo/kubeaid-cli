@@ -89,14 +89,26 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// Hydrate with Audit Logging options (if required).
 		hydrateWithAuditLoggingOptions()
 
-		// Translate the typed apiServer.oidc block (if any) into the
-		// corresponding kube-apiserver --oidc-* flags + CA mount.
-		hydrateWithOIDCOptions()
-
 		// Default cluster.keycloak.realm from DNS when unset (uses
 		// publicsuffix). Validation of the typed block happens after
 		// defaults so error messages reference the user-visible value.
+		//
+		// Must run before hydrateKeycloakOIDC and
+		// hydrateWithOIDCOptions: both read the resolved realm.
 		hydrateKeycloakDefaults()
+
+		// Fill cluster.apiServer.oidc from the cluster.keycloak block
+		// so the operator doesn't have to repeat the derivable issuer
+		// URL + client ID. Fires for both modes — managed (VPN host)
+		// and external (workload cluster referencing a parent VPN's
+		// Keycloak, or VPN using an operator-managed Keycloak). No-op
+		// when the OIDC block is already set explicitly.
+		hydrateKeycloakOIDC()
+
+		// Translate the typed apiServer.oidc block (if any) into the
+		// corresponding kube-apiserver AuthenticationConfiguration
+		// file + --authentication-config flag + host-path mount.
+		hydrateWithOIDCOptions()
 
 		// Default cluster.netbird.{stunDNS,turnDNS,turnUser} when
 		// unset. Renders into the netbird Secret consumed by NetBird
@@ -131,6 +143,16 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 				AWSSessionToken:    awsCredentials.SessionToken,
 			}
 		}
+
+		// Auto-generate any required-but-blank random secrets
+		// (NetBird keys/passwords, Keycloak admin password etc.)
+		// and persist them back into secrets.yaml. First run mints
+		// fresh values; re-runs are no-ops because the values are
+		// already filled in. See FillMissingSecrets for why
+		// in-secrets.yaml beats both in-cluster get-or-generate
+		// and a separate cache file.
+		err = FillMissingSecrets(ctx)
+		assert.AssertErrNil(ctx, err, "Failed filling missing secrets in secrets.yaml")
 	}
 
 	// Set globals.CloudProvider based on the underlying cloud-provider being used.

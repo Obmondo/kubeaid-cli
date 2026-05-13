@@ -27,6 +27,8 @@ type fakeLoadBalancerClient struct {
 	enablePublicInterfaceFn  func(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
 	disablePublicInterfaceFn func(ctx context.Context, loadBalancer *hcloud.LoadBalancer) (*hcloud.Action, *hcloud.Response, error)
 	changeProtectionFn       func(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
+	addServiceFn             func(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error)
+	addLabelSelectorTargetFn func(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
 func (f *fakeLoadBalancerClient) Get(ctx context.Context, idOrName string) (*hcloud.LoadBalancer, *hcloud.Response, error) {
@@ -58,6 +60,202 @@ func (f *fakeLoadBalancerClient) ChangeProtection(ctx context.Context, loadBalan
 		return f.changeProtectionFn(ctx, loadBalancer, opts)
 	}
 	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
+}
+
+func (f *fakeLoadBalancerClient) AddService(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error) {
+	if f.addServiceFn != nil {
+		return f.addServiceFn(ctx, loadBalancer, opts)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
+}
+
+func (f *fakeLoadBalancerClient) AddLabelSelectorTarget(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+	if f.addLabelSelectorTargetFn != nil {
+		return f.addLabelSelectorTargetFn(ctx, loadBalancer, opts)
+	}
+	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
+}
+
+// TestLbHasServiceOnPort pins the pure idempotency-check helper.
+func TestLbHasServiceOnPort(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		lb   *hcloud.LoadBalancer
+		port int
+		want bool
+	}{
+		{"nil services slice", &hcloud.LoadBalancer{}, 6443, false},
+		{"empty services slice", &hcloud.LoadBalancer{Services: []hcloud.LoadBalancerService{}}, 6443, false},
+		{"matching listen port", &hcloud.LoadBalancer{Services: []hcloud.LoadBalancerService{{ListenPort: 6443}}}, 6443, true},
+		{"non-matching listen port", &hcloud.LoadBalancer{Services: []hcloud.LoadBalancerService{{ListenPort: 80}}}, 6443, false},
+		{"matching among many", &hcloud.LoadBalancer{Services: []hcloud.LoadBalancerService{{ListenPort: 80}, {ListenPort: 443}, {ListenPort: 6443}}}, 6443, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, lbHasServiceOnPort(tc.lb, tc.port))
+		})
+	}
+}
+
+// TestLbHasLabelSelectorTarget pins the label-selector idempotency check.
+func TestLbHasLabelSelectorTarget(t *testing.T) {
+	t.Parallel()
+	const sel = "caph-cluster-test=owned,machine_type=control_plane"
+	tests := []struct {
+		name string
+		lb   *hcloud.LoadBalancer
+		want bool
+	}{
+		{"nil targets", &hcloud.LoadBalancer{}, false},
+		{"matching label-selector target", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}}, true},
+		{"label-selector target with different selector", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: "other=label"}}}}, false},
+		{"server-type target ignored even when selector text matches", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeServer, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, lbHasLabelSelectorTarget(tc.lb, sel))
+		})
+	}
+}
+
+// TestEnsureControlPlaneLBServiceAndTarget exercises the orchestrator
+// against the fakeLoadBalancerClient. Covers the bootstrap-state cases
+// operators actually hit:
+//   - fresh LB (no service, no target) → both AddService + AddLabelSelectorTarget
+//     are called.
+//   - re-run on a kubeaid-cli-wired LB → both calls skipped.
+//   - half-wired (service exists, target missing — or vice versa) → only the
+//     missing one is added.
+//   - AddService API error → surfaces; AddLabelSelectorTarget API error → surfaces.
+func TestEnsureControlPlaneLBServiceAndTarget(t *testing.T) {
+	t.Parallel()
+
+	const clusterName = "test-cluster"
+	wantSelector := controlPlaneLBTargetSelector(clusterName)
+
+	type counters struct{ addService, addTarget int }
+
+	tests := []struct {
+		name         string
+		initialLB    *hcloud.LoadBalancer
+		addServiceFn func(c *counters) func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error)
+		addTargetFn  func(c *counters) func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error)
+		wantErrMsg   string
+		wantSvcCalls int
+		wantTgtCalls int
+	}{
+		{
+			name:         "fresh LB — both service and target added",
+			initialLB:    &hcloud.LoadBalancer{ID: 1},
+			wantSvcCalls: 1,
+			wantTgtCalls: 1,
+		},
+		{
+			name: "service already wired, target missing — only target added",
+			initialLB: &hcloud.LoadBalancer{
+				ID:       1,
+				Services: []hcloud.LoadBalancerService{{ListenPort: 6443}},
+			},
+			wantSvcCalls: 0,
+			wantTgtCalls: 1,
+		},
+		{
+			name: "target already wired, service missing — only service added",
+			initialLB: &hcloud.LoadBalancer{
+				ID: 1,
+				Targets: []hcloud.LoadBalancerTarget{{
+					Type:          hcloud.LoadBalancerTargetTypeLabelSelector,
+					LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: wantSelector},
+				}},
+			},
+			wantSvcCalls: 1,
+			wantTgtCalls: 0,
+		},
+		{
+			name: "fully wired — re-run no-op",
+			initialLB: &hcloud.LoadBalancer{
+				ID:       1,
+				Services: []hcloud.LoadBalancerService{{ListenPort: 6443}},
+				Targets: []hcloud.LoadBalancerTarget{{
+					Type:          hcloud.LoadBalancerTargetTypeLabelSelector,
+					LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: wantSelector},
+				}},
+			},
+			wantSvcCalls: 0,
+			wantTgtCalls: 0,
+		},
+		{
+			name:      "AddService API error surfaces",
+			initialLB: &hcloud.LoadBalancer{ID: 1},
+			addServiceFn: func(c *counters) func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error) {
+				return func(_ context.Context, _ *hcloud.LoadBalancer, _ hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error) {
+					c.addService++
+					return nil, nil, fmt.Errorf("simulated API failure")
+				}
+			},
+			wantErrMsg:   "adding kube-apiserver service to Hetzner LB",
+			wantSvcCalls: 1,
+			wantTgtCalls: 0,
+		},
+		{
+			name:      "AddLabelSelectorTarget API error surfaces",
+			initialLB: &hcloud.LoadBalancer{ID: 1},
+			addTargetFn: func(c *counters) func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+				return func(_ context.Context, _ *hcloud.LoadBalancer, _ hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+					c.addTarget++
+					return nil, nil, fmt.Errorf("simulated target failure")
+				}
+			},
+			wantErrMsg:   "adding control-plane target to Hetzner LB",
+			wantSvcCalls: 1,
+			wantTgtCalls: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var c counters
+			client := &fakeLoadBalancerClient{
+				getFn: func(_ context.Context, _ string) (*hcloud.LoadBalancer, *hcloud.Response, error) {
+					return tc.initialLB, hcloudResponse(http.StatusOK), nil
+				},
+				addServiceFn: func() func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error) {
+					if tc.addServiceFn != nil {
+						return tc.addServiceFn(&c)
+					}
+					return func(_ context.Context, _ *hcloud.LoadBalancer, _ hcloud.LoadBalancerAddServiceOpts) (*hcloud.Action, *hcloud.Response, error) {
+						c.addService++
+						return nil, hcloudResponse(http.StatusCreated), nil
+					}
+				}(),
+				addLabelSelectorTargetFn: func() func(ctx context.Context, lb *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+					if tc.addTargetFn != nil {
+						return tc.addTargetFn(&c)
+					}
+					return func(_ context.Context, _ *hcloud.LoadBalancer, _ hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+						c.addTarget++
+						return nil, hcloudResponse(http.StatusCreated), nil
+					}
+				}(),
+			}
+
+			h := &Hetzner{loadBalancerClient: client}
+			_, err := h.ensureControlPlaneLBServiceAndTarget(context.Background(), tc.initialLB, clusterName)
+			if tc.wantErrMsg != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, tc.wantSvcCalls, c.addService, "AddService call count")
+			assert.Equal(t, tc.wantTgtCalls, c.addTarget, "AddLabelSelectorTarget call count")
+		})
+	}
 }
 
 // noopSleep is used to eliminate real delays in waitForLB.
