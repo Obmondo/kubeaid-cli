@@ -25,7 +25,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	valuesPkg "helm.sh/helm/v3/pkg/cli/values"
-	appsV1 "k8s.io/api/apps/v1"
 	coreV1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -553,10 +552,12 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		}
 
 		switch name {
-		// Wait for the child ArgoCD Apps to be created.
+		// Wait for ArgoCD to materialize the root app's child Applications,
+		// and for argocd-repo-server to start serving on :8081 — otherwise
+		// the subsequent per-child sync hits "connection refused" or "App
+		// not found" on revision resolution.
 		case constants.ArgoCDAppRoot:
-			waitForRootArgoCDChildren(ctx)
-			return nil
+			return waitForRootArgoCDChildren(ctx)
 
 		// Wait for the ArgoCD App to be synced.
 		default:
@@ -571,90 +572,120 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 	}
 }
 
-func waitForRootArgoCDChildren(ctx context.Context) {
-	requiredApps := []string{
-		"cert-manager",
-		"secrets",
-	}
-	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
-	clusterClient := MustCreateClusterClient(ctx, kubeconfig)
-	timeout := 3 * time.Minute
-	deadline := time.Now().Add(timeout)
-
+// waitForRootArgoCDChildren blocks until the root ArgoCD app has been
+// reconciled and all its declared child Applications exist as Application
+// CRs.
+//
+// "Reconciled" means root.status.sync.status is Synced or OutOfSync —
+// either way, ArgoCD has successfully fetched the source repo from
+// repo-server. Out-of-diff is fine; we just need proof that the repo is
+// reachable so the subsequent per-child syncs don't trip "connection
+// refused" on :8081 during revision resolution.
+//
+// The required-child list is read from root.status.resources, so the
+// wait stays in sync with whatever the root declares — no hardcoded
+// list to drift out of date.
+//
+// Errors on context cancellation or 3-minute deadline.
+func waitForRootArgoCDChildren(ctx context.Context) error {
+	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		repoServerReady := isArgoCDRepoServerReady(ctx, clusterClient)
-		appsReady := areArgoCDAppsPresent(ctx, requiredApps)
-		if repoServerReady && appsReady {
-			slog.InfoContext(ctx, "ArgoCD repo-server and required child apps are ready")
-			return
+		reconciled, declared, missing, err := rootAppReadyForChildSync(ctx)
+		if err != nil {
+			slog.WarnContext(ctx,
+				"Failed querying root ArgoCD app",
+				logger.Error(err),
+			)
+		}
+
+		// declared > 0 guards against returning "ready" before ArgoCD has
+		// populated root.status.resources at least once — immediately after
+		// creation it's empty.
+		if err == nil && reconciled && declared > 0 && len(missing) == 0 {
+			slog.InfoContext(ctx,
+				"Root app reconciled and all child apps materialized",
+				slog.Int("child-apps", declared),
+			)
+			return nil
 		}
 
 		if time.Now().After(deadline) {
-			assert.Assert(ctx, false,
-				"Timed out waiting for ArgoCD child apps to be created and repo-server to be ready",
+			return fmt.Errorf(
+				"timed out waiting for root ArgoCD app (reconciled=%t, declared=%d, missing=%v)",
+				reconciled, declared, missing,
 			)
 		}
 
 		slog.InfoContext(ctx,
-			"Waiting for ArgoCD repo-server and child apps",
-			slog.Bool("repo-server-ready", repoServerReady),
-			slog.Any("required-apps", requiredApps),
+			"Waiting for root ArgoCD app to reconcile and child apps to materialize",
+			slog.Bool("root-reconciled", reconciled),
+			slog.Int("declared-children", declared),
+			slog.Any("missing", missing),
 		)
-		time.Sleep(5 * time.Second)
-	}
-}
 
-func isArgoCDRepoServerReady(ctx context.Context, clusterClient client.Client) bool {
-	deployment := &appsV1.Deployment{
-		ObjectMeta: metaV1.ObjectMeta{
-			Name:      "argocd-repo-server",
-			Namespace: constants.NamespaceArgoCD,
-		},
-	}
-	err := clusterClient.Get(ctx,
-		types.NamespacedName{
-			Name:      deployment.Name,
-			Namespace: deployment.Namespace,
-		},
-		deployment,
-	)
-	if err != nil {
-		slog.DebugContext(ctx,
-			"Failed getting ArgoCD repo-server deployment while checking readiness",
-			logger.Error(err),
-		)
-		return false
-	}
-
-	return deployment.Status.ReadyReplicas > 0
-}
-
-func areArgoCDAppsPresent(ctx context.Context, names []string) bool {
-	appNamespace := constants.NamespaceArgoCD
-	response, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
-		AppNamespace: &appNamespace,
-	})
-	if err != nil {
-		slog.WarnContext(ctx,
-			"Failed listing ArgoCD apps while waiting for root app children",
-			logger.Error(err),
-		)
-		RecreateArgoCDApplicationClient(ctx, nil)
-		return false
-	}
-
-	existingApps := map[string]bool{}
-	for _, app := range response.Items {
-		existingApps[app.Name] = true
-	}
-
-	for _, name := range names {
-		if !existingApps[name] {
-			return false
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
 		}
 	}
+}
 
-	return true
+// rootAppReadyForChildSync returns the bootstrap-relevant state of the
+// root ArgoCD app:
+//
+//   - reconciled: root.status.sync.status is Synced or OutOfSync — i.e.
+//     ArgoCD has talked to repo-server and computed a diff at least once.
+//     Out-of-sync is fine; we only need proof the repo is reachable.
+//   - declared:   count of kind: Application entries in root.status.resources.
+//     0 means ArgoCD hasn't yet listed root's children — keep waiting.
+//   - missing:    declared child names that don't yet exist as Application CRs.
+//   - err:        transient API error; caller should keep retrying.
+func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) {
+	rootName := constants.ArgoCDAppRoot
+	rootApp, err := globals.ArgoCDApplicationClient.Get(ctx, &application.ApplicationQuery{
+		Name:         &rootName,
+		Project:      []string{constants.ArgoCDProjectKubeAid},
+		AppNamespace: aws.String(constants.NamespaceArgoCD),
+	})
+	if err != nil {
+		RecreateArgoCDApplicationClient(ctx, nil)
+		return false, 0, nil, fmt.Errorf("getting root ArgoCD app: %w", err)
+	}
+
+	reconciled := rootApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced ||
+		rootApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeOutOfSync
+
+	var declared []string
+	for _, r := range rootApp.Status.Resources {
+		if r.Kind == "Application" {
+			declared = append(declared, r.Name)
+		}
+	}
+	if len(declared) == 0 {
+		return reconciled, 0, nil, nil
+	}
+
+	list, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
+		AppNamespace: aws.String(constants.NamespaceArgoCD),
+	})
+	if err != nil {
+		RecreateArgoCDApplicationClient(ctx, nil)
+		return reconciled, len(declared), nil, fmt.Errorf("listing ArgoCD apps: %w", err)
+	}
+
+	existing := map[string]bool{}
+	for _, app := range list.Items {
+		existing[app.Name] = true
+	}
+
+	var missing []string
+	for _, name := range declared {
+		if !existing[name] {
+			missing = append(missing, name)
+		}
+	}
+	return reconciled, len(declared), missing, nil
 }
 
 // isArgoCDAppSynced returns whether the given ArgoCD App is synced or not.
