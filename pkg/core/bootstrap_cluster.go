@@ -16,7 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
-	"sigs.k8s.io/cluster-api/cmd/clusterctl/client"
+	clusterctl "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -293,7 +294,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Pivot ClusterAPI (the provisioned cluster will manage itself),
 	// if enabled by the user and not alredy done.
 	if !args.SkipClusterctlMove && !kubernetes.IsClusterctlMoveExecuted(ctx) {
-		pivotCluster(ctx)
+		pivotCluster(ctx, provisionedClusterClient)
 	}
 
 	bar := progress.FromCtx(ctx)
@@ -379,9 +380,21 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	)
 }
 
-func pivotCluster(ctx context.Context) {
+// pivotCluster runs `clusterctl move` to hand off CAPI ownership from
+// the management cluster to the just-provisioned main cluster.
+// mainClusterClient is the workload-side client used for the
+// pre-pivot Node-table render (purely informational); the actual
+// move walks the management cluster via clusterctlClient.
+func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	bar := progress.FromCtx(ctx)
 	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
+
+	pivotMgmtKubeconfig, pivotErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+	assert.AssertErrNil(ctx, pivotErr, "Failed getting management cluster kubeconfig path")
+
+	managementClusterClient, mgmtClientErr := kubernetes.CreateKubernetesClient(ctx, pivotMgmtKubeconfig)
+	assert.AssertErrNil(ctx, mgmtClientErr,
+		"Failed constructing management cluster client for the pre-pivot Machine wait")
 
 	// In case of AWS, make ClusterAPI use IAM roles instead of (temporary) credentials.
 	//
@@ -402,23 +415,41 @@ func pivotCluster(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed rolling out CAPA controller")
 	}
 
+	// Wait until every Machine in capi-cluster is Phase=Running with a
+	// Node registered. clusterctl move refuses to start if any Machine
+	// is still mid-provision (its predicate is the same status.nodeRef
+	// check). The earlier WaitForMainClusterToBeProvisioned cleared the
+	// *initial* provisioning, but SetupCluster has since run multi-
+	// minute ArgoCD syncs that can flip the KCP spec (e.g. chart upgrade
+	// between attempts) and kick off a control-plane rolling update —
+	// leaving us at "N-1 of N Machines Running, one fresh Machine still
+	// joining" when we arrive here. Without this wait, that exact case
+	// hard-fails the pivot.
+	waitErr := kubernetes.WaitForAllMachinesRunning(ctx, managementClusterClient)
+	assert.AssertErrNil(ctx, waitErr,
+		"Timed out waiting for Machines to be Running before clusterctl move")
+	bar.Substep("All Machines Running — clusterctl move pre-conditions cleared")
+
+	// Render a `kubectl get nodes -o wide`-style table from the main
+	// cluster so the operator can eyeball Node readiness, roles, and
+	// IPs before the pivot. Informational — non-fatal if the List
+	// fails (just skips the render).
+	kubernetes.PrintMainClusterNodesTable(ctx, mainClusterClient)
+
 	// Pause the ClusterAPI Infrastructure Provider in the management cluster,
 	// and move the ClusterAPI manifests to the main cluster. They will be processed by the main
 	// cluster's Infrastructure Provider.
 
-	clusterctlClient, err := client.New(ctx, "")
+	capiCLI, err := clusterctl.New(ctx, "")
 	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
 
-	pivotMgmtKubeconfig, pivotErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
-	assert.AssertErrNil(ctx, pivotErr, "Failed getting management cluster kubeconfig path")
-
 	releasePivot := bar.InProgress("Running clusterctl move (mgmt → main)")
-	err = clusterctlClient.Move(ctx, client.MoveOptions{
-		FromKubeconfig: client.Kubeconfig{
+	err = capiCLI.Move(ctx, clusterctl.MoveOptions{
+		FromKubeconfig: clusterctl.Kubeconfig{
 			Path: pivotMgmtKubeconfig,
 		},
 
-		ToKubeconfig: client.Kubeconfig{
+		ToKubeconfig: clusterctl.Kubeconfig{
 			Path: constants.OutputPathMainClusterKubeconfig,
 		},
 

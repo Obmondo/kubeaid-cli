@@ -501,6 +501,218 @@ func containsSubstr(haystack, needle string) bool {
 	return false
 }
 
+// TestSummarizeMachinesForPivot exercises the predicate WaitForAllMachinesRunning
+// loops on. clusterctl move's pre-condition is "every Machine has a Node
+// registered", which we model as Phase=Running AND status.nodeRef != nil.
+// Cases cover the three states the operator can be in at pivot time:
+//
+//   - all Running with NodeRef       → ready=true
+//   - rolling update mid-flight      → ready=false (the kk52w case)
+//   - no Machines yet                → ready=false (don't pivot an empty ns)
+func TestSummarizeMachinesForPivot(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+
+	runningWithNode := func(name string) *clusterAPIV1Beta1.Machine {
+		return &clusterAPIV1Beta1.Machine{
+			ObjectMeta: metaV1.ObjectMeta{
+				Name:      name,
+				Namespace: testCapiClusterNamespace,
+			},
+			Status: clusterAPIV1Beta1.MachineStatus{
+				Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+				NodeRef: &coreV1.ObjectReference{
+					Kind: "Node",
+					Name: name,
+				},
+			},
+		}
+	}
+	provisionedNoNode := func(name string) *clusterAPIV1Beta1.Machine {
+		return &clusterAPIV1Beta1.Machine{
+			ObjectMeta: metaV1.ObjectMeta{
+				Name:      name,
+				Namespace: testCapiClusterNamespace,
+			},
+			Status: clusterAPIV1Beta1.MachineStatus{
+				Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioned),
+			},
+		}
+	}
+
+	tests := []struct {
+		name         string
+		preExist     []runtime.Object
+		wantReady    bool
+		wantRowCount int
+	}{
+		{
+			name: "all Machines Running with NodeRef → ready",
+			preExist: []runtime.Object{
+				runningWithNode("cp-1"),
+				runningWithNode("worker-1"),
+			},
+			wantReady:    true,
+			wantRowCount: 2,
+		},
+		{
+			// Real-world rolling-update case: the old control-plane Machine
+			// is Running with its Node, the surge replacement is
+			// Phase=Provisioned but the Node hasn't joined yet (no nodeRef).
+			// clusterctl move would error here — predicate stays false.
+			name: "one Machine Provisioned without Node (rolling update) → not ready",
+			preExist: []runtime.Object{
+				runningWithNode("cp-old"),
+				provisionedNoNode("cp-new"),
+			},
+			wantReady:    false,
+			wantRowCount: 2,
+		},
+		{
+			name:         "empty Machine list → not ready",
+			preExist:     []runtime.Object{},
+			wantReady:    false,
+			wantRowCount: 0,
+		},
+		{
+			// Belt-and-suspenders: Phase=Running but nodeRef somehow nil.
+			// Defensive — CAPI shouldn't produce this state, but if it
+			// did the move predicate must still hold to nil-safe behaviour.
+			name: "Phase=Running without NodeRef → not ready",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "weird",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+					},
+				},
+			},
+			wantReady:    false,
+			wantRowCount: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origName := config.ParsedGeneralConfig.Cluster.Name
+			origObmondo := config.ParsedGeneralConfig.Obmondo
+			t.Cleanup(func() {
+				config.ParsedGeneralConfig.Cluster.Name = origName
+				config.ParsedGeneralConfig.Obmondo = origObmondo
+			})
+			config.ParsedGeneralConfig.Cluster.Name = testClusterName
+			config.ParsedGeneralConfig.Obmondo = nil
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			rows, ready, err := summarizeMachinesForPivot(context.Background(), fakeClient)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantReady, ready)
+			require.Len(t, rows, tc.wantRowCount)
+		})
+	}
+}
+
+// TestWaitForAllMachinesRunning is the end-to-end-ish counterpart: it
+// drives the wait loop on a fake client and asserts ready / timeout
+// behaviour without sitting through the production poll interval.
+func TestWaitForAllMachinesRunning(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+
+	tests := []struct {
+		name       string
+		preExist   []runtime.Object
+		ctxTimeout time.Duration
+		wantErr    bool
+	}{
+		{
+			name: "returns nil when all Machines are Running with NodeRef",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{
+							Kind: "Node",
+							Name: "cp-1",
+						},
+					},
+				},
+			},
+			ctxTimeout: 5 * time.Second,
+		},
+		{
+			name: "errors when a Machine is stuck Provisioned without NodeRef",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-stuck",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioned),
+					},
+				},
+			},
+			ctxTimeout: 500 * time.Millisecond,
+			wantErr:    true,
+		},
+		{
+			// Empty Machine list shouldn't short-circuit to ready — the
+			// operator would otherwise silently pivot an empty namespace.
+			name:       "errors when there are no Machines at all",
+			preExist:   []runtime.Object{},
+			ctxTimeout: 500 * time.Millisecond,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origName := config.ParsedGeneralConfig.Cluster.Name
+			origObmondo := config.ParsedGeneralConfig.Obmondo
+			origPoll := capiWaitPollInterval
+			origTotal := capiWaitTotalTimeout
+			t.Cleanup(func() {
+				config.ParsedGeneralConfig.Cluster.Name = origName
+				config.ParsedGeneralConfig.Obmondo = origObmondo
+				capiWaitPollInterval = origPoll
+				capiWaitTotalTimeout = origTotal
+			})
+			config.ParsedGeneralConfig.Cluster.Name = testClusterName
+			config.ParsedGeneralConfig.Obmondo = nil
+			// Same shaved poll cadence as TestWaitForMainClusterToBeProvisioned
+			// — exercises both the first-tick-success path and the
+			// timeout path in sub-second wall time.
+			capiWaitPollInterval = 50 * time.Millisecond
+			capiWaitTotalTimeout = 2 * time.Second
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
+			defer cancel()
+
+			err := WaitForAllMachinesRunning(ctx, fakeClient)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestWaitForMainClusterToBeReady(t *testing.T) {
 	scheme := newClusterAPITestScheme(t)
 

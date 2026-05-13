@@ -472,15 +472,21 @@ func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 		clusterKubeconfigPath = constants.OutputPathMainClusterKubeconfig
 	}
 
-	// Title-case the cluster type for the box header. Two callers
-	// only ever ("management" / "main"), so a switch is clearer than
-	// pulling in the (deprecated) strings.Title.
-	clusterTypeTitle := clusterType
+	// Header text per cluster type. Main cluster surfaces the configured
+	// cluster name so the operator's terminal scrollback names the
+	// thing they're looking at (especially helpful when they have
+	// multiple kubeaid-cli runs against differently-named clusters
+	// open in tmux panes side by side); management cluster stays
+	// generic since it's the internal k3d node.
+	var header string
 	switch clusterType {
 	case constants.ClusterTypeManagement:
-		clusterTypeTitle = "Management"
+		header = "✓ Management cluster ready"
 	case constants.ClusterTypeMain:
-		clusterTypeTitle = "Main"
+		header = fmt.Sprintf("✓ %s k8s cluster is ready now.",
+			config.ParsedGeneralConfig.Cluster.Name)
+	default:
+		header = "✓ " + clusterType + " cluster ready"
 	}
 
 	headerStyle := lipgloss.NewStyle().Bold(true)
@@ -490,7 +496,7 @@ func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 
 	content := lipgloss.JoinVertical(
 		lipgloss.Left,
-		headerStyle.Render("✓ "+clusterTypeTitle+" cluster ready"),
+		headerStyle.Render(header),
 		"",
 		headerStyle.Render("ArgoCD admin dashboard"),
 		"",
