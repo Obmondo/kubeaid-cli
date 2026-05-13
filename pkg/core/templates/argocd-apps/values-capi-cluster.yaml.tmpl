@@ -7,6 +7,12 @@ global:
     version: {{ .K8sVersion }}
   kubeaid:
     repo: {{ .KubeaidFork.URL }}
+    # Pinned for the in-node `git clone` in postKubeadmCommands. Keeps
+    # Cilium / CCM installs on the control-plane on the same chart
+    # snapshot kubeaid-cli rendered locally, instead of letting them
+    # drift to whatever the fork's default branch happens to be at
+    # node bootstrap time.
+    version: {{ .KubeaidFork.Version }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigFork.URL }}
   additionalUsers: {{- .AdditionalUsers | toYAML | nindent 4 }}
