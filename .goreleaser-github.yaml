@@ -43,7 +43,8 @@ changelog:
   disable: true
 
 archives:
-  - formats: [tar.gz]
+  - id: kubeaid-cli
+    formats: [tar.gz]
 
     # This name template makes the OS and Arch compatible with the results of uname.
     name_template: >-
@@ -60,6 +61,20 @@ archives:
       mtime: "{{ .CommitDate }}"
 
     allow_different_binary_count: true
+
+  # Standalone bare-binary asset for kubeaid-storagectl. Consumed by the
+  # kubeaid chart's KubeadmConfig.yaml / KubeadmControlPlane.yaml templates
+  # which wget the binary during cloud-init on Hetzner bare-metal nodes.
+  # `formats: [binary]` means no tarball — the asset is the binary itself,
+  # so the chart's cloud-init stays a single `wget + chmod +x` step.
+  - id: kubeaid-storagectl
+    builds: [kubeaid-storagectl]
+    formats: [binary]
+    name_template: >-
+      kubeaid-storagectl_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
 
 # TODO : github.com/Obmondo/homebrew-tab needs to be renamed to github.com/Obmondo/homebrew-tap.
 # homebrew_casks:
