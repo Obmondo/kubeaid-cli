@@ -400,6 +400,19 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 		return err
 	}
 
+	// Sync the sealed-secrets ArgoCD App next. The sealed-secrets
+	// controller is installed directly via Helm during the management-
+	// cluster setup phase (before ArgoCD exists), so its Service,
+	// ServiceAccount, Deployment etc. live in the cluster without
+	// ArgoCD's argocd.argoproj.io/tracking-id annotation — every
+	// downstream view shows the sealed-secrets App as OutOfSync until
+	// ArgoCD reconciles those resources and claims them. Syncing here
+	// transfers ownership cleanly while bootstrap is still in flight,
+	// so the App ends up Synced + Healthy with no lingering diff.
+	if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppSealedSecrets, noResources); err != nil {
+		return err
+	}
+
 	// Sync ArgoCD Apps corresponding to the CSI driver(s).
 	// Otherwise, no StorageClasses might exist, making stateful workloads unhealthy.
 	switch globals.CloudProviderName {

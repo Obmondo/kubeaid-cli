@@ -179,37 +179,46 @@ func GenerateSealedSecret(ctx context.Context, secretFilePath string) error {
 const kubeaidHashHeaderPrefix = "# kubeaid-sha256: "
 
 // SealIfPlaintextChanged converts plaintextBytes to a SealedSecret YAML at
-// destinationFilePath — but only when the file's existing kubeaid-sha256
-// header doesn't already match the hash of plaintextBytes. On a cache hit
-// (existing header matches), leaves the file untouched: no kubeseal call,
-// no rewrite, no git diff.
+// destinationFilePath — but only when the cache header on the existing
+// file doesn't already match the hash of (plaintextBytes ‖ controllerCert).
+// On a cache hit, leaves the file untouched: no kubeseal call, no rewrite,
+// no git diff.
+//
+// The cache key folds in the sealed-secrets controller's public cert so
+// it invalidates on cluster re-key. Without that, recreating the
+// management cluster (which provisions a fresh controller key) leaves
+// every sealed-secret file's plaintext-hash matching but the cached
+// ciphertext encrypted with the dead key — the new controller then
+// fails to decrypt with "no key could decrypt secret" and the
+// bootstrap dies later trying to use the empty Secret.
 //
 // On cache miss (header missing, header mismatched, or no file yet),
-// runs kubeseal in memory, prepends the new hash header to the sealed
-// bytes, and writes the result atomically in a single op via renameio —
-// the plaintext never lands on disk and there's no transient half-
-// written file the operator could trip over mid-bootstrap.
+// runs kubeseal in memory using the just-loaded public key, prepends
+// the new hash header to the sealed bytes, and writes atomically via
+// renameio — the plaintext never lands on disk and there's no
+// transient half-written file the operator could trip over mid-bootstrap.
 //
 // The header is a YAML comment so the sealed-secrets-controller's
 // reconciler doesn't see it; it's purely a kubeaid-cli-side cache key
-// that happens to live inside the sealed-secret artifact file. Comment
-// vs annotation tradeoff: comment doesn't propagate to the cluster-side
-// Secret on decrypt, doesn't require post-process YAML manipulation,
-// and is one prepended line vs ~30 LOC of structural edits.
+// that happens to live inside the sealed-secret artifact file.
 func SealIfPlaintextChanged(ctx context.Context,
 	destinationFilePath string,
 	plaintextBytes []byte,
 ) error {
-	newHash := sha256Hex(plaintextBytes)
+	certBytes, publicKey, err := loadSealingCert(ctx)
+	if err != nil {
+		return err
+	}
+	newHash := sha256Hex(plaintextBytes, certBytes)
 
 	if existingHash, err := readKubeaidHashHeader(destinationFilePath); err == nil && existingHash == newHash {
-		slog.InfoContext(ctx, "Sealed secret plaintext unchanged, skipping re-encryption",
+		slog.InfoContext(ctx, "Sealed secret plaintext and controller cert unchanged, skipping re-encryption",
 			slog.String("path", destinationFilePath),
 		)
 		return nil
 	}
 
-	sealedBytes, err := sealPlaintextToBytes(ctx, plaintextBytes)
+	sealedBytes, err := sealPlaintextWithKey(plaintextBytes, publicKey)
 	if err != nil {
 		return err
 	}
@@ -221,29 +230,54 @@ func SealIfPlaintextChanged(ctx context.Context,
 }
 
 // sealPlaintextToBytes runs kubeseal against plaintextBytes and returns
-// the sealed-secret YAML bytes. Centralizes the kubeseal-client setup
-// (load the controller's public key, build a sealing client config,
-// call sealFn) so both GenerateSealedSecret and SealIfPlaintextChanged
-// can produce sealed output without duplicating the wiring or paying
-// the cost of a temp file on disk.
+// the sealed-secret YAML bytes. Convenience wrapper around
+// loadSealingCert + sealPlaintextWithKey for callers (GenerateSealedSecret)
+// that don't already have the cert loaded.
 func sealPlaintextToBytes(ctx context.Context, plaintextBytes []byte) ([]byte, error) {
-	kubesealClientConfig := newKubesealClientConfigFn()
+	_, publicKey, err := loadSealingCert(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sealPlaintextWithKey(plaintextBytes, publicKey)
+}
 
+// loadSealingCert reads the sealed-secrets controller's certificate from
+// the cluster and returns both the raw cert bytes and the parsed RSA
+// public key extracted from it.
+//
+// Returning both lets callers (SealIfPlaintextChanged) feed the cert
+// bytes into the cache-key hash AND seal with the public key in a
+// single API round-trip — the alternative is reading the cert twice
+// (once for hashing, once for sealing), which doubles the bootstrap-time
+// network calls per sealed secret.
+func loadSealingCert(ctx context.Context) ([]byte, *rsa.PublicKey, error) {
+	kubesealClientConfig := newKubesealClientConfigFn()
 	certReader, err := openCertFn(ctx, kubesealClientConfig,
 		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, "",
 	)
 	if err != nil {
-		return nil, fmt.Errorf("reading sealed secrets controller's certificate: %w", err)
+		return nil, nil, fmt.Errorf("reading sealed secrets controller's certificate: %w", err)
 	}
 	defer certReader.Close()
 
-	publicKey, err := parseKeyFn(certReader)
+	certBytes, err := io.ReadAll(certReader)
 	if err != nil {
-		return nil, fmt.Errorf("retrieving sealed secrets controller's public key: %w", err)
+		return nil, nil, fmt.Errorf("reading sealed secrets controller's certificate bytes: %w", err)
 	}
 
+	publicKey, err := parseKeyFn(bytes.NewReader(certBytes))
+	if err != nil {
+		return nil, nil, fmt.Errorf("retrieving sealed secrets controller's public key: %w", err)
+	}
+	return certBytes, publicKey, nil
+}
+
+// sealPlaintextWithKey runs kubeseal against plaintextBytes using the
+// caller-supplied public key. Split out from sealPlaintextToBytes so
+// callers that already have the cert loaded don't fetch it twice.
+func sealPlaintextWithKey(plaintextBytes []byte, publicKey *rsa.PublicKey) ([]byte, error) {
 	var sealedBuf bytes.Buffer
-	if err := sealFn(kubesealClientConfig,
+	if err := sealFn(newKubesealClientConfigFn(),
 		"yaml",
 		bytes.NewReader(plaintextBytes),
 		&sealedBuf,
@@ -255,11 +289,15 @@ func sealPlaintextToBytes(ctx context.Context, plaintextBytes []byte) ([]byte, e
 	return sealedBuf.Bytes(), nil
 }
 
-// sha256Hex returns the lowercase-hex sha256 of b. Wraps the awkward
-// sha256.Sum256 + hex.EncodeToString pair so call sites read linearly.
-func sha256Hex(b []byte) string {
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:])
+// sha256Hex returns the lowercase-hex sha256 of the concatenation of its
+// arguments. Variadic so cache-key construction (plaintext ‖ cert) reads
+// as one call instead of an explicit append dance at each call site.
+func sha256Hex(parts ...[]byte) string {
+	h := sha256.New()
+	for _, p := range parts {
+		h.Write(p)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // readKubeaidHashHeader returns the hex hash from a "# kubeaid-sha256:
