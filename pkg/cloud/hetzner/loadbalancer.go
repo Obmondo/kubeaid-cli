@@ -88,7 +88,10 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("enabling deletion protection on Hetzner LB: %w", err)
 	}
-	if response.StatusCode != http.StatusOK {
+	// HCloud's ChangeProtection endpoint creates an Action and returns
+	// 201 Created, not 200 OK. Accept both so we don't flag the success
+	// case as an error.
+	if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
 		return nil, fmt.Errorf("enabling deletion protection on Hetzner LB: unexpected status %d", response.StatusCode)
 	}
 	slog.InfoContext(ctx, "Enabled deletion protection on Hetzner LB")

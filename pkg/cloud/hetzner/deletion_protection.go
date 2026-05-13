@@ -35,7 +35,9 @@ func (h *Hetzner) DisableDeletionProtection(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("disabling deletion protection on Hetzner LB: %w", err)
 		}
-		if response.StatusCode != http.StatusOK {
+		// HCloud's ChangeProtection endpoint creates an Action and
+		// returns 201 Created, not 200 OK. Accept both.
+		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
 			return fmt.Errorf("disabling deletion protection on Hetzner LB: unexpected status %d", response.StatusCode)
 		}
 		slog.InfoContext(ctx, "Disabled deletion protection on Hetzner LB")
@@ -63,7 +65,9 @@ func (h *Hetzner) DisableDeletionProtection(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("disabling deletion protection on NAT Gateway server: %w", err)
 		}
-		if response.StatusCode != http.StatusOK {
+		// HCloud's ChangeProtection endpoint creates an Action and
+		// returns 201 Created, not 200 OK. Accept both.
+		if response.StatusCode != http.StatusOK && response.StatusCode != http.StatusCreated {
 			return fmt.Errorf("disabling deletion protection on NAT Gateway server: unexpected status %d", response.StatusCode)
 		}
 		slog.InfoContext(ctx, "Disabled deletion protection on NAT Gateway server")
