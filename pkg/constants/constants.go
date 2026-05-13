@@ -158,6 +158,7 @@ const (
 	// Apps.
 	ArgoCDAppArgoCD             = "argocd"
 	ArgoCDAppRoot               = "root"
+	ArgoCDAppSealedSecrets      = "sealed-secrets"
 	ArgoCDAppCapiCluster        = "capi-cluster"
 	ArgoCDAppHetznerRobot       = "hetzner-robot"
 	ArgoCDAppClusterAutoscaler  = "cluster-autoscaler"
