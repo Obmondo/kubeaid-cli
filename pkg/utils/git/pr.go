@@ -13,7 +13,6 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/term"
 	goGit "github.com/go-git/go-git/v5"
 	goGitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -258,15 +257,18 @@ func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plum
 // DNS-wait table — keeps the operator-facing surfaces visually
 // consistent.
 //
-// Width handling: the box always takes the full terminal width, so
-// the URL stays inside it even when the PR URL is long enough that a
-// minimally-sized box would have it spill out (the failure mode the
-// previous code went out of its way to allow — it ended up looking
-// like the URL had escaped the box entirely). With an explicit
-// Width(termWidth-2), lipgloss soft-wraps long URLs across lines
-// inside the box; terminals that support OSC 8 hyperlinks keep
-// click-through working across the wrap, and ones that don't still
-// have the URL visible as plain text the operator can select/copy.
+// No explicit Width: the box sizes to its longest content line, which
+// keeps the PR URL on a single physical line. The terminal's own
+// visual-wrap then takes over when the URL exceeds the viewport width
+// — no \n is inserted mid-URL, so terminal-side URL detection sees one
+// contiguous link and a mouse-click captures the whole thing. The
+// previous Width(termWidth-2) version had lipgloss soft-wrap the URL,
+// which inserted a real newline and broke the URL into two unclickable
+// halves.
+//
+// If the operator splits the terminal narrower than the URL, the box
+// border itself extends past the viewport — visually ugly but the URL
+// stays clickable as a single target, which is what actually matters.
 //
 // The caller prints '> ' below the rendered box; that's where the
 // operator's ENTER lands. On success the whole block (box + prompt
@@ -286,24 +288,8 @@ func renderPRMergeBox(prURL string) string {
 		"",
 		hintStyle.Render("Press ENTER once merged  •  Ctrl+C to abort"),
 	)
-	// Box border + side padding = 4 cells of overhead; subtract from
-	// the terminal width so lipgloss's internal wrap targets the
-	// content area, not the outer dimensions.
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		Padding(0, 1).
-		Width(terminalWidth() - 4)
+		Padding(0, 1)
 	return boxStyle.Render(content)
-}
-
-// terminalWidth returns the current terminal width via x/term, or 80
-// as a sensible default when stderr isn't a TTY (e.g. CI logs, piped
-// output). Used to decide whether the PR-merge box's URL fits inline
-// or needs to spill outside the border.
-func terminalWidth() int {
-	width, _, err := term.GetSize(int(os.Stderr.Fd()))
-	if err != nil || width <= 0 {
-		return 80
-	}
-	return width
 }
