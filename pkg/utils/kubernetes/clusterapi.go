@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/duration"
 	cloudProviderAPI "k8s.io/cloud-provider/api"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -108,12 +110,66 @@ type capiStatusRow struct {
 // nil, the caller emits its own "✓ Main cluster Machines provisioned"
 // substep.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
+	return waitForCAPIStableState(ctx,
+		"Waiting for main cluster Machines to come up — Cluster API and the cloud provider are creating servers, installing the OS image, and joining nodes to the control plane.",
+		"main cluster did not reach Provisioned+Ready",
+		func(c context.Context) ([]capiStatusRow, bool, error) {
+			return summarizeCAPIStatus(c, managementClusterClient)
+		},
+	)
+}
+
+// WaitForAllMachinesRunning blocks until every Machine in the
+// capi-cluster namespace has reached Phase=Running with status.nodeRef
+// populated. This is `clusterctl move`'s headline pre-condition: it
+// refuses to start the move while any Machine is still bringing up its
+// Node. Earlier in the bootstrap, WaitForMainClusterToBeProvisioned has
+// already cleared the *initial* provisioning — but SetupCluster runs
+// long-lived ArgoCD syncs after that, any of which can flip the
+// KubeadmControlPlane spec (chart upgrade between bootstrap attempts,
+// values change, etc.) and trigger a control-plane rolling update.
+// That rollout leaves us back at "one of N Machines is mid-provision"
+// by the time pivotCluster fires, which is exactly when clusterctl
+// move would error out. This wait makes the operation idempotent on
+// rolling-update collisions.
+//
+// Reuses the same live-status table as WaitForMainClusterToBeProvisioned
+// so the operator sees a familiar UX. Same screen-ownership and
+// timeout semantics. Returns nil only when every Machine has a Node
+// registered — empty Machine list counts as not-ready (a freshly
+// scaled-to-zero cluster wouldn't be a sensible thing to clusterctl-move
+// anyway, and treating it as ready would hide a misconfiguration).
+func WaitForAllMachinesRunning(ctx context.Context, managementClusterClient client.Client) error {
+	return waitForCAPIStableState(ctx,
+		"Waiting for every Machine to reach Phase=Running with a Node registered — clusterctl move's pre-condition refuses to pivot while any Machine is still bringing up its Node.",
+		"not all Machines reached Phase=Running with status.nodeRef populated",
+		func(c context.Context) ([]capiStatusRow, bool, error) {
+			return summarizeMachinesForPivot(c, managementClusterClient)
+		},
+	)
+}
+
+// waitForCAPIStableState is the shared poll loop behind
+// WaitForMainClusterToBeProvisioned and WaitForAllMachinesRunning.
+// summarize fetches the rows + a ready predicate; the loop renders the
+// live table, returns nil on first ready=true, errors after
+// capiWaitTotalTimeout. timeoutErrMsgPrefix is the human prefix
+// appended with " within <duration>" on the timeout error.
+//
+// Owns the screen (pauses the progress bar) so the cursor-up / clear-
+// to-end redraw doesn't fight the spinner's 100 ms re-render. Caller
+// must NOT wrap this with bar.InProgress.
+func waitForCAPIStableState(ctx context.Context,
+	headerLine string,
+	timeoutErrMsgPrefix string,
+	summarize func(context.Context) ([]capiStatusRow, bool, error),
+) error {
 	bar := progress.FromCtx(ctx)
 	bar.Pause()
 	defer bar.Resume()
 
 	fmt.Println()
-	fmt.Println("Waiting for main cluster Machines to come up — Cluster API and the cloud provider are creating servers, installing the OS image, and joining nodes to the control plane.")
+	fmt.Println(headerLine)
 	fmt.Println()
 
 	maxAttempts := int(capiWaitTotalTimeout / capiWaitPollInterval)
@@ -143,7 +199,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		rows, ready, err := summarizeCAPIStatus(ctx, managementClusterClient)
+		rows, ready, err := summarize(ctx)
 		if err != nil {
 			// Transient management-cluster API blip. Log to the slog
 			// audit trail (not stdout — the live block is there) and
@@ -159,7 +215,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 		}
 
 		if time.Now().After(deadline) || attempt == maxAttempts {
-			return fmt.Errorf("main cluster did not reach Provisioned+Ready within %s", capiWaitTotalTimeout)
+			return fmt.Errorf("%s within %s", timeoutErrMsgPrefix, capiWaitTotalTimeout)
 		}
 
 		// Tick once per second between API polls so the elapsed /
@@ -178,7 +234,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 		}
 	}
 	// Unreachable — the loop returns from inside the deadline check.
-	return fmt.Errorf("main cluster did not reach Provisioned+Ready within %s", capiWaitTotalTimeout)
+	return fmt.Errorf("%s within %s", timeoutErrMsgPrefix, capiWaitTotalTimeout)
 }
 
 // summarizeCAPIStatus reads Cluster + MachineList from the management
@@ -244,6 +300,52 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	}
 
 	return rows, ready, firstErr
+}
+
+// summarizeMachinesForPivot lists Machines in the capi-cluster
+// namespace and returns one capiStatusRow per Machine plus a `ready`
+// flag set when every Machine has Phase=Running AND a populated
+// status.nodeRef. That predicate matches clusterctl move's internal
+// `cannot start the move operation while ... is still provisioning the
+// node` check (clusterctl walks every Machine's status.nodeRef before
+// pivoting) so a true here means the pivot should clear pre-conditions.
+//
+// Empty Machine list returns ready=false — clusterctl-moving an empty
+// namespace would either be a misconfiguration or a no-op, neither of
+// which is a useful state to short-circuit on.
+//
+// Row shape mirrors summarizeCAPIStatus so the same renderCAPIStatusTable
+// produces a consistent UX across both wait phases.
+func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
+	machines := &clusterAPIV1Beta1.MachineList{}
+	if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+		return nil, false, err
+	}
+
+	rows := make([]capiStatusRow, 0, len(machines.Items))
+	for _, m := range machines.Items {
+		rows = append(rows, capiStatusRow{
+			Resource: "Machine/" + m.Name,
+			Phase:    m.Status.Phase,
+			Status:   machineStatusDetail(&m),
+			Failed:   isMachineFailed(&m),
+		})
+	}
+
+	if len(machines.Items) == 0 {
+		return rows, false, nil
+	}
+
+	allReady := true
+	for _, m := range machines.Items {
+		if m.Status.Phase != string(clusterAPIV1Beta1.MachinePhaseRunning) ||
+			m.Status.NodeRef == nil {
+			allReady = false
+			break
+		}
+	}
+
+	return rows, allReady, nil
 }
 
 // clusterStatusDetail picks the most useful single-line summary for the
@@ -473,6 +575,124 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 		})
 
 	return t.Render()
+}
+
+// PrintMainClusterNodesTable renders a `kubectl get nodes -o wide`
+// style table to stdout from the given main-cluster client. Called
+// right before clusterctl move so the operator can eyeball Node
+// readiness, roles, and addresses before the pivot starts. The
+// preceding WaitForAllMachinesRunning predicate proves every CAPI
+// Machine has a Node — this view confirms the same from the workload
+// side, in the familiar kubectl get nodes layout.
+//
+// Columns mirror kubectl's -o wide output trimmed to the seven most
+// useful at pivot time: NAME, STATUS, ROLES, AGE, VERSION,
+// INTERNAL-IP, EXTERNAL-IP. OS-IMAGE / KERNEL-VERSION /
+// CONTAINER-RUNTIME are omitted; they're identical across every node
+// by construction (CAPI's KubeadmConfig preKubeadmCommands pin them)
+// and only inflate the row width.
+//
+// Best-effort: a List error is logged and the function returns
+// without printing — operators won't lose the pivot to a transient
+// API blip on a purely informational render.
+func PrintMainClusterNodesTable(ctx context.Context, mainClusterClient client.Client) {
+	nodes := &coreV1.NodeList{}
+	if err := mainClusterClient.List(ctx, nodes); err != nil {
+		slog.WarnContext(ctx,
+			"Failed listing Nodes for pre-pivot table; skipping",
+			slog.Any("error", err),
+		)
+		return
+	}
+
+	headers := []string{"NAME", "STATUS", "ROLES", "AGE", "VERSION", "INTERNAL-IP", "EXTERNAL-IP"}
+	tableRows := make([][]string, 0, len(nodes.Items))
+	now := time.Now()
+	for _, node := range nodes.Items {
+		tableRows = append(tableRows, []string{
+			node.Name,
+			nodeReadyStatus(&node),
+			nodeRoles(&node),
+			duration.HumanDuration(now.Sub(node.CreationTimestamp.Time)),
+			node.Status.NodeInfo.KubeletVersion,
+			nodeAddress(&node, coreV1.NodeInternalIP),
+			nodeAddress(&node, coreV1.NodeExternalIP),
+		})
+	}
+
+	headerStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
+	cellStyle := lipgloss.NewStyle().Padding(0, 1)
+	notReadyStyle := cellStyle.Foreground(lipgloss.Color("203")) // red
+	t := table.New().
+		Border(lipgloss.RoundedBorder()).
+		Headers(headers...).
+		Rows(tableRows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return headerStyle
+			}
+			// Paint NotReady / Unknown rows red so operators don't miss
+			// a degraded node in a long list.
+			if row >= 0 && row < len(tableRows) && tableRows[row][1] != "Ready" {
+				return notReadyStyle
+			}
+			return cellStyle
+		})
+
+	fmt.Println()
+	fmt.Println("Main cluster Nodes — kubeaid-cli is about to pivot CAPI to this cluster. Eyeball the state below before the move begins.")
+	fmt.Println()
+	fmt.Println(t.Render())
+	fmt.Println()
+}
+
+// nodeReadyStatus reads the Node's Ready condition and returns the
+// "STATUS" column kubectl shows: Ready / NotReady / Unknown.
+func nodeReadyStatus(n *coreV1.Node) string {
+	for _, c := range n.Status.Conditions {
+		if c.Type != coreV1.NodeReady {
+			continue
+		}
+		switch c.Status {
+		case coreV1.ConditionTrue:
+			return "Ready"
+		case coreV1.ConditionFalse:
+			return "NotReady"
+		}
+		return "Unknown"
+	}
+	return "Unknown"
+}
+
+// nodeRoles returns the comma-joined sorted list of role suffixes
+// (everything after "node-role.kubernetes.io/") so a control-plane
+// node renders as "control-plane" and a vanilla worker renders as
+// "<none>" — same shape kubectl produces.
+func nodeRoles(n *coreV1.Node) string {
+	const prefix = "node-role.kubernetes.io/"
+	var roles []string
+	for label := range n.Labels {
+		if strings.HasPrefix(label, prefix) {
+			roles = append(roles, strings.TrimPrefix(label, prefix))
+		}
+	}
+	if len(roles) == 0 {
+		return "<none>"
+	}
+	sort.Strings(roles)
+	return strings.Join(roles, ",")
+}
+
+// nodeAddress returns the first address of the given type, or
+// "<none>" when the node has none (typical for INTERNAL-IP on
+// public-IP-only nodes, or EXTERNAL-IP on private-network nodes).
+func nodeAddress(n *coreV1.Node, t coreV1.NodeAddressType) string {
+	for _, a := range n.Status.Addresses {
+		if a.Type == t {
+			return a.Address
+		}
+	}
+	return "<none>"
 }
 
 // WaitForMainClusterToBeReady waits for the main cluster to be ready to run
