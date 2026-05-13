@@ -497,9 +497,6 @@ type (
 		// Details about the VPN cluster you have in HCloud.
 		HCloudVPNCluster *HCloudVPNClusterConfig `yaml:"hcloudVPNCluster"`
 
-		// Enables CAPH image variant with multi-subnet support.
-		MultipleSubnets bool `yaml:"multipleSubnets" default:"false"`
-
 		// Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner
 		// Bare Metal server.
 		// KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,
