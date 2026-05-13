@@ -30,26 +30,18 @@ type HelmInstallArgs struct {
 	Namespace string
 
 	Values *values.Options
-
-	// ForceReplace bypasses the skip-if-already-deployed fast path
-	// and forces Helm to re-run the install with Replace=true even
-	// when the release record on the cluster reports StatusDeployed.
-	//
-	// Use case: recovery after the in-cluster resources have been
-	// removed out-of-band (operator manual delete, ArgoCD pruning),
-	// where Helm still thinks the release is healthy but the actual
-	// Deployment/Service/etc. are gone. EnsureSealedSecretsHealthy
-	// flips this true after detecting a missing Deployment.
-	//
-	// First-bootstrap callers leave this false — the skip-if-deployed
-	// shortcut is the correct fast path then.
-	ForceReplace bool
 }
 
 // HelmInstallRunner runs a single Helm install operation.
 // Implementations must honour ReleaseName, Namespace, CreateNamespace, Timeout, and Wait
 type HelmInstallRunner interface {
 	Run(chrt *chart.Chart, vals map[string]any) (*release.Release, error)
+}
+
+// HelmUpgradeRunner runs a single Helm upgrade operation. The release
+// name is passed at Run() time (matches action.Upgrade's API).
+type HelmUpgradeRunner interface {
+	Run(name string, chrt *chart.Chart, vals map[string]any) (*release.Release, error)
 }
 
 // HelmListRunner lists Helm releases.
@@ -60,13 +52,15 @@ type HelmListRunner interface {
 // HelmActionFactory creates per-operation runners.
 // Production wires this to *action.Configuration; tests provide a fake.
 type HelmActionFactory interface {
-	// NewInstall returns a runner configured for the given release name and
-	// namespace. replace=true tells Helm to adopt and re-apply an existing
-	// non-deployed release record (failed / pending-* / superseded) without
-	// uninstalling its in-cluster resources first — used by
-	// helmInstallWithFactory to recover from a stuck previous install while
-	// preserving state like the sealed-secrets master-key Secret.
-	NewInstall(releaseName, namespace string, replace bool) HelmInstallRunner
+	// NewInstall returns a runner configured for the given release name and namespace.
+	NewInstall(releaseName, namespace string) HelmInstallRunner
+	// NewUpgrade returns a runner that upgrades the given release. Used by
+	// the recovery path (ReinstallSealedSecrets) — `helm upgrade` works for
+	// any release state, re-applies the chart's manifests, and re-creates
+	// any in-cluster resources that have drifted (e.g. a Deployment
+	// removed out-of-band). Install with Replace=true only handles
+	// uninstalled/failed states; upgrade handles every state.
+	NewUpgrade(namespace string) HelmUpgradeRunner
 	// NewList returns a runner that lists releases matching the given filter.
 	NewList(filter string) HelmListRunner
 	// LoadChart loads a Helm chart from the given filesystem path.
@@ -78,14 +72,24 @@ type realHelmFactory struct {
 	cfg *action.Configuration
 }
 
-func (f *realHelmFactory) NewInstall(releaseName, namespace string, replace bool) HelmInstallRunner {
+func (f *realHelmFactory) NewInstall(releaseName, namespace string) HelmInstallRunner {
 	act := action.NewInstall(f.cfg)
 	act.ReleaseName = releaseName
 	act.Namespace = namespace
 	act.CreateNamespace = true
 	act.Timeout = 10 * time.Minute
 	act.Wait = true
-	act.Replace = replace
+	return act
+}
+
+func (f *realHelmFactory) NewUpgrade(namespace string) HelmUpgradeRunner {
+	act := action.NewUpgrade(f.cfg)
+	act.Namespace = namespace
+	act.Timeout = 10 * time.Minute
+	act.Wait = true
+	// MaxHistory caps how many release revisions Helm keeps. Without
+	// this, every upgrade adds a new revision to etcd indefinitely.
+	act.MaxHistory = 10
 	return act
 }
 
@@ -130,33 +134,23 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	existingHelmRelease := findExistingHelmRelease(ctx, factory, args)
 
 	// CASE : Helm chart is already deployed. So we don't need to do anything.
-	//
-	// Skip this fast-path when args.ForceReplace is set — callers asking
-	// for a force-reinstall (e.g., EnsureSealedSecretsHealthy after detecting
-	// that the in-cluster Deployment was deleted out-of-band) need the
-	// install to actually re-apply the manifests, not short-circuit on
-	// Helm's release record.
-	if !args.ForceReplace && (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusDeployed) {
+	if (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusDeployed) {
 		slog.InfoContext(ctx, "Skipped installing Helm chart, since it's already deployed")
 		return nil
 	}
 
-	// CASE : Helm chart release exists. Either it's in a non-deployed
-	//        state (pending-install, pending-upgrade, pending-rollback,
-	//        failed, uninstalling, superseded) and we always Replace, or
-	//        it's deployed and the caller asked for ForceReplace (recovery
-	//        path after out-of-band resource deletion). Either way, a
-	//        naive install would fail with "cannot re-use a name that is
-	//        still in use" — Install.Replace=true adopts and re-applies
-	//        the existing release record while preserving in-cluster
-	//        resources we want to keep (e.g. the sealed-secrets master-
-	//        key Secret).
-	replaceExisting := existingHelmRelease != nil
-	if replaceExisting {
-		slog.InfoContext(ctx,
-			"Re-applying Helm release — Install.Replace=true",
-			slog.String("status", string(existingHelmRelease.Info.Status)),
-			slog.Bool("force_replace", args.ForceReplace),
+	// CASE : Helm chart release exists in a non-deployed state
+	//        (pending-install, pending-upgrade, pending-rollback, failed,
+	//        uninstalling, superseded). A naive install would fail with
+	//        "cannot re-use a name that is still in use". For these
+	//        states the right tool is `helm upgrade` (see
+	//        helmUpgradeWithFactory) — install just isn't the right
+	//        operation here. Surface a clear error so the caller can
+	//        decide whether to upgrade-recover or bail.
+	if existingHelmRelease != nil {
+		return fmt.Errorf(
+			"helm release %q already exists in state %q; this entry point is install-only, callers needing recovery should use helmUpgradeWithFactory",
+			args.ReleaseName, existingHelmRelease.Info.Status,
 		)
 	}
 
@@ -182,11 +176,65 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	// Install the Helm chart.
 	slog.InfoContext(ctx, "Installing Helm chart....")
 
-	installer := factory.NewInstall(args.ReleaseName, args.Namespace, replaceExisting)
+	installer := factory.NewInstall(args.ReleaseName, args.Namespace)
 	if _, err = installer.Run(chrt, valuesMap); err != nil {
 		return fmt.Errorf("failed installing helm chart: %w", err)
 	}
 
+	return nil
+}
+
+// helmUpgradeWithFactory runs `helm upgrade` against an existing
+// release. Used for recovery when in-cluster resources have drifted
+// (e.g., operator manually deleted the Deployment): upgrade reads the
+// previous release manifest, re-renders the chart with current values,
+// computes the diff against the live cluster state, and applies it —
+// re-creating any missing Deployment/Service/RBAC along the way.
+//
+// Unlike `helm install`, `helm upgrade` works regardless of the
+// release's current status (deployed, failed, superseded — all fine).
+// Pending-* states will refuse because they hold a release lock; the
+// caller is responsible for surfacing that as a recoverable error if
+// it cares.
+//
+// Requires that the release already exists (caller's invariant);
+// returns an error otherwise instead of falling back to install.
+func helmUpgradeWithFactory(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) error {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("release-name", args.ReleaseName),
+	})
+
+	existingHelmRelease := findExistingHelmRelease(ctx, factory, args)
+	if existingHelmRelease == nil {
+		return fmt.Errorf(
+			"helm release %q not found; helmUpgradeWithFactory requires a pre-existing release (use helmInstallWithFactory for first-time install)",
+			args.ReleaseName,
+		)
+	}
+
+	valuesMap := make(map[string]any)
+	if args.Values != nil {
+		p := getter.All(cli.New())
+		var err error
+		valuesMap, err = args.Values.MergeValues(p)
+		if err != nil {
+			return fmt.Errorf("failed merging helm chart values: %w", err)
+		}
+	}
+
+	chrt, err := factory.LoadChart(args.ChartPath)
+	if err != nil {
+		return fmt.Errorf("failed loading helm chart %q: %w", args.ChartPath, err)
+	}
+
+	slog.InfoContext(ctx,
+		"Upgrading Helm release",
+		slog.String("status", string(existingHelmRelease.Info.Status)),
+	)
+	upgrader := factory.NewUpgrade(args.Namespace)
+	if _, err := upgrader.Run(args.ReleaseName, chrt, valuesMap); err != nil {
+		return fmt.Errorf("failed upgrading helm chart: %w", err)
+	}
 	return nil
 }
 

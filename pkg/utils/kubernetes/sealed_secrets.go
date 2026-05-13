@@ -64,21 +64,6 @@ var (
 // Kubernetes cluster. Honours the standard skip-if-deployed fast path —
 // re-runs against a healthy install are cheap no-ops.
 func InstallSealedSecrets(ctx context.Context) error {
-	return installSealedSecretsInternal(ctx, false /* forceReplace */)
-}
-
-// ReinstallSealedSecrets is the recovery entry point used by
-// EnsureSealedSecretsHealthy when the actual in-cluster state shows
-// the controller's Deployment is missing or stuck. It calls Helm with
-// Install.Replace=true regardless of the cluster-side release status,
-// bypassing the skip-if-deployed shortcut. This handles the
-// "Helm thinks deployed but operator manually removed the Deployment"
-// case Helm can't otherwise detect.
-func ReinstallSealedSecrets(ctx context.Context) error {
-	return installSealedSecretsInternal(ctx, true /* forceReplace */)
-}
-
-func installSealedSecretsInternal(ctx context.Context, forceReplace bool) error {
 	settings := cli.New()
 	actionConfig := &action.Configuration{}
 	err := actionConfig.Init(
@@ -91,21 +76,50 @@ func installSealedSecretsInternal(ctx context.Context, forceReplace bool) error 
 		return fmt.Errorf("failed initializing helm action config: %w", err)
 	}
 
-	if err := installSealedSecretsWithFactory(ctx,
-		&realHelmFactory{cfg: actionConfig}, forceReplace,
-	); err != nil {
+	if err := installSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
 		return fmt.Errorf("failed installing sealed secrets helm chart: %w", err)
 	}
 	return nil
 }
 
-// installSealedSecretsWithFactory is the testable core of InstallSealedSecrets.
-func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory, forceReplace bool) error {
-	return helmInstallWithFactory(ctx, factory, &HelmInstallArgs{
-		ChartPath:    path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
-		Namespace:    constants.NamespaceSealedSecrets,
-		ReleaseName:  constants.ReleaseNameSealedSecrets,
-		ForceReplace: forceReplace,
+// ReinstallSealedSecrets is the recovery entry point used by
+// EnsureSealedSecretsHealthy when the actual in-cluster state shows
+// the controller's Deployment is missing or stuck. Uses `helm upgrade`
+// — it works for releases in any non-pending state, reads the previous
+// release manifest, re-renders the chart, and applies the diff against
+// the live cluster — re-creating any drifted resources (e.g. an
+// operator-manually-deleted Deployment).
+//
+// `helm install --replace` only handles uninstalled/failed states (per
+// pkg/action/install.go::availableName), so it can't recover a
+// release stuck in "deployed" with missing resources. Upgrade has no
+// such restriction.
+func ReinstallSealedSecrets(ctx context.Context) error {
+	settings := cli.New()
+	actionConfig := &action.Configuration{}
+	err := actionConfig.Init(
+		settings.RESTClientGetter(),
+		settings.Namespace(),
+		os.Getenv("HELM_DRIVER"),
+		func(_ string, _ ...any) {},
+	)
+	if err != nil {
+		return fmt.Errorf("failed initializing helm action config: %w", err)
+	}
+
+	if err := upgradeSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
+		return fmt.Errorf("failed upgrading sealed secrets helm chart: %w", err)
+	}
+	return nil
+}
+
+// sealedSecretsHelmArgs centralises the chart path + namespace +
+// values so install and upgrade entry points stay in sync.
+func sealedSecretsHelmArgs() *HelmInstallArgs {
+	return &HelmInstallArgs{
+		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
+		Namespace:   constants.NamespaceSealedSecrets,
+		ReleaseName: constants.ReleaseNameSealedSecrets,
 		Values: &values.Options{
 			Values: []string{
 				fmt.Sprintf("sealed-secrets.namespace=%s", constants.NamespaceSealedSecrets),
@@ -115,7 +129,17 @@ func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFact
 				"backup=null",
 			},
 		},
-	})
+	}
+}
+
+// installSealedSecretsWithFactory is the testable core of InstallSealedSecrets.
+func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
+	return helmInstallWithFactory(ctx, factory, sealedSecretsHelmArgs())
+}
+
+// upgradeSealedSecretsWithFactory is the testable core of ReinstallSealedSecrets.
+func upgradeSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
+	return helmUpgradeWithFactory(ctx, factory, sealedSecretsHelmArgs())
 }
 
 // GenerateSealedSecret takes the path to a Kubernetes Secret file. It replaces the contents of

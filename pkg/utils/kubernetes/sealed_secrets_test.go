@@ -94,7 +94,7 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 				chartErr:    tc.chartErr,
 			}
 
-			err := installSealedSecretsWithFactory(context.Background(), factory, false /* forceReplace */)
+			err := installSealedSecretsWithFactory(context.Background(), factory)
 
 			if tc.wantErr {
 				require.Error(t, err)
