@@ -61,8 +61,24 @@ var (
 )
 
 // InstallSealedSecrets performs a minimal installation of Sealed Secrets in the underlying
-// Kubernetes cluster.
+// Kubernetes cluster. Honours the standard skip-if-deployed fast path —
+// re-runs against a healthy install are cheap no-ops.
 func InstallSealedSecrets(ctx context.Context) error {
+	return installSealedSecretsInternal(ctx, false /* forceReplace */)
+}
+
+// ReinstallSealedSecrets is the recovery entry point used by
+// EnsureSealedSecretsHealthy when the actual in-cluster state shows
+// the controller's Deployment is missing or stuck. It calls Helm with
+// Install.Replace=true regardless of the cluster-side release status,
+// bypassing the skip-if-deployed shortcut. This handles the
+// "Helm thinks deployed but operator manually removed the Deployment"
+// case Helm can't otherwise detect.
+func ReinstallSealedSecrets(ctx context.Context) error {
+	return installSealedSecretsInternal(ctx, true /* forceReplace */)
+}
+
+func installSealedSecretsInternal(ctx context.Context, forceReplace bool) error {
 	settings := cli.New()
 	actionConfig := &action.Configuration{}
 	err := actionConfig.Init(
@@ -75,18 +91,21 @@ func InstallSealedSecrets(ctx context.Context) error {
 		return fmt.Errorf("failed initializing helm action config: %w", err)
 	}
 
-	if err := installSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
+	if err := installSealedSecretsWithFactory(ctx,
+		&realHelmFactory{cfg: actionConfig}, forceReplace,
+	); err != nil {
 		return fmt.Errorf("failed installing sealed secrets helm chart: %w", err)
 	}
 	return nil
 }
 
 // installSealedSecretsWithFactory is the testable core of InstallSealedSecrets.
-func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
+func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory, forceReplace bool) error {
 	return helmInstallWithFactory(ctx, factory, &HelmInstallArgs{
-		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
-		Namespace:   constants.NamespaceSealedSecrets,
-		ReleaseName: constants.ReleaseNameSealedSecrets,
+		ChartPath:    path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
+		Namespace:    constants.NamespaceSealedSecrets,
+		ReleaseName:  constants.ReleaseNameSealedSecrets,
+		ForceReplace: forceReplace,
 		Values: &values.Options{
 			Values: []string{
 				fmt.Sprintf("sealed-secrets.namespace=%s", constants.NamespaceSealedSecrets),

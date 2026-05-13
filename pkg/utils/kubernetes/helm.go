@@ -30,6 +30,20 @@ type HelmInstallArgs struct {
 	Namespace string
 
 	Values *values.Options
+
+	// ForceReplace bypasses the skip-if-already-deployed fast path
+	// and forces Helm to re-run the install with Replace=true even
+	// when the release record on the cluster reports StatusDeployed.
+	//
+	// Use case: recovery after the in-cluster resources have been
+	// removed out-of-band (operator manual delete, ArgoCD pruning),
+	// where Helm still thinks the release is healthy but the actual
+	// Deployment/Service/etc. are gone. EnsureSealedSecretsHealthy
+	// flips this true after detecting a missing Deployment.
+	//
+	// First-bootstrap callers leave this false — the skip-if-deployed
+	// shortcut is the correct fast path then.
+	ForceReplace bool
 }
 
 // HelmInstallRunner runs a single Helm install operation.
@@ -116,24 +130,33 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	existingHelmRelease := findExistingHelmRelease(ctx, factory, args)
 
 	// CASE : Helm chart is already deployed. So we don't need to do anything.
-	if (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusDeployed) {
+	//
+	// Skip this fast-path when args.ForceReplace is set — callers asking
+	// for a force-reinstall (e.g., EnsureSealedSecretsHealthy after detecting
+	// that the in-cluster Deployment was deleted out-of-band) need the
+	// install to actually re-apply the manifests, not short-circuit on
+	// Helm's release record.
+	if !args.ForceReplace && (existingHelmRelease != nil) && (existingHelmRelease.Info.Status == release.StatusDeployed) {
 		slog.InfoContext(ctx, "Skipped installing Helm chart, since it's already deployed")
 		return nil
 	}
 
-	// CASE : Helm chart release exists in any non-deployed state (pending-install,
-	//        pending-upgrade, pending-rollback, failed, uninstalling, superseded).
-	//        A naive install would fail with "cannot re-use a name that is still
-	//        in use". Use action.Install.Replace=true to adopt and re-apply the
-	//        existing release record instead of uninstalling — that preserves
-	//        in-cluster resources we want to keep (e.g. the sealed-secrets
-	//        master-key Secret; deleting it would invalidate every SealedSecret
-	//        in kubeaid-config). StatusDeployed was short-circuited above.
+	// CASE : Helm chart release exists. Either it's in a non-deployed
+	//        state (pending-install, pending-upgrade, pending-rollback,
+	//        failed, uninstalling, superseded) and we always Replace, or
+	//        it's deployed and the caller asked for ForceReplace (recovery
+	//        path after out-of-band resource deletion). Either way, a
+	//        naive install would fail with "cannot re-use a name that is
+	//        still in use" — Install.Replace=true adopts and re-applies
+	//        the existing release record while preserving in-cluster
+	//        resources we want to keep (e.g. the sealed-secrets master-
+	//        key Secret).
 	replaceExisting := existingHelmRelease != nil
 	if replaceExisting {
 		slog.InfoContext(ctx,
-			"Recovering Helm release stuck in non-deployed state — re-using existing in-cluster resources",
+			"Re-applying Helm release — Install.Replace=true",
 			slog.String("status", string(existingHelmRelease.Info.Status)),
+			slog.Bool("force_replace", args.ForceReplace),
 		)
 	}
 

@@ -155,52 +155,181 @@ func TestCopySealedSecretsKeysFromManagement_OnlyActiveLabelMatches(t *testing.T
 	assert.Error(t, err, "unrelated Secret without the sealed-secrets-key=active label must not be copied")
 }
 
-func TestWaitForSealedSecretsControllerReady_AlreadyReady(t *testing.T) {
-	t.Parallel()
-
+// healthyDeployment returns a Deployment manifest matching the
+// fully-rolled-out condition deploymentFullyAvailable accepts.
+// Centralised so test bodies stay focused on the property each
+// case is exercising.
+func healthyDeployment() *appsV1.Deployment {
 	replicas := int32(1)
-	dep := &appsV1.Deployment{
+	return &appsV1.Deployment{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      sealedSecretsControllerDeploymentName,
 			Namespace: constants.NamespaceSealedSecrets,
+			Generation: 1,
 		},
 		Spec: appsV1.DeploymentSpec{Replicas: &replicas},
 		Status: appsV1.DeploymentStatus{
-			Replicas:          1,
-			AvailableReplicas: 1,
+			ObservedGeneration:  1,
+			Replicas:            1,
+			AvailableReplicas:   1,
+			ReadyReplicas:       1,
+			UnavailableReplicas: 0,
 		},
 	}
-	c := newFakeClient(t, dep)
-
-	require.NoError(t, WaitForSealedSecretsControllerReady(context.Background(), c, 5*time.Second))
 }
 
-func TestWaitForSealedSecretsControllerReady_TimesOutWhenNotReady(t *testing.T) {
+func TestWaitForControllerHealthy_AlreadyHealthy(t *testing.T) {
 	t.Parallel()
+	c := newFakeClient(t, healthyDeployment())
+	require.NoError(t, waitForControllerHealthy(context.Background(), c, 5*time.Second))
+}
 
-	replicas := int32(1)
-	dep := &appsV1.Deployment{
-		ObjectMeta: metaV1.ObjectMeta{
-			Name:      sealedSecretsControllerDeploymentName,
-			Namespace: constants.NamespaceSealedSecrets,
-		},
-		Spec: appsV1.DeploymentSpec{Replicas: &replicas},
-		Status: appsV1.DeploymentStatus{
-			Replicas:          1,
-			AvailableReplicas: 0, // pod not yet healthy
-		},
-	}
+func TestWaitForControllerHealthy_TimesOutOnUnavailableReplicas(t *testing.T) {
+	t.Parallel()
+	dep := healthyDeployment()
+	dep.Status.AvailableReplicas = 0
 	c := newFakeClient(t, dep)
 
-	err := WaitForSealedSecretsControllerReady(context.Background(), c, 1*time.Second)
+	err := waitForControllerHealthy(context.Background(), c, 1*time.Second)
 	require.Error(t, err, "should time out when AvailableReplicas < desired")
 }
 
-func TestWaitForSealedSecretsControllerReady_TimesOutWhenDeploymentMissing(t *testing.T) {
+func TestWaitForControllerHealthy_TimesOutWhenDeploymentMissing(t *testing.T) {
 	t.Parallel()
-
 	c := newFakeClient(t) // no deployment at all
 
-	err := WaitForSealedSecretsControllerReady(context.Background(), c, 1*time.Second)
+	err := waitForControllerHealthy(context.Background(), c, 1*time.Second)
 	require.Error(t, err, "should time out when the Deployment hasn't been created yet")
+}
+
+func TestWaitForControllerHealthy_TimesOutOnGenerationDrift(t *testing.T) {
+	t.Parallel()
+	dep := healthyDeployment()
+	dep.Generation = 3
+	dep.Status.ObservedGeneration = 1 // controller hasn't observed latest spec
+	c := newFakeClient(t, dep)
+
+	err := waitForControllerHealthy(context.Background(), c, 1*time.Second)
+	require.Error(t, err, "should time out when ObservedGeneration is behind Generation")
+}
+
+// withReinstallStub temporarily replaces reinstallSealedSecretsFn so
+// EnsureSealedSecretsHealthy can be exercised without running an
+// actual Helm install.
+func withReinstallStub(t *testing.T, stub func(ctx context.Context) error) {
+	t.Helper()
+	orig := reinstallSealedSecretsFn
+	reinstallSealedSecretsFn = stub
+	t.Cleanup(func() { reinstallSealedSecretsFn = orig })
+}
+
+// EnsureSealedSecretsHealthy tests mutate reinstallSealedSecretsFn
+// (a package-level var) and healthPollTimeoutForTest — they can't run
+// in parallel against each other.
+
+func TestEnsureSealedSecretsHealthy_HappyPath(t *testing.T) {
+
+	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+	dep := healthyDeployment()
+
+	mgmt := newFakeClient(t, mgmtKey)
+	main := newFakeClient(t, mainKey, dep)
+
+	withReinstallStub(t, func(_ context.Context) error {
+		t.Fatal("reinstall should not be called on the happy path")
+		return nil
+	})
+
+	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+}
+
+func TestEnsureSealedSecretsHealthy_KeyMismatch_TriggersRecopy(t *testing.T) {
+
+	mgmtKey1 := makeSealedSecretsKey("sealed-secrets-keyaaa", map[string][]byte{"tls.key": []byte("a")})
+	mgmtKey2 := makeSealedSecretsKey("sealed-secrets-keybbb", map[string][]byte{"tls.key": []byte("b")})
+	// main has only one of the two keys initially.
+	mainKey1 := makeSealedSecretsKey("sealed-secrets-keyaaa", map[string][]byte{"tls.key": []byte("a")})
+	dep := healthyDeployment()
+
+	mgmt := newFakeClient(t, mgmtKey1, mgmtKey2)
+	main := newFakeClient(t, mainKey1, dep)
+
+	withReinstallStub(t, func(_ context.Context) error {
+		t.Fatal("reinstall should not be called when only keys are mismatched")
+		return nil
+	})
+
+	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+
+	// After recovery, main must have both keys.
+	var allMain coreV1.SecretList
+	require.NoError(t, main.List(context.Background(), &allMain,
+		client.InNamespace(constants.NamespaceSealedSecrets),
+		client.MatchingLabels{sealedSecretsActiveKeyLabel: sealedSecretsActiveKeyValue},
+	))
+	assert.Len(t, allMain.Items, 2, "missing key should have been copied during recovery")
+}
+
+func TestEnsureSealedSecretsHealthy_UnhealthyDeployment_TriggersReinstall(t *testing.T) {
+
+	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+
+	// Initially unhealthy Deployment.
+	unhealthy := healthyDeployment()
+	unhealthy.Status.AvailableReplicas = 0
+
+	mgmt := newFakeClient(t, mgmtKey)
+	main := newFakeClient(t, mainKey, unhealthy)
+
+	reinstallCalled := 0
+	withReinstallStub(t, func(_ context.Context) error {
+		reinstallCalled++
+		// Simulate a successful reinstall by patching the Deployment to healthy.
+		var dep appsV1.Deployment
+		_ = main.Get(context.Background(), types.NamespacedName{
+			Namespace: constants.NamespaceSealedSecrets,
+			Name:      sealedSecretsControllerDeploymentName,
+		}, &dep)
+		dep.Status.AvailableReplicas = 1
+		dep.Status.ReadyReplicas = 1
+		dep.Status.UnavailableReplicas = 0
+		dep.Status.ObservedGeneration = dep.Generation
+		_ = main.Status().Update(context.Background(), &dep)
+		return nil
+	})
+
+	// Use a short health-check budget so the first poll fails quickly.
+	origTimeout := healthPollTimeoutForTest
+	healthPollTimeoutForTest = 500 * time.Millisecond
+	t.Cleanup(func() { healthPollTimeoutForTest = origTimeout })
+
+	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+	assert.Equal(t, 1, reinstallCalled, "reinstall should have been called exactly once")
+}
+
+func TestEnsureSealedSecretsHealthy_ReinstallFailsToFix_ReturnsDiagnostic(t *testing.T) {
+
+	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
+
+	// No Deployment at all → reinstall stub doesn't create one →
+	// EnsureSealedSecretsHealthy should return the rich diagnostic.
+	mgmt := newFakeClient(t, mgmtKey)
+	main := newFakeClient(t, mainKey)
+
+	withReinstallStub(t, func(_ context.Context) error {
+		return nil // reinstall "succeeds" but doesn't actually fix anything
+	})
+
+	origTimeout := healthPollTimeoutForTest
+	healthPollTimeoutForTest = 200 * time.Millisecond
+	t.Cleanup(func() { healthPollTimeoutForTest = origTimeout })
+
+	err := EnsureSealedSecretsHealthy(context.Background(), mgmt, main)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not Ready after reinstall")
+	assert.Contains(t, err.Error(), "NOT FOUND",
+		"rich diagnostic should call out the missing Deployment")
 }

@@ -181,22 +181,40 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	releaseSS()
 	bar.Substep("Installed Sealed Secrets controller")
 
-	// Block until the controller is actually Ready — Helm-install
-	// returning success means manifests applied, not that the pod is
-	// scheduled and serving the decryption API. Without this gate,
-	// SealedSecret applies that follow can land before decryption is
-	// online, and the failure surfaces downstream as a cryptic ArgoCD
-	// repo-server error ("SSH agent requested but SSH_AUTH_SOCK not
-	// specified") several spinner-steps in.
-	releaseWait := bar.InProgress("Waiting for Sealed Secrets controller Ready")
-	if err := kubernetes.WaitForSealedSecretsControllerReady(ctx,
-		args.ClusterClient, 5*time.Minute,
-	); err != nil {
-		releaseWait()
-		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not Ready")
+	// Verify the controller is actually serving — talk to the API
+	// server, not Helm's release record. Two independent checks with
+	// independent recovery actions:
+	//   (1) every active sealed-secrets key Secret on mgmt is present
+	//       on main; if not, re-run the copy.
+	//   (2) the controller Deployment is fully Available; if not,
+	//       run Install.Replace=true to force a fresh apply (covers
+	//       the "Helm thinks deployed but Deployment was manually
+	//       removed" case Helm can't otherwise detect).
+	// One reinstall retry budget; rich diagnostic on final failure.
+	//
+	// Mgmt-cluster setup phase doesn't have a separate mgmt client to
+	// compare against, so we use the same client on both sides — the
+	// parity check trivially passes (same set, same count). The
+	// Deployment-health check still earns its keep.
+	mgmtClientForHealthCheck := args.ClusterClient
+	if args.ClusterType == constants.ClusterTypeMain {
+		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+		mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
+		assert.AssertErrNil(ctx, mgmtErr, "Failed constructing management cluster client for health check")
+		mgmtClientForHealthCheck = mgmtClient
 	}
-	releaseWait()
-	bar.Substep("Sealed Secrets controller Ready")
+
+	releaseHealth := bar.InProgress("Verifying Sealed Secrets controller health")
+	if err := kubernetes.EnsureSealedSecretsHealthy(ctx,
+		mgmtClientForHealthCheck, args.ClusterClient,
+	); err != nil {
+		releaseHealth()
+		assert.AssertErrNil(ctx, err, "Sealed Secrets controller not healthy")
+	}
+	releaseHealth()
+	bar.Substep("Sealed Secrets controller healthy")
 
 	SetupKubeAidConfig(ctx, SetupKubeAidConfigArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
