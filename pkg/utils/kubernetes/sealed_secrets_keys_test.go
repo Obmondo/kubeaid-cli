@@ -194,12 +194,23 @@ func TestWaitForControllerHealthy_TimesOutOnUnavailableReplicas(t *testing.T) {
 	require.Error(t, err, "should time out when AvailableReplicas < desired")
 }
 
-func TestWaitForControllerHealthy_TimesOutWhenDeploymentMissing(t *testing.T) {
+func TestWaitForControllerHealthy_ReturnsImmediatelyWhenDeploymentMissing(t *testing.T) {
 	t.Parallel()
 	c := newFakeClient(t) // no deployment at all
 
-	err := waitForControllerHealthy(context.Background(), c, 1*time.Second)
-	require.Error(t, err, "should time out when the Deployment hasn't been created yet")
+	start := time.Now()
+	// Use a generous timeout to prove the function returns FAST,
+	// not at the timeout — Deployment-not-found is a definitive
+	// failure (only Helm creates the Deployment), not a transient
+	// state to keep polling on.
+	err := waitForControllerHealthy(context.Background(), c, 30*time.Second)
+	elapsed := time.Since(start)
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, errDeploymentMissing,
+		"missing Deployment should surface errDeploymentMissing, not a timeout")
+	assert.Less(t, elapsed, 3*time.Second,
+		"should NOT wait the full 30s — Deployment-missing is a fast-fail signal")
 }
 
 func TestWaitForControllerHealthy_TimesOutOnGenerationDrift(t *testing.T) {

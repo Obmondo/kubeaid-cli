@@ -150,16 +150,26 @@ var reinstallSealedSecretsFn = ReinstallSealedSecrets
 
 // healthPollInterval / healthPollTimeoutForTest cap the time
 // EnsureSealedSecretsHealthy spends waiting for the controller
-// Deployment to converge after each (re)install. ~5 minutes is the
-// budget for "image pull + scheduler decision + container start +
-// readiness probe" on a healthy node, with comfortable slack.
+// Deployment to settle on each side of the recovery attempt.
+//
+// 60 seconds is enough to absorb the brief race between Helm's
+// install/upgrade returning and the Deployment.Status fields
+// catching up — the actual "image pull + container start + readiness
+// probe" wait happens inside Helm's own Wait=true loop (10-minute
+// budget per pkg/utils/kubernetes/helm.go), not here. Polling for
+// minutes on the kubeaid-cli side just duplicates that work.
+//
+// When the Deployment is genuinely missing (the today-failure mode:
+// Helm thinks deployed but operator deleted it), polling at all is
+// pointless — only Helm creates Deployments and we just called Helm.
+// The 60s budget tolerates the status-update race; anything longer
+// is wasted spin.
 //
 // healthPollTimeoutForTest is a var (not a const) so unit tests can
-// shorten the budget to keep test runtime tight; production code
-// always uses the 5-minute default.
+// shorten the budget to keep test runtime tight.
 const healthPollInterval = 2 * time.Second
 
-var healthPollTimeoutForTest = 5 * time.Minute
+var healthPollTimeoutForTest = 60 * time.Second
 
 // EnsureSealedSecretsHealthy is the single source of truth for "is
 // sealed-secrets actually functional on this cluster?" after we've
@@ -282,11 +292,27 @@ func listActiveSealedSecretsKeys(ctx context.Context, c client.Client) ([]coreV1
 	return list.Items, nil
 }
 
+// errDeploymentMissing is the sentinel waitForControllerHealthy
+// returns when the Deployment object doesn't exist at all. Callers
+// use it to short-circuit recovery: there's no point polling for a
+// Deployment Helm hasn't created. Helm's the only thing that creates
+// it, and we already called Helm before the check.
+var errDeploymentMissing = fmt.Errorf("sealed-secrets controller Deployment not found")
+
 // waitForControllerHealthy polls the controller Deployment for the
 // "fully rolled out and serving" condition: AvailableReplicas equals
 // desired, ReadyReplicas equals desired, UnavailableReplicas is zero,
-// and ObservedGeneration matches Spec.Generation. Returns nil when
-// healthy, the wait error on timeout / context cancel.
+// and ObservedGeneration matches Spec.Generation.
+//
+// Behaviour:
+//   - Deployment exists and matches the condition → returns nil
+//   - Deployment exists but status hasn't settled → polls until
+//     timeout or condition matches
+//   - Deployment doesn't exist at all → returns errDeploymentMissing
+//     IMMEDIATELY (no polling). The Deployment is created by Helm;
+//     if it isn't there after we ran Helm, polling won't summon it.
+//     Callers wanting recovery jump straight to ReinstallSealedSecrets.
+//   - Other API error → returned wrapped
 func waitForControllerHealthy(ctx context.Context, c client.Client, timeout time.Duration) error {
 	return wait.PollUntilContextTimeout(ctx, healthPollInterval, timeout, true,
 		func(ctx context.Context) (bool, error) {
@@ -299,7 +325,10 @@ func waitForControllerHealthy(ctx context.Context, c client.Client, timeout time
 				dep,
 			); err != nil {
 				if k8sAPIErrors.IsNotFound(err) {
-					return false, nil // Deployment not yet created — keep polling
+					// No point polling — Helm creates Deployments,
+					// kubeaid-cli is the only thing calling Helm in
+					// this flow, and we already called it.
+					return false, errDeploymentMissing
 				}
 				return false, fmt.Errorf("reading sealed-secrets controller Deployment: %w", err)
 			}
