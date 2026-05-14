@@ -513,15 +513,27 @@ func (m *ArgoCDAppManager) syncArgoCDApp(ctx context.Context, name string, resou
 	slog.InfoContext(ctx, "Syncing ArgoCD application")
 
 	appNamespace := constants.NamespaceArgoCD
+	// Per-request SyncOptions intentionally omitted — Argo CD treats a
+	// non-nil SyncOptions on the request as REPLACING the App's
+	// spec.syncPolicy.syncOptions, not merging. Earlier shape
+	// hard-coded `[CreateNamespace=true, ApplyOutOfSyncOnly=true]` here
+	// and only appended `ServerSideApply=true` for kube-prometheus +
+	// rook-ceph. That silently stripped `ServerSideApply=true` from
+	// every other App's declared syncPolicy when kubeaid-cli triggered
+	// sync — cloudnative-pg's Cluster/Pooler CRDs (256 KiB+ schemas)
+	// hit the `metadata.annotations` limit because Argo fell back to
+	// client-side apply with its huge last-applied-configuration
+	// annotation. Manual sync from the Argo UI worked because the UI
+	// doesn't override syncOptions → Argo respected the App spec.
+	//
+	// Now: trust the App's spec.syncPolicy.syncOptions as the single
+	// source of truth. Each Application template declares what it
+	// needs (CreateNamespace, ApplyOutOfSyncOnly, ServerSideApply,
+	// etc.). kubeaid-cli's job is to TRIGGER the sync, not to override
+	// how it's applied.
 	applicationSyncRequest := &application.ApplicationSyncRequest{
 		Name:         &name,
 		AppNamespace: &appNamespace,
-		SyncOptions: &application.SyncOptions{
-			Items: []string{
-				"CreateNamespace=true",
-				"ApplyOutOfSyncOnly=true",
-			},
-		},
 		RetryStrategy: &argoCDV1Aplha1.RetryStrategy{
 			Limit: 3,
 			Backoff: &argoCDV1Aplha1.Backoff{
@@ -531,11 +543,6 @@ func (m *ArgoCDAppManager) syncArgoCDApp(ctx context.Context, name string, resou
 	}
 	if len(resources) > 0 {
 		applicationSyncRequest.Resources = resources
-	}
-	if (name == constants.ArgoCDAppKubePrometheus) || (name == constants.ArgoCDAppRookCeph) {
-		applicationSyncRequest.SyncOptions.Items = append(applicationSyncRequest.SyncOptions.Items,
-			"ServerSideApply=true",
-		)
 	}
 
 	if name == constants.ArgoCDAppRookCeph {
