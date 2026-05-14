@@ -354,7 +354,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		bar.Substep("Synced capi-cluster ArgoCD app")
 	}
 
-	printHelpTextForArgoCDDashboardAccess(args.ClusterType)
+	printHelpTextForArgoCDDashboardAccess(ctx, args.ClusterType)
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the
@@ -480,7 +480,7 @@ func getInfrastructureProviderName() string {
 // styling is auto-detected as a clickable link by iTerm2 / gnome-
 // terminal / Alacritty / kitty so the operator can cmd-click
 // instead of copy-pasting.
-func printHelpTextForArgoCDDashboardAccess(clusterType string) {
+func printHelpTextForArgoCDDashboardAccess(ctx context.Context, clusterType string) {
 	clusterKubeconfigPath := constants.OutputPathManagementClusterHostKubeconfig
 	if clusterType == constants.ClusterTypeMain {
 		clusterKubeconfigPath = constants.OutputPathMainClusterKubeconfig
@@ -522,6 +522,13 @@ func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 		"",
 		" 4.  Open "+urlStyle.Render("https://localhost:8080")+"  (user: admin)",
 	)
+
+	// Pause the progress bar so its 100ms spinner auto-render can't
+	// \r-overwrite the box mid-print — without this the spinner line
+	// tangles with the box's top border. Same fix as renderPRMergeBox.
+	bar := progress.FromCtx(ctx)
+	bar.Pause()
+	defer bar.Resume()
 
 	fmt.Println(lipgloss.NewStyle(). //nolint:forbidigo
 						Border(lipgloss.RoundedBorder()).
