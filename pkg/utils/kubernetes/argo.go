@@ -50,6 +50,18 @@ type ArgoCDAppClient interface {
 
 var noResources []*argoCDV1Aplha1.SyncOperationResource
 
+// syncArgoCDApp's re-issue loop intervals. Package-level vars so tests
+// can shrink them; production keeps the original cadence.
+var (
+	// argoCDSyncInProgressBackoff is how long to wait when Sync reports
+	// an operation is already in progress before re-checking.
+	argoCDSyncInProgressBackoff = 10 * time.Second
+
+	// argoCDSyncRetryInterval is how long to wait, after a Sync that
+	// left the App still OutOfSync, before re-issuing Sync.
+	argoCDSyncRetryInterval = 15 * time.Second
+)
+
 type ArgoCDAppManager struct {
 	client    ArgoCDAppClient
 	reconnect func(ctx context.Context)
@@ -560,35 +572,45 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		_, err := m.client.Sync(ctx, applicationSyncRequest)
 		if err != nil {
 			if strings.Contains(err.Error(), "another operation is already in progress") {
+				// A sync operation triggered by a previous iteration (or by
+				// ArgoCD's own auto-sync) is still running. Wait for it to
+				// finish, then loop back and re-evaluate.
 				slog.WarnContext(ctx,
-					"ArgoCD App sync failed. Retrying after some time",
+					"An ArgoCD App sync operation is already in progress. Waiting before retrying",
 					logger.Error(err),
 				)
-				time.Sleep(10 * time.Second)
+				time.Sleep(argoCDSyncInProgressBackoff)
 				continue
 			}
 
 			return fmt.Errorf("failed syncing ArgoCD application %q: %w", name, err)
 		}
 
-		switch name {
 		// Wait for ArgoCD to materialize the root app's child Applications,
 		// and for argocd-repo-server to start serving on :8081 — otherwise
 		// the subsequent per-child sync hits "connection refused" or "App
 		// not found" on revision resolution.
-		case constants.ArgoCDAppRoot:
+		if name == constants.ArgoCDAppRoot {
 			return waitForRootArgoCDChildren(ctx)
-
-		// Wait for the ArgoCD App to be synced.
-		default:
-			for {
-				if m.isArgoCDAppSynced(ctx, name, resources) {
-					return nil
-				}
-				slog.InfoContext(ctx, "Waiting for ArgoCD App to be synced")
-				time.Sleep(15 * time.Second)
-			}
 		}
+
+		// isArgoCDAppSynced hard-refreshes the App, so this both checks the
+		// result and lets the just-triggered operation make progress.
+		if m.isArgoCDAppSynced(ctx, name, resources) {
+			return nil
+		}
+
+		// Not synced yet — loop back and re-issue Sync. The operation may
+		// still be running (the next Sync then returns "another operation
+		// is already in progress", handled above), or it may have finished
+		// and left the App OutOfSync — e.g. the sync hit a manifest-
+		// generation error that has since been fixed upstream, or a
+		// resource needs another apply pass — in which case a fresh
+		// operation kicks off. The previous shape only re-polled with a
+		// hard refresh and never re-issued Sync, so a single failed
+		// operation wedged the bootstrap here indefinitely.
+		slog.InfoContext(ctx, "ArgoCD App not synced yet; re-triggering sync")
+		time.Sleep(argoCDSyncRetryInterval)
 	}
 }
 
