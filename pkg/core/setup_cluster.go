@@ -248,14 +248,28 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// syncs. Before this flip, cert-manager could race the secrets app
 	// and end up in a brief CrashLoopBackOff waiting for its CA-key
 	// Secret to materialise.
+	//
+	// On the MANAGEMENT cluster the root sync is narrowed with a
+	// SyncOperationResource list so only the mgmt-relevant child Apps
+	// get created — cilium / ccm-* / kube-prometheus / etc. are
+	// workload-only and the mgmt cluster has no business deploying
+	// them. Without the filter they'd show up in mgmt's ArgoCD UI as
+	// Missing+OutOfSync ghosts forever. On the MAIN cluster we pass
+	// no resource filter (nil) so root creates the full App set.
 	argoCDAppsToBeSynced := []string{
 		constants.ArgoCDAppRoot,
 		"secrets",
 		"cert-manager",
 	}
 	for _, argoCDApp := range argoCDAppsToBeSynced {
+		var syncResources []*argoCDV1Alpha1.SyncOperationResource
+		if argoCDApp == constants.ArgoCDAppRoot &&
+			args.ClusterType == constants.ClusterTypeManagement {
+			syncResources = managementClusterRootChildResources()
+		}
+
 		release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", argoCDApp))
-		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, []*argoCDV1Alpha1.SyncOperationResource{})
+		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, syncResources)
 		release()
 		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
 			slog.String("app", argoCDApp))
@@ -513,4 +527,52 @@ func printHelpTextForArgoCDDashboardAccess(clusterType string) {
 						Border(lipgloss.RoundedBorder()).
 						Padding(0, 1).
 						Render(content))
+}
+
+// managementClusterRootChildResources returns the SyncOperationResource
+// filter passed to the root ArgoCD App sync on the MANAGEMENT cluster.
+// Root is an app-of-apps; without a filter it would create every child
+// Application listed under argocd-apps/templates/ in kubeaid-config —
+// including ones intended for the workload cluster (cilium, ccm-*,
+// kube-prometheus, cluster-autoscaler, etc.). Those would sit
+// Missing+OutOfSync on mgmt forever because mgmt has no business
+// deploying them.
+//
+// On the management cluster only this minimal set is needed:
+//   - argocd          — the ArgoCD chart reconciled (manages itself)
+//   - sealed-secrets  — the controller chart reconciled
+//   - secrets         — the SealedSecret manifests that decrypt to the
+//                       actual Secret resources kubeaid-cli pre-applied
+//   - cert-manager    — issuers for ArgoCD's own TLS, kubeaid-cli's
+//                       management-cluster cert needs
+//   - cluster-api-operator — the CAPI control-plane that provisions
+//                       the workload cluster
+//   - capi-cluster    — the Cluster + Machine CRs the operator manages
+//                       pre-pivot (clusterctl move transfers them to
+//                       main afterwards)
+//
+// Each child is a Kind=Application in the argoproj.io group, deployed
+// to the argocd namespace.
+//
+// On the MAIN cluster (post-pivot) we pass nil instead so root creates
+// the full App set — the workload Apps belong there.
+func managementClusterRootChildResources() []*argoCDV1Alpha1.SyncOperationResource {
+	mgmtApps := []string{
+		constants.ArgoCDAppArgoCD,
+		constants.ArgoCDAppSealedSecrets,
+		"secrets",
+		"cert-manager",
+		"cluster-api-operator",
+		constants.ArgoCDAppCapiCluster,
+	}
+	resources := make([]*argoCDV1Alpha1.SyncOperationResource, 0, len(mgmtApps))
+	for _, name := range mgmtApps {
+		resources = append(resources, &argoCDV1Alpha1.SyncOperationResource{
+			Group:     "argoproj.io",
+			Kind:      "Application",
+			Name:      name,
+			Namespace: constants.NamespaceArgoCD,
+		})
+	}
+	return resources
 }
