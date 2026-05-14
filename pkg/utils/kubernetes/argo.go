@@ -339,9 +339,24 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 }
 
 // SyncAllArgoCDApps lists and syncs all the ArgoCD Apps.
-func SyncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) error {
+//
+// preHookApps are App names synced — in order — after the explicitly-
+// ordered infrastructure apps (root, sealed-secrets, CSI driver(s),
+// kube-prometheus) but before beforeRemainingApps runs and before the
+// rest of the Apps. beforeRemainingApps, if non-nil, runs once at that
+// same point. The bootstrap uses these together on Hetzner VPN
+// clusters: preHookApps brings up ccm + traefik (the ingress
+// LoadBalancer), then beforeRemainingApps waits for the operator to
+// point DNS at that LB — so netbird / keycloakx only sync once their
+// Ingress certificates can actually be issued. preHookApps entries
+// not present in the cluster are skipped.
+func SyncAllArgoCDApps(ctx context.Context,
+	skipMonitoringSetup bool,
+	preHookApps []string,
+	beforeRemainingApps func(context.Context) error,
+) error {
 	mgr := newGlobalArgoCDAppManager()
-	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup)
+	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, preHookApps, beforeRemainingApps)
 }
 
 // WaitForArgoCDAppHealthy blocks until the named ArgoCD App
@@ -404,7 +419,11 @@ func (m *ArgoCDAppManager) isArgoCDAppHealthy(ctx context.Context, name string) 
 }
 
 // syncAllArgoCDApps is the testable implementation of SyncAllArgoCDApps.
-func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoringSetup bool) error {
+func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
+	skipMonitoringSetup bool,
+	preHookApps []string,
+	beforeRemainingApps func(context.Context) error,
+) error {
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
 	// Sync the root ArgoCD App first, so any uncreated ArgoCD Apps get created.
@@ -466,13 +485,41 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 		}
 	}
 
-	// Sync each of the remaining ArgoCD Apps.
-
+	// List the ArgoCD Apps. The explicitly-ordered apps synced above
+	// (root, sealed-secrets, CSI, kube-prometheus) are in here too;
+	// they're re-visited in the final loop but skipped cheaply, since
+	// syncArgoCDApp short-circuits an already-Synced App.
 	response, err := m.client.List(ctx, &application.ApplicationQuery{})
 	if err != nil {
 		return fmt.Errorf("failed listing ArgoCD apps: %w", err)
 	}
 
+	// Sync the caller's pre-hook apps next, in the given order. On
+	// Hetzner VPN clusters this is ccm + traefik — together they bring
+	// up the ingress LoadBalancer the application-layer apps depend on.
+	// A name not present in the cluster is skipped; the final loop
+	// would sync it anyway.
+	for _, name := range preHookApps {
+		if !argoCDAppListContains(response.Items, name) {
+			continue
+		}
+		if err := m.syncArgoCDAppWithProgress(ctx, name, noResources); err != nil {
+			return err
+		}
+	}
+
+	// Run the caller's gate before the remaining (application-layer)
+	// apps. The bootstrap waits here — via WaitForIngressLBDNS — for the
+	// Traefik LB to get a public IP and the operator to point DNS at it.
+	// Without this gate netbird's sync wedges forever waiting on a
+	// cert-manager certificate that can't be issued until DNS resolves.
+	if beforeRemainingApps != nil {
+		if err := beforeRemainingApps(ctx); err != nil {
+			return fmt.Errorf("pre-remaining-apps gate failed: %w", err)
+		}
+	}
+
+	// Sync each of the remaining ArgoCD Apps.
 	for _, item := range response.Items {
 		if err := m.syncArgoCDAppWithProgress(ctx, item.Name, noResources); err != nil {
 			return err
@@ -480,6 +527,17 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context, skipMonitoring
 	}
 
 	return nil
+}
+
+// argoCDAppListContains reports whether apps contains an Application
+// named name.
+func argoCDAppListContains(apps []argoCDV1Aplha1.Application, name string) bool {
+	for i := range apps {
+		if apps[i].Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // syncArgoCDAppWithProgress wraps syncArgoCDApp with the

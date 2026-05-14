@@ -135,22 +135,41 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 
 	// Sync all ArgoCD Apps.
+	//
+	// On Hetzner VPN clusters the application-layer apps (netbird,
+	// keycloakx, ...) can't finish syncing until their Ingress
+	// certificates are issued, which needs the operator to point DNS
+	// at the Traefik ingress LB. So we hand SyncAllArgoCDApps a
+	// pre-hook app list (ccm + traefik — together they bring the LB
+	// up) and a gate: after those sync, WaitForIngressLBDNS waits for
+	// the LB's public IP and DNS resolution, and only then are the
+	// remaining apps synced. Without this, netbird's sync wedges
+	// forever on a certificate that can never be issued.
 	bar.Describe("Syncing ArgoCD applications")
-	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup)
-	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
-
-	// VPN clusters on Hetzner: Traefik is up by now and CCM has
-	// allocated a public LB IP for it. Pause and have the operator
-	// point keycloak.dns / netbird.dns / stun.dns / turn.dns at
-	// that IP — cert-manager's ACME challenges retry with backoff,
-	// so the next retry succeeds once DNS resolves correctly.
+	var (
+		preHookApps         []string
+		beforeRemainingApps func(context.Context) error
+	)
 	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
-		bar.Describe("Waiting for ingress-LB DNS")
-		assert.AssertErrNil(ctx,
-			hetzner.WaitForIngressLBDNS(ctx, mainClusterClient),
-			"Failed waiting for ingress-LB DNS",
-		)
+		// ccm-hcloud manages LoadBalancers for HCloud servers,
+		// ccm-hetzner for Hetzner bare-metal; a hybrid cluster runs
+		// both. Select by mode, mirroring the CSI-driver pick in
+		// SyncAllArgoCDApps. traefik (which owns the ingress LB
+		// Service) always comes last so CCM is up to assign its IP.
+		if config.UsingHCloud() {
+			preHookApps = append(preHookApps, constants.ArgoCDAppCCMHCloud)
+		}
+		if config.UsingHetznerBareMetal() {
+			preHookApps = append(preHookApps, constants.ArgoCDAppCCMHetzner)
+		}
+		preHookApps = append(preHookApps, constants.ArgoCDAppTraefik)
+
+		beforeRemainingApps = func(ctx context.Context) error {
+			return hetzner.WaitForIngressLBDNS(ctx, mainClusterClient)
+		}
 	}
+	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, preHookApps, beforeRemainingApps)
+	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
 	// Keycloak via the admin secret and reconciles the realm +
