@@ -1,14 +1,26 @@
 {{- /*
-Minimal traefik values for the managed-Keycloak VPN flow. The chart
-defaults already cover most of what we need (HA replicas, web→websecure
-redirect); kubeaid-cli only needs to point traefik's Service at the
-HCloud control-plane LB so external traffic to keycloak.<dns> /
-netbird.<dns> lands on the same LB the apiserver is exposed through.
+Traefik values overlay for the managed-Keycloak VPN flow.
 
-The cert-manager ClusterIssuer renders an http01 solver against the
-`traefik` ingressClassName — see values-cert-manager.yaml.tmpl. */ -}}
+load-balancer.hetzner.cloud/uses-proxyprotocol MUST be "true": the
+kubeaid traefik chart enables --entrypoints.{web,websecure}.proxyprotocol
+=true so Traefik reads the real client IP from the PROXY header instead
+of seeing every request as coming from the HCloud LB. The HCloud CCM
+defaults uses-proxyprotocol off, so the LB would not send that header —
+a mismatch makes Traefik reject every connection, breaking external
+traffic to keycloak.<dns> / netbird.<dns> and cert-manager's HTTP-01
+ACME challenges.
+*/ -}}
 traefik:
   service:
     annotations:
-      load-balancer.hetzner.cloud/use-private-ip: "false"
-      load-balancer.hetzner.cloud/uses-proxyprotocol: "false"
+      load-balancer.hetzner.cloud/network-zone: eu-central
+      load-balancer.hetzner.cloud/uses-proxyprotocol: "true"
+  providers:
+    kubernetesCRD:
+      enabled: true
+      allowCrossNamespace: true
+    kubernetesIngress:
+      publishedService:
+        enabled: true
+  podDisruptionBudget:
+    enabled: false
