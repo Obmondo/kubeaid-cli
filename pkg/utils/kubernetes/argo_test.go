@@ -509,7 +509,7 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 			}
 			mgr := NewArgoCDAppManager(fakeClient, nil)
 
-			err := mgr.syncAllArgoCDApps(context.Background(), true, nil, nil)
+			err := mgr.syncAllArgoCDApps(context.Background(), true, nil)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrSubstr)
@@ -520,17 +520,18 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 	}
 }
 
-// TestSyncAllArgoCDAppsOrdersPreHookAndGate verifies syncAllArgoCDApps
-// syncs the caller's pre-hook apps and runs the gate BEFORE the
-// remaining application-layer apps — the ordering that keeps netbird's
-// sync from wedging on an Ingress certificate that can't be issued
-// until the operator points DNS at the (traefik-owned) ingress LB.
-func TestSyncAllArgoCDAppsOrdersPreHookAndGate(t *testing.T) {
+// TestSyncAllArgoCDAppsOrderedSteps verifies the orderedApps list is
+// synced in slice order, with each step's AfterSync hook firing right
+// after that App syncs — before the next step and before the
+// remaining-apps loop. This is the sequence the bootstrap relies on to
+// bring up ccm -> traefik -> cert-manager -> keycloakx -> netbird with
+// the LB-DNS / TLS-cert gates wired in between.
+func TestSyncAllArgoCDAppsOrderedSteps(t *testing.T) {
 	client := &fakeArgoCDAppClient{
 		listResponse: &argoCDV1Alpha1.ApplicationList{
 			Items: []argoCDV1Alpha1.Application{
 				{ObjectMeta: metaV1.ObjectMeta{Name: "netbird"}},
-				{ObjectMeta: metaV1.ObjectMeta{Name: constants.ArgoCDAppTraefik}},
+				{ObjectMeta: metaV1.ObjectMeta{Name: "traefik"}},
 				{ObjectMeta: metaV1.ObjectMeta{Name: "keycloakx"}},
 			},
 		},
@@ -540,25 +541,39 @@ func TestSyncAllArgoCDAppsOrdersPreHookAndGate(t *testing.T) {
 	}
 	mgr := NewArgoCDAppManager(client, nil)
 
-	gateCalled := 0
-	var appsSyncedBeforeGate []string
-	gate := func(_ context.Context) error {
-		gateCalled++
-		appsSyncedBeforeGate = append([]string(nil), client.getAppNames...)
-		return nil
+	var hookOrder []string
+	var appsSyncedAtTraefikHook []string
+	// recordHook builds an AfterSync hook that records its firing
+	// order; the error return is fixed by AppSyncStep.AfterSync's type.
+	recordHook := func(name string, capture bool) func(context.Context) error {
+		return func(_ context.Context) error { //nolint:unparam
+			hookOrder = append(hookOrder, name)
+			if capture {
+				appsSyncedAtTraefikHook = append([]string(nil), client.getAppNames...)
+			}
+			return nil
+		}
+	}
+	orderedApps := []AppSyncStep{
+		{Name: "traefik", AfterSync: recordHook("traefik", true)},
+		{Name: "keycloakx", AfterSync: recordHook("keycloakx", false)},
 	}
 
-	err := mgr.syncAllArgoCDApps(context.Background(), true,
-		[]string{constants.ArgoCDAppTraefik}, gate)
+	err := mgr.syncAllArgoCDApps(context.Background(), true, orderedApps)
 	require.NoError(t, err)
 
-	require.Equal(t, 1, gateCalled, "gate must run exactly once")
-	assert.Contains(t, appsSyncedBeforeGate, constants.ArgoCDAppTraefik,
-		"traefik (a pre-hook app) must be synced before the gate")
-	assert.NotContains(t, appsSyncedBeforeGate, "netbird",
-		"netbird must be synced after the gate")
-	assert.NotContains(t, appsSyncedBeforeGate, "keycloakx",
-		"keycloakx must be synced after the gate")
+	// Hooks fire in orderedApps slice order, each right after its App.
+	assert.Equal(t, []string{"traefik", "keycloakx"}, hookOrder,
+		"AfterSync hooks must fire in orderedApps slice order")
+
+	// traefik's hook ran after traefik synced, but before the later
+	// ordered step (keycloakx) and before the remaining-apps loop (netbird).
+	assert.Contains(t, appsSyncedAtTraefikHook, "traefik",
+		"traefik's hook must run after traefik has synced")
+	assert.NotContains(t, appsSyncedAtTraefikHook, "keycloakx",
+		"traefik's hook must run before the next ordered step")
+	assert.NotContains(t, appsSyncedAtTraefikHook, "netbird",
+		"traefik's hook must run before the remaining-apps loop")
 }
 
 func TestSyncArgoCDApp(t *testing.T) {

@@ -338,25 +338,40 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 	return mgr
 }
 
+// AppSyncStep is one entry in SyncAllArgoCDApps's ordered list: an
+// ArgoCD App to sync, plus an optional hook run immediately after it
+// syncs (before the next step and before the remaining-apps loop).
+//
+// The bootstrap uses it to bring up the Hetzner VPN dependency chain in
+// a guaranteed sequence — ccm → traefik → cert-manager → keycloakx →
+// netbird — with the LB-DNS and TLS-cert gates wired in as AfterSync
+// hooks, instead of relying on the alphabetical order ArgoCD's List
+// happens to return.
+type AppSyncStep struct {
+	// Name is the ArgoCD App name. A step whose App isn't present in
+	// the cluster is skipped.
+	Name string
+
+	// AfterSync, if non-nil, runs once Name has synced — before the
+	// next step. The bootstrap gates here on, e.g., the App's
+	// cert-manager Certificate being Ready: a Synced ArgoCD App only
+	// means its manifests (Ingress included) were applied, not that
+	// the TLS cert was actually issued.
+	AfterSync func(context.Context) error
+}
+
 // SyncAllArgoCDApps lists and syncs all the ArgoCD Apps.
 //
-// preHookApps are App names synced — in order — after the explicitly-
-// ordered infrastructure apps (root, sealed-secrets, CSI driver(s),
-// kube-prometheus) but before beforeRemainingApps runs and before the
-// rest of the Apps. beforeRemainingApps, if non-nil, runs once at that
-// same point. The bootstrap uses these together on Hetzner VPN
-// clusters: preHookApps brings up ccm + traefik (the ingress
-// LoadBalancer), then beforeRemainingApps waits for the operator to
-// point DNS at that LB — so netbird / keycloakx only sync once their
-// Ingress certificates can actually be issued. preHookApps entries
-// not present in the cluster are skipped.
+// orderedApps are synced first, in slice order, each immediately
+// followed by its AfterSync hook (if any). Every other App is then
+// synced in a generic loop. A step whose App isn't present in the
+// cluster is skipped.
 func SyncAllArgoCDApps(ctx context.Context,
 	skipMonitoringSetup bool,
-	preHookApps []string,
-	beforeRemainingApps func(context.Context) error,
+	orderedApps []AppSyncStep,
 ) error {
 	mgr := newGlobalArgoCDAppManager()
-	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, preHookApps, beforeRemainingApps)
+	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, orderedApps)
 }
 
 // WaitForArgoCDAppHealthy blocks until the named ArgoCD App
@@ -421,8 +436,7 @@ func (m *ArgoCDAppManager) isArgoCDAppHealthy(ctx context.Context, name string) 
 // syncAllArgoCDApps is the testable implementation of SyncAllArgoCDApps.
 func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 	skipMonitoringSetup bool,
-	preHookApps []string,
-	beforeRemainingApps func(context.Context) error,
+	orderedApps []AppSyncStep,
 ) error {
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
@@ -467,33 +481,35 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 		return fmt.Errorf("failed listing ArgoCD apps: %w", err)
 	}
 
-	// Sync the caller's pre-hook apps next, in the given order. On
-	// Hetzner VPN clusters this is ccm + traefik — together they bring
-	// up the ingress LoadBalancer the application-layer apps depend on.
-	// A name not present in the cluster is skipped; the final loop
-	// would sync it anyway.
-	for _, name := range preHookApps {
-		if !argoCDAppListContains(response.Items, name) {
+	// Sync the caller's ordered apps next — in slice order, each
+	// immediately followed by its AfterSync hook. This gives the
+	// bootstrap a guaranteed sequence (ccm → traefik → cert-manager →
+	// keycloakx → netbird, with the LB-DNS and TLS-cert gates wired in
+	// as hooks) rather than relying on the alphabetical order ArgoCD's
+	// List returns. A step whose App isn't present is skipped.
+	syncedAsStep := make(map[string]bool, len(orderedApps))
+	for _, step := range orderedApps {
+		if !argoCDAppListContains(response.Items, step.Name) {
 			continue
 		}
-		if err := m.syncArgoCDAppWithProgress(ctx, name, noResources); err != nil {
+		if err := m.syncArgoCDAppWithProgress(ctx, step.Name, noResources); err != nil {
 			return err
 		}
-	}
+		syncedAsStep[step.Name] = true
 
-	// Run the caller's gate before the remaining (application-layer)
-	// apps. The bootstrap waits here — via WaitForIngressLBDNS — for the
-	// Traefik LB to get a public IP and the operator to point DNS at it.
-	// Without this gate netbird's sync wedges forever waiting on a
-	// cert-manager certificate that can't be issued until DNS resolves.
-	if beforeRemainingApps != nil {
-		if err := beforeRemainingApps(ctx); err != nil {
-			return fmt.Errorf("pre-remaining-apps gate failed: %w", err)
+		if step.AfterSync != nil {
+			if err := step.AfterSync(ctx); err != nil {
+				return fmt.Errorf("after-sync hook for ArgoCD app %q failed: %w", step.Name, err)
+			}
 		}
 	}
 
-	// Sync each of the remaining ArgoCD Apps.
+	// Sync each of the remaining ArgoCD Apps — those not already synced
+	// as an ordered step above.
 	for _, item := range response.Items {
+		if syncedAsStep[item.Name] {
+			continue
+		}
 		if err := m.syncArgoCDAppWithProgress(ctx, item.Name, noResources); err != nil {
 			return err
 		}
