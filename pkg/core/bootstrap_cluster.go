@@ -173,6 +173,30 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, preHookApps, beforeRemainingApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
+	// Gate on cert-manager actually issuing the VPN TLS certificates
+	// before going further. netbird-management / keycloak are unusable
+	// until Traefik serves a real cert for their FQDNs — without this
+	// gate a failed cert (stray AAAA record, broken ACME challenge, ...)
+	// surfaces much later as a cryptic x509 crashloop instead of here.
+	// The cert names match the `tls.secretName` rendered into
+	// values-netbird.yaml.tmpl / values-keycloakx.yaml.tmpl.
+	if vpnClusterEnabled() {
+		bar.Describe("Waiting for TLS certificates")
+		certsToWaitFor := []types.NamespacedName{
+			{Namespace: constants.NamespaceNetBird, Name: "netbird-tls"},
+		}
+		if managedKeycloakEnabled() {
+			certsToWaitFor = append(certsToWaitFor, types.NamespacedName{
+				Namespace: constants.NamespaceKeycloak, Name: "keycloak-tls",
+			})
+		}
+		assert.AssertErrNil(ctx,
+			kubernetes.WaitForCertificatesReady(ctx, mainClusterClient, certsToWaitFor),
+			"Failed waiting for TLS certificates to be issued",
+		)
+		bar.Substep("TLS certificates issued")
+	}
+
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
 	// Keycloak via the admin secret and reconciles the realm +
 	// NetBird OIDC clients. External-mode operators handle their
