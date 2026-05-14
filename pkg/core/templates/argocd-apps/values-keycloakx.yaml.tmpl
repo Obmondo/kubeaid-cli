@@ -1,6 +1,18 @@
 keycloakx:
   ingress:
-    hostname: {{ .ClusterConfig.Keycloak.DNS }}
+    enabled: true
+    ingressClassName: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls:
+      - hosts:
+          - {{ .ClusterConfig.Keycloak.DNS }}
+        secretName: keycloak-tls
+    rules:
+      - host: {{ .ClusterConfig.Keycloak.DNS }}
+        paths:
+          - path: /
+            pathType: Prefix
 
   adminSecret:
     name: keycloak-admin
