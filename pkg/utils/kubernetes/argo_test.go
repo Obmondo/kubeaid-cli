@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -566,6 +567,64 @@ func TestSyncArgoCDApp(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+// TestSyncArgoCDAppReissuesSync covers syncArgoCDApp's re-issue loop:
+// while the App is OutOfSync, Sync must be re-issued each iteration —
+// not merely polled with a hard refresh. Regression guard for the bug
+// where a single sync operation (one that failed on ArgoCD's side, e.g.
+// a since-fixed manifest error) wedged the bootstrap forever, the CLI
+// only ever hard-refreshing and never re-syncing.
+func TestSyncArgoCDAppReissuesSync(t *testing.T) {
+	// Shrink the loop intervals so the test doesn't sleep for real.
+	// Not t.Parallel() — these are package-level vars.
+	origBackoff, origRetry := argoCDSyncInProgressBackoff, argoCDSyncRetryInterval
+	t.Cleanup(func() {
+		argoCDSyncInProgressBackoff = origBackoff
+		argoCDSyncRetryInterval = origRetry
+	})
+	argoCDSyncInProgressBackoff = time.Millisecond
+	argoCDSyncRetryInterval = time.Millisecond
+
+	tests := []struct {
+		name         string
+		getResponses []fakeGetResponse
+		wantSyncMin  int
+	}{
+		{
+			name: "synced right after the first Sync",
+			getResponses: []fakeGetResponse{
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+				{app: syncedApp()},
+			},
+			wantSyncMin: 1,
+		},
+		{
+			name: "re-issues Sync while the App stays OutOfSync",
+			getResponses: []fakeGetResponse{
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+				{app: syncedApp()},
+			},
+			wantSyncMin: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &fakeArgoCDAppClient{
+				syncResponse: &argoCDV1Alpha1.Application{},
+				getResponses: tc.getResponses,
+			}
+			mgr := NewArgoCDAppManager(client, nil)
+
+			err := mgr.syncArgoCDApp(context.Background(), "my-app", nil)
+			require.NoError(t, err)
+			assert.GreaterOrEqual(t, client.syncCalled, tc.wantSyncMin,
+				"Sync must be re-issued, not just polled")
 		})
 	}
 }
