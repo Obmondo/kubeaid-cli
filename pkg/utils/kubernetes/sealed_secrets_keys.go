@@ -388,7 +388,7 @@ func diagnoseSealedSecretsController(ctx context.Context, c client.Client) strin
 		))
 		for _, cond := range dep.Status.Conditions {
 			push(fmt.Sprintf("Deployment condition %s=%s reason=%s message=%s",
-				cond.Type, cond.Status, cond.Reason, truncate(cond.Message, 200)))
+				cond.Type, cond.Status, cond.Reason, truncate(cond.Message)))
 		}
 	}
 
@@ -402,33 +402,8 @@ func diagnoseSealedSecretsController(ctx context.Context, c client.Client) strin
 	} else if len(pods.Items) == 0 {
 		push("No pods matched name=sealed-secrets-controller — Deployment may not have produced a ReplicaSet")
 	} else {
-		for i := range pods.Items {
-			p := &pods.Items[i]
-			push(fmt.Sprintf("Pod %s phase=%s nodeName=%s",
-				p.Name, p.Status.Phase, p.Spec.NodeName))
-			for _, cond := range p.Status.Conditions {
-				push(fmt.Sprintf("  Pod condition %s=%s reason=%s message=%s",
-					cond.Type, cond.Status, cond.Reason, truncate(cond.Message, 200)))
-			}
-			for _, cs := range p.Status.ContainerStatuses {
-				push(fmt.Sprintf("  Container %s ready=%t restartCount=%d image=%s",
-					cs.Name, cs.Ready, cs.RestartCount, cs.Image))
-				if cs.State.Waiting != nil {
-					push(fmt.Sprintf("    state=waiting reason=%s message=%s",
-						cs.State.Waiting.Reason, truncate(cs.State.Waiting.Message, 200)))
-				}
-				if cs.State.Terminated != nil {
-					push(fmt.Sprintf("    state=terminated reason=%s exitCode=%d message=%s",
-						cs.State.Terminated.Reason, cs.State.Terminated.ExitCode,
-						truncate(cs.State.Terminated.Message, 200)))
-				}
-				if cs.LastTerminationState.Terminated != nil {
-					push(fmt.Sprintf("    lastTerminated reason=%s exitCode=%d message=%s",
-						cs.LastTerminationState.Terminated.Reason,
-						cs.LastTerminationState.Terminated.ExitCode,
-						truncate(cs.LastTerminationState.Terminated.Message, 200)))
-				}
-			}
+		for _, line := range describeSealedSecretsPods(pods.Items) {
+			push(line)
 		}
 	}
 
@@ -451,7 +426,7 @@ func diagnoseSealedSecretsController(ctx context.Context, c client.Client) strin
 			}
 			push(fmt.Sprintf("Event %s/%s [%s] reason=%s message=%s",
 				ev.InvolvedObject.Kind, ev.InvolvedObject.Name,
-				ev.Type, ev.Reason, truncate(ev.Message, 200)))
+				ev.Type, ev.Reason, truncate(ev.Message)))
 			relevant++
 			if relevant >= 10 { // cap the diagnostic length
 				push("(... more events truncated ...)")
@@ -473,9 +448,52 @@ func deploymentDesiredReplicas(dep *appsV1.Deployment) int32 {
 	return *dep.Spec.Replicas
 }
 
-func truncate(s string, n int) string {
-	if len(s) <= n {
+// diagnosticMessageMaxLen caps how much of a Kubernetes status Message
+// gets folded into a diagnostic line — long messages bloat the report.
+const diagnosticMessageMaxLen = 200
+
+func truncate(s string) string {
+	if len(s) <= diagnosticMessageMaxLen {
 		return s
 	}
-	return s[:n] + "…"
+	return s[:diagnosticMessageMaxLen] + "…"
+}
+
+// describeSealedSecretsPods renders diagnostic lines for the
+// sealed-secrets-controller pods — phase, conditions, and per-container
+// state — for diagnoseSealedSecretsController to fold into its report.
+// Lines are returned un-indented; the caller's push adds the indent.
+func describeSealedSecretsPods(pods []coreV1.Pod) []string {
+	var lines []string
+	for i := range pods {
+		p := &pods[i]
+		lines = append(lines, fmt.Sprintf("Pod %s phase=%s nodeName=%s",
+			p.Name, p.Status.Phase, p.Spec.NodeName))
+
+		for _, cond := range p.Status.Conditions {
+			lines = append(lines, fmt.Sprintf("  Pod condition %s=%s reason=%s message=%s",
+				cond.Type, cond.Status, cond.Reason, truncate(cond.Message)))
+		}
+
+		for _, cs := range p.Status.ContainerStatuses {
+			lines = append(lines, fmt.Sprintf("  Container %s ready=%t restartCount=%d image=%s",
+				cs.Name, cs.Ready, cs.RestartCount, cs.Image))
+			if cs.State.Waiting != nil {
+				lines = append(lines, fmt.Sprintf("    state=waiting reason=%s message=%s",
+					cs.State.Waiting.Reason, truncate(cs.State.Waiting.Message)))
+			}
+			if cs.State.Terminated != nil {
+				lines = append(lines, fmt.Sprintf("    state=terminated reason=%s exitCode=%d message=%s",
+					cs.State.Terminated.Reason, cs.State.Terminated.ExitCode,
+					truncate(cs.State.Terminated.Message)))
+			}
+			if cs.LastTerminationState.Terminated != nil {
+				lines = append(lines, fmt.Sprintf("    lastTerminated reason=%s exitCode=%d message=%s",
+					cs.LastTerminationState.Terminated.Reason,
+					cs.LastTerminationState.Terminated.ExitCode,
+					truncate(cs.LastTerminationState.Terminated.Message)))
+			}
+		}
+	}
+	return lines
 }

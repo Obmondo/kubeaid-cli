@@ -370,12 +370,12 @@ func TestHelmUpgradeWithFactory(t *testing.T) {
 			wantErrContains: "not found",
 		},
 		{
-			name:        "non-nil Values — merges and passes to upgrader",
-			releases:    []*release.Release{makeRelease(relName, ns, release.StatusDeployed)},
-			chartToLoad: minimalChart(),
-			values:      &values.Options{Values: []string{"foo=bar"}},
+			name:         "non-nil Values — merges and passes to upgrader",
+			releases:     []*release.Release{makeRelease(relName, ns, release.StatusDeployed)},
+			chartToLoad:  minimalChart(),
+			values:       &values.Options{Values: []string{"foo=bar"}},
 			wantUpgraded: true,
-			wantValsKey: "foo",
+			wantValsKey:  "foo",
 		},
 		{
 			name:            "LoadChart fails returns error",

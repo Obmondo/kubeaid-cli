@@ -163,8 +163,8 @@ func healthyDeployment() *appsV1.Deployment {
 	replicas := int32(1)
 	return &appsV1.Deployment{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      sealedSecretsControllerDeploymentName,
-			Namespace: constants.NamespaceSealedSecrets,
+			Name:       sealedSecretsControllerDeploymentName,
+			Namespace:  constants.NamespaceSealedSecrets,
 			Generation: 1,
 		},
 		Spec: appsV1.DeploymentSpec{Replicas: &replicas},
@@ -239,7 +239,6 @@ func withReinstallStub(t *testing.T, stub func(ctx context.Context) error) {
 // in parallel against each other.
 
 func TestEnsureSealedSecretsHealthy_HappyPath(t *testing.T) {
-
 	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 	dep := healthyDeployment()
@@ -256,7 +255,6 @@ func TestEnsureSealedSecretsHealthy_HappyPath(t *testing.T) {
 }
 
 func TestEnsureSealedSecretsHealthy_KeyMismatch_TriggersRecopy(t *testing.T) {
-
 	mgmtKey1 := makeSealedSecretsKey("sealed-secrets-keyaaa", map[string][]byte{"tls.key": []byte("a")})
 	mgmtKey2 := makeSealedSecretsKey("sealed-secrets-keybbb", map[string][]byte{"tls.key": []byte("b")})
 	// main has only one of the two keys initially.
@@ -283,7 +281,6 @@ func TestEnsureSealedSecretsHealthy_KeyMismatch_TriggersRecopy(t *testing.T) {
 }
 
 func TestEnsureSealedSecretsHealthy_UnhealthyDeployment_TriggersReinstall(t *testing.T) {
-
 	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 
@@ -321,7 +318,6 @@ func TestEnsureSealedSecretsHealthy_UnhealthyDeployment_TriggersReinstall(t *tes
 }
 
 func TestEnsureSealedSecretsHealthy_ReinstallFailsToFix_ReturnsDiagnostic(t *testing.T) {
-
 	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 	mainKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
 

@@ -64,56 +64,19 @@ func FillMissingSecrets(ctx context.Context) error {
 	changed := false
 
 	if wantNetBird {
-		netbird, err := ensureMappingChild(docMap, "netbird")
+		wrote, err := fillNetBirdSecrets(ctx, docMap)
 		if err != nil {
 			return err
 		}
-		fields := []struct {
-			key string
-			gen func() (string, error)
-		}{
-			{"datastoreEncryptionKey", func() (string, error) { return randval.Base64Key(32) }},
-			{"relayPassword", randval.Password},
-			{"turnPassword", randval.Password},
-		}
-		for _, f := range fields {
-			wrote, err := setScalarIfEmpty(netbird, f.key, f.gen)
-			if err != nil {
-				return err
-			}
-			if wrote {
-				changed = true
-				slog.InfoContext(ctx, "Generated and persisted to secrets.yaml",
-					slog.String("field", "netbird."+f.key),
-				)
-			}
-		}
+		changed = changed || wrote
 	}
 
 	if wantManagedKeycloak {
-		keycloak, err := ensureMappingChild(docMap, "keycloak")
+		wrote, err := fillManagedKeycloakSecrets(ctx, docMap)
 		if err != nil {
 			return err
 		}
-		// adminPassword: required for managed Keycloak.
-		// netBirdBackendClientSecret: in managed mode kubeaid-cli
-		// creates the netbird-backend OIDC client itself; persisting
-		// the secret here means the realm reconciler and the netbird
-		// SealedSecret read the same source-of-truth value, so they
-		// can never drift.
-		fields := []string{"adminPassword", "netBirdBackendClientSecret"}
-		for _, f := range fields {
-			wrote, err := setScalarIfEmpty(keycloak, f, randval.Password)
-			if err != nil {
-				return err
-			}
-			if wrote {
-				changed = true
-				slog.InfoContext(ctx, "Generated and persisted to secrets.yaml",
-					slog.String("field", "keycloak."+f),
-				)
-			}
-		}
+		changed = changed || wrote
 	}
 
 	if !changed {
@@ -136,6 +99,69 @@ func FillMissingSecrets(ctx context.Context) error {
 		return fmt.Errorf("re-unmarshalling secrets.yaml after fill: %w", err)
 	}
 	return nil
+}
+
+// fillNetBirdSecrets generates the NetBird secret fields a VPN cluster
+// requires into the secrets.yaml `netbird` mapping. Returns whether
+// anything was written.
+func fillNetBirdSecrets(ctx context.Context, docMap *yaml.Node) (bool, error) {
+	netbird, err := ensureMappingChild(docMap, "netbird")
+	if err != nil {
+		return false, err
+	}
+	fields := []struct {
+		key string
+		gen func() (string, error)
+	}{
+		{"datastoreEncryptionKey", func() (string, error) { return randval.Base64Key(32) }},
+		{"relayPassword", randval.Password},
+		{"turnPassword", randval.Password},
+	}
+	changed := false
+	for _, f := range fields {
+		wrote, err := setScalarIfEmpty(netbird, f.key, f.gen)
+		if err != nil {
+			return changed, err
+		}
+		if wrote {
+			changed = true
+			slog.InfoContext(ctx, "Generated and persisted to secrets.yaml",
+				slog.String("field", "netbird."+f.key),
+			)
+		}
+	}
+	return changed, nil
+}
+
+// fillManagedKeycloakSecrets generates the Keycloak secret fields
+// managed mode requires into the secrets.yaml `keycloak` mapping.
+// Returns whether anything was written.
+//
+// adminPassword: required for managed Keycloak.
+// netBirdBackendClientSecret: in managed mode kubeaid-cli creates the
+// netbird-backend OIDC client itself; persisting the secret here means
+// the realm reconciler and the netbird SealedSecret read the same
+// source-of-truth value, so they can never drift.
+func fillManagedKeycloakSecrets(ctx context.Context, docMap *yaml.Node) (bool, error) {
+	keycloak, err := ensureMappingChild(docMap, "keycloak")
+	if err != nil {
+		return false, err
+	}
+	fields := []string{"adminPassword", "netBirdBackendClientSecret"}
+	changed := false
+	for _, f := range fields {
+		wrote, err := setScalarIfEmpty(keycloak, f, randval.Password)
+		if err != nil {
+			return changed, err
+		}
+		if wrote {
+			changed = true
+			slog.InfoContext(ctx, "Generated and persisted to secrets.yaml",
+				slog.String("field", "keycloak."+f),
+			)
+		}
+	}
+	return changed, nil
 }
 
 // documentRootMapping returns the mapping node at the root of the

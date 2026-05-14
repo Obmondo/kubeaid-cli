@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	remoteHEADRefName = "refs/remotes/" + goGit.DefaultRemoteName + "/HEAD"
+	remoteHEADRefName  = "refs/remotes/" + goGit.DefaultRemoteName + "/HEAD"
 	remoteBranchPrefix = "refs/remotes/" + goGit.DefaultRemoteName + "/"
 )
 

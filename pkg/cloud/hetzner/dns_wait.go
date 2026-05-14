@@ -41,7 +41,6 @@ const dnsPollInterval = 10 * time.Second
 // worse than failing fast.
 const dnsTotalTimeout = 5 * time.Minute
 
-
 // WaitForDNSResolution blocks until every fqdn in fqdns resolves to
 // expectedIP through the OS resolver, ctx is cancelled, or
 // dnsTotalTimeout passes (the wait fails closed — interactive bootstrap
@@ -93,8 +92,7 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	// account for wrapping (operator splits a tmux pane mid-run →
 	// narrower width → single-line rows wrap to two) — see
 	// progress.RenderedLineCount.
-	prevBlock := ""
-
+	//
 	// Render an initial "querying…" table immediately so the operator
 	// gets feedback up front. Without it, the first round of lookups
 	// (up to len(fqdns) * dnsResolveTimeout when records are missing)
@@ -105,7 +103,7 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 	}
 	initialBlock := buildDNSWaitBlock(1, maxAttempts, time.Since(start), pending, expectedIP)
 	fmt.Print(initialBlock)
-	prevBlock = initialBlock
+	prevBlock := initialBlock
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		statuses := resolveAll(ctx, resolver, fqdns, expectedIP)
@@ -157,16 +155,16 @@ func WaitForDNSResolution(ctx context.Context, fqdns []string, expectedIP string
 // and don't need the hint. The two listed cover the muscle-memory
 // case of a freshly-installed records hitting a stale local cache.
 func printStaleCacheHint(w io.Writer, expectedIP string) {
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "DNS records still not resolving to %s.\n\n", expectedIP)
-	fmt.Fprintln(w, "Possible causes:")
-	fmt.Fprintln(w, "  1. The records aren't yet propagated, or are typo'd in your DNS provider.")
-	fmt.Fprintln(w, "  2. Your local resolver has a stale NXDOMAIN cached. Flush it:")
-	fmt.Fprintln(w, "       Linux (systemd-resolved):  sudo resolvectl flush-caches")
-	fmt.Fprintln(w, "       macOS:                     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Fix DNS, then re-run `kubeaid-cli cluster bootstrap`.")
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "\n"+
+		"DNS records still not resolving to %s.\n\n"+
+		"Possible causes:\n"+
+		"  1. The records aren't yet propagated, or are typo'd in your DNS provider.\n"+
+		"  2. Your local resolver has a stale NXDOMAIN cached. Flush it:\n"+
+		"       Linux (systemd-resolved):  sudo resolvectl flush-caches\n"+
+		"       macOS:                     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder\n"+
+		"\n"+
+		"Fix DNS, then re-run `kubeaid-cli cluster bootstrap`.\n"+
+		"\n", expectedIP)
 }
 
 // buildDNSWaitBlock returns the per-tick render — the header line
@@ -247,8 +245,8 @@ func renderDNSStatusTable(statuses []dnsStatus, expectedIP string) string {
 
 	headerStyle := lipgloss.NewStyle().Bold(true).Padding(0, 1)
 	cellStyle := lipgloss.NewStyle().Padding(0, 1)
-	okStyle := cellStyle.Foreground(lipgloss.Color("42"))    // green
-	errStyle := cellStyle.Foreground(lipgloss.Color("203"))  // red
+	okStyle := cellStyle.Foreground(lipgloss.Color("42"))   // green
+	errStyle := cellStyle.Foreground(lipgloss.Color("203")) // red
 
 	t := table.New().
 		Border(lipgloss.RoundedBorder()).
@@ -339,4 +337,3 @@ func asDNSErr(err error, target **net.DNSError) bool {
 	}
 	return false
 }
-

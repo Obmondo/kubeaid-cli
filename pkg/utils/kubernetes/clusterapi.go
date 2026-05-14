@@ -29,7 +29,18 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
-const defaultCapiClusterNamespace = "capi-cluster"
+const (
+	defaultCapiClusterNamespace = "capi-cluster"
+
+	// statusReady / statusUnknown are the operator-facing Node STATUS
+	// strings, also reused for the Cluster status-detail column.
+	statusReady   = "Ready"
+	statusUnknown = "Unknown"
+
+	// emDash is the placeholder rendered in a status-table cell when
+	// there's no value to show.
+	emDash = "—"
+)
 
 var (
 	waitForProvisioningPollInterval = time.Minute
@@ -320,7 +331,7 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 		if cluster.Status.Phase == string(clusterAPIV1Beta1.ClusterPhaseProvisioned) {
 			for _, condition := range cluster.Status.Conditions {
 				if condition.Type == clusterAPIV1Beta1.ReadyCondition &&
-					condition.Status == "True" {
+					condition.Status == coreV1.ConditionTrue {
 					ready = true
 					break
 				}
@@ -399,8 +410,8 @@ func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([
 func clusterStatusDetail(cluster *clusterAPIV1Beta1.Cluster) string {
 	for _, condition := range cluster.Status.Conditions {
 		if condition.Type == clusterAPIV1Beta1.ReadyCondition &&
-			condition.Status == "True" {
-			return "Ready"
+			condition.Status == coreV1.ConditionTrue {
+			return statusReady
 		}
 	}
 
@@ -516,7 +527,7 @@ func firstFailingV1Beta1Message(conditions clusterAPIV1Beta1.Conditions) string 
 	var fallbackReason string
 	var fallbackType clusterAPIV1Beta1.ConditionType
 	for _, c := range conditions {
-		if c.Status == "True" {
+		if c.Status == coreV1.ConditionTrue {
 			continue
 		}
 		if c.Message != "" {
@@ -533,7 +544,7 @@ func firstFailingV1Beta1Message(conditions clusterAPIV1Beta1.Conditions) string 
 	if fallbackType != "" {
 		return string(fallbackType)
 	}
-	return "—"
+	return emDash
 }
 
 // firstNonEmptyLine returns the first line of s with leading
@@ -579,16 +590,16 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 
 	tableRows := make([][]string, 0, len(rows))
 	if len(rows) == 0 {
-		tableRows = append(tableRows, []string{"—", "querying…", "—"})
+		tableRows = append(tableRows, []string{emDash, "querying…", emDash})
 	}
 	for _, r := range rows {
 		phase := r.Phase
 		if phase == "" {
-			phase = "—"
+			phase = emDash
 		}
 		status := r.Status
 		if status == "" {
-			status = "—"
+			status = emDash
 		}
 		tableRows = append(tableRows, []string{r.Resource, phase, status})
 	}
@@ -666,7 +677,7 @@ func renderMainClusterNodesTable(ctx context.Context, mainClusterClient client.C
 			}
 			// Paint NotReady / Unknown rows red so operators don't miss
 			// a degraded node before the pivot.
-			if row >= 0 && row < len(tableRows) && tableRows[row][1] != "Ready" {
+			if row >= 0 && row < len(tableRows) && tableRows[row][1] != statusReady {
 				return notReadyStyle
 			}
 			return cellStyle
@@ -684,13 +695,15 @@ func nodeReadyStatus(n *coreV1.Node) string {
 		}
 		switch c.Status {
 		case coreV1.ConditionTrue:
-			return "Ready"
+			return statusReady
 		case coreV1.ConditionFalse:
 			return "NotReady"
+		case coreV1.ConditionUnknown:
+			return statusUnknown
 		}
-		return "Unknown"
+		return statusUnknown
 	}
-	return "Unknown"
+	return statusUnknown
 }
 
 // nodeRoles returns the comma-joined sorted list of role suffixes
@@ -830,6 +843,9 @@ func summarizeCPNodesNetworking(nodes *coreV1.NodeList) (bool, []string) {
 		// the correct interpretation.
 		netOK := true
 		for _, c := range node.Status.Conditions {
+			//nolint:exhaustive // only NodeReady and NodeNetworkUnavailable
+			// gate scheduling here; the other Node condition types
+			// (MemoryPressure, DiskPressure, PIDPressure) are intentionally ignored.
 			switch c.Type {
 			case coreV1.NodeReady:
 				readyOK = c.Status == coreV1.ConditionTrue

@@ -549,14 +549,14 @@ func printHelpTextForArgoCDDashboardAccess(ctx context.Context, clusterType stri
 //   - argocd          — the ArgoCD chart reconciled (manages itself)
 //   - sealed-secrets  — the controller chart reconciled
 //   - secrets         — the SealedSecret manifests that decrypt to the
-//                       actual Secret resources kubeaid-cli pre-applied
+//     actual Secret resources kubeaid-cli pre-applied
 //   - cert-manager    — issuers for ArgoCD's own TLS, kubeaid-cli's
-//                       management-cluster cert needs
+//     management-cluster cert needs
 //   - cluster-api-operator — the CAPI control-plane that provisions
-//                       the workload cluster
+//     the workload cluster
 //   - capi-cluster    — the Cluster + Machine CRs the operator manages
-//                       pre-pivot (clusterctl move transfers them to
-//                       main afterwards)
+//     pre-pivot (clusterctl move transfers them to
+//     main afterwards)
 //
 // Each child is a Kind=Application in the argoproj.io group, deployed
 // to the argocd namespace.

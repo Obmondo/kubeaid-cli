@@ -127,4 +127,3 @@ func TestRenderProbeOIDCError(t *testing.T) {
 		})
 	}
 }
-

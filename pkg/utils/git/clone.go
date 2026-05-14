@@ -97,7 +97,8 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 	// Clone the repo.
 	slog.InfoContext(ctx, "Cloning repo")
 
-	defer requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repo, authMethod)()
+	releaseTouch := requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repo, authMethod)
+	defer releaseTouch()
 
 	var repo *goGit.Repository
 	if cloneOpts.PinnedRef != "" {
@@ -126,7 +127,10 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 			"HTTPS clone failed: private repo detected, switch to SSH URL",
 			slog.String("url", url),
 		)
-		os.Exit(1)
+		// os.Exit skips the deferred releaseTouch, so erase the
+		// YubiKey-touch line explicitly before exiting.
+		releaseTouch()
+		os.Exit(1) //nolint:gocritic // exitAfterDefer: releaseTouch (the only defer) is invoked above; os.Exit matches this package's fatal-exit style.
 	}
 
 	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&

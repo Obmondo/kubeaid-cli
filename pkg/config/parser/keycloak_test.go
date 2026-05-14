@@ -13,10 +13,16 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
-// testACMEEmail is a stand-in contact for ACME registration in
-// keycloak validator tests. Pulled out as a constant so goconst
-// stops flagging the multi-occurrence literal across test cases.
-const testACMEEmail = "ops@acme.com"
+const (
+	// testACMEEmail is a stand-in contact for ACME registration in
+	// keycloak validator tests. Pulled out as a constant so goconst
+	// stops flagging the multi-occurrence literal across test cases.
+	testACMEEmail = "ops@acme.com"
+
+	// testClusterNameVPN is the cluster name reused across the
+	// hydrateKeycloakOIDC test cases.
+	testClusterNameVPN = "acme-vpn"
+)
 
 func TestDeriveRealm(t *testing.T) {
 	t.Parallel()
@@ -140,7 +146,7 @@ func TestHydrateKeycloakDefaults(t *testing.T) {
 func TestHydrateKeycloakOIDC(t *testing.T) {
 	t.Run("derives issuer URL and client ID for managed Keycloak (VPN cluster)", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Name = testClusterNameVPN
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
 				Mode:  constants.KeycloakModeManaged,
 				DNS:   "keycloak.vpn.acme.com",
@@ -180,7 +186,7 @@ func TestHydrateKeycloakOIDC(t *testing.T) {
 
 	t.Run("explicit apiServer.oidc wins over derived defaults", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Name = testClusterNameVPN
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
 				Mode:  constants.KeycloakModeManaged,
 				DNS:   "keycloak.vpn.acme.com",
@@ -213,7 +219,7 @@ func TestHydrateKeycloakOIDC(t *testing.T) {
 
 	t.Run("no-op when realm cannot be derived", func(t *testing.T) {
 		withFreshKeycloakConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Name = "acme-vpn"
+			config.ParsedGeneralConfig.Cluster.Name = testClusterNameVPN
 			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
 				Mode: constants.KeycloakModeManaged,
 				DNS:  "localhost",

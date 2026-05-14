@@ -31,7 +31,7 @@ type gpgAgentSigner struct {
 // `gpg --detach-sign --armor --local-user <keyID>` which produces
 // exactly that.
 func (s *gpgAgentSigner) Sign(message io.Reader) ([]byte, error) {
-	cmd := exec.Command("gpg",
+	cmd := exec.Command("gpg", //nolint:gosec // G204: keyID is the operator's own git config user.signingkey.
 		"--detach-sign", "--armor",
 		"--local-user", s.keyID,
 	)
@@ -113,7 +113,7 @@ func CommitSigner(ctx context.Context) goGit.Signer {
 // includeIf, conditional includes, and any other config indirection
 // the operator's set up just works.
 func gitConfigGlobal(ctx context.Context, key string) string {
-	cmd := exec.CommandContext(ctx, "git", "config", "--global", "--get", key)
+	cmd := exec.CommandContext(ctx, "git", "config", "--global", "--get", key) //nolint:gosec // G204: key is always a compile-time-constant git-config key name.
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {

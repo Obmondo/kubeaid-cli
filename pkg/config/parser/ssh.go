@@ -157,9 +157,9 @@ func hydrateSSHKeyPairFromAgent(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	assert.Assert(ctx, socketPath != "",
 		"useSSHAgent=true but SSH_AUTH_SOCK is unset — start ssh-agent or plug in your yubikey")
 
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", socketPath) //nolint:gosec // G704: dialing the operator's own SSH agent socket from $SSH_AUTH_SOCK.
 	assert.AssertErrNil(ctx, err, "Failed dialling SSH agent socket")
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	identities, err := agent.NewClient(conn).List()
 	assert.AssertErrNil(ctx, err, "Failed listing SSH agent identities")
