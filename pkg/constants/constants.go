@@ -170,6 +170,9 @@ const (
 	ArgoCDAppHCloudCSIDriver    = "hcloud-csi-driver"
 	ArgoCDAppRookCeph           = "rook-ceph"
 	ArgoCDAppLocalPVProvisioner = "localpv-provisioner"
+	ArgoCDAppCCMHCloud          = "ccm-hcloud"
+	ArgoCDAppCCMHetzner         = "ccm-hetzner"
+	ArgoCDAppTraefik            = "traefik"
 
 	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect
 	ArgoCDLabelKeyManagedBy    = "kubeaid.io/managed-by"

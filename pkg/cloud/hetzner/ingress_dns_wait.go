@@ -30,10 +30,12 @@ const (
 
 // WaitForIngressLBDNS gates bootstrap on the operator pointing the
 // public-facing FQDNs (keycloak.dns / netbird.dns / netbird.stunDNS
-// / netbird.turnDNS) at the Traefik LB's public IP. Called after
-// SyncAllArgoCDApps returns so Traefik has already started
-// provisioning its LB; we poll the Service for status.loadBalancer
-// .ingress[0].ip and only then prompt the operator.
+// / netbird.turnDNS) at the Traefik LB's public IP. Run as
+// SyncAllArgoCDApps's beforeRemainingApps gate — after ccm + traefik
+// are synced (so the LB is being provisioned) but before the
+// application-layer apps (netbird, keycloakx) whose Ingress
+// certificates depend on DNS resolving. We poll the Service for
+// status.loadBalancer.ingress[0].ip and only then prompt the operator.
 //
 // cert-manager's ACME challenges for keycloakx / netbird Ingresses
 // retry with exponential backoff. Putting the DNS prompt here lets

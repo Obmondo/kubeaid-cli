@@ -45,6 +45,7 @@ type fakeArgoCDAppClient struct {
 
 	getResponses []fakeGetResponse
 	getCalled    int
+	getAppNames  []string
 }
 
 type fakeGetResponse struct {
@@ -61,8 +62,11 @@ func (f *fakeArgoCDAppClient) Sync(_ context.Context, _ *application.Application
 	return f.syncResponse, f.syncErr
 }
 
-func (f *fakeArgoCDAppClient) Get(_ context.Context, _ *application.ApplicationQuery, _ ...grpc.CallOption) (*argoCDV1Alpha1.Application, error) {
+func (f *fakeArgoCDAppClient) Get(_ context.Context, q *application.ApplicationQuery, _ ...grpc.CallOption) (*argoCDV1Alpha1.Application, error) {
 	defer func() { f.getCalled++ }()
+	if q != nil && q.Name != nil {
+		f.getAppNames = append(f.getAppNames, *q.Name)
+	}
 	idx := f.getCalled
 	if idx >= len(f.getResponses) {
 		idx = len(f.getResponses) - 1
@@ -505,7 +509,7 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 			}
 			mgr := NewArgoCDAppManager(fakeClient, nil)
 
-			err := mgr.syncAllArgoCDApps(context.Background(), true)
+			err := mgr.syncAllArgoCDApps(context.Background(), true, nil, nil)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrSubstr)
@@ -514,6 +518,47 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestSyncAllArgoCDAppsOrdersPreHookAndGate verifies syncAllArgoCDApps
+// syncs the caller's pre-hook apps and runs the gate BEFORE the
+// remaining application-layer apps — the ordering that keeps netbird's
+// sync from wedging on an Ingress certificate that can't be issued
+// until the operator points DNS at the (traefik-owned) ingress LB.
+func TestSyncAllArgoCDAppsOrdersPreHookAndGate(t *testing.T) {
+	client := &fakeArgoCDAppClient{
+		listResponse: &argoCDV1Alpha1.ApplicationList{
+			Items: []argoCDV1Alpha1.Application{
+				{ObjectMeta: metaV1.ObjectMeta{Name: "netbird"}},
+				{ObjectMeta: metaV1.ObjectMeta{Name: constants.ArgoCDAppTraefik}},
+				{ObjectMeta: metaV1.ObjectMeta{Name: "keycloakx"}},
+			},
+		},
+		// Every App reports Synced, so each syncArgoCDApp short-circuits
+		// at its skip-check (one Get per App) — no Sync calls, no poll.
+		getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
+	}
+	mgr := NewArgoCDAppManager(client, nil)
+
+	gateCalled := 0
+	var appsSyncedBeforeGate []string
+	gate := func(_ context.Context) error {
+		gateCalled++
+		appsSyncedBeforeGate = append([]string(nil), client.getAppNames...)
+		return nil
+	}
+
+	err := mgr.syncAllArgoCDApps(context.Background(), true,
+		[]string{constants.ArgoCDAppTraefik}, gate)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, gateCalled, "gate must run exactly once")
+	assert.Contains(t, appsSyncedBeforeGate, constants.ArgoCDAppTraefik,
+		"traefik (a pre-hook app) must be synced before the gate")
+	assert.NotContains(t, appsSyncedBeforeGate, "netbird",
+		"netbird must be synced after the gate")
+	assert.NotContains(t, appsSyncedBeforeGate, "keycloakx",
+		"keycloakx must be synced after the gate")
 }
 
 func TestSyncArgoCDApp(t *testing.T) {
