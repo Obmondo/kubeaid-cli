@@ -646,6 +646,22 @@ func TestWaitForAllMachinesRunning(t *testing.T) {
 						},
 					},
 				},
+				// The Node backing cp-1 — WaitForAllMachinesRunning's
+				// success path renders a `kubectl get nodes`-style table
+				// from the main-cluster client, so give it a Node to find.
+				&coreV1.Node{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:   "cp-1",
+						Labels: map[string]string{kubeadmConstants.LabelNodeRoleControlPlane: ""},
+					},
+					Status: coreV1.NodeStatus{
+						Conditions: []coreV1.NodeCondition{
+							{Type: coreV1.NodeReady, Status: coreV1.ConditionTrue},
+						},
+						NodeInfo:  coreV1.NodeSystemInfo{KubeletVersion: "v1.33.0"},
+						Addresses: []coreV1.NodeAddress{{Type: coreV1.NodeInternalIP, Address: "10.0.0.5"}},
+					},
+				},
 			},
 			ctxTimeout: 5 * time.Second,
 		},
@@ -703,7 +719,7 @@ func TestWaitForAllMachinesRunning(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
 			defer cancel()
 
-			err := WaitForAllMachinesRunning(ctx, fakeClient)
+			err := WaitForAllMachinesRunning(ctx, fakeClient, fakeClient)
 			if tc.wantErr {
 				require.Error(t, err)
 				return

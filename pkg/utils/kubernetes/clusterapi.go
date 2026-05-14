@@ -111,11 +111,12 @@ type capiStatusRow struct {
 // substep.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
 	return waitForCAPIStableState(ctx,
-		"Waiting for main cluster Machines to come up — Cluster API and the cloud provider are creating servers, installing the OS image, and joining nodes to the control plane.",
+		"Waiting for main cluster Machines to come up",
 		"main cluster did not reach Provisioned+Ready",
 		func(c context.Context) ([]capiStatusRow, bool, error) {
 			return summarizeCAPIStatus(c, managementClusterClient)
 		},
+		nil,
 	)
 }
 
@@ -133,18 +134,27 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 // move would error out. This wait makes the operation idempotent on
 // rolling-update collisions.
 //
-// Reuses the same live-status table as WaitForMainClusterToBeProvisioned
-// so the operator sees a familiar UX. Same screen-ownership and
-// timeout semantics. Returns nil only when every Machine has a Node
-// registered — empty Machine list counts as not-ready (a freshly
-// scaled-to-zero cluster wouldn't be a sensible thing to clusterctl-move
-// anyway, and treating it as ready would hide a misconfiguration).
-func WaitForAllMachinesRunning(ctx context.Context, managementClusterClient client.Client) error {
+// While waiting it shows the same live Machine-status table as
+// WaitForMainClusterToBeProvisioned. On success it swaps that table for
+// a `kubectl get nodes`-style table built from mainClusterClient — the
+// live table was the during-the-wait view; the Nodes table is the
+// persistent pre-pivot audit trail the operator eyeballs before the
+// move. Same screen-ownership and timeout semantics. Returns nil only
+// when every Machine has a Node registered — empty Machine list counts
+// as not-ready (a freshly scaled-to-zero cluster wouldn't be a sensible
+// thing to clusterctl-move anyway, and treating it as ready would hide
+// a misconfiguration).
+func WaitForAllMachinesRunning(ctx context.Context,
+	managementClusterClient, mainClusterClient client.Client,
+) error {
 	return waitForCAPIStableState(ctx,
-		"Waiting for every Machine to reach Phase=Running with a Node registered — clusterctl move's pre-condition refuses to pivot while any Machine is still bringing up its Node.",
+		"Verifying control plane is ready for pivot",
 		"not all Machines reached Phase=Running with status.nodeRef populated",
 		func(c context.Context) ([]capiStatusRow, bool, error) {
 			return summarizeMachinesForPivot(c, managementClusterClient)
+		},
+		func() string {
+			return renderMainClusterNodesTable(ctx, mainClusterClient)
 		},
 	)
 }
@@ -152,24 +162,31 @@ func WaitForAllMachinesRunning(ctx context.Context, managementClusterClient clie
 // waitForCAPIStableState is the shared poll loop behind
 // WaitForMainClusterToBeProvisioned and WaitForAllMachinesRunning.
 // summarize fetches the rows + a ready predicate; the loop renders the
-// live table, returns nil on first ready=true, errors after
-// capiWaitTotalTimeout. timeoutErrMsgPrefix is the human prefix
-// appended with " within <duration>" on the timeout error.
+// live table under a one-line spinner header (spinnerLabel + elapsed),
+// returns nil on first ready=true, errors after capiWaitTotalTimeout.
+// timeoutErrMsgPrefix is the human prefix appended with
+// " within <duration>" on the timeout error.
+//
+// onSuccess, if non-nil, is called once the wait succeeds: its returned
+// block replaces the final live-table tick in scrollback (e.g. swapping
+// the Machine-status table for a Nodes table). A nil onSuccess — or one
+// that returns "" — leaves the last live tick as the audit trail.
 //
 // Owns the screen (pauses the progress bar) so the cursor-up / clear-
 // to-end redraw doesn't fight the spinner's 100 ms re-render. Caller
 // must NOT wrap this with bar.InProgress.
 func waitForCAPIStableState(ctx context.Context,
-	headerLine string,
+	spinnerLabel string,
 	timeoutErrMsgPrefix string,
 	summarize func(context.Context) ([]capiStatusRow, bool, error),
+	onSuccess func() string,
 ) error {
 	bar := progress.FromCtx(ctx)
 	bar.Pause()
 	defer bar.Resume()
 
-	fmt.Println()
-	fmt.Println(headerLine)
+	// One blank line of separation from the preceding output. No prose
+	// preamble — the spinner header inside each tick names the wait.
 	fmt.Println()
 
 	maxAttempts := int(capiWaitTotalTimeout / capiWaitPollInterval)
@@ -188,14 +205,24 @@ func waitForCAPIStableState(ctx context.Context,
 	// previously-single-line rows now occupy two rows each) — see
 	// progress.RenderedLineCount.
 	prevBlock := ""
+	wipePrev := func() {
+		if prevBlock != "" {
+			fmt.Printf("\033[%dF\033[J", progress.RenderedLineCount(prevBlock))
+			prevBlock = ""
+		}
+	}
 
-	redraw := func(attempt int, rows []capiStatusRow) {
-		block := buildCAPIWaitBlock(attempt, maxAttempts, time.Since(start), rows)
+	// frame advances once per redraw (~1 Hz) so the spinner glyph in
+	// the header line visibly rotates.
+	frame := 0
+	redraw := func(rows []capiStatusRow) {
+		block := buildCAPIWaitBlock(spinnerLabel, frame, time.Since(start), rows)
 		if prevBlock != "" {
 			fmt.Printf("\033[%dF\033[J", progress.RenderedLineCount(prevBlock))
 		}
 		fmt.Print(block)
 		prevBlock = block
+		frame++
 	}
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -208,21 +235,33 @@ func waitForCAPIStableState(ctx context.Context,
 			slog.WarnContext(ctx, "Failed reading CAPI status; will retry next tick", slog.Any("error", err))
 		}
 
-		redraw(attempt, rows)
-
 		if ready {
+			// Swap the in-flight status table for the caller's success
+			// block (e.g. a `kubectl get nodes`-style table) — the live
+			// table was the during-the-wait view; the success block is
+			// the persistent audit trail. If the caller gave no block,
+			// or it rendered empty, keep the last in-flight tick.
+			if onSuccess != nil {
+				if finalBlock := onSuccess(); finalBlock != "" {
+					wipePrev()
+					fmt.Print(finalBlock)
+					return nil
+				}
+			}
+			redraw(rows)
 			return nil
 		}
+
+		redraw(rows)
 
 		if time.Now().After(deadline) || attempt == maxAttempts {
 			return fmt.Errorf("%s within %s", timeoutErrMsgPrefix, capiWaitTotalTimeout)
 		}
 
-		// Tick once per second between API polls so the elapsed /
-		// remaining counter keeps moving — without this the screen
-		// freezes for the full 15 s poll interval and reads as
-		// "stuck". The table content stays the same; only the
-		// per-tick header line gets a fresh timestamp.
+		// Tick once per second between API polls so the spinner glyph
+		// and elapsed counter keep moving — without this the screen
+		// freezes for the full poll interval and reads as "stuck". The
+		// table content stays the same; only the header line changes.
 		nextPoll := time.Now().Add(capiWaitPollInterval)
 		for time.Now().Before(nextPoll) {
 			select {
@@ -230,7 +269,7 @@ func waitForCAPIStableState(ctx context.Context,
 				return ctx.Err()
 			case <-time.After(time.Second):
 			}
-			redraw(attempt, rows)
+			redraw(rows)
 		}
 	}
 	// Unreachable — the loop returns from inside the deadline check.
@@ -516,20 +555,18 @@ func firstNonEmptyLine(s string) string {
 	return ""
 }
 
-// buildCAPIWaitBlock returns the per-tick render — the header line
-// (attempt + elapsed + remaining + Ctrl+C hint) plus the lipgloss
-// status table — as a single string ending in a newline. Returning a
-// string (not printing directly) lets the caller count lines for the
-// cursor-up wipe on the next tick.
-func buildCAPIWaitBlock(attempt, maxAttempts int, elapsed time.Duration, rows []capiStatusRow) string {
-	remaining := capiWaitTotalTimeout - elapsed
-	if remaining < 0 {
-		remaining = 0
-	}
-	header := fmt.Sprintf("Attempt %d/%d  •  %s elapsed  •  %s remaining  •  Ctrl+C to abort\n",
-		attempt, maxAttempts,
-		elapsed.Round(time.Second), remaining.Round(time.Second),
-	)
+// capiWaitSpinnerFrames is the braille spinner cycled in each CAPI-wait
+// tick's header line — one frame advance per redraw (~1 Hz).
+var capiWaitSpinnerFrames = []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+
+// buildCAPIWaitBlock returns one tick's render — a spinner header line
+// (`<glyph> <label>  [<elapsed>]`) plus the lipgloss status table — as a
+// single string ending in a newline. Returning a string (not printing
+// directly) lets the caller count lines for the cursor-up wipe on the
+// next tick.
+func buildCAPIWaitBlock(spinnerLabel string, frame int, elapsed time.Duration, rows []capiStatusRow) string {
+	glyph := capiWaitSpinnerFrames[frame%len(capiWaitSpinnerFrames)]
+	header := fmt.Sprintf("%c %s  [%s]\n", glyph, spinnerLabel, elapsed.Round(time.Second))
 	return header + renderCAPIStatusTable(rows) + "\n"
 }
 
@@ -577,13 +614,13 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 	return t.Render()
 }
 
-// PrintMainClusterNodesTable renders a `kubectl get nodes -o wide`
-// style table to stdout from the given main-cluster client. Called
-// right before clusterctl move so the operator can eyeball Node
-// readiness, roles, and addresses before the pivot starts. The
-// preceding WaitForAllMachinesRunning predicate proves every CAPI
-// Machine has a Node — this view confirms the same from the workload
-// side, in the familiar kubectl get nodes layout.
+// renderMainClusterNodesTable returns a `kubectl get nodes -o wide`-style
+// table for the main cluster as a string ending in a newline, or "" if
+// the Nodes can't be listed (the error is logged; the caller then keeps
+// whatever it already had on screen). Used as WaitForAllMachinesRunning's
+// success block: once every Machine has a Node, this view is the
+// persistent pre-pivot audit trail — the live Machine-status table was
+// only useful while the wait was in flight.
 //
 // Columns mirror kubectl's -o wide output trimmed to the seven most
 // useful at pivot time: NAME, STATUS, ROLES, AGE, VERSION,
@@ -591,18 +628,14 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 // CONTAINER-RUNTIME are omitted; they're identical across every node
 // by construction (CAPI's KubeadmConfig preKubeadmCommands pin them)
 // and only inflate the row width.
-//
-// Best-effort: a List error is logged and the function returns
-// without printing — operators won't lose the pivot to a transient
-// API blip on a purely informational render.
-func PrintMainClusterNodesTable(ctx context.Context, mainClusterClient client.Client) {
+func renderMainClusterNodesTable(ctx context.Context, mainClusterClient client.Client) string {
 	nodes := &coreV1.NodeList{}
 	if err := mainClusterClient.List(ctx, nodes); err != nil {
 		slog.WarnContext(ctx,
-			"Failed listing Nodes for pre-pivot table; skipping",
+			"Failed listing Nodes for the pre-pivot table; keeping the Machine-status table instead",
 			slog.Any("error", err),
 		)
-		return
+		return ""
 	}
 
 	headers := []string{"NAME", "STATUS", "ROLES", "AGE", "VERSION", "INTERNAL-IP", "EXTERNAL-IP"}
@@ -632,18 +665,14 @@ func PrintMainClusterNodesTable(ctx context.Context, mainClusterClient client.Cl
 				return headerStyle
 			}
 			// Paint NotReady / Unknown rows red so operators don't miss
-			// a degraded node in a long list.
+			// a degraded node before the pivot.
 			if row >= 0 && row < len(tableRows) && tableRows[row][1] != "Ready" {
 				return notReadyStyle
 			}
 			return cellStyle
 		})
 
-	fmt.Println()
-	fmt.Println("Main cluster Nodes — kubeaid-cli is about to pivot CAPI to this cluster. Eyeball the state below before the move begins.")
-	fmt.Println()
-	fmt.Println(t.Render())
-	fmt.Println()
+	return t.Render() + "\n"
 }
 
 // nodeReadyStatus reads the Node's Ready condition and returns the
