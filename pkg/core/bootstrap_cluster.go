@@ -112,13 +112,15 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// directly so the HCloud CCM can start before sealed-secrets-
 	// controller is up. Mirrors the keycloak-admin pattern; breaks
 	// the taint ↔ sealed-secrets ↔ CCM bootstrap cycle. No-op for
-	// other cloud providers.
+	// other cloud providers. It's a single Secret apply — a substep
+	// under the still-open "Provisioning main cluster" section, not
+	// its own major-step header.
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		bar.Describe("Applying HCloud cloud-credentials Secret")
-		assert.AssertErrNil(ctx,
-			ensureHCloudCredentialsSecret(ctx, mainClusterClient),
-			"Failed applying HCloud cloud-credentials Secret",
-		)
+		releaseCreds := bar.InProgress("Applying HCloud cloud-credentials Secret")
+		credsErr := ensureHCloudCredentialsSecret(ctx, mainClusterClient)
+		releaseCreds()
+		assert.AssertErrNil(ctx, credsErr, "Failed applying HCloud cloud-credentials Secret")
+		bar.Substep("Applied HCloud cloud-credentials Secret")
 	}
 
 	// Setup Disaster Recovery, if the user wants.
@@ -460,16 +462,13 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	// leaving us at "N-1 of N Machines Running, one fresh Machine still
 	// joining" when we arrive here. Without this wait, that exact case
 	// hard-fails the pivot.
-	waitErr := kubernetes.WaitForAllMachinesRunning(ctx, managementClusterClient)
+	//
+	// On success the wait swaps its live Machine-status table for a
+	// `kubectl get nodes`-style table from mainClusterClient — the
+	// operator's pre-pivot audit trail.
+	waitErr := kubernetes.WaitForAllMachinesRunning(ctx, managementClusterClient, mainClusterClient)
 	assert.AssertErrNil(ctx, waitErr,
 		"Timed out waiting for Machines to be Running before clusterctl move")
-	bar.Substep("All Machines Running — clusterctl move pre-conditions cleared")
-
-	// Render a `kubectl get nodes -o wide`-style table from the main
-	// cluster so the operator can eyeball Node readiness, roles, and
-	// IPs before the pivot. Informational — non-fatal if the List
-	// fails (just skips the render).
-	kubernetes.PrintMainClusterNodesTable(ctx, mainClusterClient)
 
 	// Pause the ClusterAPI Infrastructure Provider in the management cluster,
 	// and move the ClusterAPI manifests to the main cluster. They will be processed by the main
@@ -478,7 +477,7 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	capiCLI, err := clusterctl.New(ctx, "")
 	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
 
-	releasePivot := bar.InProgress("Running clusterctl move (mgmt → main)")
+	releasePivot := bar.InProgress("Pivoting ClusterAPI to main cluster")
 	err = capiCLI.Move(ctx, clusterctl.MoveOptions{
 		FromKubeconfig: clusterctl.Kubeconfig{
 			Path: pivotMgmtKubeconfig,
@@ -493,7 +492,7 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	releasePivot()
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 	slog.InfoContext(ctx, "Pivoted the cluster by executing 'clusterctl move'")
-	bar.Substep("Pivoted ClusterAPI to main cluster (clusterctl move)")
+	bar.Substep("Pivoted ClusterAPI to main cluster")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {
