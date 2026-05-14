@@ -151,6 +151,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	var (
 		preHookApps         []string
 		beforeRemainingApps func(context.Context) error
+		afterAppSync        map[string]func(context.Context) error
 	)
 	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
 		// ccm-hcloud manages LoadBalancers for HCloud servers,
@@ -170,32 +171,33 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			return hetzner.WaitForIngressLBDNS(ctx, mainClusterClient)
 		}
 	}
-	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, preHookApps, beforeRemainingApps)
-	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
-
-	// Gate on cert-manager actually issuing the VPN TLS certificates
-	// before going further. netbird-management / keycloak are unusable
-	// until Traefik serves a real cert for their FQDNs — without this
-	// gate a failed cert (stray AAAA record, broken ACME challenge, ...)
-	// surfaces much later as a cryptic x509 crashloop instead of here.
-	// The cert names match the `tls.secretName` rendered into
-	// values-netbird.yaml.tmpl / values-keycloakx.yaml.tmpl.
 	if vpnClusterEnabled() {
-		bar.Describe("Waiting for TLS certificates")
-		certsToWaitFor := []types.NamespacedName{
-			{Namespace: constants.NamespaceNetBird, Name: "netbird-tls"},
+		// An ArgoCD App reporting Synced only means its manifests
+		// (Ingress included) were applied — not that cert-manager has
+		// issued the TLS cert yet. Gate on the actual Certificate
+		// object right after the App syncs: keycloak's cert must be
+		// Ready before netbird syncs (netbird-management fetches
+		// Keycloak's OIDC config over TLS), and netbird's own cert
+		// before we move on. A failed cert otherwise surfaces much
+		// later as a cryptic x509 crashloop. Cert names match the
+		// tls.secretName rendered into values-keycloakx / values-netbird.
+		afterAppSync = map[string]func(context.Context) error{
+			constants.ArgoCDAppNetbird: waitForAppCertificate(
+				mainClusterClient, "netbird TLS certificate",
+				constants.NamespaceNetBird, "netbird-tls",
+			),
 		}
 		if managedKeycloakEnabled() {
-			certsToWaitFor = append(certsToWaitFor, types.NamespacedName{
-				Namespace: constants.NamespaceKeycloak, Name: "keycloak-tls",
-			})
+			afterAppSync[constants.ArgoCDAppKeycloakx] = waitForAppCertificate(
+				mainClusterClient, "keycloak TLS certificate",
+				constants.NamespaceKeycloak, "keycloak-tls",
+			)
 		}
-		assert.AssertErrNil(ctx,
-			kubernetes.WaitForCertificatesReady(ctx, mainClusterClient, certsToWaitFor),
-			"Failed waiting for TLS certificates to be issued",
-		)
-		bar.Substep("TLS certificates issued")
 	}
+	err = kubernetes.SyncAllArgoCDApps(
+		ctx, args.SkipMonitoringSetup, preHookApps, beforeRemainingApps, afterAppSync,
+	)
+	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
 	// Keycloak via the admin secret and reconciles the realm +
@@ -588,4 +590,26 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		"Main cluster has been provisioned successfully 🎉🎉 !",
 		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
 	)
+}
+
+// waitForAppCertificate returns a SyncAllArgoCDApps after-sync hook
+// that blocks until the named cert-manager Certificate is Ready,
+// surfaced as a "↻ Waiting for <label>" / "✓ <label> issued" sub-step
+// pair. label is operator-facing (e.g. "keycloak TLS certificate").
+func waitForAppCertificate(
+	clusterClient client.Client,
+	label, namespace, name string,
+) func(context.Context) error {
+	return func(ctx context.Context) error {
+		bar := progress.FromCtx(ctx)
+		release := bar.InProgress("Waiting for " + label)
+		err := kubernetes.WaitForCertificatesReady(ctx, clusterClient,
+			[]types.NamespacedName{{Namespace: namespace, Name: name}})
+		release()
+		if err != nil {
+			return err
+		}
+		bar.Substep(label + " issued")
+		return nil
+	}
 }

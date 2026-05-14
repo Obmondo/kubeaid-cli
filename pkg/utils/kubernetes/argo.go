@@ -350,13 +350,20 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 // point DNS at that LB — so netbird / keycloakx only sync once their
 // Ingress certificates can actually be issued. preHookApps entries
 // not present in the cluster are skipped.
+//
+// afterAppSync maps an App name to a hook run immediately after that App
+// finishes syncing in the remaining-apps loop. The bootstrap uses it to
+// gate on the App's cert-manager Certificate being Ready before moving
+// on — an ArgoCD App reporting Synced only means its manifests (Ingress
+// included) were applied, not that the TLS cert was actually issued.
 func SyncAllArgoCDApps(ctx context.Context,
 	skipMonitoringSetup bool,
 	preHookApps []string,
 	beforeRemainingApps func(context.Context) error,
+	afterAppSync map[string]func(context.Context) error,
 ) error {
 	mgr := newGlobalArgoCDAppManager()
-	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, preHookApps, beforeRemainingApps)
+	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, preHookApps, beforeRemainingApps, afterAppSync)
 }
 
 // WaitForArgoCDAppHealthy blocks until the named ArgoCD App
@@ -423,6 +430,7 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 	skipMonitoringSetup bool,
 	preHookApps []string,
 	beforeRemainingApps func(context.Context) error,
+	afterAppSync map[string]func(context.Context) error,
 ) error {
 	slog.InfoContext(ctx, "Syncing all ArgoCD Apps....")
 
@@ -492,10 +500,18 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 		}
 	}
 
-	// Sync each of the remaining ArgoCD Apps.
+	// Sync each of the remaining ArgoCD Apps. After each one, run the
+	// caller's post-sync hook for that App (if any) — the bootstrap
+	// gates here on the App's TLS Certificate being Ready, since a
+	// Synced App only means its manifests were applied.
 	for _, item := range response.Items {
 		if err := m.syncArgoCDAppWithProgress(ctx, item.Name, noResources); err != nil {
 			return err
+		}
+		if hook := afterAppSync[item.Name]; hook != nil {
+			if err := hook(ctx); err != nil {
+				return fmt.Errorf("post-sync hook for ArgoCD app %q failed: %w", item.Name, err)
+			}
 		}
 	}
 

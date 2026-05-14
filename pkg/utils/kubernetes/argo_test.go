@@ -509,7 +509,7 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 			}
 			mgr := NewArgoCDAppManager(fakeClient, nil)
 
-			err := mgr.syncAllArgoCDApps(context.Background(), true, nil, nil)
+			err := mgr.syncAllArgoCDApps(context.Background(), true, nil, nil, nil)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrSubstr)
@@ -549,7 +549,7 @@ func TestSyncAllArgoCDAppsOrdersPreHookAndGate(t *testing.T) {
 	}
 
 	err := mgr.syncAllArgoCDApps(context.Background(), true,
-		[]string{constants.ArgoCDAppTraefik}, gate)
+		[]string{constants.ArgoCDAppTraefik}, gate, nil)
 	require.NoError(t, err)
 
 	require.Equal(t, 1, gateCalled, "gate must run exactly once")
@@ -559,6 +559,47 @@ func TestSyncAllArgoCDAppsOrdersPreHookAndGate(t *testing.T) {
 		"netbird must be synced after the gate")
 	assert.NotContains(t, appsSyncedBeforeGate, "keycloakx",
 		"keycloakx must be synced after the gate")
+}
+
+// TestSyncAllArgoCDAppsRunsAfterAppSyncHook verifies an afterAppSync
+// hook fires immediately after its App syncs and before the next App —
+// the ordering the bootstrap relies on to gate netbird's sync on
+// keycloak's TLS cert being Ready.
+func TestSyncAllArgoCDAppsRunsAfterAppSyncHook(t *testing.T) {
+	client := &fakeArgoCDAppClient{
+		listResponse: &argoCDV1Alpha1.ApplicationList{
+			Items: []argoCDV1Alpha1.Application{
+				{ObjectMeta: metaV1.ObjectMeta{Name: "netbird"}},
+				{ObjectMeta: metaV1.ObjectMeta{Name: "traefik"}},
+				{ObjectMeta: metaV1.ObjectMeta{Name: "keycloakx"}},
+			},
+		},
+		getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
+	}
+	mgr := NewArgoCDAppManager(client, nil)
+
+	hookCalled := 0
+	var appsSyncedAtHook []string
+	afterAppSync := map[string]func(context.Context) error{
+		// The error return is fixed by the afterAppSync hook type, not
+		// a free choice — this test hook simply never errors.
+		"netbird": func(_ context.Context) error { //nolint:unparam
+			hookCalled++
+			appsSyncedAtHook = append([]string(nil), client.getAppNames...)
+			return nil
+		},
+	}
+
+	err := mgr.syncAllArgoCDApps(context.Background(), true, nil, nil, afterAppSync)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, hookCalled, "the netbird hook must run exactly once")
+	assert.Contains(t, appsSyncedAtHook, "netbird",
+		"the hook must run after netbird has synced")
+	assert.NotContains(t, appsSyncedAtHook, "traefik",
+		"the hook must run before the apps that follow netbird")
+	assert.NotContains(t, appsSyncedAtHook, "keycloakx",
+		"the hook must run before the apps that follow netbird")
 }
 
 func TestSyncArgoCDApp(t *testing.T) {

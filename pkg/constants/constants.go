@@ -292,6 +292,9 @@ const (
 	// kubeaid-cli waits for Healthy before calling the admin API.
 	ArgoCDAppKeycloakx = "keycloakx"
 
+	// ArgoCDAppNetbird is the name of the netbird ArgoCD App.
+	ArgoCDAppNetbird = "netbird"
+
 	// Keycloak admin Secret keys. Names match what the keycloakx
 	// chart's pre-install hook reads.
 	SecretNameKeycloakAdmin   = "keycloak-admin"
