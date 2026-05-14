@@ -33,26 +33,7 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		return nil, fmt.Errorf("checking for existing LB: %w", err)
 	}
 	if existing != nil {
-		existing, err = h.ensureExistingControlPlaneLB(ctx, existing, clusterName, network)
-		if err != nil {
-			return nil, fmt.Errorf("ensuring existing control-plane LB: %w", err)
-		}
-		if enablePublicInterface {
-			existing, err = h.SetControlPlaneLBPublicInterface(ctx, clusterName, true)
-			if err != nil {
-				return nil, fmt.Errorf("enabling public interface on existing LB: %w", err)
-			}
-		}
-		// Heal LBs created by an older kubeaid-cli that didn't add
-		// the service + label-selector target — re-runs against an
-		// existing-but-unwired LB are the common case for operators
-		// who hit this bug pre-fix.
-		existing, err = h.ensureControlPlaneLBServiceAndTarget(ctx, existing, clusterName)
-		if err != nil {
-			return nil, fmt.Errorf("ensuring service/target on existing LB: %w", err)
-		}
-		slog.InfoContext(ctx, "Hetzner LB already exists")
-		return existing, nil
+		return h.reconcileExistingControlPlaneLB(ctx, existing, clusterName, network, enablePublicInterface)
 	}
 
 	result, response, err := h.loadBalancerClient.Create(ctx, hcloud.LoadBalancerCreateOpts{
@@ -114,6 +95,39 @@ func (h *Hetzner) CreateLB(ctx context.Context,
 		return nil, err
 	}
 	return lb, nil
+}
+
+// reconcileExistingControlPlaneLB brings an already-existing control-
+// plane LB up to the desired state: ensures it's attached to the
+// network, toggles the public interface, and heals LBs created by an
+// older kubeaid-cli that didn't add the service + label-selector
+// target (re-runs against an existing-but-unwired LB are the common
+// case for operators who hit that bug pre-fix).
+func (h *Hetzner) reconcileExistingControlPlaneLB(ctx context.Context,
+	existing *hcloud.LoadBalancer,
+	clusterName string,
+	network *hcloud.Network,
+	enablePublicInterface bool,
+) (*hcloud.LoadBalancer, error) {
+	existing, err := h.ensureExistingControlPlaneLB(ctx, existing, clusterName, network)
+	if err != nil {
+		return nil, fmt.Errorf("ensuring existing control-plane LB: %w", err)
+	}
+
+	if enablePublicInterface {
+		existing, err = h.SetControlPlaneLBPublicInterface(ctx, clusterName, true)
+		if err != nil {
+			return nil, fmt.Errorf("enabling public interface on existing LB: %w", err)
+		}
+	}
+
+	existing, err = h.ensureControlPlaneLBServiceAndTarget(ctx, existing, clusterName)
+	if err != nil {
+		return nil, fmt.Errorf("ensuring service/target on existing LB: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Hetzner LB already exists")
+	return existing, nil
 }
 
 // ensureControlPlaneLBServiceAndTarget wires the LB so kube-apiserver

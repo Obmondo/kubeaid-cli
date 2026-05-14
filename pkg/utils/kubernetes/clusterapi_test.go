@@ -1102,9 +1102,9 @@ func TestSummarizeCPNodesNetworking(t *testing.T) {
 	condFalse := coreV1.ConditionFalse
 
 	tests := []struct {
-		name         string
-		nodes        []coreV1.Node
-		wantReady    bool
+		name                string
+		nodes               []coreV1.Node
+		wantReady           bool
 		wantReasonsContains []string
 	}{
 		{

@@ -259,11 +259,11 @@ func detectAgentSSHKeyPath(home string) string {
 	if socketPath == "" {
 		return ""
 	}
-	conn, err := net.Dial("unix", socketPath)
+	conn, err := net.Dial("unix", socketPath) //nolint:gosec // G704: dialing the operator's own SSH agent socket from $SSH_AUTH_SOCK.
 	if err != nil {
 		return ""
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	identities, err := agent.NewClient(conn).List()
 	if err != nil {

@@ -204,7 +204,7 @@ func renderProbeOIDCError(err error) string {
 		body = "" +
 			"  • Probably an HTML error page from a reverse proxy\n" +
 			"  • Make sure /realms/<realm> reaches Keycloak directly."
-	default:
+	case probeOIDCErrOther:
 		return pe.Error()
 	}
 

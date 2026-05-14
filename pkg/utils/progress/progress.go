@@ -162,11 +162,11 @@ func detectYubiKeyInAgent() bool {
 	if sock == "" {
 		return false
 	}
-	conn, err := net.Dial("unix", sock)
+	conn, err := net.Dial("unix", sock) //nolint:gosec // G704: dialing the operator's own SSH agent socket from $SSH_AUTH_SOCK.
 	if err != nil {
 		return false
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	identities, err := agent.NewClient(conn).List()
 	if err != nil {
 		return false

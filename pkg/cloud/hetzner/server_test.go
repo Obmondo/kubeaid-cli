@@ -128,7 +128,7 @@ func TestEnsureServerAttachedToNetwork(t *testing.T) {
 			wantGetCalls: 0,
 		},
 		{
-			name: "attachment shows up on first GetByID poll",
+			name:        "attachment shows up on first GetByID poll",
 			inputServer: &hcloud.Server{ID: 1, PrivateNet: nil},
 			client: func() *fakeServerClient {
 				return &fakeServerClient{

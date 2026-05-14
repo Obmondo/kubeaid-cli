@@ -133,7 +133,6 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 // Returns ("", 0, nil) for HTTPS URLs (no SSH host to scan).
 func parseHostPortFromGitURL(rawURL string) (host string, port int, err error) {
 	rawURL = strings.TrimSpace(rawURL)
-	port = 22
 
 	// scheme://[user@]host[:port]/...
 	if strings.Contains(rawURL, "://") {

@@ -385,11 +385,12 @@ func runBasicsForm(cfg *PromptedConfig) error {
 		return err
 	}
 
-	if cfg.CloudProvider != constants.CloudProviderHetzner {
+	switch {
+	case cfg.CloudProvider != constants.CloudProviderHetzner:
 		cfg.ClusterType = constants.ClusterTypeWorkload
-	} else if clusterKindChoice == optVPN {
+	case clusterKindChoice == optVPN:
 		cfg.ClusterType = constants.ClusterTypeVPN
-	} else {
+	default:
 		cfg.ClusterType = constants.ClusterTypeWorkload
 	}
 

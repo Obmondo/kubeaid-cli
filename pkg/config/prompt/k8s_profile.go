@@ -279,7 +279,7 @@ func renderK8sProfileTable(profiles []K8sProfile) string {
 	for _, p := range profiles {
 		label := p.Label
 		if p.Name == k8sProfileBalancedName {
-			label = label + " ★"
+			label += " ★"
 		}
 		note := p.Maintenance
 		if p.Disabled {

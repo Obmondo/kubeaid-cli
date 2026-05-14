@@ -296,6 +296,8 @@ func TestGenerateSealedSecret(t *testing.T) {
 // controller's cert bytes, so a re-keyed controller invalidates the
 // cache. Regressions in that combination would silently re-surface as
 // "no key could decrypt secret" mid-bootstrap.
+//
+//nolint:gocognit // table-driven test: the complexity is the case matrix plus per-case assertions, inherent to the test design.
 func TestSealIfPlaintextChanged(t *testing.T) {
 	origNewKubesealClientConfig := newKubesealClientConfigFn
 	origOpenCert := openCertFn
@@ -332,9 +334,9 @@ func TestSealIfPlaintextChanged(t *testing.T) {
 
 		// failOpenCert / failParseKey / failSeal force the matching
 		// seam to return an error. Used by the error-path subtests.
-		failOpenCert  bool
-		failParseKey  bool
-		failSeal      bool
+		failOpenCert bool
+		failParseKey bool
+		failSeal     bool
 
 		// wantSealCalls discriminates cache-hit (0) from cache-miss
 		// (1) without having to peek at the sealed bytes themselves.

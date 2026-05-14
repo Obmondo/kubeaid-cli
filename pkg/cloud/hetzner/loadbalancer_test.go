@@ -69,7 +69,11 @@ func (f *fakeLoadBalancerClient) AddService(ctx context.Context, loadBalancer *h
 	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
 }
 
-func (f *fakeLoadBalancerClient) AddLabelSelectorTarget(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error) {
+func (f *fakeLoadBalancerClient) AddLabelSelectorTarget(
+	ctx context.Context,
+	loadBalancer *hcloud.LoadBalancer,
+	opts hcloud.LoadBalancerAddLabelSelectorTargetOpts,
+) (*hcloud.Action, *hcloud.Response, error) {
 	if f.addLabelSelectorTargetFn != nil {
 		return f.addLabelSelectorTargetFn(ctx, loadBalancer, opts)
 	}
@@ -109,9 +113,23 @@ func TestLbHasLabelSelectorTarget(t *testing.T) {
 		want bool
 	}{
 		{"nil targets", &hcloud.LoadBalancer{}, false},
-		{"matching label-selector target", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}}, true},
-		{"label-selector target with different selector", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: "other=label"}}}}, false},
-		{"server-type target ignored even when selector text matches", &hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeServer, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}}, false},
+		{
+			"matching label-selector target",
+			&hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}},
+			true,
+		},
+		{
+			"label-selector target with different selector",
+			&hcloud.LoadBalancer{
+				Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeLabelSelector, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: "other=label"}}},
+			},
+			false,
+		},
+		{
+			"server-type target ignored even when selector text matches",
+			&hcloud.LoadBalancer{Targets: []hcloud.LoadBalancerTarget{{Type: hcloud.LoadBalancerTargetTypeServer, LabelSelector: &hcloud.LoadBalancerTargetLabelSelector{Selector: sel}}}},
+			false,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

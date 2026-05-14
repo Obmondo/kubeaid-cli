@@ -45,6 +45,7 @@ func (f *fakeNetworkClient) AddRoute(ctx context.Context, network *hcloud.Networ
 	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusCreated}}, nil
 }
 
+//nolint:dupl // structurally mirrors the serverClient interface it doubles — a mock and its interface can't be deduplicated.
 type fakeServerClient struct {
 	attachToNetworkFn  func(ctx context.Context, server *hcloud.Server, opts hcloud.ServerAttachToNetworkOpts) (*hcloud.Action, *hcloud.Response, error)
 	listFn             func(ctx context.Context, opts hcloud.ServerListOpts) ([]*hcloud.Server, *hcloud.Response, error)

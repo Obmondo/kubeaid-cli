@@ -61,7 +61,6 @@ func gitAuthModeFor(gitConfig config.GitConfig) gitAuthMode {
 // time. Operators who need a passphrased key should use the SSH agent
 // path instead, which holds the decrypted material in memory.
 //
-//nolint:godox
 // TODO : Support passphrased private keys by prompting the operator
 // at runtime via golang.org/x/term.ReadPassword (no echo) and passing
 // the captured passphrase to gossh.NewPublicKeysFromFile. Setup-time
@@ -70,6 +69,8 @@ func gitAuthModeFor(gitConfig config.GitConfig) gitAuthMode {
 // later") but the runtime never wires up the prompt — encrypted keys
 // pass setup and then fail at first git op. Adding the prompt here
 // closes that gap without storing the passphrase in general.yaml.
+//
+//nolint:godox
 func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 	slog.InfoContext(ctx, "Determining Git auth method")
 
@@ -99,7 +100,7 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 
 		slog.InfoContext(ctx, "Using SSH private key")
 
-	default: // gitAuthModeAgent
+	case gitAuthModeAgent:
 		sshAgentAuthMethod, err := gossh.NewSSHAgentAuth(gitConfig.SSHUsername)
 		assert.AssertErrNil(ctx, err, "SSH agent failed")
 

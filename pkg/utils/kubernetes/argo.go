@@ -444,37 +444,10 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 		return err
 	}
 
-	// Sync ArgoCD Apps corresponding to the CSI driver(s).
-	// Otherwise, no StorageClasses might exist, making stateful workloads unhealthy.
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-		// TODO : Sync the AWS EBS CSI Driver ArgoCD App.
-		//        We need to add the corresponding ArgoCD App and values file templates first.
-
-	case constants.CloudProviderAzure:
-		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppAzureDiskCSIDriver, noResources); err != nil {
-			return err
-		}
-
-	case constants.CloudProviderHetzner:
-		if config.UsingHCloud() {
-			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
-				return err
-			}
-		}
-
-		if config.UsingHetznerBareMetal() {
-			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
-
-			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
-				return err
-			}
-		}
-
-	case constants.CloudProviderBareMetal:
-		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppLocalPVProvisioner, noResources); err != nil {
-			return err
-		}
+	// Sync the CSI-driver ArgoCD App(s) for this cloud provider so
+	// StorageClasses exist before stateful workloads sync.
+	if err := m.syncCSIDriverApps(ctx); err != nil {
+		return err
 	}
 
 	// Sync the KubePrometheus ArgoCD App, if monitoring setup is enabled.
@@ -522,6 +495,45 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 	// Sync each of the remaining ArgoCD Apps.
 	for _, item := range response.Items {
 		if err := m.syncArgoCDAppWithProgress(ctx, item.Name, noResources); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// syncCSIDriverApps syncs the CSI-driver ArgoCD App(s) for the current
+// cloud provider, so StorageClasses exist before stateful workloads
+// sync. No-op for AWS (the EBS CSI App + values templates aren't wired
+// up yet).
+func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		// TODO : Sync the AWS EBS CSI Driver ArgoCD App.
+		//        We need to add the corresponding ArgoCD App and values file templates first.
+
+	case constants.CloudProviderAzure:
+		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppAzureDiskCSIDriver, noResources); err != nil {
+			return err
+		}
+
+	case constants.CloudProviderHetzner:
+		if config.UsingHCloud() {
+			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
+				return err
+			}
+		}
+
+		if config.UsingHetznerBareMetal() {
+			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
+
+			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
+				return err
+			}
+		}
+
+	case constants.CloudProviderBareMetal:
+		if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppLocalPVProvisioner, noResources); err != nil {
 			return err
 		}
 	}
@@ -749,7 +761,11 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 		AppNamespace: aws.String(constants.NamespaceArgoCD),
 	})
 	if err != nil {
-		RecreateArgoCDApplicationClient(ctx, nil)
+		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
+			slog.WarnContext(ctx, "Failed reconnecting ArgoCD application client",
+				logger.Error(reconnectErr),
+			)
+		}
 		return false, 0, nil, fmt.Errorf("getting root ArgoCD app: %w", err)
 	}
 
@@ -770,7 +786,11 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 		AppNamespace: aws.String(constants.NamespaceArgoCD),
 	})
 	if err != nil {
-		RecreateArgoCDApplicationClient(ctx, nil)
+		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
+			slog.WarnContext(ctx, "Failed reconnecting ArgoCD application client",
+				logger.Error(reconnectErr),
+			)
+		}
 		return reconciled, len(declared), nil, fmt.Errorf("listing ArgoCD apps: %w", err)
 	}
 
