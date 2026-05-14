@@ -695,6 +695,132 @@ func nodeAddress(n *coreV1.Node, t coreV1.NodeAddressType) string {
 	return "<none>"
 }
 
+// waitForCPNodesNetworkingTimeout caps the WaitForCPNodesNetworkingReady
+// wait. CNI installation on a fresh control-plane Node typically reports
+// back within 60-120 s on Hetzner / AWS / Azure; 10 min is a generous
+// safety net before we surface a clear error instead of hanging
+// indefinitely. Test seam — overridden in unit tests for sub-second
+// timeouts.
+var waitForCPNodesNetworkingTimeout = 10 * time.Minute
+
+// WaitForCPNodesNetworkingReady blocks until every control-plane Node
+// in the main cluster reports BOTH Ready=True AND
+// NetworkUnavailable=False, ctx is cancelled, or
+// waitForCPNodesNetworkingTimeout passes.
+//
+// CAPI's Cluster.Phase=Provisioned + ReadyCondition=True (the predicate
+// WaitForMainClusterToBeProvisioned waits on above) flips True the
+// moment the static control-plane pods
+// (apiserver/etcd/controller-manager/scheduler) respond on the
+// cluster's apiserver endpoint. It has no signal about whether the CNI
+// is installed and a Node can actually schedule pods. Historically
+// that gap has masked cilium postKubeadm install failures (e.g. the
+// `helm install cilium --atomic --wait` rolling back when hubble
+// Deployments stay Pending behind the kubeadm
+// control-plane:NoSchedule taint on a single-node bootstrap) —
+// kubeaid-cli marched past WaitForMainClusterToBeProvisioned into
+// SetupCluster, then SealedSecrets / ArgoCD App sync surfaced as the
+// failing layer with workload pods stuck ContainerCreating
+// indefinitely.
+//
+// NetworkUnavailable=False is the standard kubelet/CNI predicate
+// Kubernetes itself uses to gate workload scheduling on a Node
+// (kubernetes/kubernetes#k8s.io/api/core/v1.NodeNetworkUnavailable),
+// so this check is CNI-agnostic (cilium, calico, weave, anything) and
+// aligned with what the scheduler would care about anyway. Ready=True
+// is the broader kubelet "I can run pods" predicate; we require both
+// because either alone has known false positives during cloud-provider
+// init.
+func WaitForCPNodesNetworkingReady(ctx context.Context, kubeClient client.Client) error {
+	ctx, cancel := context.WithTimeout(ctx, waitForCPNodesNetworkingTimeout)
+	defer cancel()
+
+	var lastReasons []string
+	for {
+		nodes := &coreV1.NodeList{}
+		if err := kubeClient.List(ctx, nodes); err != nil {
+			slog.WarnContext(ctx,
+				"Failed listing Nodes for networking-ready check; will retry next tick",
+				slog.Any("error", err),
+			)
+		} else {
+			ready, reasons := summarizeCPNodesNetworking(nodes)
+			if ready {
+				slog.InfoContext(ctx,
+					"Every control-plane Node reports Ready=True and NetworkUnavailable=False",
+				)
+				return nil
+			}
+			lastReasons = reasons
+			slog.InfoContext(ctx,
+				"Waiting for control-plane Nodes' networking to be ready",
+				slog.Any("not_ready", reasons),
+			)
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf(
+				"timed out waiting for control-plane Nodes to report Ready=True and "+
+					"NetworkUnavailable=False within %s — suggests the CNI install in "+
+					"postKubeadm failed (or rolled back). Last-seen reasons: %v. Run "+
+					"`kubectl get pods -n cilium` and `kubectl get nodes -o wide` "+
+					"against the provisioned cluster's kubeconfig to investigate",
+				waitForCPNodesNetworkingTimeout, lastReasons,
+			)
+		case <-time.After(waitForProvisioningPollInterval):
+		}
+	}
+}
+
+// summarizeCPNodesNetworking returns whether every control-plane Node
+// in nodes is Ready=True AND NetworkUnavailable=False, plus a slice of
+// human-readable reasons for each not-ready Node (used in both slog
+// tracing during the wait and in the final timeout error message).
+//
+// Empty CP set returns ready=false with a "no control-plane Nodes
+// found" reason — we should never reach this wait without any CP Nodes
+// registered (CAPI's Cluster Ready predicate that gates the call site
+// requires the control plane to have initialized), so the empty case
+// indicates something earlier broke and we should NOT silently pass.
+func summarizeCPNodesNetworking(nodes *coreV1.NodeList) (bool, []string) {
+	var reasons []string
+	cpCount := 0
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if !isControlPlaneNode(node) {
+			continue
+		}
+		cpCount++
+
+		readyOK := false
+		// NodeNetworkUnavailable absent from Conditions = network IS
+		// available. kubelet only sets the condition when there's a
+		// problem (typically: route controller hasn't initialized yet,
+		// or CNI hasn't reported Ready). So the default-true here is
+		// the correct interpretation.
+		netOK := true
+		for _, c := range node.Status.Conditions {
+			switch c.Type {
+			case coreV1.NodeReady:
+				readyOK = c.Status == coreV1.ConditionTrue
+			case coreV1.NodeNetworkUnavailable:
+				netOK = c.Status == coreV1.ConditionFalse
+			}
+		}
+		if !readyOK {
+			reasons = append(reasons, fmt.Sprintf("%s: Ready!=True", node.Name))
+		}
+		if !netOK {
+			reasons = append(reasons, fmt.Sprintf("%s: NetworkUnavailable=True", node.Name))
+		}
+	}
+	if cpCount == 0 {
+		return false, []string{"no control-plane Nodes found"}
+	}
+	return len(reasons) == 0, reasons
+}
+
 // WaitForMainClusterToBeReady waits for the main cluster to be ready to run
 // application workloads. It polls until at least one initialized worker node
 // exists or the context is cancelled.

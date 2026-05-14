@@ -254,6 +254,24 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	)
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
 
+	// Closes the well-documented gap between CAPI's Cluster.Phase=
+	// Provisioned+Ready (which WaitForMainClusterToBeProvisioned above
+	// gates on) and the cluster actually being able to schedule pods.
+	// CAPI's predicate flips True the moment static control-plane pods
+	// respond on the apiserver endpoint — it has no opinion on whether
+	// the CNI is installed and a Node can run workloads. Without this
+	// extra gate, a postKubeadm cilium install rollback used to slip
+	// past us silently and surface much later as SealedSecrets /
+	// ArgoCD App sync failures with workload pods stuck
+	// ContainerCreating. Failing fast here points the operator at the
+	// actual problem (CNI not Ready on the CP Node).
+	bar := progress.FromCtx(ctx)
+	releaseNet := bar.InProgress("Waiting for control-plane Node networking to be ready")
+	err = kubernetes.WaitForCPNodesNetworkingReady(ctx, provisionedClusterClient)
+	releaseNet()
+	assert.AssertErrNil(ctx, err, "Failed waiting for control-plane Node networking to be ready")
+	bar.Substep("Control-plane Node networking ready")
+
 	// Ensure that application workloads can be scheduled.
 	switch kubernetes.IsNodeGroupCountZero(ctx) {
 	// When there are 0 node-groups, then we need to remove the NoSchedule taint from the master
@@ -296,8 +314,6 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	if !args.SkipClusterctlMove && !kubernetes.IsClusterctlMoveExecuted(ctx) {
 		pivotCluster(ctx, provisionedClusterClient)
 	}
-
-	bar := progress.FromCtx(ctx)
 
 	// Sync cluster-autoscaler on AWS or Azure workload clusters.
 	// Skip Hetzner (chart wiring not in place), bare-metal (no
