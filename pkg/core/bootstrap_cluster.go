@@ -138,65 +138,65 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	// Sync all ArgoCD Apps.
 	//
-	// On Hetzner VPN clusters the application-layer apps (netbird,
-	// keycloakx, ...) can't finish syncing until their Ingress
-	// certificates are issued, which needs the operator to point DNS
-	// at the Traefik ingress LB. So we hand SyncAllArgoCDApps a
-	// pre-hook app list (ccm + traefik — together they bring the LB
-	// up) and a gate: after those sync, WaitForIngressLBDNS waits for
-	// the LB's public IP and DNS resolution, and only then are the
-	// remaining apps synced. Without this, netbird's sync wedges
-	// forever on a certificate that can never be issued.
+	// On Hetzner VPN clusters a chain of apps must come up in a
+	// guaranteed order, with gates between:
+	//
+	//   ccm → traefik → [wait LB IP + operator DNS]
+	//       → cert-manager → keycloakx → [wait keycloak-tls Ready]
+	//       → netbird → [wait netbird-tls Ready]
+	//
+	// netbird-management fetches Keycloak's OIDC config over TLS, so
+	// keycloak's cert must be Ready before netbird syncs; cert-manager
+	// must be up before either Ingress cert can issue; and a Synced
+	// ArgoCD App only means its manifests were applied, not that the
+	// cert was issued. orderedApps makes that sequence explicit instead
+	// of leaning on the alphabetical order ArgoCD's List returns.
 	bar.Describe("Syncing ArgoCD applications")
-	var (
-		preHookApps         []string
-		beforeRemainingApps func(context.Context) error
-		afterAppSync        map[string]func(context.Context) error
-	)
+	var orderedApps []kubernetes.AppSyncStep
 	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
 		// ccm-hcloud manages LoadBalancers for HCloud servers,
 		// ccm-hetzner for Hetzner bare-metal; a hybrid cluster runs
-		// both. Select by mode, mirroring the CSI-driver pick in
-		// SyncAllArgoCDApps. traefik (which owns the ingress LB
-		// Service) always comes last so CCM is up to assign its IP.
+		// both. traefik (which owns the ingress LB Service) comes
+		// after, so CCM is up to assign its IP — then WaitForIngressLBDNS
+		// waits for that IP and the operator pointing DNS at it.
 		if config.UsingHCloud() {
-			preHookApps = append(preHookApps, constants.ArgoCDAppCCMHCloud)
+			orderedApps = append(orderedApps,
+				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHCloud})
 		}
 		if config.UsingHetznerBareMetal() {
-			preHookApps = append(preHookApps, constants.ArgoCDAppCCMHetzner)
+			orderedApps = append(orderedApps,
+				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHetzner})
 		}
-		preHookApps = append(preHookApps, constants.ArgoCDAppTraefik)
-
-		beforeRemainingApps = func(ctx context.Context) error {
-			return hetzner.WaitForIngressLBDNS(ctx, mainClusterClient)
-		}
+		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
+			Name: constants.ArgoCDAppTraefik,
+			AfterSync: func(ctx context.Context) error {
+				return hetzner.WaitForIngressLBDNS(ctx, mainClusterClient)
+			},
+		})
 	}
 	if vpnClusterEnabled() {
-		// An ArgoCD App reporting Synced only means its manifests
-		// (Ingress included) were applied — not that cert-manager has
-		// issued the TLS cert yet. Gate on the actual Certificate
-		// object right after the App syncs: keycloak's cert must be
-		// Ready before netbird syncs (netbird-management fetches
-		// Keycloak's OIDC config over TLS), and netbird's own cert
-		// before we move on. A failed cert otherwise surfaces much
-		// later as a cryptic x509 crashloop. Cert names match the
+		// cert-manager must be running before keycloakx / netbird sync
+		// so it can issue their Ingress certs. After each of those
+		// syncs, gate on the Certificate object itself being Ready —
+		// a failed cert otherwise surfaces much later as a cryptic
+		// netbird-management x509 crashloop. Cert names match the
 		// tls.secretName rendered into values-keycloakx / values-netbird.
-		afterAppSync = map[string]func(context.Context) error{
-			constants.ArgoCDAppNetbird: waitForAppCertificate(
-				mainClusterClient, "netbird TLS certificate",
-				constants.NamespaceNetBird, "netbird-tls",
-			),
-		}
+		orderedApps = append(orderedApps,
+			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCertManager})
 		if managedKeycloakEnabled() {
-			afterAppSync[constants.ArgoCDAppKeycloakx] = waitForAppCertificate(
-				mainClusterClient, "keycloak TLS certificate",
-				constants.NamespaceKeycloak, "keycloak-tls",
-			)
+			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
+				Name: constants.ArgoCDAppKeycloakx,
+				AfterSync: waitForAppCertificate(mainClusterClient,
+					"keycloak TLS certificate", constants.NamespaceKeycloak, "keycloak-tls"),
+			})
 		}
+		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
+			Name: constants.ArgoCDAppNetbird,
+			AfterSync: waitForAppCertificate(mainClusterClient,
+				"netbird TLS certificate", constants.NamespaceNetBird, "netbird-tls"),
+		})
 	}
-	err = kubernetes.SyncAllArgoCDApps(
-		ctx, args.SkipMonitoringSetup, preHookApps, beforeRemainingApps, afterAppSync,
-	)
+	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
 	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
