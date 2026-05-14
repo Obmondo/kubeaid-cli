@@ -6,7 +6,10 @@ package kubernetes
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
@@ -14,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // certManagerCertificateGVK is the GroupVersionKind of cert-manager's
@@ -50,10 +55,12 @@ var (
 //
 // cert-manager retries failed issuance with backoff, so a transient
 // failure resolves on its own — the loop keeps polling and only gives
-// up (with the last-seen reason) at the timeout. Certificates are read
-// via the unstructured client (GVK cert-manager.io/v1 Certificate); a
-// Certificate that doesn't exist yet counts as not-ready, since
-// cert-manager's ingress-shim creates it once the Ingress is synced.
+// up at the timeout, printing the last-seen reasons and a cert-manager
+// describe hint to stderr (see printCertificateFailureHint).
+// Certificates are read via the unstructured client (GVK
+// cert-manager.io/v1 Certificate); a Certificate that doesn't exist yet
+// counts as not-ready, since cert-manager's ingress-shim creates it
+// once the Ingress is synced.
 func WaitForCertificatesReady(
 	ctx context.Context,
 	kubeClient client.Client,
@@ -87,15 +94,53 @@ func WaitForCertificatesReady(
 
 		select {
 		case <-ctx.Done():
+			// Pause the bar's spinner so its 100ms auto-render can't
+			// \r-scribble over the multi-line hint, then surface the
+			// per-cert reasons + the describe command on stderr. The
+			// returned error stays terse — the actionable detail is in
+			// the hint printed just above it. Mirrors how
+			// WaitForDNSResolution hands off to printStaleCacheHint.
+			bar := progress.FromCtx(ctx)
+			bar.Pause()
+			printCertificateFailureHint(os.Stderr, notReady)
+			bar.Resume()
+
 			return fmt.Errorf(
-				"timed out after %s waiting for TLS Certificates to be Ready: %v — "+
-					"cert-manager couldn't issue them. Inspect the chain with "+
-					"`kubectl describe certificate,certificaterequest,order,challenge -A`",
-				waitForCertificatesReadyTimeout, notReady,
+				"TLS Certificate issuance timed out after %s",
+				waitForCertificatesReadyTimeout,
 			)
 		case <-time.After(waitForCertificatesReadyPollInterval):
 		}
 	}
+}
+
+// printCertificateFailureHint writes a short troubleshooting note to w
+// when the Certificate wait times out. cert-manager records why an
+// issuance failed across a chain of resources (Certificate →
+// CertificateRequest → Order → Challenge); the hint lists the
+// Certificates still not Ready with their last-seen reason and points
+// the operator at the one describe command that walks the whole chain.
+//
+// Mirrors WaitForDNSResolution's printStaleCacheHint — the detail goes
+// to stderr here so the returned error can stay a terse one-liner.
+func printCertificateFailureHint(w io.Writer, notReady []string) {
+	_, _ = fmt.Fprintf(w, "\n"+
+		"TLS Certificates still not issued by cert-manager after %s:\n\n"+
+		"  ✗ %s\n\n"+
+		"Possible causes:\n"+
+		"  1. The ACME HTTP-01 challenge can't reach the Ingress. Test the path —\n"+
+		"     a 404 means it's reachable; an empty reply or timeout is the bug:\n"+
+		"       curl -v http://<FQDN>/.well-known/acme-challenge/test\n"+
+		"  2. Let's Encrypt rate-limited the domain after repeated failed attempts.\n"+
+		"\n"+
+		"Inspect the cert-manager chain to find why issuance failed:\n"+
+		"  kubectl describe certificate,certificaterequest,order,challenge -A\n"+
+		"\n"+
+		"Fix the issue, then re-run `kubeaid-cli cluster bootstrap`.\n"+
+		"\n",
+		waitForCertificatesReadyTimeout,
+		strings.Join(notReady, "\n  ✗ "),
+	)
 }
 
 // isCertificateReady reports whether the named cert-manager Certificate

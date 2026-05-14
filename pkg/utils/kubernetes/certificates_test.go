@@ -4,8 +4,11 @@
 package kubernetes
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -190,7 +193,7 @@ func TestWaitForCertificatesReady(t *testing.T) {
 		))
 	})
 
-	t.Run("times out with the failure reason when the Certificate never becomes Ready", func(t *testing.T) {
+	t.Run("times out and surfaces the failure reason on stderr", func(t *testing.T) {
 		stuck := certWithStatus(map[string]any{
 			"conditions": []any{
 				map[string]any{"type": "Ready", "status": "False", "reason": "DoesNotExist"},
@@ -205,11 +208,46 @@ func TestWaitForCertificatesReady(t *testing.T) {
 			WithInterceptorFuncs(certGetInterceptor(stuck, nil)).
 			Build()
 
+		// On timeout the per-cert reason + describe hint go to stderr
+		// (printCertificateFailureHint), not the returned error — capture
+		// stderr so the assertion sees it and the test output stays quiet.
+		origStderr := os.Stderr
+		r, w, pipeErr := os.Pipe()
+		require.NoError(t, pipeErr)
+		os.Stderr = w
+		t.Cleanup(func() { os.Stderr = origStderr })
+
 		err := WaitForCertificatesReady(
 			context.Background(), fakeClient, []types.NamespacedName{certKey},
 		)
+		require.NoError(t, w.Close())
+		hint, readErr := io.ReadAll(r)
+		require.NoError(t, readErr)
+
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "timed out")
-		assert.Contains(t, err.Error(), "order is in invalid state")
+		assert.Contains(t, string(hint), "order is in invalid state")
+		assert.Contains(t, string(hint),
+			"kubectl describe certificate,certificaterequest,order,challenge -A")
 	})
+}
+
+func TestPrintCertificateFailureHint(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+	printCertificateFailureHint(&buf, []string{
+		"keycloakx/keycloak-tls (Failed: order is in invalid state)",
+		"netbird/netbird-tls (not created yet)",
+	})
+	out := buf.String()
+
+	// Every not-ready Certificate is listed with its last-seen reason...
+	assert.Contains(t, out, "keycloakx/keycloak-tls (Failed: order is in invalid state)")
+	assert.Contains(t, out, "netbird/netbird-tls (not created yet)")
+	// ...and the operator gets the one command that walks the whole chain.
+	assert.Contains(t, out,
+		"kubectl describe certificate,certificaterequest,order,challenge -A")
+	// ...plus a curl to test the ACME challenge path directly.
+	assert.Contains(t, out, "curl -v http://<FQDN>/.well-known/acme-challenge/test")
 }
