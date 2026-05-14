@@ -1059,3 +1059,205 @@ func TestIsClusterctlMoveExecuted(t *testing.T) {
 		})
 	}
 }
+
+// TestSummarizeCPNodesNetworking covers the predicate WaitForCPNodesNetworkingReady
+// loops on: control-plane Nodes must report Ready=True AND
+// NetworkUnavailable=False. We assert the helper directly so the table
+// stays readable; the surrounding wait loop is exercised in
+// TestWaitForCPNodesNetworkingReady below.
+func TestSummarizeCPNodesNetworking(t *testing.T) {
+	cpLabels := map[string]string{kubeadmConstants.LabelNodeRoleControlPlane: ""}
+
+	makeNode := func(name string, labels map[string]string, ready, netUnavailable *coreV1.ConditionStatus) coreV1.Node {
+		conds := []coreV1.NodeCondition{}
+		if ready != nil {
+			conds = append(conds, coreV1.NodeCondition{Type: coreV1.NodeReady, Status: *ready})
+		}
+		if netUnavailable != nil {
+			conds = append(conds, coreV1.NodeCondition{Type: coreV1.NodeNetworkUnavailable, Status: *netUnavailable})
+		}
+		return coreV1.Node{
+			ObjectMeta: metaV1.ObjectMeta{Name: name, Labels: labels},
+			Status:     coreV1.NodeStatus{Conditions: conds},
+		}
+	}
+
+	condTrue := coreV1.ConditionTrue
+	condFalse := coreV1.ConditionFalse
+
+	tests := []struct {
+		name         string
+		nodes        []coreV1.Node
+		wantReady    bool
+		wantReasonsContains []string
+	}{
+		{
+			name: "single CP Ready=True, NetworkUnavailable=False → ready",
+			nodes: []coreV1.Node{
+				makeNode("cp-1", cpLabels, &condTrue, &condFalse),
+			},
+			wantReady: true,
+		},
+		{
+			name: "single CP Ready=True, NetworkUnavailable absent → ready (absent = available)",
+			nodes: []coreV1.Node{
+				makeNode("cp-1", cpLabels, &condTrue, nil),
+			},
+			wantReady: true,
+		},
+		{
+			// Real-world case the user hit: cilium install rolled back,
+			// kubelet reports NodeReady but networking unavailable.
+			name: "CP Ready=True, NetworkUnavailable=True → not ready",
+			nodes: []coreV1.Node{
+				makeNode("cp-1", cpLabels, &condTrue, &condTrue),
+			},
+			wantReady:           false,
+			wantReasonsContains: []string{"cp-1: NetworkUnavailable=True"},
+		},
+		{
+			name: "CP Ready=False → not ready",
+			nodes: []coreV1.Node{
+				makeNode("cp-1", cpLabels, &condFalse, &condFalse),
+			},
+			wantReady:           false,
+			wantReasonsContains: []string{"cp-1: Ready!=True"},
+		},
+		{
+			// Multi-CP rolling update: one CP healthy, the surge
+			// replacement still has NetworkUnavailable=True.
+			name: "one CP healthy, one mid-bootstrap → not ready",
+			nodes: []coreV1.Node{
+				makeNode("cp-old", cpLabels, &condTrue, &condFalse),
+				makeNode("cp-new", cpLabels, &condTrue, &condTrue),
+			},
+			wantReady:           false,
+			wantReasonsContains: []string{"cp-new: NetworkUnavailable=True"},
+		},
+		{
+			// Workers shouldn't influence the predicate at all — we only
+			// gate on control-plane Nodes. Unlabelled / non-CP-labelled
+			// Nodes are ignored.
+			name: "worker NetworkUnavailable=True, CP healthy → ready (workers ignored)",
+			nodes: []coreV1.Node{
+				makeNode("cp-1", cpLabels, &condTrue, &condFalse),
+				makeNode("worker-1", nil, &condTrue, &condTrue),
+			},
+			wantReady: true,
+		},
+		{
+			// Defensive: we shouldn't reach this wait with no CP Nodes
+			// registered (CAPI's Cluster Ready gate requires the control
+			// plane to be initialized), so the empty case is a misuse,
+			// not a success.
+			name:                "empty Node list → not ready",
+			nodes:               []coreV1.Node{},
+			wantReady:           false,
+			wantReasonsContains: []string{"no control-plane Nodes found"},
+		},
+		{
+			name: "only workers, no CP → not ready",
+			nodes: []coreV1.Node{
+				makeNode("worker-1", nil, &condTrue, &condFalse),
+			},
+			wantReady:           false,
+			wantReasonsContains: []string{"no control-plane Nodes found"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, reasons := summarizeCPNodesNetworking(&coreV1.NodeList{Items: tc.nodes})
+			assert.Equal(t, tc.wantReady, got)
+			for _, want := range tc.wantReasonsContains {
+				found := false
+				for _, r := range reasons {
+					if containsSubstr(r, want) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "expected reason containing %q; got %v", want, reasons)
+			}
+		})
+	}
+}
+
+// TestWaitForCPNodesNetworkingReady is the end-to-end-ish counterpart:
+// it drives the wait loop on a fake client and asserts ready / timeout
+// behaviour without sitting through the production poll interval.
+func TestWaitForCPNodesNetworkingReady(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+	cpLabels := map[string]string{kubeadmConstants.LabelNodeRoleControlPlane: ""}
+
+	tests := []struct {
+		name       string
+		preExist   []runtime.Object
+		ctxTimeout time.Duration
+		wantErr    bool
+	}{
+		{
+			name: "returns nil when CP Node is Ready=True and NetworkUnavailable=False",
+			preExist: []runtime.Object{
+				&coreV1.Node{
+					ObjectMeta: metaV1.ObjectMeta{Name: "cp-1", Labels: cpLabels},
+					Status: coreV1.NodeStatus{Conditions: []coreV1.NodeCondition{
+						{Type: coreV1.NodeReady, Status: coreV1.ConditionTrue},
+						{Type: coreV1.NodeNetworkUnavailable, Status: coreV1.ConditionFalse},
+					}},
+				},
+			},
+			ctxTimeout: 5 * time.Second,
+		},
+		{
+			name: "errors when CP Node has NetworkUnavailable=True (cilium-rollback case)",
+			preExist: []runtime.Object{
+				&coreV1.Node{
+					ObjectMeta: metaV1.ObjectMeta{Name: "cp-1", Labels: cpLabels},
+					Status: coreV1.NodeStatus{Conditions: []coreV1.NodeCondition{
+						{Type: coreV1.NodeReady, Status: coreV1.ConditionTrue},
+						{Type: coreV1.NodeNetworkUnavailable, Status: coreV1.ConditionTrue},
+					}},
+				},
+			},
+			ctxTimeout: 500 * time.Millisecond,
+			wantErr:    true,
+		},
+		{
+			name:       "errors when no CP Nodes are registered",
+			preExist:   []runtime.Object{},
+			ctxTimeout: 500 * time.Millisecond,
+			wantErr:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origPoll := waitForProvisioningPollInterval
+			origTotal := waitForCPNodesNetworkingTimeout
+			t.Cleanup(func() {
+				waitForProvisioningPollInterval = origPoll
+				waitForCPNodesNetworkingTimeout = origTotal
+			})
+			// Sub-second polling + tight total so the timeout path
+			// runs in well under a second of wall clock.
+			waitForProvisioningPollInterval = 50 * time.Millisecond
+			waitForCPNodesNetworkingTimeout = 2 * time.Second
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
+			defer cancel()
+
+			err := WaitForCPNodesNetworkingReady(ctx, fakeClient)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
