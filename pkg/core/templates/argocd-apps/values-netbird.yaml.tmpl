@@ -66,17 +66,17 @@ netbird:
           "CertFile": "",
           "CertKey": "",
           "AuthAudience": "{{`{{ .IDP_CLIENT_ID }}`}}",
-          "AuthIssuer": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}",
+          "AuthIssuer": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}",
           "AuthUserIDClaim": "",
-          "AuthKeysLocation": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/certs",
-          "OIDCConfigEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/.well-known/openid-configuration",
+          "AuthKeysLocation": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/certs",
+          "OIDCConfigEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/.well-known/openid-configuration",
           "IdpSignKeyRefreshEnabled": false
         },
         "IdpManagerConfig": {
           "ManagerType": "keycloak",
           "ClientConfig": {
-            "Issuer": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/.well-known/openid-configuration",
-            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
+            "Issuer": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/.well-known/openid-configuration",
+            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
             "ClientID": "{{`{{ .IDP_CLIENT_MGMT_ID }}`}}",
             "ClientSecret": "{{`{{ .IDP_CLIENT_MGMT_SECRET }}`}}",
             "GrantType": "client_credentials"
@@ -84,7 +84,7 @@ netbird:
           "ExtraConfig": {
             "Password": "{{`{{ .IDP_SERVICE_ACCOUNT_PASSWORD }}`}}",
             "Username": "{{`{{ .IDP_SERVICE_ACCOUNT_USER }}`}}",
-            "AdminEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/admin/realms/{{ .ClusterConfig.Keycloak.Realm }}"
+            "AdminEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/admin/realms/{{ .ClusterConfig.Keycloak.Realm }}"
           },
           "KeycloakClientCredentials": null
         },
@@ -95,8 +95,8 @@ netbird:
             "ClientSecret": "",
             "Domain": "{{ .ClusterConfig.Keycloak.DNS }}",
             "Audience": "{{`{{ .IDP_CLIENT_ID }}`}}",
-            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
-            "DeviceAuthEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/auth/device",
+            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
+            "DeviceAuthEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/auth/device",
             "AuthorizationEndpoint": "",
             "Scope": "openid",
             "UseIDToken": false,
@@ -109,7 +109,7 @@ netbird:
             "ClientSecret": "",
             "Domain": "{{ .ClusterConfig.Keycloak.DNS }}",
             "Audience": "{{`{{ .IDP_CLIENT_ID }}`}}",
-            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
+            "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
             "DeviceAuthEndpoint": "",
             "AuthorizationEndpoint": "",
             "Scope": "openid profile email offline_access api",
@@ -207,7 +207,7 @@ netbird:
     env:
       NETBIRD_MGMT_API_ENDPOINT: https://{{ .ClusterConfig.NetBird.DNS }}:443
       NETBIRD_MGMT_GRPC_API_ENDPOINT: https://{{ .ClusterConfig.NetBird.DNS }}:443
-      AUTH_AUTHORITY: https://{{ .ClusterConfig.Keycloak.DNS }}/realms/{{ .ClusterConfig.Keycloak.Realm }}
+      AUTH_AUTHORITY: https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}
     ingress:
       enabled: true
       className: traefik
