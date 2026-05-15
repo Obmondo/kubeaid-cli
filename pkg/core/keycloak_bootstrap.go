@@ -11,41 +11,40 @@ import (
 
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/clientcmd"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/keycloak"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-// Tunables for reconcileNetBirdInKeycloak's port-forward → login →
-// reconcile retry. The SPDY port-forward to keycloakx is flaky (a
-// request can come back EOF even once the forward reports ready) and
-// keycloak can take a moment after going Healthy before its admin API
-// responds; ~1 min of retries covers both without dragging out the
-// bootstrap. Package-level vars so tests can shrink them.
+// Tunables for reconcileNetBirdInKeycloak's login → reconcile retry.
+// Keycloak's admin API can briefly race with the app going Healthy
+// (Traefik routes immediately but Keycloak's own startup completes a
+// few seconds later); a handful of quick retries covers that without
+// dragging out the bootstrap. Package-level vars so tests can shrink
+// them.
 var (
-	keycloakReconcileMaxAttempts   = 6
-	keycloakReconcileRetryInterval = 10 * time.Second
+	keycloakReconcileMaxAttempts   = 3
+	keycloakReconcileRetryInterval = 5 * time.Second
 )
 
 // reconcileNetBirdInKeycloak runs the Keycloak admin-API pass against
-// the freshly-synced Keycloak: wait for keycloakx to be Healthy,
-// port-forward to its Service, log in as admin using the password
-// kubeaid-cli rendered into the keycloak-admin Secret, then
+// the freshly-synced Keycloak: wait for keycloakx to be Healthy, log
+// in as admin against the cluster's public Keycloak DNS using the
+// password kubeaid-cli rendered into the keycloak-admin Secret, then
 // materialise NetBird's realm-side resources via gocloak.
 //
 // Runs as the keycloakx after-sync hook — before the netbird app
 // syncs — so netbird-management starts against OIDC clients that
-// already exist.
+// already exist. The keycloak-tls Certificate is waited on by the
+// same hook just before this call, so the public URL is reachable
+// with a valid cert.
 //
-// The port-forward → login → reconcile sequence is retried as a unit:
-// the SPDY stream to keycloakx can return EOF even once the forward
-// reports ready, and the Reconcile* calls are idempotent, so
-// re-running the whole sequence on a fresh port-forward is safe.
+// The login → reconcile sequence is retried as a unit: Keycloak's
+// admin API can briefly race with the app going Healthy, and the
+// Reconcile* calls are idempotent, so re-running is safe.
 func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client) error {
 	if err := kubernetes.WaitForArgoCDAppHealthy(ctx, constants.ArgoCDAppKeycloakx); err != nil {
 		return fmt.Errorf("waiting for keycloakx app to be Healthy: %w", err)
@@ -69,26 +68,10 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 		return err
 	}
 
-	restConfig, err := clientcmd.BuildConfigFromFlags("",
-		utils.MustGetEnv(constants.EnvNameKubeconfig),
-	)
-	if err != nil {
-		return fmt.Errorf("loading main cluster kubeconfig: %w", err)
-	}
-
 	cluster := config.ParsedGeneralConfig.Cluster
+	baseURL := "https://" + cluster.Keycloak.DNS
 
 	return retryKeycloakReconcile(ctx, func(ctx context.Context) error {
-		baseURL, stopForward, err := keycloak.PortForward(ctx, restConfig,
-			constants.NamespaceKeycloak,
-			constants.ServiceNameKeycloakx,
-			constants.ServicePortKeycloakx,
-		)
-		if err != nil {
-			return fmt.Errorf("port-forward to keycloakx Service: %w", err)
-		}
-		defer stopForward()
-
 		reconciler, err := keycloak.NewReconciler(ctx, baseURL,
 			constants.KeycloakAdminUsername, adminPassword,
 		)
