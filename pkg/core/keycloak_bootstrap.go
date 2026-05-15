@@ -19,12 +19,15 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
-// reconcileNetBirdInKeycloak orchestrates the post-sync admin-API
-// pass against the freshly-installed Keycloak: wait for keycloakx
-// to be Healthy, port-forward to its Service, log in as admin
-// using the password kubeaid-cli rendered into the keycloak-admin
-// Secret, then materialise NetBird's realm-side resources via
-// gocloak.
+// reconcileNetBirdInKeycloak runs the Keycloak admin-API pass against
+// the freshly-synced Keycloak: wait for keycloakx to be Healthy,
+// port-forward to its Service, log in as admin using the password
+// kubeaid-cli rendered into the keycloak-admin Secret, then
+// materialise NetBird's realm-side resources via gocloak.
+//
+// Runs as the keycloakx after-sync hook — before the netbird app
+// syncs — so netbird-management starts against OIDC clients that
+// already exist.
 func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client) error {
 	if err := kubernetes.WaitForArgoCDAppHealthy(ctx, constants.ArgoCDAppKeycloakx); err != nil {
 		return fmt.Errorf("waiting for keycloakx app to be Healthy: %w", err)
