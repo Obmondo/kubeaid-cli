@@ -6,6 +6,8 @@ package core
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -19,6 +21,17 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
 )
 
+// Tunables for reconcileNetBirdInKeycloak's port-forward → login →
+// reconcile retry. The SPDY port-forward to keycloakx is flaky (a
+// request can come back EOF even once the forward reports ready) and
+// keycloak can take a moment after going Healthy before its admin API
+// responds; ~1 min of retries covers both without dragging out the
+// bootstrap. Package-level vars so tests can shrink them.
+var (
+	keycloakReconcileMaxAttempts   = 6
+	keycloakReconcileRetryInterval = 10 * time.Second
+)
+
 // reconcileNetBirdInKeycloak runs the Keycloak admin-API pass against
 // the freshly-synced Keycloak: wait for keycloakx to be Healthy,
 // port-forward to its Service, log in as admin using the password
@@ -28,6 +41,11 @@ import (
 // Runs as the keycloakx after-sync hook — before the netbird app
 // syncs — so netbird-management starts against OIDC clients that
 // already exist.
+//
+// The port-forward → login → reconcile sequence is retried as a unit:
+// the SPDY stream to keycloakx can return EOF even once the forward
+// reports ready, and the Reconcile* calls are idempotent, so
+// re-running the whole sequence on a fresh port-forward is safe.
 func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client) error {
 	if err := kubernetes.WaitForArgoCDAppHealthy(ctx, constants.ArgoCDAppKeycloakx); err != nil {
 		return fmt.Errorf("waiting for keycloakx app to be Healthy: %w", err)
@@ -42,30 +60,6 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 		return err
 	}
 
-	restConfig, err := clientcmd.BuildConfigFromFlags("",
-		utils.MustGetEnv(constants.EnvNameKubeconfig),
-	)
-	if err != nil {
-		return fmt.Errorf("loading main cluster kubeconfig: %w", err)
-	}
-
-	baseURL, stopForward, err := keycloak.PortForward(ctx, restConfig,
-		constants.NamespaceKeycloak,
-		constants.ServiceNameKeycloakx,
-		constants.ServicePortKeycloakx,
-	)
-	if err != nil {
-		return fmt.Errorf("port-forward to keycloakx Service: %w", err)
-	}
-	defer stopForward()
-
-	reconciler, err := keycloak.NewReconciler(ctx, baseURL,
-		constants.KeycloakAdminUsername, adminPassword,
-	)
-	if err != nil {
-		return err
-	}
-
 	nbBackendSecret, err := readSecretValue(ctx, clusterClient,
 		constants.NamespaceNetBird,
 		constants.SecretNameNetBird,
@@ -75,23 +69,80 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 		return err
 	}
 
-	cluster := config.ParsedGeneralConfig.Cluster
-	if err := reconciler.ReconcileNetBird(ctx, keycloak.NetBirdSpec{
-		Realm:                cluster.Keycloak.Realm,
-		NetBirdMgmtURL:       "https://" + cluster.NetBird.DNS,
-		NetBirdBackendSecret: nbBackendSecret,
-	}); err != nil {
-		return err
+	restConfig, err := clientcmd.BuildConfigFromFlags("",
+		utils.MustGetEnv(constants.EnvNameKubeconfig),
+	)
+	if err != nil {
+		return fmt.Errorf("loading main cluster kubeconfig: %w", err)
 	}
 
-	// Reconcile the kubernetes-<cluster> OIDC client for kubelogin in
-	// the same realm. Inherits the NetBird api scope so kubelogin
-	// tokens share the audience mapper.
-	return reconciler.ReconcileKubernetes(ctx, keycloak.KubernetesSpec{
-		Realm:         cluster.Keycloak.Realm,
-		ClusterName:   cluster.Name,
-		DefaultScopes: []string{keycloak.NetBirdAPIScopeName},
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	return retryKeycloakReconcile(ctx, func(ctx context.Context) error {
+		baseURL, stopForward, err := keycloak.PortForward(ctx, restConfig,
+			constants.NamespaceKeycloak,
+			constants.ServiceNameKeycloakx,
+			constants.ServicePortKeycloakx,
+		)
+		if err != nil {
+			return fmt.Errorf("port-forward to keycloakx Service: %w", err)
+		}
+		defer stopForward()
+
+		reconciler, err := keycloak.NewReconciler(ctx, baseURL,
+			constants.KeycloakAdminUsername, adminPassword,
+		)
+		if err != nil {
+			return err
+		}
+
+		if err := reconciler.ReconcileNetBird(ctx, keycloak.NetBirdSpec{
+			Realm:                cluster.Keycloak.Realm,
+			NetBirdMgmtURL:       "https://" + cluster.NetBird.DNS,
+			NetBirdBackendSecret: nbBackendSecret,
+		}); err != nil {
+			return err
+		}
+
+		// Reconcile the kubernetes-<cluster> OIDC client for kubelogin
+		// in the same realm. Inherits the NetBird api scope so
+		// kubelogin tokens share the audience mapper.
+		return reconciler.ReconcileKubernetes(ctx, keycloak.KubernetesSpec{
+			Realm:         cluster.Keycloak.Realm,
+			ClusterName:   cluster.Name,
+			DefaultScopes: []string{keycloak.NetBirdAPIScopeName},
+		})
 	})
+}
+
+// retryKeycloakReconcile runs attempt up to keycloakReconcileMaxAttempts
+// times, keycloakReconcileRetryInterval apart, returning nil on the
+// first success. On exhaustion it returns the last error wrapped with
+// the attempt count; a cancelled ctx aborts immediately.
+func retryKeycloakReconcile(ctx context.Context, attempt func(context.Context) error) error {
+	var lastErr error
+	for i := 1; i <= keycloakReconcileMaxAttempts; i++ {
+		if lastErr = attempt(ctx); lastErr == nil {
+			return nil
+		}
+		if i == keycloakReconcileMaxAttempts {
+			break
+		}
+		slog.WarnContext(ctx, "Keycloak reconcile attempt failed; retrying",
+			slog.Int("attempt", i),
+			slog.Int("maxAttempts", keycloakReconcileMaxAttempts),
+			slog.Any("err", lastErr),
+		)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(keycloakReconcileRetryInterval):
+		}
+	}
+	return fmt.Errorf(
+		"reconciling NetBird in Keycloak failed after %d attempts: %w",
+		keycloakReconcileMaxAttempts, lastErr,
+	)
 }
 
 // readSecretValue reads a single key out of a namespaced Secret,
