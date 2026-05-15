@@ -12,6 +12,15 @@ Two layers of templating live in this file:
 Inner {{ .ENV_NAME }} directives are escaped with `{{` `<expr>` `}}` so
 Go's template engine emits them verbatim into the rendered YAML.
 */ -}}
+global:
+  postgresql:
+    # Pinned off in kubeaid-cli's overlay so the bootstrap doesn't depend
+    # on the cluster's kubeaid chart version carrying the chart-side
+    # default. TODO: make this a config toggle when kubeaid-cli grows
+    # backup support.
+    backups:
+      enabled: false
+
 netbird:
   fullnameOverride: netbird
 
