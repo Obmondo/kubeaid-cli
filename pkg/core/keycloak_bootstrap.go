@@ -20,13 +20,14 @@ import (
 )
 
 // Tunables for reconcileNetBirdInKeycloak's login → reconcile retry.
-// Keycloak's admin API can briefly race with the app going Healthy
-// (Traefik routes immediately but Keycloak's own startup completes a
-// few seconds later); a handful of quick retries covers that without
-// dragging out the bootstrap. Package-level vars so tests can shrink
-// them.
+// ArgoCD reports the keycloakx app Healthy as soon as the pod's
+// readiness probe passes, but Quarkus' realm-handler registration
+// runs after that and can take 30–60s more — during which the token
+// endpoint returns EOF. 12 × 5s = ~60s budget covers this comfortably
+// without dragging out the bootstrap when Keycloak is already warm.
+// Package-level vars so tests can shrink them.
 var (
-	keycloakReconcileMaxAttempts   = 3
+	keycloakReconcileMaxAttempts   = 12
 	keycloakReconcileRetryInterval = 5 * time.Second
 )
 
