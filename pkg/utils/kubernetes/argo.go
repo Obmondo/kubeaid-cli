@@ -20,7 +20,6 @@ import (
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/argoproj/argo-cd/v2/util/rbac"
 	"github.com/argoproj/gitops-engine/pkg/health"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,6 +31,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	k8sRetry "k8s.io/client-go/util/retry"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -60,6 +60,15 @@ var (
 	// argoCDSyncRetryInterval is how long to wait, after a Sync that
 	// left the App still OutOfSync, before re-issuing Sync.
 	argoCDSyncRetryInterval = 15 * time.Second
+
+	// argoCDRepoFetchMaxAttempts / argoCDRepoFetchBackoff govern recovery
+	// from transient git/SSH fetch failures during sync — slow SSH
+	// handshake to a self-hosted gitea, repo-server pod briefly not
+	// serving, etc. On each matching failure we hard-refresh the App so
+	// argocd-application-controller re-asks repo-server, wait, then
+	// retry Sync.
+	argoCDRepoFetchMaxAttempts = 5
+	argoCDRepoFetchBackoff     = 10 * time.Second
 )
 
 type ArgoCDAppManager struct {
@@ -411,8 +420,8 @@ func (m *ArgoCDAppManager) isArgoCDAppHealthy(ctx context.Context, name string) 
 		argoCDApp, err = m.client.Get(ctx, &application.ApplicationQuery{
 			Name:         &name,
 			Project:      []string{constants.ArgoCDProjectKubeAid},
-			AppNamespace: aws.String(constants.NamespaceArgoCD),
-			Refresh:      aws.String(string(argoCDV1Aplha1.RefreshTypeNormal)),
+			AppNamespace: ptr.To(constants.NamespaceArgoCD),
+			Refresh:      ptr.To(string(argoCDV1Aplha1.RefreshTypeNormal)),
 		})
 		if err == nil {
 			break
@@ -568,6 +577,31 @@ func argoCDAppListContains(apps []argoCDV1Aplha1.Application, name string) bool 
 	return false
 }
 
+// isArgoCDRepoFetchError reports whether err from m.client.Sync looks
+// like ArgoCD's repo-server failed to fetch the source git repo —
+// typically a slow SSH handshake to a self-hosted gitea, transient TCP
+// hiccup, or repo-server briefly not serving. A hard refresh on the
+// App prods argocd-application-controller to re-fetch via repo-server,
+// which usually succeeds on a retry once the underlying transport
+// recovers.
+//
+// The gRPC code is the typed signal — ArgoCD returns FailedPrecondition
+// for repo-revision-resolution failures. The substring guard scopes us
+// inside that bucket (other FailedPrecondition causes like "spec
+// prevents sync" or "app being deleted" wouldn't recover from a hard
+// refresh and shouldn't loop here). The underlying ssh.handshake Go
+// error is lost across the gRPC boundary into the apiserver, so the
+// SSH-specific nature only survives in the status description.
+func isArgoCDRepoFetchError(err error) bool {
+	if status.Code(err) != codes.FailedPrecondition {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "resolving repo revision") ||
+		strings.Contains(msg, "failed to list refs") ||
+		strings.Contains(msg, "ssh: handshake failed")
+}
+
 // syncArgoCDAppWithProgress wraps syncArgoCDApp with the
 // "↻ Syncing X" / "✓ Synced X" sub-step pair so the operator sees
 // which app is in flight at any given moment. Used by
@@ -654,6 +688,7 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
     `)
 	}
 
+	repoFetchAttempts := 0
 	for {
 		_, err := m.client.Sync(ctx, applicationSyncRequest)
 		if err != nil {
@@ -666,6 +701,38 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 					logger.Error(err),
 				)
 				time.Sleep(argoCDSyncInProgressBackoff)
+				continue
+			}
+
+			// Repo-fetch failure (slow SSH handshake to gitea, repo-server
+			// hiccup, etc.) — issue a hard refresh so ArgoCD re-asks
+			// repo-server for the source revision, then retry Sync.
+			// Bounded so a genuinely-broken repo URL fails out instead
+			// of looping forever.
+			if isArgoCDRepoFetchError(err) && repoFetchAttempts < argoCDRepoFetchMaxAttempts {
+				repoFetchAttempts++
+				slog.WarnContext(ctx,
+					"ArgoCD sync failed on repo fetch; hard-refreshing and retrying",
+					slog.Int("attempt", repoFetchAttempts),
+					slog.Int("max-attempts", argoCDRepoFetchMaxAttempts),
+					logger.Error(err),
+				)
+				if _, refreshErr := m.client.Get(ctx, &application.ApplicationQuery{
+					Name:         &name,
+					Project:      []string{constants.ArgoCDProjectKubeAid},
+					AppNamespace: &appNamespace,
+					Refresh:      ptr.To(string(argoCDV1Aplha1.RefreshTypeHard)),
+				}); refreshErr != nil {
+					slog.WarnContext(ctx,
+						"Hard refresh request failed; will retry sync anyway",
+						logger.Error(refreshErr),
+					)
+				}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(argoCDRepoFetchBackoff):
+				}
 				continue
 			}
 
@@ -774,7 +841,7 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 	rootApp, err := globals.ArgoCDApplicationClient.Get(ctx, &application.ApplicationQuery{
 		Name:         &rootName,
 		Project:      []string{constants.ArgoCDProjectKubeAid},
-		AppNamespace: aws.String(constants.NamespaceArgoCD),
+		AppNamespace: ptr.To(constants.NamespaceArgoCD),
 	})
 	if err != nil {
 		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
@@ -799,7 +866,7 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 	}
 
 	list, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
-		AppNamespace: aws.String(constants.NamespaceArgoCD),
+		AppNamespace: ptr.To(constants.NamespaceArgoCD),
 	})
 	if err != nil {
 		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
@@ -840,8 +907,8 @@ func (m *ArgoCDAppManager) isArgoCDAppSynced(ctx context.Context, name string, r
 		argoCDApp, err = m.client.Get(ctx, &application.ApplicationQuery{
 			Name:         &name,
 			Project:      []string{constants.ArgoCDProjectKubeAid},
-			AppNamespace: aws.String(constants.NamespaceArgoCD),
-			Refresh:      aws.String(string(argoCDV1Aplha1.RefreshTypeHard)),
+			AppNamespace: ptr.To(constants.NamespaceArgoCD),
+			Refresh:      ptr.To(string(argoCDV1Aplha1.RefreshTypeHard)),
 		})
 		if err == nil {
 			break
