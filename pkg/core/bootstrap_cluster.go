@@ -142,11 +142,13 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// guaranteed order, with gates between:
 	//
 	//   ccm → traefik → [wait LB IP + operator DNS]
-	//       → cert-manager → keycloakx → [wait keycloak-tls Ready]
+	//       → cert-manager → keycloakx → [wait keycloak-tls Ready,
+	//                                     reconcile Keycloak realm + clients]
 	//       → netbird → [wait netbird-tls Ready]
 	//
-	// netbird-management fetches Keycloak's OIDC config over TLS, so
-	// keycloak's cert must be Ready before netbird syncs; cert-manager
+	// netbird-management fetches Keycloak's OIDC config over TLS and
+	// authenticates as its OIDC client, so keycloak's cert must be Ready
+	// and the realm + clients must exist before netbird syncs; cert-manager
 	// must be up before either Ingress cert can issue; and a Synced
 	// ArgoCD App only means its manifests were applied, not that the
 	// cert was issued. orderedApps makes that sequence explicit instead
@@ -185,9 +187,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCertManager})
 		if managedKeycloakEnabled() {
 			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
-				Name: constants.ArgoCDAppKeycloakx,
-				AfterSync: waitForAppCertificate(mainClusterClient,
-					"keycloak TLS certificate", constants.NamespaceKeycloak, "keycloak-tls"),
+				Name:      constants.ArgoCDAppKeycloakx,
+				AfterSync: keycloakxAfterSync(mainClusterClient),
 			})
 		}
 		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
@@ -198,20 +199,6 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	}
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
-
-	// Managed Keycloak only: kubeaid-cli logs into the in-cluster
-	// Keycloak via the admin secret and reconciles the realm +
-	// NetBird OIDC clients. External-mode operators handle their
-	// own Keycloak setup (per the realm-prerequisites doc in
-	// kubeaid/argocd-helm-charts/netbird/README.md).
-	if managedKeycloakEnabled() {
-		bar.Describe("Reconciling NetBird's resources in Keycloak")
-		releaseRealm := bar.InProgress("Logging into Keycloak admin and reconciling realm + clients")
-		err := reconcileNetBirdInKeycloak(ctx, mainClusterClient)
-		releaseRealm()
-		assert.AssertErrNil(ctx, err, "Failed reconciling NetBird in Keycloak")
-		bar.Substep("Reconciled NetBird's resources in Keycloak")
-	}
 
 	// Both Keycloak modes: NetBird Mgmt's postgresDSN can only be
 	// filled in once CNPG has created the netbird-pgsql-app Secret
@@ -610,6 +597,33 @@ func waitForAppCertificate(
 			return err
 		}
 		bar.Substep(label + " issued")
+		return nil
+	}
+}
+
+// keycloakxAfterSync is the keycloakx AppSyncStep's after-sync hook:
+// wait for the keycloak-tls Certificate to be Ready, then log into
+// Keycloak and reconcile NetBird's realm + the netbird / kubernetes
+// OIDC clients. Running the reconcile here — before the netbird app
+// syncs — means netbird-management comes up against OIDC clients that
+// already exist, instead of crashlooping on OIDC discovery until a
+// post-sync pass creates them.
+func keycloakxAfterSync(clusterClient client.Client) func(context.Context) error {
+	return func(ctx context.Context) error {
+		certWait := waitForAppCertificate(clusterClient,
+			"keycloak TLS certificate", constants.NamespaceKeycloak, "keycloak-tls")
+		if err := certWait(ctx); err != nil {
+			return err
+		}
+
+		bar := progress.FromCtx(ctx)
+		release := bar.InProgress("Logging into Keycloak admin and reconciling realm + clients")
+		err := reconcileNetBirdInKeycloak(ctx, clusterClient)
+		release()
+		if err != nil {
+			return err
+		}
+		bar.Substep("Reconciled NetBird's resources in Keycloak")
 		return nil
 	}
 }
