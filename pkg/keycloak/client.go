@@ -29,7 +29,8 @@ type Reconciler struct {
 // NewReconciler logs in as admin against Keycloak's master realm and
 // returns a Reconciler holding the resulting access token. baseURL is
 // Keycloak's HTTP root — kubeaid-cli's bootstrap passes the cluster's
-// public https://<cluster.Keycloak.DNS>.
+// public https://<cluster.Keycloak.DNS>/auth (the keycloakx chart
+// serves Keycloak under /auth).
 func NewReconciler(ctx context.Context, baseURL, adminUser, adminPassword string) (*Reconciler, error) {
 	api := gocloak.NewClient(baseURL)
 	jwt, err := api.LoginAdmin(ctx, adminUser, adminPassword, adminLoginRealm)

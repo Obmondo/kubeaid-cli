@@ -69,7 +69,10 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 	}
 
 	cluster := config.ParsedGeneralConfig.Cluster
-	baseURL := "https://" + cluster.Keycloak.DNS
+	// The keycloakx Helm chart serves Keycloak under the /auth relative
+	// path (pre-17 Keycloak default, preserved by the chart for URL
+	// stability); gocloak's basePath needs the /auth suffix.
+	baseURL := "https://" + cluster.Keycloak.DNS + "/auth"
 
 	return retryKeycloakReconcile(ctx, func(ctx context.Context) error {
 		reconciler, err := keycloak.NewReconciler(ctx, baseURL,
