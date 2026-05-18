@@ -157,7 +157,7 @@ func TestHydrateKeycloakOIDC(t *testing.T) {
 
 			oidc := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
 			require.NotNil(t, oidc)
-			assert.Equal(t, "https://keycloak.vpn.acme.com/realms/acme", oidc.IssuerURL)
+			assert.Equal(t, "https://keycloak.vpn.acme.com/auth/realms/acme", oidc.IssuerURL)
 			assert.Equal(t, "kubernetes-acme-vpn", oidc.ClientID)
 			assert.Equal(t, "email", oidc.UsernameClaim)
 			assert.Equal(t, "groups", oidc.GroupsClaim)
@@ -179,7 +179,7 @@ func TestHydrateKeycloakOIDC(t *testing.T) {
 			oidc := config.ParsedGeneralConfig.Cluster.APIServer.OIDC
 			require.NotNil(t, oidc,
 				"workload+external should also auto-derive — same parent VPN's Keycloak")
-			assert.Equal(t, "https://keycloak.vpn.acme.com/realms/acme", oidc.IssuerURL)
+			assert.Equal(t, "https://keycloak.vpn.acme.com/auth/realms/acme", oidc.IssuerURL)
 			assert.Equal(t, "kubernetes-acme-staging", oidc.ClientID)
 		})
 	})

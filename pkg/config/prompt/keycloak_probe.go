@@ -74,7 +74,14 @@ func probeOIDCIssuer(ctx context.Context, dns, realm string) error {
 // but the prompt only probes public realms (the typical case is a
 // parent VPN's Keycloak with Let's Encrypt).
 func realProbeOIDCIssuer(ctx context.Context, dns, realm string) error {
-	issuerURL := "https://" + dns + "/realms/" + realm
+	// /auth is the keycloakx Helm chart's relative base path
+	// (pre-Keycloak-17 default the chart preserves for URL
+	// stability). Same prefix kubeaid-cli's gocloak admin client
+	// and the netbird values overlay use — keeping all three call
+	// sites in lockstep is what makes the JWT `iss` claim, the
+	// kube-apiserver --oidc-issuer-url, and this discovery probe
+	// agree.
+	issuerURL := "https://" + dns + "/auth/realms/" + realm
 	discoveryURL := issuerURL + "/.well-known/openid-configuration"
 
 	probeCtx, cancel := context.WithTimeout(ctx, promptOIDCProbeTimeout)
@@ -203,7 +210,7 @@ func renderProbeOIDCError(err error) string {
 		header = fmt.Sprintf("Discovery endpoint at %s returned non-JSON", pe.Issuer)
 		body = "" +
 			"  • Probably an HTML error page from a reverse proxy\n" +
-			"  • Make sure /realms/<realm> reaches Keycloak directly."
+			"  • Make sure /auth/realms/<realm> reaches Keycloak directly."
 	case probeOIDCErrOther:
 		return pe.Error()
 	}

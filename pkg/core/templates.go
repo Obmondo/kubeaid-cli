@@ -603,7 +603,7 @@ func printWorkloadOIDCBanner(ctx context.Context) {
 	clientID := "kubernetes-" + cluster.Name
 	slog.InfoContext(ctx,
 		"Workload OIDC pre-flight",
-		slog.String("realm_issuer", "https://"+cluster.Keycloak.DNS+"/realms/"+cluster.Keycloak.Realm),
+		slog.String("realm_issuer", "https://"+cluster.Keycloak.DNS+"/auth/realms/"+cluster.Keycloak.Realm),
 		slog.String("expected_client_id", clientID),
 		slog.String("doc", "docs/workload-cluster-keycloak.md"),
 	)
