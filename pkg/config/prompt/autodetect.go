@@ -12,11 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 // autoDetectedConfig holds values resolved automatically without user interaction.
@@ -27,63 +24,26 @@ type autoDetectedConfig struct {
 	SSHAgentAvail         bool
 }
 
-// autoDetect resolves K8s version (latest-1 minor), KubeAid version (latest stable release),
-// and checks SSH agent availability. Shows a progress bar during detection.
+// autoDetect resolves K8s version (latest-1 minor), KubeAid version
+// (latest stable release), and checks SSH agent availability.
+//
+// Runs silently — the slog handler's stdout level is LevelError, so
+// the per-step slog.Info calls inside the detect* helpers land in
+// the log file only. The K8s version surfaces in the Step 0 profile
+// picker (the auto-detected row is starred); the KubeAid tag
+// surfaces in the configuration-summary box; the SSH agent state
+// drives whether Step 4 asks for a key path. Nothing needs to be
+// drawn to the TTY between `kubeaid-cli cluster bootstrap` and the
+// first interactive prompt — earlier revisions opened four empty
+// progress-bar step panels here that printed `● Detecting X` /
+// `────` headers with no bodies and clashed with the spinner.
 func autoDetect() *autoDetectedConfig {
-	// progress.Bar.New takes a header that does NOT get its own
-	// "✓" line on log-up — the first real step is the first
-	// Describe call below.
-	bar := progress.New("Auto-detecting versions")
-	defer bar.Finish()
-
 	cfg := &autoDetectedConfig{}
-
-	bar.Describe("Detecting K8s version (latest-1)")
 	cfg.K8sVersion = detectK8sVersion()
-
-	bar.Describe("Detecting KubePrometheus version")
 	cfg.KubePrometheusVersion = detectKubePrometheusVersion(cfg.K8sVersion)
-
-	bar.Describe("Detecting KubeAid version (latest)")
 	cfg.KubeAidVersion = detectKubeAidVersion()
-
-	bar.Describe("Checking SSH agent")
 	cfg.SSHAgentAvail = detectSSHAgent()
-
-	// Surface the KubeAid release tag up front. K8s is owned by
-	// the Step 0 profile picker; SSH agent state drives whether
-	// Step 4 asks for a key path (no need to print). KubeAid's
-	// tag is the only one that's locked in at this point and the
-	// operator needs to see it before any prompt fires — that
-	// version determines which kubeaid-config templates this run
-	// will render.
-	if cfg.KubeAidVersion != "" {
-		printKubeAidReleaseTag(cfg.KubeAidVersion)
-	}
-
 	return cfg
-}
-
-// printKubeAidReleaseTag renders the locked-in KubeAid tag as a
-// visually prominent banner so the operator notices it even when
-// scrolling fast. lipgloss handles falling back to plain text on
-// terminals without colour support.
-func printKubeAidReleaseTag(tag string) {
-	label := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#02BF87")).
-		Render("KubeAid")
-
-	version := lipgloss.NewStyle().
-		Bold(true).
-		Render(tag)
-
-	hint := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
-		Italic(true).
-		Render("(latest stable release)")
-
-	fmt.Printf("  %s  %s  %s\n", label, version, hint)
 }
 
 // detectK8sVersion fetches the latest stable K8s version and returns the latest patch
