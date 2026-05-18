@@ -187,6 +187,98 @@ top) so kubectl from your laptop won't reach it directly. The path:
   re-enable manually for an emergency break-glass session (just remember
   the next re-run will turn it back off).
 
+## Break-glass: reaching the cluster when NetBird is down
+
+Day-to-day, everything goes through the NetBird mesh. But the mesh is
+an overlay on top of HCloud's private network, so when NetBird Mgmt
+itself wedges — pod crashloop, DB outage, expired Keycloak token, you
+name it — the mesh is unusable and `kubectl`-over-mesh stops working.
+
+You always have a second path: SSH-jump through the NAT GW. The NAT
+GW's SSH listener is on the public internet (gated by SSH key + your
+HCloud firewall, not by NetBird), and from the NAT GW every other
+server in `10.0.0.0/24` is one hop away on the same SSH key. This
+works whether or not the cluster, NetBird, or Keycloak is healthy —
+the only two pieces that have to be alive are the NAT GW VM itself
+and the HCloud private network. Both are infrastructure-level
+objects you can rebuild from the HCloud Console / `hcloud` CLI even
+when every k8s component is dead.
+
+### SSH jump
+
+One-shot:
+
+```
+ssh -J root@<nat-gw-public-ip> root@10.0.0.5    # control plane
+ssh -J root@<nat-gw-public-ip> root@10.0.0.7    # any worker
+```
+
+Or persistent via `~/.ssh/config`:
+
+```
+Host vpn-natgw
+  HostName  <nat-gw-public-ip>
+  User      root
+  IdentityFile ~/.ssh/id_ed25519
+
+Host vpn-*
+  ProxyJump vpn-natgw
+  User      root
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+Then `ssh vpn-cp` (alias for the control plane) / `ssh vpn-worker-1`
+etc., based on whatever your hostname map is.
+
+### `kubectl` when NetBird is down
+
+Three options, pick by how bad the outage is:
+
+| Scenario | Path |
+|---|---|
+| NetBird Mgmt down / mesh broken, cluster otherwise healthy | SSH-jump to the **CP node** → `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf …`. The bootstrap client-cert in `admin.conf` is cluster-admin and has no OIDC / Keycloak / NetBird dependency. This is the canonical break-glass path. |
+| Rather use kubectl from your laptop | Port-forward the apiserver over the SSH jump: `ssh -J root@<nat-gw> -L 6443:10.0.0.6:6443 root@10.0.0.5`. Point a local kubeconfig at `https://127.0.0.1:6443` and copy `/etc/kubernetes/admin.conf` (plus the embedded CA) onto your laptop first. |
+| Cluster's on fire — you want public kube-apiserver back, briefly | `HCLOUD_TOKEN=… hcloud load-balancer enable-public-interface <cp-lb-id>`. Reverses `DisableControlPlaneLBPublicInterface` for the duration of the incident. Turn it off again when done — kubeaid-cli will re-disable on the next bootstrap re-run anyway. |
+
+### Multi-node and partial failures
+
+Same shape scales: every HCloud server in the private network is
+reachable from the NAT GW with the same key. Worker died, etcd
+corrupted, kubelet wedged on a single node, network split — none of
+that affects the SSH path. `laptop → NAT GW → any private host` is
+the universal recovery topology.
+
+For specific failure modes:
+
+- **Single worker node dead, control plane fine**: SSH-jump to the
+  CP node, run `kubectl drain` / `kubectl delete node` as usual via
+  `admin.conf`. CAPI / cluster-autoscaler will reconcile a
+  replacement.
+- **Control plane node dead, HA enabled**: SSH-jump to a surviving
+  CP node and use its `admin.conf`. Treat etcd member loss with the
+  usual [etcd disaster recovery procedure](https://etcd.io/docs/latest/op-guide/recovery/).
+- **Whole cluster gone, kubeaid-config still intact**: re-run
+  `kubeaid-cli bootstrap` against the same `general.yaml` — CAPI's
+  pivot + the rest of the bootstrap flow rebuilds the cluster against
+  the existing kubeaid-config repo. The HCloud LB and network are
+  reused if they still exist, recreated otherwise.
+
+### What to keep handy
+
+The break-glass path needs three artifacts that you should have
+stored *outside* the cluster (a password manager, an offline copy,
+a separate secrets store — wherever your team keeps DR material):
+
+1. The SSH private key kubeaid-cli rendered for HCloud server access.
+2. A copy of `/etc/kubernetes/admin.conf` from a healthy CP node,
+   plus the cluster CA bundle. Refresh after any control-plane roll
+   (the cert SANs change).
+3. The Keycloak admin password — only relevant if Keycloak itself is
+   the thing that's down, but easiest to keep alongside the others.
+
+Without these, the break-glass path still works (you can re-derive
+admin.conf via `kubeadm` on the node), it's just slower.
+
 ## Troubleshooting
 
 ### `netbird up` fails: "invalid JWT token audience field"
