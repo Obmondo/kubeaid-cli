@@ -200,25 +200,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			})
 		}
 		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
-			Name: constants.ArgoCDAppNetbird,
-			AfterSync: waitForAppCertificate(mainClusterClient,
-				"netbird TLS certificate", constants.NamespaceNetBird, "netbird-tls"),
+			Name:      constants.ArgoCDAppNetbird,
+			AfterSync: netbirdAfterSync(mainClusterClient),
 		})
 	}
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
-
-	// Both Keycloak modes: NetBird Mgmt's postgresDSN can only be
-	// filled in once CNPG has created the netbird-pgsql-app Secret
-	// in-cluster, so this patch is mode-independent.
-	if vpnClusterEnabled() {
-		bar.Describe("Patching NetBird Secret with CNPG-generated postgres DSN")
-		releaseDSN := bar.InProgress("Reading CNPG app credentials and patching netbird Secret")
-		err := patchNetBirdPostgresDSN(ctx, mainClusterClient)
-		releaseDSN()
-		assert.AssertErrNil(ctx, err, "Failed patching NetBird postgres DSN")
-		bar.Substep("Patched NetBird Secret with postgres DSN")
-	}
 
 	// When we have setup Disaster Recovery,
 	// trigger the first Velero and SealedSecret backups.
@@ -633,5 +620,39 @@ func keycloakxAfterSync(clusterClient client.Client) func(context.Context) error
 		}
 		bar.Substep("Reconciled NetBird's resources in Keycloak")
 		return nil
+	}
+}
+
+// netbirdAfterSync is netbird's AppSyncStep after-sync hook:
+//
+//  1. Patch netbird's Secret with the postgres DSN built from CNPG's
+//     auto-generated netbird-pgsql-app credentials. Done first
+//     because the patch is quick (a Get + an Update on two Secrets,
+//     plus a short poll for CNPG to finish provisioning) and lets
+//     netbird-management start consuming postgres straight away
+//     instead of crashlooping until a separate post-sync step lands.
+//
+//  2. Wait for the netbird-tls Certificate to be Ready, so callers
+//     that depend on the public NetBird URL (NetBird clients, the
+//     dashboard) have a valid cert by the time bootstrap returns.
+//
+// Co-locating netbird's wiring with its sync step replaces a
+// trailing "Patching NetBird Secret" block that used to run after
+// the entire sync loop — moving it here means NetBird Mgmt is
+// usable sooner and netbird's setup is in one place.
+func netbirdAfterSync(clusterClient client.Client) func(context.Context) error {
+	return func(ctx context.Context) error {
+		bar := progress.FromCtx(ctx)
+		release := bar.InProgress("Patching netbird Secret with CNPG-generated postgres DSN")
+		err := waitAndPatchNetBirdPostgresDSN(ctx, clusterClient)
+		release()
+		if err != nil {
+			return err
+		}
+		bar.Substep("Patched netbird Secret with postgres DSN")
+
+		certWait := waitForAppCertificate(clusterClient,
+			"netbird TLS certificate", constants.NamespaceNetBird, "netbird-tls")
+		return certWait(ctx)
 	}
 }

@@ -7,10 +7,12 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"time"
 
 	coreV1 "k8s.io/api/core/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -31,6 +33,50 @@ const (
 	netBirdPostgresPort = "5432"
 	netBirdPostgresDB   = "netbird"
 )
+
+// cnpgAppSecretPollInterval / cnpgAppSecretPollTimeout govern the
+// wait for CNPG to materialise the netbird-pgsql-app Secret after
+// netbird's Cluster CR lands. CNPG typically creates the Secret on
+// its first reconcile (~5–30s); five minutes is a generous safety
+// net for a slow operator startup or first-time image pull.
+const (
+	cnpgAppSecretPollInterval = 5 * time.Second
+	cnpgAppSecretPollTimeout  = 5 * time.Minute
+)
+
+// waitAndPatchNetBirdPostgresDSN polls until CNPG has created the
+// netbird-pgsql-app Secret in the netbird namespace, then patches
+// netbird's Secret with the DSN built from it.
+//
+// Called from netbird's AfterSync hook so the patch happens with
+// the rest of netbird's wiring rather than trailing as a separate
+// post-sync step. The poll is necessary because netbird's ArgoCD
+// sync returns as soon as the Cluster CR is applied — CNPG still
+// has to reconcile that CR into running pods + the *-app Secret,
+// a few seconds later.
+func waitAndPatchNetBirdPostgresDSN(ctx context.Context, clusterClient client.Client) error {
+	err := wait.PollUntilContextTimeout(ctx,
+		cnpgAppSecretPollInterval, cnpgAppSecretPollTimeout, true,
+		func(ctx context.Context) (bool, error) {
+			cur := &coreV1.Secret{}
+			if err := clusterClient.Get(ctx,
+				types.NamespacedName{Namespace: constants.NamespaceNetBird, Name: netBirdPostgresAppSecret},
+				cur,
+			); err != nil {
+				if k8sAPIErrors.IsNotFound(err) {
+					return false, nil
+				}
+				return false, err
+			}
+			return true, nil
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("waiting for CNPG app Secret %s/%s: %w",
+			constants.NamespaceNetBird, netBirdPostgresAppSecret, err)
+	}
+	return patchNetBirdPostgresDSN(ctx, clusterClient)
+}
 
 // patchNetBirdPostgresDSN reads the CNPG-generated app credentials
 // Secret in the netbird namespace, builds a postgres connection
