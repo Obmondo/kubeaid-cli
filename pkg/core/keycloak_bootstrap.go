@@ -93,11 +93,16 @@ func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client
 
 		// Reconcile the kubernetes-<cluster> OIDC client for kubelogin
 		// in the same realm. Inherits the NetBird api scope so
-		// kubelogin tokens share the audience mapper.
+		// kubelogin tokens share the audience mapper, and the
+		// groups scope so kube-API RBAC can key off the same
+		// Keycloak group memberships NetBird sees.
 		return reconciler.ReconcileKubernetes(ctx, keycloak.KubernetesSpec{
-			Realm:         cluster.Keycloak.Realm,
-			ClusterName:   cluster.Name,
-			DefaultScopes: []string{keycloak.NetBirdAPIScopeName},
+			Realm:       cluster.Keycloak.Realm,
+			ClusterName: cluster.Name,
+			DefaultScopes: []string{
+				keycloak.NetBirdAPIScopeName,
+				keycloak.NetBirdGroupsScopeName,
+			},
 		})
 	})
 }

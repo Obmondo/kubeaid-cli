@@ -44,6 +44,23 @@ type NetBirdSpec struct {
 // KubernetesSpec.DefaultScopes.
 const NetBirdAPIScopeName = "api"
 
+// NetBirdGroupsScopeName is the ClientScope that carries a Group
+// Membership ProtocolMapper, surfacing the user's Keycloak group
+// memberships as a `groups` claim on every issued token. NetBird
+// Mgmt's "Enable JWT Group Sync" Dashboard toggle reads this claim
+// to drive group-based access policies — the toggle is a no-op
+// without this scope being attached.
+//
+// Exported because ReconcileKubernetes inherits it too, so kubelogin
+// tokens carry the same groups claim and downstream RBAC can key
+// off the same Keycloak groups. Caller passes this in
+// KubernetesSpec.DefaultScopes alongside NetBirdAPIScopeName.
+const NetBirdGroupsScopeName = "groups"
+
+// netBirdGroupsMapperName is the human-readable Name field of the
+// Group Membership ProtocolMapper attached to the `groups` scope.
+const netBirdGroupsMapperName = "groups"
+
 // netBirdClientID is the OIDC client_id of the public PKCE / device-
 // flow client NetBird's CLI (and Dashboard SSO) authenticates as.
 // It's used in two places that must agree with NetBird Mgmt's
@@ -164,6 +181,48 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 		if err := r.AssignClientDefaultScopes(ctx, spec.Realm, clientID, []string{NetBirdAPIScopeName}); err != nil {
 			return err
 		}
+	}
+
+	// `groups` scope + Group Membership mapper: surfaces the user's
+	// Keycloak group memberships as a `groups` claim. NetBird Mgmt's
+	// JWT Group Sync (Dashboard → Settings → Groups) reads this
+	// claim; the toggle there is a no-op without these resources
+	// existing first. Mapper config mirrors the NetBird docs
+	// (Step 2 of the self-hosted Keycloak guide):
+	//   - Token Claim Name: groups
+	//   - Full group path: false (recommended for cleaner names)
+	//   - Add to ID token, access token, userinfo: on
+	if err := r.ReconcileClientScope(ctx, spec.Realm, ClientScopeSpec{
+		Name:                NetBirdGroupsScopeName,
+		Protocol:            "openid-connect",
+		Description:         "Group memberships for NetBird JWT Group Sync",
+		IncludeInTokenScope: true,
+	}); err != nil {
+		return err
+	}
+	if err := r.ReconcileProtocolMapperOnClientScope(ctx, spec.Realm, NetBirdGroupsScopeName, ProtocolMapperSpec{
+		Name:           netBirdGroupsMapperName,
+		Protocol:       "openid-connect",
+		ProtocolMapper: "oidc-group-membership-mapper",
+		Config: map[string]string{
+			"claim.name":           "groups",
+			"full.path":            "false",
+			"id.token.claim":       "true",
+			"access.token.claim":   "true",
+			"userinfo.token.claim": "true",
+		},
+	}); err != nil {
+		return err
+	}
+	// Attach to netbird-client only — NetBird's docs Step 3
+	// instructs this scope on the client whose tokens are then
+	// fed into NetBird Mgmt. netbird-backend doesn't issue user
+	// tokens (it's the service-account / userinfo lookup client),
+	// so it doesn't need the groups claim. The kubernetes-<cluster>
+	// client picks it up via KubernetesSpec.DefaultScopes passed
+	// from the caller.
+	if err := r.AssignClientDefaultScopes(ctx, spec.Realm, netBirdClientID, []string{NetBirdGroupsScopeName}); err != nil {
+		return err
 	}
 
 	if err := r.AssignClientServiceAccountRole(

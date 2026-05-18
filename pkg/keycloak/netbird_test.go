@@ -88,6 +88,75 @@ func TestReconcileNetBird_HappyPathAndIdempotent(t *testing.T) {
 		"second ReconcileNetBird must not write anything new")
 }
 
+// TestReconcileNetBird_GroupsScopeAndMapper guards the JWT Group
+// Sync wiring NetBird's Dashboard toggle ("Settings → Groups →
+// Enable JWT Group Sync") expects to find pre-baked in Keycloak:
+//
+//   - a `groups` ClientScope with `include.in.token.scope` = true
+//   - a Group Membership ProtocolMapper on it (claim.name = groups,
+//     full.path = false, on for ID/access/userinfo tokens)
+//   - the scope attached as a default on netbird-client
+//
+// Per NetBird's self-hosted Keycloak guide (Steps 1–3); kubeaid-cli
+// owns these so the operator only has to flip the Dashboard toggle.
+func TestReconcileNetBird_GroupsScopeAndMapper(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	require.NoError(t, r.ReconcileRealm(context.Background(), "acme"))
+	_, err := r.ReconcileClient(context.Background(), "acme", ClientSpec{
+		ClientID:     realmManagementClientID,
+		PublicClient: false,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, r.ReconcileNetBird(context.Background(), NetBirdSpec{
+		Realm:                "acme",
+		NetBirdMgmtURL:       "https://nb.acme.com",
+		NetBirdBackendSecret: "s",
+	}))
+
+	// Scope exists with the token-scope attribute on.
+	groupsScope := findScopeByName(t, fake, "acme", NetBirdGroupsScopeName)
+	require.NotNil(t, groupsScope.ClientScopeAttributes,
+		"groups scope must carry the include.in.token.scope attribute")
+	require.NotNil(t, groupsScope.ClientScopeAttributes.IncludeInTokenScope)
+	assert.Equal(t, "true", *groupsScope.ClientScopeAttributes.IncludeInTokenScope)
+
+	// Mapper config follows NetBird's docs Step 2.
+	mapper := findMapperByName(t, groupsScope, netBirdGroupsMapperName)
+	require.NotNil(t, mapper.ProtocolMapper)
+	assert.Equal(t, "oidc-group-membership-mapper", *mapper.ProtocolMapper)
+	require.NotNil(t, mapper.ProtocolMappersConfig)
+	cfg := mapper.ProtocolMappersConfig
+	require.NotNil(t, cfg.ClaimName)
+	assert.Equal(t, "groups", *cfg.ClaimName)
+	require.NotNil(t, cfg.FullPath)
+	assert.Equal(t, "false", *cfg.FullPath)
+	for name, ptr := range map[string]*string{
+		"id.token.claim":       cfg.IDTokenClaim,
+		"access.token.claim":   cfg.AccessTokenClaim,
+		"userinfo.token.claim": cfg.UserinfoTokenClaim,
+	} {
+		require.NotNilf(t, ptr, "%s must be set", name)
+		assert.Equalf(t, "true", *ptr, "%s must be true", name)
+	}
+
+	// Attached to netbird-client as a default scope.
+	nbClient := findClientInFake(t, fake, "acme", netBirdClientID)
+	require.NotNil(t, nbClient.DefaultClientScopes)
+	assert.Contains(t, *nbClient.DefaultClientScopes, NetBirdGroupsScopeName,
+		"groups must be a default scope on netbird-client")
+
+	// netbird-backend doesn't issue user tokens → must NOT inherit
+	// the scope (matches the docstring + NetBird's docs Step 3).
+	nbBackend := findClientInFake(t, fake, "acme", "netbird-backend")
+	if nbBackend.DefaultClientScopes != nil {
+		assert.NotContains(t, *nbBackend.DefaultClientScopes, NetBirdGroupsScopeName,
+			"groups scope must not bleed onto the backend client")
+	}
+}
+
 // TestReconcileNetBird_AudienceMapperHasClientID guards against
 // the audience-mismatch regression: NetBird Mgmt validates the JWT
 // `aud` claim against IDP_CLIENT_ID (= netbird-client), so the api

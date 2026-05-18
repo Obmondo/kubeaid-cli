@@ -16,6 +16,14 @@ type ClientScopeSpec struct {
 	Name        string
 	Protocol    string // typically "openid-connect"
 	Description string
+
+	// IncludeInTokenScope controls whether the scope's name appears
+	// in the issued token's `scope` claim. NetBird's docs require
+	// this on for the `groups` scope so the operator's Keycloak
+	// groups land in the JWT — Keycloak stores it as the
+	// `include.in.token.scope` attribute on the ClientScope
+	// representation, not a top-level field.
+	IncludeInTokenScope bool
 }
 
 // ReconcileClientScope ensures a client scope with spec.Name exists
@@ -37,6 +45,11 @@ func (r *Reconciler) ReconcileClientScope(ctx context.Context, realm string, spe
 	}
 	if spec.Description != "" {
 		scope.Description = gocloak.StringP(spec.Description)
+	}
+	if spec.IncludeInTokenScope {
+		scope.ClientScopeAttributes = &gocloak.ClientScopeAttributes{
+			IncludeInTokenScope: gocloak.StringP("true"),
+		}
 	}
 
 	if _, err := r.api.CreateClientScope(ctx, r.token, realm, scope); err != nil {
