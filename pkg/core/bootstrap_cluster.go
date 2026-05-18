@@ -185,6 +185,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		// tls.secretName rendered into values-keycloakx / values-netbird.
 		orderedApps = append(orderedApps,
 			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCertManager})
+		// cloudnative-pg installs the postgresql.cnpg.io/v1 Cluster CRD
+		// that the keycloakx (managed mode → keycloak-pgsql) and netbird
+		// (always → netbird-pgsql) charts both materialise during sync.
+		// Without this step those apps fail with "could not find version
+		// v1 of postgresql.cnpg.io/Cluster" until the generic remaining-
+		// apps loop happens to sync cnpg, which can be much later.
+		orderedApps = append(orderedApps,
+			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCloudNativePG})
 		if managedKeycloakEnabled() {
 			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 				Name:      constants.ArgoCDAppKeycloakx,

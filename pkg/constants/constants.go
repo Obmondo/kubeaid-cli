@@ -298,6 +298,14 @@ const (
 	// ArgoCDAppCertManager is the name of the cert-manager ArgoCD App.
 	ArgoCDAppCertManager = "cert-manager"
 
+	// ArgoCDAppCloudNativePG is the name of the cloudnative-pg
+	// (CNPG) ArgoCD App. It installs the operator + the
+	// postgresql.cnpg.io/v1 Cluster/Pooler CRDs that keycloakx
+	// (in managed mode, for keycloak-pgsql) and netbird (for
+	// netbird-pgsql) both instantiate during their own sync, so
+	// the bootstrap syncs it ahead of those apps.
+	ArgoCDAppCloudNativePG = "cloudnative-pg"
+
 	// Keycloak admin Secret keys. Names match what the keycloakx
 	// chart's pre-install hook reads.
 	SecretNameKeycloakAdmin   = "keycloak-admin"
