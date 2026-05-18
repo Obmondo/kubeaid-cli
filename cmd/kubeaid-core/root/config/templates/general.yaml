@@ -1,18 +1,28 @@
-# Image pull policy for the KubeAid Core container image.
-# Valid values: Always, IfNotPresent, Never.
-imagePullPolicy: IfNotPresent
 # Git server specific details.
 git:
   caBundlePath:
   # SSH username.
   sshUsername: git
-  # Or, make KubeAid CLI use the SSH Agent.
-  # So, you (the one who runs KubeAid CLI) can use your YubiKey.
-  useSSHAgent:
   # Additional SSH known hosts.
   # Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)
   knownHosts:
+  # PrivateKeyFilePath is the on-disk SSH private key
+  # kubeaid-cli reads to derive PublicKey + Fingerprint and
+  # (for cloud-side SSH connections like the Hetzner NAT
+  # gateway setup) to authenticate the SSH session. Required
+  # when UseSSHAgent is false; ignored when UseSSHAgent is
+  # true (the agent owns the private key — yubikey case —
+  # so there's nothing on disk to point at). Cross-field
+  # validation in pkg/config/parser/validate.go enforces
+  # "exactly one is set".
   privateKeyFilePath:
+  # UseSSHAgent flips the SSH key sourcing from "read a file
+  # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+  # the agent for its loaded identities". The first identity
+  # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+  # signs through the agent socket so yubikey-resident
+  # private keys never need to be exported.
+  useSSHAgent:
 # KubeAid and KubeAid Config repository specific details.
 # The KubeAid and KubeAid Config repositories must be hosted in the same Git server.
 forkURLs:
@@ -95,22 +105,33 @@ cluster:
       # at config-render time and embeds its contents inline in the
       # AuthenticationConfiguration YAML.
       caBundlePath:
-  # Keycloak declares the Keycloak instance this cluster hosts.
-  # Only meaningful when cluster.type=vpn — VPN clusters host
-  # Keycloak; workload clusters do not, and must leave this
-  # block unset. A workload cluster's kube-apiserver instead
-  # authenticates against an existing Keycloak by setting
-  # apiServer.oidc (issuer URL + client ID) directly in its own
-  # general.yaml; kubeaid-cli prompts for those values during
-  # workload-cluster setup. There is no automatic inheritance
-  # between clusters — every cluster's OIDC config is explicit
-  # in its own general.yaml.
+  # Keycloak declares the Keycloak instance this cluster
+  # authenticates against. Semantics depend on cluster.type:
+  # 
+  #   - cluster.type=vpn (required block):
+  #       mode=managed  → kubeaid-cli installs Keycloak on
+  #                       this cluster.
+  #       mode=external → operator runs Keycloak elsewhere.
+  # 
+  #   - cluster.type=workload (optional block):
+  #       mode=external only → the cluster's kube-apiserver
+  #                            trusts this Keycloak for OIDC.
+  #                            kubeaid-cli derives
+  #                            apiServer.oidc.{issuerUrl,
+  #                            clientId} from this block;
+  #                            explicit apiServer.oidc still
+  #                            wins. Workload clusters never
+  #                            host Keycloak — mode=managed is
+  #                            rejected.
+  # 
+  # Omitting the block on a workload cluster boots it without
+  # OIDC; users authenticate with admin.conf (the workload
+  # bootstrap prints a warning).
   keycloak:
     # Mode is "managed" (kubeaid-cli installs Keycloak via the
-    # keycloakx Helm chart on this cluster) or "external" (Keycloak
-    # is already running elsewhere; supply DNS only). Only managed
-    # is supported by the current bootstrap flow; external is
-    # reserved for a future branch.
+    # keycloakx Helm chart on this cluster — VPN clusters only)
+    # or "external" (Keycloak is already running elsewhere;
+    # supply DNS only). Workload clusters must use external.
     mode:
     # DNS is the public hostname Keycloak is reachable at, e.g.
     # "keycloak.vpn.acme.com". Required. Used to derive the OIDC
@@ -156,9 +177,41 @@ cluster:
   argoCD:
     deployKeys:
       kubeaid:
+        # PrivateKeyFilePath is the on-disk SSH private key
+        # kubeaid-cli reads to derive PublicKey + Fingerprint and
+        # (for cloud-side SSH connections like the Hetzner NAT
+        # gateway setup) to authenticate the SSH session. Required
+        # when UseSSHAgent is false; ignored when UseSSHAgent is
+        # true (the agent owns the private key — yubikey case —
+        # so there's nothing on disk to point at). Cross-field
+        # validation in pkg/config/parser/validate.go enforces
+        # "exactly one is set".
         privateKeyFilePath:
+        # UseSSHAgent flips the SSH key sourcing from "read a file
+        # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+        # the agent for its loaded identities". The first identity
+        # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+        # signs through the agent socket so yubikey-resident
+        # private keys never need to be exported.
+        useSSHAgent:
       kubeaidConfig:
+        # PrivateKeyFilePath is the on-disk SSH private key
+        # kubeaid-cli reads to derive PublicKey + Fingerprint and
+        # (for cloud-side SSH connections like the Hetzner NAT
+        # gateway setup) to authenticate the SSH session. Required
+        # when UseSSHAgent is false; ignored when UseSSHAgent is
+        # true (the agent owns the private key — yubikey case —
+        # so there's nothing on disk to point at). Cross-field
+        # validation in pkg/config/parser/validate.go enforces
+        # "exactly one is set".
         privateKeyFilePath:
+        # UseSSHAgent flips the SSH key sourcing from "read a file
+        # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+        # the agent for its loaded identities". The first identity
+        # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+        # signs through the agent socket so yubikey-resident
+        # private keys never need to be exported.
+        useSSHAgent:
 # Cloud provider specific details.
 cloud:
   aws:
@@ -183,7 +236,23 @@ cloud:
     workloadIdentity:
       openIDProviderSSHKeyPair:
         publicKeyFilePath:
+        # PrivateKeyFilePath is the on-disk SSH private key
+        # kubeaid-cli reads to derive PublicKey + Fingerprint and
+        # (for cloud-side SSH connections like the Hetzner NAT
+        # gateway setup) to authenticate the SSH session. Required
+        # when UseSSHAgent is false; ignored when UseSSHAgent is
+        # true (the agent owns the private key — yubikey case —
+        # so there's nothing on disk to point at). Cross-field
+        # validation in pkg/config/parser/validate.go enforces
+        # "exactly one is set".
         privateKeyFilePath:
+        # UseSSHAgent flips the SSH key sourcing from "read a file
+        # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+        # the agent for its loaded identities". The first identity
+        # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+        # signs through the agent socket so yubikey-resident
+        # private keys never need to be exported.
+        useSSHAgent:
     sshPublicKey:
     canonicalUbuntuImage:
       offer:
@@ -213,7 +282,23 @@ cloud:
     # if it / they doesn't already exist.
     sshKeyPair:
       name:
+      # PrivateKeyFilePath is the on-disk SSH private key
+      # kubeaid-cli reads to derive PublicKey + Fingerprint and
+      # (for cloud-side SSH connections like the Hetzner NAT
+      # gateway setup) to authenticate the SSH session. Required
+      # when UseSSHAgent is false; ignored when UseSSHAgent is
+      # true (the agent owns the private key — yubikey case —
+      # so there's nothing on disk to point at). Cross-field
+      # validation in pkg/config/parser/validate.go enforces
+      # "exactly one is set".
       privateKeyFilePath:
+      # UseSSHAgent flips the SSH key sourcing from "read a file
+      # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+      # the agent for its loaded identities". The first identity
+      # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+      # signs through the agent socket so yubikey-resident
+      # private keys never need to be exported.
+      useSSHAgent:
     # HCloud specific details.
     hcloud:
       zone:
@@ -286,7 +371,23 @@ cloud:
   bare-metal:
     ssh:
       port: 22
+      # PrivateKeyFilePath is the on-disk SSH private key
+      # kubeaid-cli reads to derive PublicKey + Fingerprint and
+      # (for cloud-side SSH connections like the Hetzner NAT
+      # gateway setup) to authenticate the SSH session. Required
+      # when UseSSHAgent is false; ignored when UseSSHAgent is
+      # true (the agent owns the private key — yubikey case —
+      # so there's nothing on disk to point at). Cross-field
+      # validation in pkg/config/parser/validate.go enforces
+      # "exactly one is set".
       privateKeyFilePath:
+      # UseSSHAgent flips the SSH key sourcing from "read a file
+      # from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask
+      # the agent for its loaded identities". The first identity
+      # supplies PublicKey + Fingerprint; the SSH client (kubeone)
+      # signs through the agent socket so yubikey-resident
+      # private keys never need to be exported.
+      useSSHAgent:
     controlPlane:
       endpoint:
         host:

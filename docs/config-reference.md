@@ -53,6 +53,7 @@
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
 - [LocalConfig](#localconfig)
 - [NetBirdConfig](#netbirdconfig)
+- [NetBirdCredentials](#netbirdcredentials)
 - [NodeGroup](#nodegroup)
 - [OIDCConfig](#oidcconfig)
 - [ObmondoConfig](#obmondoconfig)
@@ -110,11 +111,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -277,7 +278,8 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | port | `uint` | 22 |  |
-| privateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  | PrivateKeyFilePath is the on-disk SSH private key<br>kubeaid-cli reads to derive PublicKey + Fingerprint and<br>(for cloud-side SSH connections like the Hetzner NAT<br>gateway setup) to authenticate the SSH session. Required<br>when UseSSHAgent is false; ignored when UseSSHAgent is<br>true (the agent owns the private key — yubikey case —<br>so there's nothing on disk to point at). Cross-field<br>validation in pkg/config/parser/validate.go enforces<br>"exactly one is set".<br> |
+| useSSHAgent | `bool` |  | UseSSHAgent flips the SSH key sourcing from "read a file<br>from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask<br>the agent for its loaded identities". The first identity<br>supplies PublicKey + Fingerprint; the SSH client (kubeone)<br>signs through the agent socket so yubikey-resident<br>private keys never need to be exported.<br> |
 
 ## CanonicalUbuntuImage
 
@@ -313,7 +315,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
 | acmeEmail | `string` |  | ACMEEmail is the contact email used to register with the ACME<br>CA (Let's Encrypt) when cert-manager's ClusterIssuer is<br>rendered. Required when cluster.keycloak.mode=managed (the<br>keycloakx and netbird-mgmt Ingresses both need TLS certs);<br>optional otherwise. Used as Issuer.spec.acme.email.<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
-| keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster hosts.<br>Only meaningful when cluster.type=vpn — VPN clusters host<br>Keycloak; workload clusters do not, and must leave this<br>block unset. A workload cluster's kube-apiserver instead<br>authenticates against an existing Keycloak by setting<br>apiServer.oidc (issuer URL + client ID) directly in its own<br>general.yaml; kubeaid-cli prompts for those values during<br>workload-cluster setup. There is no automatic inheritance<br>between clusters — every cluster's OIDC config is explicit<br>in its own general.yaml.<br> |
+| keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster<br>authenticates against. Semantics depend on cluster.type:<br><br>  - cluster.type=vpn (required block):<br>      mode=managed  → kubeaid-cli installs Keycloak on<br>                      this cluster.<br>      mode=external → operator runs Keycloak elsewhere.<br><br>  - cluster.type=workload (optional block):<br>      mode=external only → the cluster's kube-apiserver<br>                           trusts this Keycloak for OIDC.<br>                           kubeaid-cli derives<br>                           apiServer.oidc.{issuerUrl,<br>                           clientId} from this block;<br>                           explicit apiServer.oidc still<br>                           wins. Workload clusters never<br>                           host Keycloak — mode=managed is<br>                           rejected.<br><br>Omitting the block on a workload cluster boots it without<br>OIDC; users authenticate with admin.conf (the workload<br>bootstrap prints a warning).<br> |
 | netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
 | argoCD | [`ArgoCDConfig`](#argocdconfig) |  | ArgoCD specific details.<br> |
@@ -361,7 +363,6 @@ We require the KubeAid and KubeAid Config repositories to be hosted in the same 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| imagePullPolicy | `string` | IfNotPresent | Image pull policy for the KubeAid Core container image.<br>Valid values: Always, IfNotPresent, Never.<br> |
 | git | [`GitConfig`](#gitconfig) |  | Git server specific details.<br> |
 | forkURLs | [`ForksConfig`](#forksconfig) |  | KubeAid and KubeAid Config repository specific details.<br>The KubeAid and KubeAid Config repositories must be hosted in the same Git server.<br> |
 | cluster | [`ClusterConfig`](#clusterconfig) |  | Kubernetes specific details.<br> |
@@ -379,9 +380,9 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | caBundlePath | `string` |  |  |
 | sshUsername | `string` | git | SSH username.<br> |
-| useSSHAgent | `bool` |  | Or, make KubeAid CLI use the SSH Agent.<br>So, you (the one who runs KubeAid CLI) can use your YubiKey.<br> |
 | knownHosts | []`string` |  | Additional SSH known hosts.<br>Merged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)<br> |
-| privateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  | PrivateKeyFilePath is the on-disk SSH private key<br>kubeaid-cli reads to derive PublicKey + Fingerprint and<br>(for cloud-side SSH connections like the Hetzner NAT<br>gateway setup) to authenticate the SSH session. Required<br>when UseSSHAgent is false; ignored when UseSSHAgent is<br>true (the agent owns the private key — yubikey case —<br>so there's nothing on disk to point at). Cross-field<br>validation in pkg/config/parser/validate.go enforces<br>"exactly one is set".<br> |
+| useSSHAgent | `bool` |  | UseSSHAgent flips the SSH key sourcing from "read a file<br>from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask<br>the agent for its loaded identities". The first identity<br>supplies PublicKey + Fingerprint; the SSH client (kubeone)<br>signs through the agent socket so yubikey-resident<br>private keys never need to be exported.<br> |
 
 ## HCloudAutoScalableNodeGroup
 
@@ -493,7 +494,6 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | mode | `string` | hcloud | 			The Hetzner mode to use :<br><br>			  (1) hcloud : Both the control-plane and the nodegroups will be in HCloud.<br><br>			  (2) bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.<br><br>			  (3) hybrid : The control-plane will be in HCloud, and each node-group can be either in<br>			               HCloud or Hetzner Bare Metal.<br> |
 | hcloudVPNCluster | [`HCloudVPNClusterConfig`](#hcloudvpnclusterconfig) |  | Details about the VPN cluster you have in HCloud.<br> |
-| multipleSubnets | `bool` | false | Enables CAPH image variant with multi-subnet support.<br> |
 | sshKeyPair | [`HetznerSSHKeyPair`](#hetznersshkeypair) |  | Details about the SSH keypair which will be used to SSH into the HCloud or / and Hetzner<br>Bare Metal server.<br>KubeAid CLI will create the corresponding HCloud or / and Hetzner Bare Metal SSH keypairs,<br>if it / they doesn't already exist.<br> |
 | hcloud | [`HCloudConfig`](#hcloudconfig) |  | HCloud specific details.<br> |
 | bareMetal | [`HetznerBareMetalConfig`](#hetznerbaremetalconfig) |  | Hetzner bare-metal specific details.<br> |
@@ -553,7 +553,8 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | name | `string` |  |  |
-| privateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  | PrivateKeyFilePath is the on-disk SSH private key<br>kubeaid-cli reads to derive PublicKey + Fingerprint and<br>(for cloud-side SSH connections like the Hetzner NAT<br>gateway setup) to authenticate the SSH session. Required<br>when UseSSHAgent is false; ignored when UseSSHAgent is<br>true (the agent owns the private key — yubikey case —<br>so there's nothing on disk to point at). Cross-field<br>validation in pkg/config/parser/validate.go enforces<br>"exactly one is set".<br> |
+| useSSHAgent | `bool` |  | UseSSHAgent flips the SSH key sourcing from "read a file<br>from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask<br>the agent for its loaded identities". The first identity<br>supplies PublicKey + Fingerprint; the SSH client (kubeone)<br>signs through the agent socket so yubikey-resident<br>private keys never need to be exported.<br> |
 
 ## HostPathMountConfig
 
@@ -587,21 +588,26 @@ user-facing.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| mode | `string` |  | Mode is "managed" (kubeaid-cli installs Keycloak via the<br>keycloakx Helm chart on this cluster) or "external" (Keycloak<br>is already running elsewhere; supply DNS only). Only managed<br>is supported by the current bootstrap flow; external is<br>reserved for a future branch.<br> |
+| mode | `string` |  | Mode is "managed" (kubeaid-cli installs Keycloak via the<br>keycloakx Helm chart on this cluster — VPN clusters only)<br>or "external" (Keycloak is already running elsewhere;<br>supply DNS only). Workload clusters must use external.<br> |
 | dns | `string` |  | DNS is the public hostname Keycloak is reachable at, e.g.<br>"keycloak.vpn.acme.com". Required. Used to derive the OIDC<br>issuer URL the apiserver and kubelogin trust, and (when<br>Realm is unset) to default the realm name.<br> |
 | realm | `string` |  | Realm is the Keycloak realm name. Optional — when empty,<br>kubeaid-cli derives it from DNS via<br>`golang.org/x/net/publicsuffix.EffectiveTLDPlusOne` and the<br>first dot-separated segment of the result. Examples:<br>  keycloak.vpn.acme.com  → "acme"<br>  keycloak.foo.co.uk     → "foo"<br>Set this explicitly to override the derivation.<br> |
 
 ## KeycloakCredentials
 
-<p>KeycloakCredentials carries the OIDC client secrets the
-operator must hand kubeaid-cli when cluster.keycloak.mode is
-"external". Managed-mode bootstrap reconciles these clients
-itself via gocloak and persists the secrets in-cluster, so
-this block stays empty in that case.</p>
+<p>KeycloakCredentials carries Keycloak-related secrets — admin
+credentials and OIDC client secrets the operator either
+supplies (external mode) or kubeaid-cli auto-generates and
+persists into secrets.yaml (managed mode, via FillMissingSecrets).
+
+All fields are persisted in secrets.yaml so SealedSecret
+renders are byte-stable across re-runs — the alternative
+(read-or-generate from the in-cluster Secret) caused the
+re-encryption noise that produced spurious PRs on every run.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| netBirdBackendClientSecret | `string` |  | NetBirdBackendClientSecret is the confidential-client<br>secret the operator created for the netbird-backend<br>client in their external Keycloak realm. Templated into<br>the netbird Secret's idpClientMgmtSecret key.<br> |
+| adminPassword | `string` |  | AdminPassword is templated into the keycloak-admin<br>SealedSecret's KEYCLOAK_PASSWORD key. Required when<br>cluster.keycloak.mode is "managed"; ignored otherwise.<br>FillMissingSecrets generates a value here on first run if<br>the field is empty.<br> |
+| netBirdBackendClientSecret | `string` |  | NetBirdBackendClientSecret is the confidential-client<br>secret for the netbird-backend OIDC client. In external<br>mode the operator creates the client in their Keycloak<br>and supplies the resulting secret here. In managed mode<br>FillMissingSecrets generates it, the realm reconciler<br>creates the Keycloak client with this exact value, and<br>the netbird SealedSecret is templated with the same<br>value — single source of truth either way.<br> |
 
 ## KubeAidForkConfig
 
@@ -652,6 +658,20 @@ kubeaid-cli writes into the netbird Secret.</p>
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
+
+## NetBirdCredentials
+
+<p>NetBirdCredentials carries the random secrets NetBird's
+in-cluster components need at startup. All fields are
+auto-generated by FillMissingSecrets when blank. Persisted
+in secrets.yaml for re-run stability — same rationale as
+KeycloakCredentials.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| datastoreEncryptionKey | `string` |  | DatastoreEncryptionKey is the AES key NetBird Mgmt uses<br>to encrypt its data store. base64(32 random bytes); the<br>chart base64-decodes it back to 32 raw bytes for<br>AES-256.<br> |
+| relayPassword | `string` |  | RelayPassword is the shared secret between NetBird Mgmt<br>and the in-cluster Relay deployment. Alphanumeric so it<br>flows cleanly through Helm values + envFrom.<br> |
+| turnPassword | `string` |  | TurnPassword is the credential the NetBird agents use to<br>authenticate with Coturn (TURN server). Same value is<br>templated into both the netbird Secret (Mgmt-side) and<br>the netbird-turn-credentials Secret (Coturn-side) — the<br>two MUST match or relayed TURN auth fails.<br> |
 
 ## NodeGroup
 
@@ -710,7 +730,8 @@ provision infrastructure.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | publicKeyFilePath | `string` |  |  |
-| privateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  | PrivateKeyFilePath is the on-disk SSH private key<br>kubeaid-cli reads to derive PublicKey + Fingerprint and<br>(for cloud-side SSH connections like the Hetzner NAT<br>gateway setup) to authenticate the SSH session. Required<br>when UseSSHAgent is false; ignored when UseSSHAgent is<br>true (the agent owns the private key — yubikey case —<br>so there's nothing on disk to point at). Cross-field<br>validation in pkg/config/parser/validate.go enforces<br>"exactly one is set".<br> |
+| useSSHAgent | `bool` |  | UseSSHAgent flips the SSH key sourcing from "read a file<br>from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask<br>the agent for its loaded identities". The first identity<br>supplies PublicKey + Fingerprint; the SSH client (kubeone)<br>signs through the agent socket so yubikey-resident<br>private keys never need to be exported.<br> |
 
 ## SSHKeyPairConfig
 
@@ -718,7 +739,8 @@ provision infrastructure.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| privateKeyFilePath | `string` |  |  |
+| privateKeyFilePath | `string` |  | PrivateKeyFilePath is the on-disk SSH private key<br>kubeaid-cli reads to derive PublicKey + Fingerprint and<br>(for cloud-side SSH connections like the Hetzner NAT<br>gateway setup) to authenticate the SSH session. Required<br>when UseSSHAgent is false; ignored when UseSSHAgent is<br>true (the agent owns the private key — yubikey case —<br>so there's nothing on disk to point at). Cross-field<br>validation in pkg/config/parser/validate.go enforces<br>"exactly one is set".<br> |
+| useSSHAgent | `bool` |  | UseSSHAgent flips the SSH key sourcing from "read a file<br>from PrivateKeyFilePath" to "dial $SSH_AUTH_SOCK and ask<br>the agent for its loaded identities". The first identity<br>supplies PublicKey + Fingerprint; the SSH client (kubeone)<br>signs through the agent socket so yubikey-resident<br>private keys never need to be exported.<br> |
 
 ## SecretsConfig
 
@@ -731,6 +753,7 @@ provision infrastructure.</p>
 | hetzner | [`HetznerCredentials`](#hetznercredentials) |  |  |
 | obmondo | [`ObmondoCredentials`](#obmondocredentials) |  |  |
 | keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
+| netbird | [`NetBirdCredentials`](#netbirdcredentials) |  |  |
 
 ## UserConfig
 
