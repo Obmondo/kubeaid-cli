@@ -231,7 +231,7 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	}
 }
 
-func TestWorkloadNetBirdOperatorEnabled(t *testing.T) {
+func TestNetBirdOperatorEnabled(t *testing.T) {
 	tests := []struct {
 		name        string
 		clusterType string
@@ -251,16 +251,22 @@ func TestWorkloadNetBirdOperatorEnabled(t *testing.T) {
 			want:        false,
 		},
 		{
-			name:        "vpn cluster: false (gets the operator via the netbird chart)",
+			// VPN clusters get the operator unconditionally now — the
+			// cluster itself runs NetBird Mgmt, so the operator's CRDs
+			// are how routing-peer wiring gets declared. Prior revisions
+			// returned false here on the (wrong) assumption that the
+			// netbird chart's kubeaid-addons subdep installed it; it
+			// doesn't.
+			name:        "vpn cluster + managed keycloak: true",
 			clusterType: constants.ClusterTypeVPN,
 			keycloak:    &config.KeycloakConfig{Mode: "managed", DNS: "kc.acme.com"},
-			want:        false,
+			want:        true,
 		},
 		{
-			name:        "vpn cluster, no keycloak: false (nil-safe)",
+			name:        "vpn cluster, no keycloak: true (nil-safe, same rationale as the managed case)",
 			clusterType: constants.ClusterTypeVPN,
 			keycloak:    nil,
-			want:        false,
+			want:        true,
 		},
 	}
 
@@ -270,7 +276,7 @@ func TestWorkloadNetBirdOperatorEnabled(t *testing.T) {
 				config.ParsedGeneralConfig.Cluster.Type = tc.clusterType
 				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
 
-				assert.Equal(t, tc.want, workloadNetBirdOperatorEnabled())
+				assert.Equal(t, tc.want, netBirdOperatorEnabled())
 			})
 		})
 	}

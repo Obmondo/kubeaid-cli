@@ -447,12 +447,20 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
-	// Workload cluster + Keycloak: render the netbird-operator app
-	// so the operator can declaratively manage NBSetupKey / NBPolicy
-	// resources after bootstrap (private kube-API via the parent
-	// VPN's NetBird mesh). VPN clusters get their own NetBird stack
-	// (above) which includes the operator implicitly.
-	if workloadNetBirdOperatorEnabled() {
+	// netbird-operator app — renders on:
+	//   - workload clusters with Keycloak (parent VPN's NetBird Mgmt
+	//     is the API target; operator manages NBSetupKey / NBPolicy
+	//     and the new NetworkRouter / NetworkResource CRs for the
+	//     workload's own peers); and
+	//   - VPN clusters (the cluster itself runs NetBird Mgmt — same
+	//     operator can drive CRs against the in-cluster API).
+	// Values overlay is intentionally empty for now; managementURL /
+	// netbirdAPI.keyFromSecret wiring lands in a follow-up (see
+	// docs/TODO.md "Wire netbird-operator on both workload and VPN
+	// clusters"). Until then the operator pod runs with chart
+	// defaults; CRDs are registered and an operator can apply
+	// hand-rolled CRs.
+	if netBirdOperatorEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorTemplateNames...,
 		)
@@ -508,21 +516,35 @@ func managedKeycloakEnabled() bool {
 	return cluster.Keycloak.Mode == constants.KeycloakModeManaged
 }
 
-// workloadNetBirdOperatorEnabled reports whether kubeaid-cli should
-// render the netbird-operator ArgoCD app on a workload cluster.
+// netBirdOperatorEnabled reports whether kubeaid-cli should render
+// the netbird-operator ArgoCD app on this cluster.
 //
-// True when cluster.type=workload AND cluster.keycloak is set. The
-// keycloak gate is the proxy for "operator wants private kube-API
-// behind a mesh": if they're already routing OIDC through a parent
-// VPN's Keycloak, they almost certainly want kube-API on the same
-// mesh. Operators on admin.conf-only (no keycloak block) explicitly
-// opted out of mesh routing — skip the operator install entirely.
+// True when either:
 //
-// VPN clusters get the operator implicitly via NetBirdNonSecretTemplateNames
-// (the netbird chart's kubeaid-addons subdep) — this helper is
-// workload-only.
-func workloadNetBirdOperatorEnabled() bool {
+//   - cluster.type=workload AND cluster.keycloak is set — the
+//     keycloak gate is the proxy for "operator wants private kube-API
+//     behind a parent VPN's mesh": if they're already routing OIDC
+//     through that VPN's Keycloak, they almost certainly want
+//     kube-API on the same mesh. Operators on admin.conf-only (no
+//     keycloak block) explicitly opted out — skip the operator.
+//
+//   - cluster.type=vpn — the VPN cluster itself runs NetBird Mgmt,
+//     and the operator's CRDs (NBRoutingPeer / NetworkRouter /
+//     NetworkResource etc.) are how routing-peer + exposed-service
+//     wiring is declared. Earlier revisions claimed VPN clusters
+//     got the operator "implicitly" via the netbird chart's
+//     kubeaid-addons subdep — that subdep only installs NetBird
+//     Mgmt, not the operator. Fixed by including VPN clusters in
+//     this gate directly.
+//
+// Values overlay (values-netbird-operator.yaml.tmpl) is empty for
+// both — the connection details (managementURL, API token Secret
+// ref) come later. See docs/TODO.md.
+func netBirdOperatorEnabled() bool {
 	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Type == constants.ClusterTypeVPN {
+		return true
+	}
 	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
 }
 
