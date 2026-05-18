@@ -17,6 +17,18 @@ type ClientScopeSpec struct {
 	Protocol    string // typically "openid-connect"
 	Description string
 
+	// ConsentScreenText is the display label Keycloak shows on the
+	// "Grant Access to <client>" consent page in lieu of the raw
+	// scope Name. When unset Keycloak falls back to Name verbatim,
+	// which is fine for things like "email" but produces lowercase
+	// fragments like "api" / "groups" next to neatly cased built-in
+	// scopes ("Email address", "User profile") — set this to
+	// "API" / "Groups" / etc. to keep the consent screen tidy.
+	//
+	// Stored under the `consent.screen.text` attribute on the
+	// ClientScope representation, not a top-level field.
+	ConsentScreenText string
+
 	// IncludeInTokenScope controls whether the scope's name appears
 	// in the issued token's `scope` claim. NetBird's docs require
 	// this on for the `groups` scope so the operator's Keycloak
@@ -46,9 +58,13 @@ func (r *Reconciler) ReconcileClientScope(ctx context.Context, realm string, spe
 	if spec.Description != "" {
 		scope.Description = gocloak.StringP(spec.Description)
 	}
-	if spec.IncludeInTokenScope {
-		scope.ClientScopeAttributes = &gocloak.ClientScopeAttributes{
-			IncludeInTokenScope: gocloak.StringP("true"),
+	if spec.IncludeInTokenScope || spec.ConsentScreenText != "" {
+		scope.ClientScopeAttributes = &gocloak.ClientScopeAttributes{}
+		if spec.IncludeInTokenScope {
+			scope.ClientScopeAttributes.IncludeInTokenScope = gocloak.StringP("true")
+		}
+		if spec.ConsentScreenText != "" {
+			scope.ClientScopeAttributes.ConsentScreenText = gocloak.StringP(spec.ConsentScreenText)
 		}
 	}
 

@@ -157,6 +157,43 @@ func TestReconcileNetBird_GroupsScopeAndMapper(t *testing.T) {
 	}
 }
 
+// TestReconcileNetBird_ScopesHaveConsentScreenText asserts the
+// human-friendly display labels Keycloak shows on the
+// "Grant Access to netbird-client" consent screen — "API",
+// "Groups" — instead of the raw scope names ("api", "groups")
+// which clash visually with the built-in scopes Keycloak already
+// title-cases ("Email address", "User profile", "User roles").
+func TestReconcileNetBird_ScopesHaveConsentScreenText(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	require.NoError(t, r.ReconcileRealm(context.Background(), "acme"))
+	_, err := r.ReconcileClient(context.Background(), "acme", ClientSpec{
+		ClientID:     realmManagementClientID,
+		PublicClient: false,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, r.ReconcileNetBird(context.Background(), NetBirdSpec{
+		Realm:                "acme",
+		NetBirdMgmtURL:       "https://nb.acme.com",
+		NetBirdBackendSecret: "s",
+	}))
+
+	for scopeName, wantLabel := range map[string]string{
+		NetBirdAPIScopeName:    "API",
+		NetBirdGroupsScopeName: "Groups",
+	} {
+		scope := findScopeByName(t, fake, "acme", scopeName)
+		require.NotNilf(t, scope.ClientScopeAttributes,
+			"%s scope must carry attributes", scopeName)
+		require.NotNilf(t, scope.ClientScopeAttributes.ConsentScreenText,
+			"%s scope is missing consent.screen.text — operator sees raw %q on the consent page",
+			scopeName, scopeName)
+		assert.Equal(t, wantLabel, *scope.ClientScopeAttributes.ConsentScreenText)
+	}
+}
+
 // TestReconcileNetBird_AudienceMapperHasClientID guards against
 // the audience-mismatch regression: NetBird Mgmt validates the JWT
 // `aud` claim against IDP_CLIENT_ID (= netbird-client), so the api

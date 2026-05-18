@@ -153,9 +153,10 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 	}
 
 	if err := r.ReconcileClientScope(ctx, spec.Realm, ClientScopeSpec{
-		Name:        NetBirdAPIScopeName,
-		Protocol:    "openid-connect",
-		Description: "NetBird Management API audience",
+		Name:              NetBirdAPIScopeName,
+		Protocol:          "openid-connect",
+		Description:       "NetBird Management API audience",
+		ConsentScreenText: "API",
 	}); err != nil {
 		return err
 	}
@@ -196,6 +197,7 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 		Name:                NetBirdGroupsScopeName,
 		Protocol:            "openid-connect",
 		Description:         "Group memberships for NetBird JWT Group Sync",
+		ConsentScreenText:   "Groups",
 		IncludeInTokenScope: true,
 	}); err != nil {
 		return err
