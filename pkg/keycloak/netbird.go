@@ -18,9 +18,11 @@ type NetBirdSpec struct {
 	Realm string
 
 	// NetBirdMgmtURL is the public URL of the NetBird Management
-	// UI (e.g., https://netbird.<vpn-dns>). Used as the redirect
-	// URI for `netbird-client` (browser SSO) and as the audience
-	// for the netbird-backend's tokens.
+	// UI (e.g., https://netbird.<vpn-dns>). Used as netbird-client's
+	// redirect URI base (browser SSO + dashboard) and Web Origin.
+	// NOT the JWT audience — that's the netbird-client client_id,
+	// keyed on a separate netBirdClientID const so the value can
+	// also surface in the api scope's audience ProtocolMapper.
 	NetBirdMgmtURL string
 
 	// NetBirdBackendSecret is the pre-generated client secret to
@@ -41,6 +43,23 @@ type NetBirdSpec struct {
 // the NetBird audience mapping) — callers pass this in
 // KubernetesSpec.DefaultScopes.
 const NetBirdAPIScopeName = "api"
+
+// netBirdClientID is the OIDC client_id of the public PKCE / device-
+// flow client NetBird's CLI (and Dashboard SSO) authenticates as.
+// It's used in two places that must agree with NetBird Mgmt's
+// templated values:
+//
+//	"AuthAudience": "{{ .IDP_CLIENT_ID }}"  ← from values-netbird.yaml.tmpl
+//	"Audience":     "{{ .IDP_CLIENT_ID }}"
+//
+// IDP_CLIENT_ID resolves to "netbird-client" via the
+// netbird/idpClientID Secret kubeaid-cli renders, so the api scope's
+// audience ProtocolMapper has to insert this literal value into the
+// JWT `aud` claim — anything else (e.g. the public NetBird Mgmt URL,
+// which earlier revisions used) causes NetBird Mgmt to reject the
+// CLI's tokens with "validate access token failed with error:
+// invalid JWT token audience field".
+const netBirdClientID = "netbird-client"
 
 // netBirdAudienceMapperName is the human-readable name of the
 // audience ProtocolMapper attached to the api ClientScope.
@@ -83,7 +102,6 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 		return err
 	}
 
-	netBirdClientID := "netbird-client"
 	netBirdBackendID := "netbird-backend"
 
 	if _, err := r.ReconcileClient(ctx, spec.Realm, ClientSpec{
@@ -130,7 +148,11 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 		Protocol:       "openid-connect",
 		ProtocolMapper: "oidc-audience-mapper",
 		Config: map[string]string{
-			"included.client.audience": spec.NetBirdMgmtURL,
+			// NetBird Mgmt's Audience config is templated from
+			// IDP_CLIENT_ID (= netbird-client), so the JWT `aud`
+			// claim must contain exactly that literal — see the
+			// netBirdClientID const for why.
+			"included.client.audience": netBirdClientID,
 			"id.token.claim":           "true",
 			"access.token.claim":       "true",
 		},
