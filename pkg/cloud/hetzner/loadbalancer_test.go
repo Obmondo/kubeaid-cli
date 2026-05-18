@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 //nolint:dupl
@@ -1045,7 +1046,10 @@ func TestDisableControlPlaneLBPublicInterface(t *testing.T) {
 		wantErrMsg string
 	}{
 		{
-			name: "HCloudVPNCluster is nil returns early",
+			// Other modes (bare-metal CP, plain workload without a parent
+			// VPN) never had a public HCloud LB to disable — must early
+			// return without touching the LB client.
+			name: "non-VPN cluster without parent VPN returns early",
 			cfg: &config.GeneralConfig{
 				Cloud: config.CloudConfig{
 					Hetzner: &config.HetznerConfig{
@@ -1062,6 +1066,32 @@ func TestDisableControlPlaneLBPublicInterface(t *testing.T) {
 				Cluster: config.ClusterConfig{Name: "test-cluster"},
 			},
 			client: &fakeLoadBalancerClient{},
+		},
+		{
+			// VPN clusters bootstrap their own NetBird mesh — they
+			// pre-create the LB themselves (HCloudVPNCluster is nil
+			// because there is no parent VPN), so the disable must
+			// fire for cluster.type=vpn even without HCloudVPNCluster.
+			name: "VPN cluster disables despite nil HCloudVPNCluster",
+			cfg: &config.GeneralConfig{
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{
+						HCloudVPNCluster: nil,
+						ControlPlane: config.HetznerControlPlane{
+							HCloud: &config.HCloudControlPlane{
+								LoadBalancer: config.HCloudControlPlaneLoadBalancer{
+									Endpoint: "api.vpn.example.com",
+								},
+							},
+						},
+					},
+				},
+				Cluster: config.ClusterConfig{
+					Name: "vpn-cluster",
+					Type: constants.ClusterTypeVPN,
+				},
+			},
+			client: newDisablePublicInterfaceClient(1),
 		},
 		{
 			name: "hostname is empty returns early",

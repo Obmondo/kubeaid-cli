@@ -309,16 +309,44 @@ func (h *Hetzner) SetControlPlaneLBPublicInterface(
 }
 
 // DisableControlPlaneLBPublicInterface is the post-bootstrap finalize
-// call. Gated on hostname being configured — without a hostname the
-// LB's public IP is the operator's only entry point and disabling it
-// would lock them out.
+// call: clusters whose control-plane LB ran with a public interface
+// during bootstrap (so kubeadm join, ArgoCD setup, etc. could reach
+// the apiserver before NetBird was up) flip it off here, leaving the
+// LB reachable only through its private IP via the NetBird mesh.
+//
+// Applies to the two modes that pre-create the LB during bootstrap:
+//
+//   - VPN clusters: this cluster IS the VPN, bootstraps behind a
+//     public LB and transitions to private-via-NetBird once netbird
+//     itself is Healthy. Until v1.x of this code the guard skipped
+//     these because HCloudVPNCluster is nil for the VPN itself,
+//     which left the control-plane public on a freshly bootstrapped
+//     VPN cluster — fixed by including cluster.type=vpn in the gate.
+//
+//   - workload clusters connecting to an existing VPN: same public-
+//     during-join / private-after-NetBird lifecycle, signaled by a
+//     non-nil HCloudVPNCluster pointing at the parent VPN.
+//
+// Other modes (bare-metal CP, plain workload without a parent VPN)
+// never had a public HCloud LB to disable — early return.
+//
+// Also gated on hostname being configured: without an FQDN the LB's
+// public IP is the operator's only entry point to kube-apiserver,
+// and disabling it would lock them out of their own cluster.
 func (h *Hetzner) DisableControlPlaneLBPublicInterface(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-	if hetznerConfig.HCloudVPNCluster == nil ||
-		hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	preCreatedLB := cluster.Type == constants.ClusterTypeVPN ||
+		hetznerConfig.HCloudVPNCluster != nil
+	if !preCreatedLB {
 		return nil
 	}
-	_, err := h.SetControlPlaneLBPublicInterface(ctx, config.ParsedGeneralConfig.Cluster.Name, false)
+	if hetznerConfig.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+		return nil
+	}
+
+	_, err := h.SetControlPlaneLBPublicInterface(ctx, cluster.Name, false)
 	if err != nil {
 		return fmt.Errorf("disabling control-plane LB public interface: %w", err)
 	}
