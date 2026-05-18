@@ -18,6 +18,17 @@ import (
 // how to (1) sign in to Keycloak admin to create the first user,
 // and (2) log in to NetBird using that user.
 //
+// keycloakAdminPassword is the live admin password read from the
+// keycloak-admin Secret BEFORE the control-plane LB's public IP
+// was disabled. Caller reads it while the cluster is still
+// reachable from the operator's machine — once disable runs the
+// kubeconfig points at a now-defunct public IP and operators not
+// on the NetBird mesh can't fetch the password themselves. When
+// the live read failed (empty string) the panel falls back to a
+// kubectl command the operator has to run from inside the NAT
+// gateway, which is much friendlier-than-broken but still extra
+// work.
+//
 // No-op when the cluster isn't a VPN cluster with managed Keycloak
 // — workload clusters and unmanaged-Keycloak setups don't need the
 // admin-login step (the operator already has Keycloak running) and
@@ -28,7 +39,7 @@ import (
 // alignment survive — slog handlers would add timestamp prefixes
 // to each line and break the box. Called after bar.Finish(), so
 // there's no live spinner to clash with.
-func printPostBootstrapNextSteps() {
+func printPostBootstrapNextSteps(keycloakAdminPassword string) {
 	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
 		return
 	}
@@ -43,33 +54,45 @@ func printPostBootstrapNextSteps() {
 		return
 	}
 
-	// The full command must stay on a single line so the operator
-	// can copy-paste it without stitching wrapped fragments.
-	passwordCmd := fmt.Sprintf(
-		"kubectl get secret -n %s %s -o jsonpath='{.data.%s}' | base64 -d",
-		constants.NamespaceKeycloak,
-		constants.SecretNameKeycloakAdmin,
-		constants.SecretKeyKeycloakPassword,
-	)
-
 	lines := []string{
 		"",
 		"  1. Sign in to Keycloak admin and create a user",
 		"",
 		"       Console   https://" + keycloakDNS + "/auth/admin/",
 		"       User      " + constants.KeycloakAdminUsername,
-		"       Password  $ " + passwordCmd,
+		keycloakPasswordLine(keycloakAdminPassword),
 		"       Realm     \"" + realm + "\" → Users → Add user (set password under the Credentials tab)",
 		"",
-		"  2. Log in to NetBird with that user",
+		"  2. Join the NetBird mesh with that user",
 		"",
 		"       Dashboard https://" + netbirdDNS + "/",
-		"       Sign-in   click \"Continue\" — Keycloak handles auth",
-		"       Setup     Settings → Setup Keys → New Setup Key  →  netbird up --setup-key <key>",
+		"       Sign-in   click \"Continue\" → Keycloak (confirms the user works)",
+		"       Connect   netbird up --management-url https://" + netbirdDNS,
+		"                 (opens a browser for Keycloak OIDC sign-in on first run)",
 		"",
 	}
 
 	printNextStepsBox("Bootstrap complete — next steps", lines)
+}
+
+// keycloakPasswordLine returns the "Password" row of the next-steps
+// panel. When keycloakAdminPassword is non-empty it's printed inline
+// — the friendly path that works after the control-plane LB's public
+// IP is disabled, because the operator doesn't have to reach
+// kube-apiserver at all to read it. Empty triggers the kubectl-fetch
+// fallback the operator can run from inside the NAT gateway / VPN.
+func keycloakPasswordLine(keycloakAdminPassword string) string {
+	const prefix = "       Password  "
+	if keycloakAdminPassword != "" {
+		return prefix + keycloakAdminPassword
+	}
+	cmd := fmt.Sprintf(
+		"kubectl get secret -n %s %s -o jsonpath='{.data.%s}' | base64 -d",
+		constants.NamespaceKeycloak,
+		constants.SecretNameKeycloakAdmin,
+		constants.SecretKeyKeycloakPassword,
+	)
+	return prefix + "$ " + cmd
 }
 
 // printNextStepsBox renders the box and writes it to stdout. Thin

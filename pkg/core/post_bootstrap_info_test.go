@@ -87,3 +87,40 @@ func runesIn(s string) int {
 	}
 	return n
 }
+
+// TestKeycloakPasswordLine_InlineWhenLiveReadSucceeded verifies the
+// friendly path: when kubeaid-cli successfully read the admin
+// password before the LB-disable step, the panel shows it inline
+// with no `kubectl` / `$` prefix to mislead the operator into
+// thinking they need to run something.
+func TestKeycloakPasswordLine_InlineWhenLiveReadSucceeded(t *testing.T) {
+	got := keycloakPasswordLine("s3cret-from-cluster")
+
+	if !strings.Contains(got, "s3cret-from-cluster") {
+		t.Fatalf("expected the password to appear in the line, got %q", got)
+	}
+	if strings.Contains(got, "kubectl") {
+		t.Fatalf("did not expect a kubectl command when password was supplied; got %q", got)
+	}
+	if strings.Contains(got, "$ ") {
+		t.Fatalf("did not expect a `$ ` shell-prompt prefix; got %q", got)
+	}
+}
+
+// TestKeycloakPasswordLine_FallbackKubectlCommand verifies the
+// fallback path: when the live read failed (empty string), the
+// panel shows the single-line kubectl command — must remain a
+// single line for copy-paste, must mention the right Secret /
+// namespace / key so the operator doesn't have to figure them out.
+func TestKeycloakPasswordLine_FallbackKubectlCommand(t *testing.T) {
+	got := keycloakPasswordLine("")
+
+	if strings.Contains(got, "\n") {
+		t.Fatalf("kubectl fallback must stay on one line, got %q", got)
+	}
+	for _, expect := range []string{"kubectl", "keycloak-admin", "keycloakx", "KEYCLOAK_PASSWORD", "base64 -d"} {
+		if !strings.Contains(got, expect) {
+			t.Fatalf("kubectl fallback missing %q substring; got %q", expect, got)
+		}
+	}
+}

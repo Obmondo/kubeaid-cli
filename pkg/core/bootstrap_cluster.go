@@ -235,6 +235,17 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		bar.Substep("Triggered Sealed Secrets backup CRONJob")
 	}
 
+	// Read the Keycloak admin password while kube-apiserver is still
+	// publicly reachable. After the disable step below, the kubeconfig's
+	// apiserver URL (e.g. api.vpn.obmondo.com) resolves to a now-dead
+	// public IP and the operator's machine — unless it's on the NetBird
+	// mesh — can't fetch in-cluster Secrets at all. Stashing the value
+	// here lets the next-steps panel print the actual password instead
+	// of telling the operator to ssh through the NAT gateway just to
+	// run `kubectl get secret`. Empty string when no managed Keycloak
+	// or when the read fails (panel falls back to the kubectl command).
+	keycloakAdminPassword := readKeycloakAdminPasswordForPanel(ctx, mainClusterClient)
+
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
@@ -247,7 +258,37 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 
-	printPostBootstrapNextSteps()
+	printPostBootstrapNextSteps(keycloakAdminPassword)
+}
+
+// readKeycloakAdminPasswordForPanel reads the Keycloak admin password
+// for the post-bootstrap next-steps panel, or returns "" when there's
+// no managed Keycloak to surface or the read failed. Empty string is
+// also the panel's signal to fall back to the kubectl-fetch command.
+//
+// Pulled out so the call site reads as a single line and the warning
+// log doesn't clutter the bootstrap-finalize flow.
+func readKeycloakAdminPasswordForPanel(
+	ctx context.Context,
+	clusterClient client.Client,
+) string {
+	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+		return ""
+	}
+	password, err := readSecretValue(ctx, clusterClient,
+		constants.NamespaceKeycloak,
+		constants.SecretNameKeycloakAdmin,
+		constants.SecretKeyKeycloakPassword,
+	)
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Could not read Keycloak admin password for the next-steps panel; "+
+				"the panel will print the kubectl-fetch command as a fallback",
+			slog.Any("err", err),
+		)
+		return ""
+	}
+	return password
 }
 
 type ProvisionAndSetupMainClusterArgs struct {
