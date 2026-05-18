@@ -93,8 +93,20 @@ func ingressLBFQDNs() []string {
 // survives the chart's release name changing (kubeaid-cli wraps
 // the upstream traefik chart, and the actual Service name depends
 // on its release configuration).
+//
+// While polling, we surface the latest SyncLoadBalancerFailed Event
+// from the LB Service (typically posted by the cloud-controller-manager
+// when it can't reconcile the LB — e.g. "cloud target was not found"
+// when the node isn't in the LB's private network). Live-logging the
+// message lets the operator diagnose a wedged CCM during the wait
+// rather than after a silent timeout. The same message is folded
+// into the final error so the timeout is self-describing.
 func waitForTraefikLBIP(ctx context.Context, clusterClient client.Client) (string, error) {
-	var ip string
+	var (
+		ip          string
+		lastLogged  string
+		lastWarning string
+	)
 	pollErr := wait.PollUntilContextTimeout(ctx,
 		ingressLBPollInterval, ingressLBPollTimeout, true,
 		func(ctx context.Context) (bool, error) {
@@ -118,12 +130,71 @@ func waitForTraefikLBIP(ctx context.Context, clusterClient client.Client) (strin
 						return true, nil
 					}
 				}
+				if msg := latestLBSyncFailureMessage(ctx, clusterClient, &svc); msg != "" {
+					lastWarning = msg
+					if msg != lastLogged {
+						lastLogged = msg
+						slog.WarnContext(ctx,
+							"Traefik LB still pending; CCM reports failure",
+							slog.String("namespace", svc.Namespace),
+							slog.String("service", svc.Name),
+							slog.String("event", msg),
+						)
+					}
+				}
 			}
 			return false, nil
 		},
 	)
 	if pollErr != nil {
+		if lastWarning != "" {
+			return "", fmt.Errorf(
+				"%w; last CCM event on traefik LB Service: %s",
+				pollErr, lastWarning,
+			)
+		}
 		return "", pollErr
 	}
 	return ip, nil
+}
+
+// latestLBSyncFailureMessage returns the message of the most recent
+// Warning Event with reason=SyncLoadBalancerFailed on svc, or "" if
+// none exist. Used by waitForTraefikLBIP to surface CCM reconciliation
+// failures while the LB is stuck without an IP.
+func latestLBSyncFailureMessage(
+	ctx context.Context,
+	clusterClient client.Client,
+	svc *coreV1.Service,
+) string {
+	events := &coreV1.EventList{}
+	if err := clusterClient.List(ctx, events,
+		client.InNamespace(svc.Namespace),
+	); err != nil {
+		return ""
+	}
+	var (
+		latestTime time.Time
+		latestMsg  string
+	)
+	for _, e := range events.Items {
+		if e.InvolvedObject.UID != svc.UID {
+			continue
+		}
+		if e.Reason != "SyncLoadBalancerFailed" {
+			continue
+		}
+		// Prefer LastTimestamp; fall back to EventTime for events
+		// emitted via the newer events.k8s.io API which leaves
+		// LastTimestamp zero.
+		t := e.LastTimestamp.Time
+		if t.IsZero() {
+			t = e.EventTime.Time
+		}
+		if t.After(latestTime) {
+			latestTime = t
+			latestMsg = e.Message
+		}
+	}
+	return latestMsg
 }

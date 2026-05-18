@@ -244,6 +244,8 @@ func (f *fakeKeycloak) handleClientByID(w http.ResponseWriter, r *http.Request, 
 	clientInternalID := parts[0]
 
 	switch {
+	case len(parts) == 1:
+		f.handleClientBare(w, r, realm, clientInternalID)
 	case len(parts) == 2 && parts[1] == "client-secret":
 		f.handleClientSecret(w, r, realm, clientInternalID)
 	case len(parts) == 2 && parts[1] == "default-client-scopes":
@@ -258,6 +260,41 @@ func (f *fakeKeycloak) handleClientByID(w http.ResponseWriter, r *http.Request, 
 		f.handleClientRoleByName(w, r, realm, clientInternalID, parts[2])
 	default:
 		http.NotFound(w, r)
+	}
+}
+
+// handleClientBare serves the bare `/clients/{id}` endpoint: GET to
+// fetch a single client, PUT to update it (full-resource replace,
+// matching Keycloak's UpdateClient semantics). The PUT path here
+// patches the stored Client with only the fields the body provides
+// — gocloak omits nil pointers via omitempty, so unset fields
+// preserve their prior value, which is what the production caller
+// (EnsureClientDeviceAuthorizationGrant) relies on.
+func (f *fakeKeycloak) handleClientBare(w http.ResponseWriter, r *http.Request, realm, clientInternalID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	c, ok := f.clients[realm][clientInternalID]
+	if !ok {
+		http.Error(w, "client not found", http.StatusNotFound)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, c)
+	case http.MethodPut:
+		var update gocloak.Client
+		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if update.Attributes != nil {
+			c.Attributes = update.Attributes
+		}
+		f.noteWrite()
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
@@ -483,9 +520,46 @@ func (f *fakeKeycloak) handleClientScopeByID(w http.ResponseWriter, r *http.Requ
 	case len(parts) == 3 && parts[1] == "protocol-mappers" && parts[2] == "models":
 		// Keycloak's POST endpoint is /protocol-mappers/models
 		f.handleScopeProtocolMapperCreate(w, r, realm, scopeID)
+	case len(parts) == 4 && parts[1] == "protocol-mappers" && parts[2] == "models":
+		// /protocol-mappers/models/{mapperID} — PUT updates the
+		// named mapper in-place. Matches gocloak.UpdateClientScopeProtocolMapper.
+		f.handleScopeProtocolMapperUpdate(w, r, realm, scopeID, parts[3])
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+func (f *fakeKeycloak) handleScopeProtocolMapperUpdate(
+	w http.ResponseWriter, r *http.Request, realm, scopeID, mapperID string,
+) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	scope, ok := f.scopes[realm][scopeID]
+	if !ok || scope.ProtocolMappers == nil {
+		http.Error(w, "scope or mapper not found", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var update gocloak.ProtocolMappers
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for i := range *scope.ProtocolMappers {
+		m := &(*scope.ProtocolMappers)[i]
+		if m.ID != nil && *m.ID == mapperID {
+			update.ID = m.ID // preserve server-assigned ID
+			*m = update
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+	}
+	http.Error(w, "mapper not found", http.StatusNotFound)
 }
 
 func (f *fakeKeycloak) handleScopeProtocolMappersList(w http.ResponseWriter, r *http.Request, realm, scopeID string) {

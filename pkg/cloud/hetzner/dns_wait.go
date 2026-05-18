@@ -32,14 +32,15 @@ const dnsResolveTimeout = 3 * time.Second
 // meantime.
 const dnsPollInterval = 10 * time.Second
 
-// dnsTotalTimeout caps the entire wait. Five minutes is enough for
+// dnsTotalTimeout caps the entire wait. Ten minutes is enough for
 // most fast-propagating providers (Cloudflare, Route53, Hetzner DNS)
-// plus a generous buffer for the operator to actually paste the
-// records. Past that, we abort the bootstrap with a clear error
-// instead of looping forever — the operator's session is interactive
-// (YubiKey touches), so blocking indefinitely on a missing record is
-// worse than failing fast.
-const dnsTotalTimeout = 5 * time.Minute
+// plus a generous buffer for the operator to navigate to their DNS
+// provider, paste several records, and have those propagate through
+// the local resolver. Past that, we abort the bootstrap with a clear
+// error instead of looping forever — the operator's session is
+// interactive (YubiKey touches), so blocking indefinitely on a
+// missing record is worse than failing fast.
+const dnsTotalTimeout = 10 * time.Minute
 
 // WaitForDNSResolution blocks until every fqdn in fqdns resolves to
 // expectedIP through the OS resolver, ctx is cancelled, or

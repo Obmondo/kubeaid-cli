@@ -82,7 +82,12 @@ func hydrateKeycloakOIDC() {
 	}
 
 	cluster.APIServer.OIDC = &config.OIDCConfig{
-		IssuerURL:     "https://" + kc.DNS + "/realms/" + kc.Realm,
+		// /auth/realms — keycloakx Helm chart preserves Keycloak's
+		// pre-17 base path. The JWT `iss` claim that Keycloak issues
+		// includes /auth, so kube-apiserver's --oidc-issuer-url must
+		// match exactly or every API call fails validation with
+		// "oidc: id token issued by a different provider".
+		IssuerURL:     "https://" + kc.DNS + "/auth/realms/" + kc.Realm,
 		ClientID:      kubernetesClientIDPrefix + cluster.Name,
 		UsernameClaim: "email",
 		GroupsClaim:   "groups",

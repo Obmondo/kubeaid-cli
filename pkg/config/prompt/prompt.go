@@ -241,9 +241,12 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 			}
 
 			// Derive OIDC from Keycloak DNS — no separate prompt needed for VPN clusters.
+			// /auth/realms matches the keycloakx chart's base path; see
+			// parser/keycloak.go's hydrateKeycloakOIDC for the same
+			// derivation on the validate-config side.
 			cfg.EnableOIDC = true
 			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
-			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + cfg.KeycloakRealm
+			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/auth/realms/" + cfg.KeycloakRealm
 			cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
 		} else {
 			if err := runWorkloadKeycloakForm(cfg); err != nil {
@@ -571,7 +574,11 @@ func runWorkloadKeycloakForm(cfg *PromptedConfig) error {
 
 		probeErr := probeOIDCIssuer(context.Background(), cfg.KeycloakDNS, cfg.KeycloakRealm)
 		if probeErr == nil {
-			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/realms/" + cfg.KeycloakRealm
+			// /auth/realms — keycloakx chart base path; must match
+			// the URL probeOIDCIssuer just hit, the JWT `iss` claim
+			// Keycloak will emit, and the kube-apiserver
+			// AuthenticationConfiguration's jwt[].issuer.url.
+			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/auth/realms/" + cfg.KeycloakRealm
 			return nil
 		}
 

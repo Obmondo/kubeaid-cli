@@ -89,7 +89,7 @@ func pickK8sProfile(detected *autoDetectedConfig) (string, error) {
 	profiles := buildK8sProfiles(currentMinor, latestPerCycle)
 
 	fmt.Println()
-	fmt.Println("  Pick a Kubernetes version profile")
+	fmt.Println(pickK8sProfileTitle(detected.KubeAidVersion))
 	fmt.Println()
 	fmt.Println(renderK8sProfileTable(profiles))
 	if currentSource == k8sCurrentSourceEOL {
@@ -324,4 +324,29 @@ func renderK8sProfileTable(profiles []K8sProfile) string {
 		})
 
 	return t.Render()
+}
+
+// pickK8sProfileTitle renders the "Pick a Kubernetes version
+// profile" picker header. When the auto-detected KubeAid release
+// tag is known it appends "  ·  KubeAid <tag>" inline — lipgloss-
+// styled so the brand name and the locked-in tag stand out without
+// taking a separate banner row above the picker. Empty kubeAidTag
+// falls back to the plain title (offline run, or autodetect
+// fetched nothing).
+func pickK8sProfileTitle(kubeAidTag string) string {
+	const plain = "  Pick a Kubernetes version profile"
+	if kubeAidTag == "" {
+		return plain
+	}
+	brand := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("#02BF87")).
+		Render("KubeAid")
+	tag := lipgloss.NewStyle().
+		Bold(true).
+		Render(kubeAidTag)
+	sep := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Render("  ·  ")
+	return plain + sep + brand + " " + tag
 }

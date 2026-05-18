@@ -7,6 +7,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Nerzal/gocloak/v13"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +80,81 @@ func TestReconcileClient_Confidential_GeneratedSecret(t *testing.T) {
 	assert.Equal(t, first, second,
 		"second reconcile must return the same secret without writing")
 	assert.Equal(t, 1, fake.writeCount)
+}
+
+// TestReconcileClient_DeviceAuthGrantAttribute verifies that
+// ClientSpec.DeviceAuthorizationGrantEnabled lands as the literal
+// `oauth2.device.authorization.grant.enabled = true` attribute on
+// the created client — the Keycloak signal NetBird's CLI relies on
+// to use the RFC 8628 device flow.
+func TestReconcileClient_DeviceAuthGrantAttribute(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	seedRealm(t, r, fake)
+
+	_, err := r.ReconcileClient(context.Background(), testRealm, ClientSpec{
+		ClientID:                        "netbird-client",
+		PublicClient:                    true,
+		StandardFlowEnabled:             true,
+		DeviceAuthorizationGrantEnabled: true,
+	})
+	require.NoError(t, err)
+
+	client := findClientInFake(t, fake, testRealm, "netbird-client")
+	require.NotNil(t, client.Attributes, "Attributes map must be set when DeviceAuthorizationGrantEnabled=true")
+	assert.Equal(t, "true", (*client.Attributes)[keycloakAttrDeviceAuthorizationGrantEnabled])
+}
+
+// TestEnsureClientDeviceAuthorizationGrant exercises the retro-fit
+// path: an existing client that pre-dates the device-flow ClientSpec
+// field gets the attribute set without recreating the client and
+// without touching any other field.
+func TestEnsureClientDeviceAuthorizationGrant(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	seedRealm(t, r, fake)
+
+	// Pre-existing client without the attribute — simulates a cluster
+	// bootstrapped before the device-flow change landed.
+	_, err := r.ReconcileClient(context.Background(), testRealm, ClientSpec{
+		ClientID:            "netbird-client",
+		PublicClient:        true,
+		StandardFlowEnabled: true,
+	})
+	require.NoError(t, err)
+	preWrites := fake.writeCount
+
+	require.NoError(t, r.EnsureClientDeviceAuthorizationGrant(
+		context.Background(), testRealm, "netbird-client", true,
+	))
+	client := findClientInFake(t, fake, testRealm, "netbird-client")
+	require.NotNil(t, client.Attributes)
+	assert.Equal(t, "true", (*client.Attributes)[keycloakAttrDeviceAuthorizationGrantEnabled])
+	assert.Equal(t, preWrites+1, fake.writeCount, "exactly one update write")
+
+	// Idempotent — running it again must not write.
+	require.NoError(t, r.EnsureClientDeviceAuthorizationGrant(
+		context.Background(), testRealm, "netbird-client", true,
+	))
+	assert.Equal(t, preWrites+1, fake.writeCount, "second call is a no-op")
+}
+
+// findClientInFake fetches a stored client by clientId out of the
+// fake. Inlined helper because the existing tests cared about
+// write-count side effects, not the stored representation.
+func findClientInFake(t *testing.T, fake *fakeKeycloak, realm, clientID string) *gocloak.Client {
+	t.Helper()
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	for _, c := range fake.clients[realm] {
+		if c.ClientID != nil && *c.ClientID == clientID {
+			return c
+		}
+	}
+	t.Fatalf("client %q not found in fake (realm %q)", clientID, realm)
+	return nil
 }
 
 func TestReconcileClient_Confidential_PreSetSecret(t *testing.T) {

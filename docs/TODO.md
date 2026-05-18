@@ -45,3 +45,69 @@ them from chat logs. Initial topics:
 
 - "Manifest generation error (cached)" — repo-server caches manifests; force a fresh comparison via:
   `kubectl annotate app <name> argocd.argoproj.io/refresh=hard --overwrite`
+
+## Pending feature work
+
+### Wire netbird-operator config (managementURL + API token)
+
+`netBirdOperatorEnabled()` in `pkg/core/templates.go` now renders
+the operator on both workload-with-Keycloak and VPN clusters (the
+VPN-cluster install was the immediate fix that landed alongside
+this TODO). But the values overlay
+(`values-netbird-operator.yaml.tmpl`) is still empty — the operator
+pod runs with chart defaults: no `managementURL`, no
+`netbirdAPI.keyFromSecret`, no `cluster.name`. It can't talk to
+NetBird Mgmt's API, so NBSetupKey / NBPolicy / NetworkRouter /
+NetworkResource CRs created against it sit pending.
+
+To make the operator actually usable, the v0.4.1 chart needs:
+
+```yaml
+managementURL: https://netbird.<parent-or-self-dns>
+cluster:
+  name: <cluster name>
+  dns: svc.cluster.local
+netbirdAPI:
+  keyFromSecret:
+    name: ...   # a SealedSecret kubeaid-cli renders
+    key: ...
+```
+
+Open design decisions (deferred from a hands-on discussion — see the
+chat that led to this TODO entry):
+
+1. **Config shape in general.yaml.** Likely a new explicit
+   `cluster.netbird: { mgmtURL, apiKeySecret: {name, key} }` block.
+   Decoupling from `cluster.keycloak` matters for operators who
+   bring their own NetBird without a parent VPN's Keycloak.
+
+2. **NetBird API token source.** Three reasonable options:
+   - Operator-provided, prompt for an existing Secret name/key.
+     Mirrors the existing operator-managed Keycloak admin creds.
+   - Auto-generated for managed-Keycloak VPN clusters: after
+     NetBird Mgmt is healthy, kubeaid-cli signs in via a service
+     user, mints a PAT through NetBird's API, stamps it into a
+     SealedSecret. Needs a new `pkg/netbird/` Go client (similar
+     shape to `pkg/keycloak/`).
+   - Skip the API key on the first cut — render the operator pod
+     without it, document the manual-wire-up. Smallest scope;
+     CRDs and pod ship, operator finishes the wiring later.
+
+3. **VPN cluster scope.** If we install the operator there with a
+   self-referential `managementURL: https://netbird.<own-vpn-dns>`,
+   it unlocks `NetworkRouter` / `NBRoutingPeer` CRs that close the
+   "no peer in the HCloud private network advertises 10.0.0.0/24"
+   gap from `docs/post-bootstrap.md`'s break-glass discussion —
+   kubectl-over-mesh would work without ssh-jumping through NAT GW.
+
+4. **Prompt UX.** Workload-cluster prompt currently derives the
+   NetBird Mgmt URL by string-munging the Keycloak DNS
+   (`keycloak.X` → `netbird.X` in `pkg/config/prompt/prompt.go:319`)
+   instead of asking. Add an explicit "do you have a NetBird
+   server?" group, similar in shape to `runWorkloadKeycloakForm`.
+
+When picking this up: pair with the v0.4.1 chart bump
+([kubeaid commit `7d6834816`](https://gitea.obmondo.com/Obmondo/kubeaid))
+to get the new `NetworkRouter` / `NetworkResource` / `SidecarProfile`
+CRDs while keeping the legacy `NB*` CRDs available for in-flight
+configs.
