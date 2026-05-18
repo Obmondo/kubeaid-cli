@@ -87,12 +87,22 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 	netBirdBackendID := "netbird-backend"
 
 	if _, err := r.ReconcileClient(ctx, spec.Realm, ClientSpec{
-		ClientID:            netBirdClientID,
-		PublicClient:        true,
-		StandardFlowEnabled: true,
-		RedirectURIs:        []string{spec.NetBirdMgmtURL + "/*"},
-		WebOrigins:          []string{spec.NetBirdMgmtURL},
+		ClientID:                        netBirdClientID,
+		PublicClient:                    true,
+		StandardFlowEnabled:             true,
+		DeviceAuthorizationGrantEnabled: true,
+		RedirectURIs:                    []string{spec.NetBirdMgmtURL + "/*"},
+		WebOrigins:                      []string{spec.NetBirdMgmtURL},
 	}); err != nil {
+		return err
+	}
+	// Idempotent retro-fit for clusters where netbird-client already
+	// exists from a pre-device-flow bootstrap: ReconcileClient is
+	// create-if-missing only, so the Attributes baked into the new
+	// ClientSpec wouldn't reach the live client without this update.
+	// NetBird's CLI (`netbird up`) relies on the device-authorization
+	// flow — see EnsureClientDeviceAuthorizationGrant's doc comment.
+	if err := r.EnsureClientDeviceAuthorizationGrant(ctx, spec.Realm, netBirdClientID, true); err != nil {
 		return err
 	}
 

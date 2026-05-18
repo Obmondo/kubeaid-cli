@@ -43,7 +43,24 @@ type ClientSpec struct {
 	// When empty, Keycloak generates a random one. Ignored for
 	// PublicClient = true.
 	Secret string
+
+	// DeviceAuthorizationGrantEnabled controls whether the client can
+	// initiate the OAuth 2.0 Device Authorization Grant flow
+	// (RFC 8628). Required for headless CLI tools — NetBird's
+	// `netbird up`, for instance — that can't host an
+	// authorization-code redirect URI. Keycloak stores this as the
+	// `oauth2.device.authorization.grant.enabled` client attribute,
+	// not a top-level Client field, so buildClient translates the
+	// bool onto the Attributes map.
+	DeviceAuthorizationGrantEnabled bool
 }
+
+// keycloakAttrDeviceAuthorizationGrantEnabled is the literal client-
+// attribute key Keycloak reads to gate the OAuth 2.0 Device
+// Authorization Grant flow (RFC 8628). Pulled out as a constant so
+// the Reconciler's create and update paths set the same key — and
+// so a grep for the attribute name lands on a single definition.
+const keycloakAttrDeviceAuthorizationGrantEnabled = "oauth2.device.authorization.grant.enabled"
 
 // ReconcileClient ensures a client matching spec.ClientID exists in
 // the realm. For confidential clients the returned string is the
@@ -134,5 +151,67 @@ func buildClient(spec ClientSpec) gocloak.Client {
 		origins := append([]string(nil), spec.WebOrigins...)
 		c.WebOrigins = &origins
 	}
+	if spec.DeviceAuthorizationGrantEnabled {
+		c.Attributes = &map[string]string{
+			keycloakAttrDeviceAuthorizationGrantEnabled: "true",
+		}
+	}
 	return c
+}
+
+// EnsureClientDeviceAuthorizationGrant sets/unsets the OAuth 2.0
+// Device Authorization Grant (RFC 8628) capability on the named
+// client. Idempotent — no-op when the attribute is already in the
+// desired state.
+//
+// Keycloak stores this as the
+// `oauth2.device.authorization.grant.enabled` client attribute;
+// there's no top-level Client field for it, so ReconcileClient's
+// create path uses the Attributes map and existing clusters
+// retro-fit the attribute through this method.
+//
+// Called from ReconcileNetBird for the netbird-client OIDC client —
+// NetBird's CLI (`netbird up`) uses this flow to authenticate from
+// headless contexts. Without the attribute Keycloak rejects
+// /protocol/openid-connect/auth/device with "Client is not allowed
+// to initiate OAuth 2.0 Device Authorization Grant. The flow is
+// disabled for the client."
+func (r *Reconciler) EnsureClientDeviceAuthorizationGrant(
+	ctx context.Context, realm, clientID string, enabled bool,
+) error {
+	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+		ClientID: gocloak.StringP(clientID),
+	})
+	if err != nil {
+		return fmt.Errorf("listing clients in realm %q: %w", realm, err)
+	}
+	client := findClientByClientID(clients, clientID)
+	if client == nil {
+		return fmt.Errorf("client %q not found in realm %q", clientID, realm)
+	}
+
+	want := "false"
+	if enabled {
+		want = "true"
+	}
+
+	attrs := map[string]string{}
+	if client.Attributes != nil {
+		attrs = *client.Attributes
+	}
+	if attrs[keycloakAttrDeviceAuthorizationGrantEnabled] == want {
+		return nil
+	}
+	attrs[keycloakAttrDeviceAuthorizationGrantEnabled] = want
+
+	// Send the existing client back with only Attributes changed, so
+	// any other settings (operator customizations, fields not in
+	// ClientSpec) are preserved on PUT. gocloak omits nil pointers
+	// from the JSON body via `omitempty`, so Secret stays untouched
+	// for confidential clients too.
+	client.Attributes = &attrs
+	if err := r.api.UpdateClient(ctx, r.token, realm, *client); err != nil {
+		return fmt.Errorf("updating attributes on client %q: %w", clientID, err)
+	}
+	return nil
 }
