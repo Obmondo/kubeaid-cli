@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -37,6 +38,7 @@ type BootstrapClusterArgs struct {
 }
 
 func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
+	bootstrapStarted := time.Now()
 	bar := progress.New("Bootstrapping cluster")
 	defer bar.Finish()
 	ctx = progress.WithBar(ctx, bar)
@@ -258,7 +260,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 
-	printPostBootstrapNextSteps(keycloakAdminPassword)
+	// Elapsed time only renders on the success path — a Ctrl+C or
+	// assert.AssertErrNil bail-out short-circuits before this call,
+	// so the "Bootstrap complete in …" header never lies about a
+	// run that didn't actually complete.
+	printPostBootstrapNextSteps(keycloakAdminPassword, time.Since(bootstrapStarted))
 }
 
 // readKeycloakAdminPasswordForPanel reads the Keycloak admin password

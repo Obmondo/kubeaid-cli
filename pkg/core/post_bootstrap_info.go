@@ -6,6 +6,7 @@ package core
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mattn/go-runewidth"
 
@@ -29,6 +30,11 @@ import (
 // gateway, which is much friendlier-than-broken but still extra
 // work.
 //
+// elapsed is how long bootstrap took, rendered into the panel
+// title. Zero (the default) prints the bare "Bootstrap complete"
+// title without a duration — useful for callers that don't have
+// a meaningful start time (tests, future workload-cluster paths).
+//
 // No-op when the cluster isn't a VPN cluster with managed Keycloak
 // — workload clusters and unmanaged-Keycloak setups don't need the
 // admin-login step (the operator already has Keycloak running) and
@@ -39,7 +45,7 @@ import (
 // alignment survive — slog handlers would add timestamp prefixes
 // to each line and break the box. Called after bar.Finish(), so
 // there's no live spinner to clash with.
-func printPostBootstrapNextSteps(keycloakAdminPassword string) {
+func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Duration) {
 	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
 		return
 	}
@@ -72,7 +78,36 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string) {
 		"",
 	}
 
-	printNextStepsBox("Bootstrap complete — next steps", lines)
+	title := "Bootstrap complete — next steps"
+	if elapsed > 0 {
+		title = "Bootstrap complete in " + formatBootstrapDuration(elapsed) + " — next steps"
+	}
+	printNextStepsBox(title, lines)
+}
+
+// formatBootstrapDuration renders d as a short, human-friendly
+// "Hh Mm Ss" / "Mm Ss" / "Ss" — what an operator wants to glance
+// at after a 30-minute run, not Go's stock "30m12.345678901s".
+//
+// Hours and minutes are elided when zero; seconds are always shown
+// so a fast (sub-minute) re-run still has a non-empty figure.
+func formatBootstrapDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	h := d / time.Hour
+	d -= h * time.Hour
+	m := d / time.Minute
+	d -= m * time.Minute
+	s := d / time.Second
+
+	var b strings.Builder
+	if h > 0 {
+		fmt.Fprintf(&b, "%dh ", h)
+	}
+	if m > 0 || h > 0 {
+		fmt.Fprintf(&b, "%dm ", m)
+	}
+	fmt.Fprintf(&b, "%ds", s)
+	return b.String()
 }
 
 // keycloakPasswordLine returns the "Password" row of the next-steps
