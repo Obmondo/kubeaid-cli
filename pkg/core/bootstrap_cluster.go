@@ -246,6 +246,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
+
+	printPostBootstrapNextSteps()
 }
 
 type ProvisionAndSetupMainClusterArgs struct {
