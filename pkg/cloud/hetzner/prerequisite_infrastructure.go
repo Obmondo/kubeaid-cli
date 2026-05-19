@@ -41,19 +41,21 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		hydrateNodeGroupLabels(hetznerConfig)
 	}
 
-	if hetznerConfig.Mode == constants.HetznerModeBareMetal {
-		return nil
-	}
-
 	bar := progress.FromCtx(ctx)
 
-	network, err := h.CreateNetwork(ctx)
-	if err != nil {
-		return fmt.Errorf("creating Hetzner Network: %w", err)
-	}
-	bar.Substep("Created Hetzner Network")
-
+	// HCloud Network is only created for modes that actually host
+	// HCloud servers (hcloud, hybrid). Pure bare-metal stays nil here
+	// — the vSwitch is the only L2 fabric the cluster needs, and
+	// there's no HCloud Network to attach it to.
+	var network *hcloud.Network
 	if config.UsingHCloud() {
+		n, err := h.CreateNetwork(ctx)
+		if err != nil {
+			return fmt.Errorf("creating Hetzner Network: %w", err)
+		}
+		network = n
+		bar.Substep("Created Hetzner Network")
+
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		if err := h.CreateHCloudSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
 			return fmt.Errorf("creating HCloud SSH key: %w", err)
@@ -98,8 +100,14 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 			return fmt.Errorf("creating VSwitch: %w", err)
 		}
 
-		if err := h.ConnectVSwitchWithHetznerNetwork(ctx, network); err != nil {
-			return fmt.Errorf("connecting VSwitch with Hetzner Network: %w", err)
+		// vSwitch ↔ HCloud Network only matters when there's a
+		// Network — i.e. hybrid mode. Pure bare-metal stops at the
+		// standalone vSwitch; the L2 between BM servers is enough,
+		// and there's no HCloud side to bridge to.
+		if network != nil {
+			if err := h.ConnectVSwitchWithHetznerNetwork(ctx, network); err != nil {
+				return fmt.Errorf("connecting VSwitch with Hetzner Network: %w", err)
+			}
 		}
 
 		if config.ControlPlaneInHetznerBareMetal() {
@@ -122,6 +130,9 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 	// Workload-cluster-connecting-to-VPN: attach the existing VPN
 	// cluster's servers to this cluster's network so they share L2.
 	// LB creation for this case happened above in preCreateControlPlaneLB.
+	// HCloudVPNCluster only exists in hcloud / hybrid modes (cross-validated
+	// in pkg/config/parser/validate.go), so network is guaranteed non-nil
+	// here.
 	if hetznerConfig.HCloudVPNCluster != nil {
 		serverIDs, err := h.GetHCloudServerIDsForCluster(ctx,
 			hetznerConfig.HCloudVPNCluster.Name,
