@@ -51,7 +51,8 @@ func allocateStoragePlan(
 		d.Allocations.OS += osSize
 	})
 	if err != nil {
-		return nil, errors.New("couldn't find 2 disks suitable for OS installation")
+		return nil, fmt.Errorf("couldn't find 2 disks suitable for OS installation (%d GB each) — %s",
+			osSize, describeDisks(disks))
 	}
 	s.OS = osDisks
 
@@ -61,7 +62,8 @@ func allocateStoragePlan(
 		d.Allocations.ZFS += zfsPoolSize
 	})
 	if err != nil {
-		return nil, errors.New("couldn't find 2 disks suitable for ZFS pool installation")
+		return nil, fmt.Errorf("couldn't find 2 disks suitable for ZFS pool installation (%d GB each) — %s",
+			zfsPoolSize, describeDisks(disks))
 	}
 	s.ZFS = zfsDisks
 
@@ -76,6 +78,28 @@ func allocateStoragePlan(
 	}
 
 	return s, nil
+}
+
+// describeDisks renders a one-line dump of every disk the planner
+// considered, so the operator can see exactly what kubeaid-cli saw on
+// the box when allocation failed. Format: "scanned N disk(s): <name>
+// (<type>, <size> GB, <free> GB free); …" — short on purpose since
+// it's appended to an already-wrapped error.
+//
+// Empty input ("scanned 0 disks") makes the lsblk-found-nothing case
+// obvious (the typical cause being a freshly-installed server whose
+// only block device is a virtio / loop / unknown-transport device
+// that's filtered out as DiskTypeUnknown — see getDisks).
+func describeDisks(disks []*storageplan.Disk) string {
+	if len(disks) == 0 {
+		return "scanned 0 disks (lsblk found nothing kubeaid-cli recognises as HDD / SSD / NVMe — check the host's block-device inventory)"
+	}
+	parts := make([]string, 0, len(disks))
+	for _, d := range disks {
+		parts = append(parts, fmt.Sprintf("%s (%s, %d GB, %d GB free)",
+			d.Name, d.Type, d.Size, d.Unallocated()))
+	}
+	return fmt.Sprintf("scanned %d disk(s): %s", len(disks), strings.Join(parts, "; "))
 }
 
 func allocateTwoDisks(
@@ -212,5 +236,28 @@ func getDisks(
 		}
 		disks[i].AssignPriorityScores()
 	}
+
+	// Log the disk inventory at INFO so it shows up in the bootstrap
+	// log without needing --debug. If allocateStoragePlan later fails
+	// to find 2 suitable disks, the error message itself echoes the
+	// same per-disk facts; logging here covers the success-but-still-
+	// curious case ("what did kubeaid-cli actually pick from?") and
+	// gives operators a quick before/after view across multiple bootstrap
+	// attempts.
+	slog.InfoContext(ctx, "Scanned server disks",
+		slog.Int("count", len(disks)),
+		slog.String("disks", describeDisksShort(disks)),
+	)
 	return disks, nil
+}
+
+// describeDisksShort is the slog-friendly variant of describeDisks —
+// no leading "scanned N: " prefix (the count is already a separate
+// log attribute).
+func describeDisksShort(disks []*storageplan.Disk) string {
+	parts := make([]string, 0, len(disks))
+	for _, d := range disks {
+		parts = append(parts, fmt.Sprintf("%s (%s, %d GB)", d.Name, d.Type, d.Size))
+	}
+	return strings.Join(parts, "; ")
 }
