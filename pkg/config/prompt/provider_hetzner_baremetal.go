@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 	"github.com/go-resty/resty/v2"
 	"gopkg.in/yaml.v3"
 
@@ -36,7 +38,216 @@ import (
 //
 // Pre-condition: cfg.HetznerRobotUser and cfg.HetznerRobotPassword are
 // already populated from the parent Hetzner credentials form.
+//
+// The phases run as a tiny state machine so the operator can press
+// shift+tab at the end-of-phase confirm to rewind one phase
+// (e.g. realised at workers that the vSwitch subnet was wrong → back).
+// huh doesn't surface "go back" across separate Run() calls
+// natively; the post-phase confirm is the closest approximation.
 func runHetznerBareMetalForm(cfg *PromptedConfig) error {
+	sess := newBareMetalSession(cfg)
+
+	cpCount, err := strconv.Atoi(cfg.HetznerCPReplicas)
+	if err != nil || cpCount < 1 {
+		return fmt.Errorf("hetzner bare-metal: invalid control-plane replica count %q", cfg.HetznerCPReplicas)
+	}
+
+	phase := bmPhaseVSwitch
+	for phase != bmPhaseDone {
+		next, err := runBareMetalPhase(cfg, sess, phase, cpCount)
+		if err != nil {
+			return err
+		}
+		phase = next
+	}
+	return nil
+}
+
+// bmPhase is one stage of the bare-metal flow. The state machine in
+// runHetznerBareMetalForm walks these forward on Continue and
+// rewinds them on shift+tab/Back at the phase-transition confirm.
+type bmPhase int
+
+const (
+	bmPhaseVSwitch bmPhase = iota
+	bmPhaseCP
+	bmPhaseWorkers
+	bmPhaseEndpoint
+	bmPhaseDone
+)
+
+// runBareMetalPhase runs a single phase and returns the next bmPhase
+// to enter. Split out from the for-loop so each case stays small
+// and the "go back" jumps are obvious.
+func runBareMetalPhase(cfg *PromptedConfig, sess *bareMetalSession, p bmPhase, cpCount int) (bmPhase, error) {
+	switch p { //nolint:exhaustive // bmPhaseDone is the loop terminator; never passed in.
+	case bmPhaseVSwitch:
+		// kubeaid-cli's pure-BM path currently skips CreateVSwitch
+		// (prerequisite_infrastructure.go:44 early-returns); the
+		// config block is rendered so operators have a single
+		// source of truth for their network plumbing, and so a
+		// follow-up branch that lifts the early-return picks the
+		// block up without YAML edits.
+		if err := promptVSwitchConfig(cfg); err != nil {
+			return bmPhaseDone, err
+		}
+		return bmPhaseCP, nil
+
+	case bmPhaseCP:
+		cfg.HetznerBMCPServerIDs = nil
+		cfg.HetznerBMCPPrivateIPs = nil
+		if err := addServerLoop(cfg, sess, roleControlPlane, cpCount); err != nil {
+			return bmPhaseDone, err
+		}
+		if err := validateCPTopology(cfg); err != nil {
+			return bmPhaseDone, err
+		}
+		goBack, err := promptPhaseTransition(
+			fmt.Sprintf("Control plane configured — %d server(s) accepted", len(cfg.HetznerBMCPServerIDs)),
+			"Continue to workers",
+			"← Back to vSwitch")
+		if err != nil {
+			return bmPhaseDone, err
+		}
+		if goBack {
+			return bmPhaseVSwitch, nil
+		}
+		return bmPhaseWorkers, nil
+
+	case bmPhaseWorkers:
+		cfg.HetznerBMNodeGroupServerIDs = nil
+		cfg.HetznerBMNodeGroupPrivateIPs = nil
+		if err := promptWorkerNodeGroupName(cfg); err != nil {
+			return bmPhaseDone, err
+		}
+		if err := addServerLoop(cfg, sess, roleWorker, 0); err != nil {
+			return bmPhaseDone, err
+		}
+		if err := validateWorkerTopology(cfg); err != nil {
+			return bmPhaseDone, err
+		}
+		goBack, err := promptPhaseTransition(
+			fmt.Sprintf("Workers configured — %d server(s) accepted", len(cfg.HetznerBMNodeGroupServerIDs)),
+			"Continue to endpoint",
+			"← Back to control plane")
+		if err != nil {
+			return bmPhaseDone, err
+		}
+		if goBack {
+			return bmPhaseCP, nil
+		}
+		return bmPhaseEndpoint, nil
+
+	case bmPhaseEndpoint:
+		if err := promptBareMetalEndpoint(cfg); err != nil {
+			return bmPhaseDone, err
+		}
+		return bmPhaseDone, nil
+	}
+	return bmPhaseDone, fmt.Errorf("hetzner bare-metal: unreachable phase %d", p)
+}
+
+// promptPhaseTransition shows a small Continue/Back confirm at the
+// end of a phase. Plain huh default keymap — operator picks Continue
+// or Go back with ←/→/y/n + Enter. Lets them rewind one phase to
+// fix something they realised was wrong earlier (e.g. vSwitch subnet
+// after collecting CPs).
+//
+// Returns (goBack=true, nil) when the operator picks the negative
+// option; (goBack=false, nil) on Continue.
+func promptPhaseTransition(title, continueLabel, backLabel string) (bool, error) {
+	cont := true
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title(title).
+				Affirmative(continueLabel).
+				Negative(backLabel).
+				Value(&cont),
+		),
+	).Run()
+	if err != nil {
+		return false, err
+	}
+	return !cont, nil
+}
+
+// runHetznerHybridBareMetalForm collects the bare-metal half of a
+// hybrid cluster — HCloud control-plane sized by the existing
+// HA / machineType form, plus a bare-metal worker node group that
+// joins the HCloud Network via a kubeaid-cli-created vSwitch.
+//
+// Phases:
+//
+//	Phase 1 — vSwitch config (name / VLAN ID / subnet CIDR).
+//	          Required: CreateVSwitch in
+//	          pkg/cloud/hetzner/prerequisite_infrastructure.go runs
+//	          unconditionally for hybrid mode and panics on a nil
+//	          BareMetal.VSwitch.
+//	Phase 2 — worker node-group name + add-loop. Each worker's
+//	          private IP is validated against the vSwitch subnet
+//	          from Phase 1 — the typical operator typo (IP outside
+//	          the subnet) is caught before bootstrap.
+//
+// No CP / endpoint phases — those are HCloud (already collected by
+// the parent credentials form).
+func runHetznerHybridBareMetalForm(cfg *PromptedConfig) error {
+	sess := newBareMetalSession(cfg)
+
+	for {
+		if err := promptVSwitchConfig(cfg); err != nil {
+			return err
+		}
+
+		cfg.HetznerBMNodeGroupServerIDs = nil
+		cfg.HetznerBMNodeGroupPrivateIPs = nil
+		if err := promptWorkerNodeGroupName(cfg); err != nil {
+			return err
+		}
+		if err := addServerLoop(cfg, sess, roleWorker, 0); err != nil {
+			return err
+		}
+		if err := validateWorkerTopology(cfg); err != nil {
+			return err
+		}
+
+		goBack, err := promptPhaseTransition(
+			fmt.Sprintf("Workers configured — %d server(s) accepted", len(cfg.HetznerBMNodeGroupServerIDs)),
+			"Continue — finish bare-metal setup",
+			"← Back to vSwitch")
+		if err != nil {
+			return err
+		}
+		if !goBack {
+			return nil
+		}
+		// Loop: shift+tab/Back → re-enter vSwitch + worker phase fresh.
+	}
+}
+
+// bareMetalSession bundles the per-flow state every BM phase needs —
+// the Robot lookup function, the sibling-config conflict map, and
+// the (best-effort) pre-fetched list of Robot server IDs in the
+// operator's account that powers autocomplete.
+type bareMetalSession struct {
+	lookup   robotServerLookup
+	existing map[string]string
+	// knownIDs is the operator's full Robot inventory, used as
+	// huh.Input suggestions for tab-completion on the server-ID
+	// field. nil when the pre-fetch failed (bad creds, Robot down,
+	// or the override returned nil for tests) — the add-loop falls
+	// back to typing-only.
+	knownIDs []string
+}
+
+// newBareMetalSession builds the per-flow lookup function, sibling-
+// config scan, and pre-fetched Robot server-ID list shared by the
+// pure-BM and hybrid entry points. Pre-fetch runs under a spinner so
+// the operator sees the wait; failures don't abort the flow (we just
+// proceed without autocomplete) since the per-server lookup will
+// surface the same auth/network errors later in a more localised
+// way.
+func newBareMetalSession(cfg *PromptedConfig) *bareMetalSession {
 	lookup := robotLookupOverride
 	if lookup == nil {
 		client := newRobotClient(cfg.HetznerRobotUser, cfg.HetznerRobotPassword)
@@ -51,44 +262,124 @@ func runHetznerBareMetalForm(cfg *PromptedConfig) error {
 	// tests that drive the prompt without a real configs dir).
 	existing := scanSiblingConfigsForServerIDs(cfg.ConfigsDirectory)
 
-	// Reset slices to drop any values from a previous loop iteration
-	// of ConfigFromPrompt — fresh runs of an edit loop should start
-	// the add-loop from scratch.
-	cfg.HetznerBMCPServerIDs = nil
-	cfg.HetznerBMCPPrivateIPs = nil
-	cfg.HetznerBMNodeGroupServerIDs = nil
-	cfg.HetznerBMNodeGroupPrivateIPs = nil
 	if cfg.HetznerBMServerPublicIPs == nil {
 		cfg.HetznerBMServerPublicIPs = make(map[string]string)
 	}
 
-	if err := addServerLoop(cfg, lookup, existing, roleControlPlane); err != nil {
-		return err
+	knownIDs := fetchKnownServerIDsWithSpinner(cfg)
+
+	return &bareMetalSession{
+		lookup:   lookup,
+		existing: existing,
+		knownIDs: knownIDs,
 	}
-	if err := validateCPTopology(cfg); err != nil {
-		return err
+}
+
+// fetchKnownServerIDsWithSpinner returns the Robot inventory used to
+// power the BM add-loop's autocomplete. The credential form's inline
+// Validate(validateRobotCredentials) has already done the fetch under
+// the operator's eyes — we just return the cached result. The
+// spinner-backed live fetch remains as a fallback for the (rare)
+// case where cfg.HetznerBMKnownServerIDs is empty (creds-only edit
+// loop, or a future caller that bypasses the credential validator).
+func fetchKnownServerIDsWithSpinner(cfg *PromptedConfig) []string {
+	if len(cfg.HetznerBMKnownServerIDs) > 0 {
+		return cfg.HetznerBMKnownServerIDs
 	}
 
-	if err := promptWorkerNodeGroupName(cfg); err != nil {
-		return err
+	var (
+		ids []string
+		err error
+	)
+	_ = spinner.New().
+		Title("  Fetching your Hetzner Robot server list ...").
+		Action(func() {
+			ids, err = robotListLookup(cfg.HetznerRobotUser, cfg.HetznerRobotPassword)
+		}).
+		Run()
+	if err != nil {
+		// Per-server lookup will produce a clearer, scoped error if
+		// the same auth/network issue persists. Silently degrade.
+		return nil
 	}
-	if err := addServerLoop(cfg, lookup, existing, roleWorker); err != nil {
-		return err
+	cfg.HetznerBMKnownServerIDs = ids
+	return ids
+}
+
+// robotListLookup is the test-overridable indirection around
+// robotClientList — kept narrow so the credential-form validator can
+// invoke the same fetch path without depending on a built client.
+func robotListLookup(user, password string) ([]string, error) {
+	if robotListOverride != nil {
+		return robotListOverride()
 	}
-	if err := validateWorkerTopology(cfg); err != nil {
-		return err
+	return robotClientList(newRobotClient(user, password))
+}
+
+// validateRobotCredentials returns a huh validator that uses the
+// just-typed password (and the username already captured in cfg) to
+// hit Robot's GET /server. nil on success — and the resulting
+// inventory is stashed on cfg for downstream autocomplete; an error
+// otherwise, displayed inline by huh so the operator can fix the
+// password (or Shift+Tab back to the username) without re-running
+// the whole Hetzner credentials form.
+//
+// nonEmpty short-circuits before the API call so an Enter on a blank
+// password doesn't trigger a guaranteed 401 — same shape as the
+// other Validate-fn closures in this package.
+func validateRobotCredentials(cfg *PromptedConfig) func(string) error {
+	return func(s string) error {
+		if err := nonEmpty(s); err != nil {
+			return err
+		}
+		if cfg.HetznerRobotUser == "" {
+			// Defensive — huh should have validated this on the
+			// previous field, but if the operator force-tabbed
+			// through, fall back to a clear message instead of
+			// triggering a 401 we'd have to translate.
+			return errors.New("robot username must be set before validating password")
+		}
+		ids, err := robotListLookup(cfg.HetznerRobotUser, s)
+		if err != nil {
+			return err
+		}
+		cfg.HetznerBMKnownServerIDs = ids
+		return nil
+	}
+}
+
+// promptVSwitchConfig collects the vSwitch resource details kubeaid-cli
+// passes to CreateVSwitch. Defaults are sensible-but-overridable —
+// the operator typically wants the cluster-name-prefixed defaults
+// unless they're joining an existing vSwitch.
+func promptVSwitchConfig(cfg *PromptedConfig) error {
+	if cfg.HetznerVSwitchName == "" {
+		cfg.HetznerVSwitchName = cfg.ClusterName + "-vswitch"
+	}
+	if cfg.HetznerVSwitchVLANID == "" {
+		cfg.HetznerVSwitchVLANID = "4000"
+	}
+	if cfg.HetznerVSwitchSubnetCIDR == "" {
+		cfg.HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 	}
 
-	if err := promptBareMetalEndpoint(cfg); err != nil {
-		return err
-	}
-
-	// Reflect the actual CP count into HetznerCPReplicas so the
-	// summary box and any downstream readers see the same number
-	// the YAML will carry.
-	cfg.HetznerCPReplicas = strconv.Itoa(len(cfg.HetznerBMCPServerIDs))
-
-	return nil
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("vSwitch name:").
+				Description("Hetzner Robot identifier — kubeaid-cli creates the vSwitch if not already present, or reuses one matching this name + VLAN ID.").
+				Value(&cfg.HetznerVSwitchName).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("vSwitch VLAN ID (4000-4091):").
+				Value(&cfg.HetznerVSwitchVLANID).
+				Validate(hetznerVLANID),
+			huh.NewInput().
+				Title("vSwitch subnet CIDR (worker private IPs must live here):").
+				Value(&cfg.HetznerVSwitchSubnetCIDR).
+				Validate(cidrv4),
+		).Title("Hetzner Bare Metal — vSwitch network"),
+	).Run()
 }
 
 // role describes which phase of the add-loop is running. Affects
@@ -112,32 +403,62 @@ func (r role) label() string {
 }
 
 // addServerLoop runs the per-role add-loop: one form to collect ID +
-// private IP, an inline Robot probe, a result note, then an "add
-// another?" prompt. Exits when the operator answers No.
+// private IP, an inline Robot probe, a result note, then either an
+// "add another?" prompt (open-ended worker mode) or an automatic
+// advance to the next slot (fixed-count CP mode).
+//
+// fixedCount == 0 → worker mode: loop ends when operator answers "no
+// more".
+// fixedCount  > 0 → CP mode: loop ends when fixedCount servers have
+// been added. The HA toggle pins CP at 1 or 3 — even counts lose
+// etcd quorum, so we don't surface them in the prompt.
 func addServerLoop(
 	cfg *PromptedConfig,
-	lookup robotServerLookup,
-	existingServers map[string]string,
+	sess *bareMetalSession,
 	r role,
+	fixedCount int,
 ) error {
 	for {
 		var (
-			serverID  string
-			privateIP string
+			serverID = ""
+			// Pre-fill privateIP with the next free slot in the
+			// vSwitch subnet. Operator presses enter to accept or
+			// types over the suggestion — the typical case is a
+			// simple sequential layout (.1 .2 .3 for CPs, .10+ for
+			// workers).
+			privateIP = nextPrivateIPInSubnet(cfg.HetznerVSwitchSubnetCIDR, currentlyUsedIPs(cfg, r))
 		)
+
+		// When the operator has supplied a vSwitch subnet (hybrid
+		// mode today), the per-host IP must live inside it — catches
+		// the common typo before bootstrap's network setup fails.
+		// Pure-BM mode skips the containment check (cidr is empty).
+		ipValidator := ipv4InSubnet(cfg.HetznerVSwitchSubnetCIDR)
+
+		idInput := huh.NewInput().
+			TitleFunc(func() string {
+				return fmt.Sprintf("%s server #%d — Robot server ID:", capitalize(r.label()), nextIndex(cfg, r))
+			}, cfg).
+			Value(&serverID).
+			Validate(validateBMServerID(cfg))
+		if len(sess.knownIDs) > 0 {
+			// huh binds Tab to "next field" and Ctrl+E to "accept
+			// suggestion" by default; calling that out in the
+			// description keeps the operator from getting stuck
+			// looking for the autocomplete key.
+			idInput = idInput.
+				Description("Ctrl+E autocompletes from your Robot inventory; Enter/Tab advances.").
+				Suggestions(sess.knownIDs)
+		}
 
 		if err := huh.NewForm(
 			huh.NewGroup(
-				huh.NewInput().
-					TitleFunc(func() string {
-						return fmt.Sprintf("%s server #%d — Robot server ID:", capitalize(r.label()), nextIndex(cfg, r))
-					}, cfg).
-					Value(&serverID).
-					Validate(serverIDValidator),
+				idInput,
 				huh.NewInput().
 					Title("Private IPv4 (vSwitch):").
+					Description("Pre-filled with the next free address in the vSwitch subnet — edit if you have a specific assignment.").
 					Value(&privateIP).
-					Validate(ipv4),
+					Validate(ipValidator),
 			).Title(fmt.Sprintf("Hetzner Bare Metal — %s server", r.label())),
 		).Run(); err != nil {
 			return err
@@ -146,7 +467,7 @@ func addServerLoop(
 		serverID = strings.TrimSpace(serverID)
 		privateIP = strings.TrimSpace(privateIP)
 
-		info, lookupErr := lookup(serverID)
+		info, lookupErr := sess.lookup(serverID)
 		if lookupErr != nil {
 			action, err := promptLookupFailureAction(serverID, lookupErr)
 			if err != nil {
@@ -173,7 +494,7 @@ func addServerLoop(
 
 		// Sibling-config warning — informational only; operator may be
 		// deliberately re-using the box (re-bootstrap, recovery).
-		conflictCluster := existingServers[serverID]
+		conflictCluster := sess.existing[serverID]
 
 		keep, err := confirmAcceptedServer(serverID, info, conflictCluster, r)
 		if err != nil {
@@ -184,6 +505,16 @@ func addServerLoop(
 		}
 
 		appendServer(cfg, r, serverID, privateIP, info)
+
+		if fixedCount > 0 {
+			// CP mode: HA toggle has pinned the count. Loop straight
+			// into the next slot without prompting — operator's
+			// already committed to 1 or 3.
+			if nextIndex(cfg, r) > fixedCount {
+				return nil
+			}
+			continue
+		}
 
 		more, err := promptAddAnother(cfg, r)
 		if err != nil {
@@ -533,6 +864,50 @@ func capitalize(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
 }
 
+// validateBMServerID is the huh.Input validator the add-loop wires
+// onto the Robot server-ID field. Runs the format check first
+// (numeric, non-blank — its error message points at the obvious
+// fix) and then rejects IDs already added elsewhere in the
+// bare-metal flow. kubeaid-cli's bootstrap can't provision the
+// same Robot server twice, and catching it inline puts the error
+// right under the field where the operator typed it.
+func validateBMServerID(cfg *PromptedConfig) func(string) error {
+	return func(s string) error {
+		if err := serverIDValidator(s); err != nil {
+			return err
+		}
+		role := lookupExistingBMRole(cfg, s)
+		if role == "" {
+			return nil
+		}
+		return fmt.Errorf("server %s is already added as a %s in this cluster",
+			strings.TrimSpace(s), role)
+	}
+}
+
+// lookupExistingBMRole returns a human-readable label describing
+// where id already appears in cfg's bare-metal slices, or "" if
+// it's not yet been added. Used by the add-loop's inline Validate
+// so an operator pasting the same Robot server ID twice (e.g.
+// fat-fingering Ctrl+V) gets an error right under the field.
+func lookupExistingBMRole(cfg *PromptedConfig, id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
+	}
+	for _, existing := range cfg.HetznerBMCPServerIDs {
+		if existing == id {
+			return "control-plane host"
+		}
+	}
+	for _, existing := range cfg.HetznerBMNodeGroupServerIDs {
+		if existing == id {
+			return "worker host"
+		}
+	}
+	return ""
+}
+
 // serverIDValidator accepts a non-empty numeric Robot server ID.
 // Robot IDs are always integers; rejecting at prompt time avoids a
 // guaranteed 400 from the Robot webservice and a cryptic error
@@ -552,9 +927,145 @@ func serverIDValidator(s string) error {
 // standing up an HTTP server.
 type robotServerLookup func(id string) (*robotServerInfo, error)
 
-// robotLookupOverride is unset in production; tests override it to
-// short-circuit the Robot client construction.
-var robotLookupOverride robotServerLookup
+// robotLookupOverride and robotListOverride are unset in production;
+// tests override them to short-circuit the Robot client construction.
+var (
+	robotLookupOverride robotServerLookup
+	robotListOverride   func() ([]string, error)
+)
+
+// robotListResponse is the wire shape of Hetzner Robot's GET /server
+// — an array of {server: {...}} objects (note the outer array, not
+// the wrapped-in-server shape GET /server/<id> returns).
+type robotListEntry struct {
+	Server struct {
+		ServerNumber int    `json:"server_number"`
+		ServerName   string `json:"server_name"`
+		Status       string `json:"status"`
+		Cancelled    bool   `json:"cancelled"`
+	} `json:"server"`
+}
+
+// robotClientList performs GET /server against Robot and returns the
+// IDs of every server in the account that's healthy enough to be a
+// candidate cluster member — cancelled servers and non-ready states
+// are filtered so the autocomplete list doesn't tempt the operator
+// toward a box that won't bootstrap.
+func robotClientList(client *resty.Client) ([]string, error) {
+	resp, err := client.R().Get("/server")
+	if err != nil {
+		return nil, fmt.Errorf("network error contacting Robot webservice: %w", err)
+	}
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, errors.New("robot username/password rejected (401)")
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("unexpected Robot status %d", resp.StatusCode())
+	}
+
+	var entries []robotListEntry
+	if err := json.Unmarshal(resp.Body(), &entries); err != nil {
+		return nil, fmt.Errorf("decoding Robot list response: %w", err)
+	}
+
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.Server.Cancelled {
+			continue
+		}
+		if e.Server.Status != "" && e.Server.Status != "ready" {
+			continue
+		}
+		ids = append(ids, strconv.Itoa(e.Server.ServerNumber))
+	}
+	return ids, nil
+}
+
+// nextPrivateIPInSubnet returns the first IPv4 in cidr (skipping the
+// network and broadcast addresses) that's not already in used. Used
+// to pre-fill the per-host privateIP field — operator presses enter
+// to accept the suggestion or types over it. Returns "" when cidr is
+// empty or unparseable (pure-BM without vSwitch, or malformed input).
+func nextPrivateIPInSubnet(cidr string, used []string) string {
+	cidr = strings.TrimSpace(cidr)
+	if cidr == "" {
+		return ""
+	}
+	_, subnet, err := net.ParseCIDR(cidr)
+	if err != nil || subnet == nil {
+		return ""
+	}
+	v4 := subnet.IP.To4()
+	if v4 == nil {
+		return ""
+	}
+
+	usedSet := make(map[string]struct{}, len(used))
+	for _, ip := range used {
+		usedSet[strings.TrimSpace(ip)] = struct{}{}
+	}
+
+	// Walk IPv4 addresses by incrementing the last octet first, then
+	// rippling up. Caps at 65536 iterations so a /16 with everything
+	// taken still terminates — that's well beyond any realistic
+	// cluster size, and infinite-looping on a bad input would be
+	// worse than returning an empty default.
+	cand := make(net.IP, len(v4))
+	copy(cand, v4)
+	for range 65536 {
+		incrementIPv4(cand)
+		if !subnet.Contains(cand) {
+			return ""
+		}
+		s := cand.String()
+		// Skip the network's broadcast tail (.255 on a /24, etc.).
+		if isBroadcast(cand, subnet) {
+			continue
+		}
+		if _, taken := usedSet[s]; taken {
+			continue
+		}
+		return s
+	}
+	return ""
+}
+
+func incrementIPv4(ip net.IP) {
+	for j := len(ip) - 1; j >= 0; j-- {
+		ip[j]++
+		if ip[j] != 0 {
+			return
+		}
+	}
+}
+
+func isBroadcast(ip net.IP, subnet *net.IPNet) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	mask := subnet.Mask
+	if len(mask) != net.IPv4len {
+		return false
+	}
+	for i := range v4 {
+		if v4[i]|mask[i] != 0xff {
+			return false
+		}
+	}
+	return true
+}
+
+// currentlyUsedIPs returns the privateIPs the operator has already
+// accepted in this BM flow — CP IPs across both roles when adding a
+// worker, both when adding another CP. Used to seed the next-free-IP
+// suggestion so the same address never gets proposed twice.
+func currentlyUsedIPs(cfg *PromptedConfig, _ role) []string {
+	out := make([]string, 0, len(cfg.HetznerBMCPPrivateIPs)+len(cfg.HetznerBMNodeGroupPrivateIPs))
+	out = append(out, cfg.HetznerBMCPPrivateIPs...)
+	out = append(out, cfg.HetznerBMNodeGroupPrivateIPs...)
+	return out
+}
 
 // robotServerInfo is the slice of GET /server/<id> the prompt
 // surfaces back to the operator — enough to confirm the picked box

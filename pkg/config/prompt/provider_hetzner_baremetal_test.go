@@ -13,6 +13,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestLookupExistingBMRole(t *testing.T) {
+	cfg := &PromptedConfig{
+		HetznerBMCPServerIDs:        []string{"100", "101"},
+		HetznerBMNodeGroupServerIDs: []string{"200"},
+	}
+
+	cases := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{name: "matches a CP host", id: "100", want: "control-plane host"},
+		{name: "matches a worker host", id: "200", want: "worker host"},
+		{name: "no match returns empty", id: "999", want: ""},
+		{name: "empty input returns empty", id: "", want: ""},
+		{name: "whitespace trimmed before match", id: "  100  ", want: "control-plane host"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, lookupExistingBMRole(cfg, tc.id))
+		})
+	}
+}
+
 func TestServerIDValidator(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -261,6 +285,105 @@ func TestScanSiblingConfigsForServerIDs(t *testing.T) {
 		got := scanSiblingConfigsForServerIDs(filepath.Join(parent, "kbm"))
 		assert.Empty(t, got)
 	})
+}
+
+func TestNextPrivateIPInSubnet(t *testing.T) {
+	cases := []struct {
+		name string
+		cidr string
+		used []string
+		want string
+	}{
+		{
+			name: "empty cidr returns empty (pure-BM with no vSwitch)",
+			cidr: "",
+			used: nil,
+			want: "",
+		},
+		{
+			name: "unparseable cidr returns empty",
+			cidr: "not-a-cidr",
+			used: nil,
+			want: "",
+		},
+		{
+			name: "first IP in /24 when nothing used",
+			cidr: "10.0.1.0/24",
+			used: nil,
+			want: "10.0.1.1",
+		},
+		{
+			name: "skips already-used IPs",
+			cidr: "10.0.1.0/24",
+			used: []string{"10.0.1.1", "10.0.1.2"},
+			want: "10.0.1.3",
+		},
+		{
+			name: "honours sparse usage gaps",
+			cidr: "10.0.1.0/24",
+			used: []string{"10.0.1.1", "10.0.1.3"},
+			want: "10.0.1.2",
+		},
+		{
+			name: "different subnet returns first IP in that subnet",
+			cidr: "172.31.5.0/28",
+			used: nil,
+			want: "172.31.5.1",
+		},
+		{
+			name: "trims whitespace on used IPs",
+			cidr: "10.0.1.0/24",
+			used: []string{"  10.0.1.1  "},
+			want: "10.0.1.2",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := nextPrivateIPInSubnet(tc.cidr, tc.used)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestNewBareMetalSessionPopulatesKnownIDs(t *testing.T) {
+	robotListOverride = func() ([]string, error) {
+		return []string{"1234567", "1234568", "1234569"}, nil
+	}
+	robotLookupOverride = func(id string) (*robotServerInfo, error) {
+		return &robotServerInfo{ID: id, PublicIP: "1.2.3.4"}, nil
+	}
+	t.Cleanup(func() {
+		robotListOverride = nil
+		robotLookupOverride = nil
+	})
+
+	cfg := &PromptedConfig{
+		HetznerRobotUser:     "u",
+		HetznerRobotPassword: "p",
+	}
+	sess := newBareMetalSession(cfg)
+	assert.Equal(t, []string{"1234567", "1234568", "1234569"}, sess.knownIDs)
+}
+
+func TestNewBareMetalSessionDegradesGracefullyOnListFailure(t *testing.T) {
+	robotListOverride = func() ([]string, error) {
+		return nil, errors.New("robot down")
+	}
+	robotLookupOverride = func(id string) (*robotServerInfo, error) {
+		return &robotServerInfo{ID: id, PublicIP: "1.2.3.4"}, nil
+	}
+	t.Cleanup(func() {
+		robotListOverride = nil
+		robotLookupOverride = nil
+	})
+
+	cfg := &PromptedConfig{
+		HetznerRobotUser:     "u",
+		HetznerRobotPassword: "p",
+	}
+	sess := newBareMetalSession(cfg)
+	assert.Nil(t, sess.knownIDs, "list-fetch failure should silently disable autocomplete, not panic")
+	assert.NotNil(t, sess.lookup, "per-server lookup must still be wired for graceful degradation")
 }
 
 func TestAppendServerAndNextIndex(t *testing.T) {

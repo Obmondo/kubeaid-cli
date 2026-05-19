@@ -18,37 +18,40 @@ import (
 )
 
 // TestRenderHetznerBareMetalWorkload renders the prompt templates
-// against a realistic kbm.obmondo.com-style config and asserts the
-// resulting general.yaml carries the bare-metal block — proves the
-// validation failure the operator hit in the prompt UX is fixed
-// (cloud.hetzner.controlPlane.bareMetal + bareMetalHosts now
-// render).
+// against a realistic acme-style config and asserts the resulting
+// general.yaml carries the bare-metal block — proves the validation
+// failure the operator hit in the prompt UX is fixed
+// (cloud.hetzner.controlPlane.bareMetal + bareMetalHosts now render).
 func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	cfg := &PromptedConfig{
 		SSHUsername:                "git",
 		UseSSHAgent:                true,
 		KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
 		KubeaidVersion:             "29.0.9",
-		KubeaidConfigForkURL:       "ssh://git@gitea.obmondo.com:2223/EnableIT/kubeaid-config-enableit.git",
-		ClusterName:                "kbm-obmondo-com",
+		KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+		ClusterName:                "bm-acme",
 		ClusterType:                "workload",
 		K8sVersion:                 "v1.35.4",
 		EnableOIDC:                 true,
-		OIDCIssuerURL:              "https://keycloak.vpn.obmondo.com/auth/realms/obmondo",
-		OIDCClientID:               "kubernetes-kbm-obmondo-com",
+		OIDCIssuerURL:              "https://keycloak.vpn.acme.com/auth/realms/acme",
+		OIDCClientID:               "kubernetes-bm-acme",
 		KeycloakMode:               "external",
-		KeycloakDNS:                "keycloak.vpn.obmondo.com",
-		KeycloakRealm:              "obmondo",
+		KeycloakDNS:                "keycloak.vpn.acme.com",
+		KeycloakRealm:              "acme",
 		KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
 
 		CloudProvider:     "hetzner",
 		HetznerMode:       "bare-metal",
-		HetznerSSHKeyName: "kbm-obmondo-com",
+		HetznerSSHKeyName: "bm-acme",
 		HetznerCPReplicas: "3",
+
+		HetznerVSwitchName:       "bm-acme-vswitch",
+		HetznerVSwitchVLANID:     "4002",
+		HetznerVSwitchSubnetCIDR: "10.0.1.0/24",
 
 		HetznerBMCPServerIDs:          []string{"1234567", "1234568", "1234569"},
 		HetznerBMCPPrivateIPs:         []string{"10.0.1.1", "10.0.1.2", "10.0.1.3"},
-		HetznerBMNodeGroupName:        "kbm-obmondo-com-workers",
+		HetznerBMNodeGroupName:        "bm-acme-workers",
 		HetznerBMNodeGroupServerIDs:   []string{"1234570"},
 		HetznerBMNodeGroupPrivateIPs:  []string{"10.0.1.10"},
 		HetznerBMEndpointHost:         "1.2.3.4",
@@ -93,21 +96,34 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	// Robot lookup IPs appear as informational comments.
 	assert.Contains(t, general, "Robot main IP: 5.5.5.1")
 
+	// vSwitch block rendered so the operator has the network plumbing
+	// captured alongside the cluster — follow-up branch will wire
+	// kubeaid-cli's CreateVSwitch into the pure-BM path and pick this
+	// up automatically.
+	assert.Contains(t, general, "vSwitch:")
+	assert.Contains(t, general, "name: bm-acme-vswitch")
+	assert.Contains(t, general, "vlanID: 4002")
+	assert.Contains(t, general, `subnetCIDRBlock: "10.0.1.0/24"`)
+
 	// Bare-metal node group.
-	assert.Contains(t, general, "name: kbm-obmondo-com-workers")
+	assert.Contains(t, general, "name: bm-acme-workers")
 	assert.Contains(t, general, `serverID: "1234570"`)
 	assert.Contains(t, general, "privateIP: 10.0.1.10")
 
 	// Cluster-level fields rendered the same way as hcloud.
-	assert.Contains(t, general, "name: kbm-obmondo-com")
+	assert.Contains(t, general, "name: bm-acme")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "mode: bare-metal")
-	assert.Contains(t, general, "issuerUrl: https://keycloak.vpn.obmondo.com/auth/realms/obmondo")
+	assert.Contains(t, general, "issuerUrl: https://keycloak.vpn.acme.com/auth/realms/acme")
 
 	secrets, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
 	require.NoError(t, err)
-	assert.Contains(t, string(secrets), "user: fake-user")
-	assert.Contains(t, string(secrets), "password: fake-pass")
+	// Values are %q-quoted in secrets.yaml so Hetzner Robot tokens
+	// containing YAML metacharacters (#, :, leading -, etc.) survive
+	// round-tripping; see render_secrets_test.go for the bug-fix
+	// regression cases.
+	assert.Contains(t, string(secrets), `user: "fake-user"`)
+	assert.Contains(t, string(secrets), `password: "fake-pass"`)
 
 	// The crux of the original bug: the rendered general.yaml must
 	// pass struct-level validation. validateConfigStructTags is the
