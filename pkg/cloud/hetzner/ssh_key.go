@@ -16,6 +16,15 @@ import (
 )
 
 // CreateHCloudSSHKey creates the given SSH key in HCloud, if it doesn't already exist.
+//
+// When an entry with the same fingerprint already exists under a
+// different name (operator's personal yubikey re-registered as
+// "<cluster>" via a prior run, or a hand-onboarded "ashish-laptop"
+// entry), the existing entry is reused — Hetzner authenticates by
+// key material, not label. The in-memory cfg.SSHKeyPair.Name is
+// updated to match the existing entry so downstream readers
+// (CAPH chart values, the SealedSecret, NAT-gateway server
+// creation) all look up the right name.
 func (h *Hetzner) CreateHCloudSSHKey(ctx context.Context, name string, sshKeyPair config.SSHKeyPairConfig) error {
 	sshKeys, response, err := h.hcloudClient.SSHKey.List(ctx, hcloud.SSHKeyListOpts{})
 	if err != nil {
@@ -29,7 +38,13 @@ func (h *Hetzner) CreateHCloudSSHKey(ctx context.Context, name string, sshKeyPai
 		switch {
 		case sshKey.Fingerprint == sshKeyPair.Fingerprint:
 			if sshKey.Name != name {
-				return fmt.Errorf("found an HCloud SSH key with different name but same fingerprint")
+				slog.WarnContext(ctx, "HCloud SSH key already registered under a different name; reusing the existing entry",
+					slog.String("requested-name", name),
+					slog.String("existing-name", sshKey.Name),
+					slog.String("fingerprint", sshKeyPair.Fingerprint),
+				)
+				config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name = sshKey.Name
+				return nil
 			}
 
 		case sshKey.Name == name:
@@ -72,6 +87,13 @@ type (
 )
 
 // CreateHetznerBareMetalSSHKey creates the given SSH key in Hetzner Bare Metal, if it doesn't already exist.
+//
+// Same idempotency contract as CreateHCloudSSHKey: an entry with the
+// same fingerprint under a different name (typical when the operator's
+// SSH key has been hand-onboarded into Robot or registered by an
+// earlier cluster) is reused, and cfg.SSHKeyPair.Name is updated to
+// match so downstream chart values + SealedSecret render the right
+// name.
 func (h *Hetzner) CreateHetznerBareMetalSSHKey(
 	ctx context.Context,
 	name string,
@@ -98,7 +120,13 @@ func (h *Hetzner) CreateHetznerBareMetalSSHKey(
 			switch {
 			case key.Fingerprint == sshKeyPair.Fingerprint:
 				if key.Name != name {
-					return fmt.Errorf("found a Hetzner Bare Metal SSH key with different name but same fingerprint")
+					slog.WarnContext(ctx, "Hetzner Bare Metal SSH key already registered under a different name; reusing the existing entry",
+						slog.String("requested-name", name),
+						slog.String("existing-name", key.Name),
+						slog.String("fingerprint", sshKeyPair.Fingerprint),
+					)
+					config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name = key.Name
+					return nil
 				}
 
 			case key.Name == name:
