@@ -40,7 +40,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		// so they have a sense of the wall-clock floor.
 		bmHostCount := countBareMetalHosts(hetznerConfig)
 		releaseInstall := bar.InProgress(fmt.Sprintf(
-			"Installing OS on %d bare-metal server(s) (~8-12 min per server, in parallel)",
+			"Installing OS on %d bare-metal server(s) (~8-15 min per server typical, up to 20 min, in parallel)",
 			bmHostCount,
 		))
 		err := h.InstallOSOnAllHBMS(ctx)
