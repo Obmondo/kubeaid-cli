@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -199,14 +200,24 @@ func (h *Hetzner) waitForHBMSReachable(
 }
 
 // isHBMSReachable attempts a single SSH connection to check if the HBMS is reachable.
+//
+// Auth: hands the connection both the agent socket (yubikey-resident keys
+// — operator's PrivateKey is empty in that case; see
+// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey bytes
+// (file-based key path). Same shape as waitForNATGatewaySSH in server.go;
+// dropping the agent here was the root cause of "timed out waiting for
+// HBMS to become reachable" reports from yubikey-only operators, where
+// the install actually succeeded but the SSH probe had no credentials
+// to authenticate with.
 func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey string) bool {
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
 		Context: ctx,
 
-		Hostname:   address,
-		Port:       22,
-		Username:   "root",
-		PrivateKey: []byte(privateKey),
+		Hostname:    address,
+		Port:        22,
+		Username:    "root",
+		AgentSocket: os.Getenv(constants.EnvNameSSHAuthSock),
+		PrivateKey:  []byte(privateKey),
 
 		Timeout: 5 * time.Second,
 	})
