@@ -240,7 +240,7 @@ const (
 	// Pinned to the latest Ubuntu LTS so that every new HBMS receives current security patches.
 	// Bump this constant when a newer LTS becomes available in the HRobot catalogue.
 	HBMSInstallDistributionLatestUbuntu = "Ubuntu 24.04 LTS base"
-	HBMSOSInstallationPollInterval = 20 * time.Second
+	HBMSOSInstallationPollInterval      = 20 * time.Second
 	// HBMSOSInstallationMaxWaitTime is the per-server upper bound the
 	// post-reset SSH probe waits for the freshly-installed OS to come
 	// up. Hetzner installimage takes 8-15 min on normal hardware
