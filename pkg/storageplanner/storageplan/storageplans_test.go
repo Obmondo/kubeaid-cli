@@ -149,37 +149,176 @@ func TestServerIDsHeader(t *testing.T) {
 	}
 }
 
-// TestStoragePlansPrettyPrintCollapsesAlikeLayouts proves the
-// collapsed-per-group rendering: a node-group with N alike plans
-// shows the layout ONCE under a header that names every server it
-// applies to, rather than repeating the disks N times.
-func TestStoragePlansPrettyPrintCollapsesAlikeLayouts(t *testing.T) {
-	mkPlan := func(serverID string) *StoragePlan {
-		disk := &Disk{Name: "nvme0n1", Size: 1000}
-		disk.Allocations.OS = 50
-		disk.Allocations.ZFS = 220
+// TestStoragePlansPrettyPrintRendersCompactSummary proves the
+// per-group rendering uses the new compact shape (disk composition +
+// ZFS pool sub-volume breakdown) rather than the old per-disk
+// allocation subtree.
+func TestStoragePlansPrettyPrintRendersCompactSummary(t *testing.T) {
+	mkPlan := func(serverID, diskType string, size int) *StoragePlan {
+		// Two disks per server, both of the same type+size — typical
+		// 2 × NVMe AX52 shape. Mirror semantics make the visible pool
+		// capacity equal to one disk's ZFS allocation.
+		mk := func(name string) *Disk {
+			d := &Disk{Name: name, Type: diskType, Size: size}
+			d.Allocations.OS = 50
+			d.Allocations.ZFS = 220
+			return d
+		}
 		return &StoragePlan{
 			ServerID: serverID,
-			Disks:    []*Disk{disk},
+			Disks:    []*Disk{mk("nvme0n1"), mk("nvme1n1")},
 		}
 	}
 
 	plans := StoragePlans{
-		"control-plane": {mkPlan("100"), mkPlan("101"), mkPlan("102")},
-		"workers":       {mkPlan("200")},
+		"control-plane": {
+			mkPlan("100", "NVMe", 1000),
+			mkPlan("101", "NVMe", 1000),
+			mkPlan("102", "NVMe", 1000),
+		},
+		"workers": {mkPlan("200", "HDD", 2000)},
 	}
 
 	got := captureStdout(t, plans.PrettyPrint)
 
-	// CP group: one disk layout, header naming all three CP servers.
+	// Group headers (unchanged from the previous shape).
 	assert.Contains(t, got, "control-plane (3 servers: 100, 101, 102)")
-	// Worker group: singular phrasing for the one server.
 	assert.Contains(t, got, "workers (server 200)")
-	// Disk allocation rendered once per group (not 3+1 = 4 times):
-	assert.Equal(t, 2, strings.Count(got, "OS   : 50 GB"))
-	assert.Equal(t, 2, strings.Count(got, "ZFS  : 220 GB"))
-	// And the unallocated remainder.
-	assert.Equal(t, 2, strings.Count(got, "nvme0n1 (730 GB unallocated)"))
+
+	// New shape — disk composition lines, one per group.
+	assert.Contains(t, got, "Disks per server: 2 × NVMe 1 TB")
+	assert.Contains(t, got, "Disks per server: 2 × HDD 2 TB")
+
+	// ZFS pool header — names the pool, the RAID mode, and the OS-side facts.
+	assert.Contains(t, got, `ZFS pool "primary" — mirror across 2 NVMe (OS: ext4 on RAID-1)`)
+	assert.Contains(t, got, `ZFS pool "primary" — mirror across 2 HDD (OS: ext4 on RAID-1)`)
+
+	// Sub-volume breakdown — rendered once per group.
+	assert.Equal(t, 2, strings.Count(got, "/var/lib/containerd"))
+	assert.Equal(t, 2, strings.Count(got, "100 GB"))
+	assert.Equal(t, 2, strings.Count(got, "/var/log/pods"))
+	assert.Equal(t, 2, strings.Count(got, "/var/lib/kubelet/pods"))
+	assert.Equal(t, 2, strings.Count(got, "OpenEBS ZFS LocalPV"))
+	// OpenEBS gets the pool's remainder above the three reserved sub-volumes
+	// (220 - 100 - 50 - 50 = 20 GB on the default-sized pool).
+	assert.Equal(t, 2, strings.Count(got, " 20 GB free"))
+
+	// Old per-disk subtree must NOT render — that was the noisy shape.
+	assert.NotContains(t, got, "nvme0n1 (730 GB unallocated)",
+		"per-disk subtree should be gone — compact summary replaces it")
+	assert.NotContains(t, got, "OS   : 50 GB",
+		"per-disk allocation lines should be gone from the group rendering")
+}
+
+func TestFormatDiskComposition(t *testing.T) {
+	mk := func(diskType string, size int) *Disk {
+		return &Disk{Type: diskType, Size: size}
+	}
+	cases := []struct {
+		name  string
+		disks []*Disk
+		want  string
+	}{
+		{
+			name:  "two identical NVMe → collapsed with multiplicand",
+			disks: []*Disk{mk("NVMe", 1000), mk("NVMe", 1000)},
+			want:  "2 × NVMe 1 TB",
+		},
+		{
+			name:  "single HDD → no multiplicand",
+			disks: []*Disk{mk("HDD", 2000)},
+			want:  "HDD 2 TB",
+		},
+		{
+			name:  "heterogeneous → joined with ' + ', preserves first-seen order",
+			disks: []*Disk{mk("NVMe", 1000), mk("HDD", 4000)},
+			want:  "NVMe 1 TB + HDD 4 TB",
+		},
+		{
+			name:  "mixed multiplicities → only the repeated type gets the count",
+			disks: []*Disk{mk("NVMe", 1000), mk("NVMe", 1000), mk("HDD", 4000)},
+			want:  "2 × NVMe 1 TB + HDD 4 TB",
+		},
+		{
+			name:  "sub-TB stays in GB (operator-familiar Hetzner sizing)",
+			disks: []*Disk{mk("NVMe", 100)},
+			want:  "NVMe 100 GB",
+		},
+		{
+			name:  "999 GB stays in GB (boundary)",
+			disks: []*Disk{mk("NVMe", 999)},
+			want:  "NVMe 999 GB",
+		},
+		{
+			name:  "1000 GB rounds to '1 TB' (no trailing .0)",
+			disks: []*Disk{mk("NVMe", 1000)},
+			want:  "NVMe 1 TB",
+		},
+		{
+			name:  "1500 GB → 1.5 TB",
+			disks: []*Disk{mk("NVMe", 1500)},
+			want:  "NVMe 1.5 TB",
+		},
+		{
+			name:  "1920 GB (AX52 alt SKU) → 1.9 TB",
+			disks: []*Disk{mk("NVMe", 1920)},
+			want:  "NVMe 1.9 TB",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, formatDiskComposition(tc.disks))
+		})
+	}
+}
+
+func TestZFSPoolSubTreeAllocates(t *testing.T) {
+	mk := func(diskType string, zfs int) *Disk {
+		d := &Disk{Type: diskType, Size: 1000}
+		d.Allocations.ZFS = zfs
+		return d
+	}
+
+	t.Run("default 220 GB pool → 20 GB OpenEBS overflow", func(t *testing.T) {
+		// Mirror: both disks have the same ZFS allocation; the
+		// visible pool capacity = one disk's allocation.
+		disks := []*Disk{mk("NVMe", 220), mk("NVMe", 220)}
+		rendered := zfsPoolSubTree(disks).String()
+
+		assert.Contains(t, rendered, `ZFS pool "primary" — mirror across 2 NVMe (OS: ext4 on RAID-1)`)
+		assert.Contains(t, rendered, "/var/lib/containerd")
+		assert.Contains(t, rendered, "100 GB")
+		assert.Contains(t, rendered, "/var/log/pods")
+		assert.Contains(t, rendered, " 50 GB")
+		assert.Contains(t, rendered, "/var/lib/kubelet/pods")
+		assert.Contains(t, rendered, "OpenEBS ZFS LocalPV")
+		assert.Contains(t, rendered, " 20 GB free")
+	})
+
+	t.Run("operator-bumped 500 GB pool → 300 GB OpenEBS", func(t *testing.T) {
+		disks := []*Disk{mk("NVMe", 500), mk("NVMe", 500)}
+		rendered := zfsPoolSubTree(disks).String()
+
+		// Reserved volumes don't move; only the OpenEBS remainder does.
+		assert.Contains(t, rendered, "100 GB")
+		assert.Contains(t, rendered, " 50 GB")
+		assert.Contains(t, rendered, "300 GB free")
+	})
+
+	t.Run("under-sized pool → OpenEBS clamped to 0", func(t *testing.T) {
+		// Defensive — should never happen in practice (the planner
+		// rejects pools < 200 GB at config-validate time), but the
+		// renderer shouldn't underflow into a negative size.
+		disks := []*Disk{mk("NVMe", 100), mk("NVMe", 100)}
+		rendered := zfsPoolSubTree(disks).String()
+		assert.Contains(t, rendered, "  0 GB free")
+	})
+
+	t.Run("mixed disk types render shorthand in the header", func(t *testing.T) {
+		disks := []*Disk{mk("NVMe", 220), mk("HDD", 220)}
+		rendered := zfsPoolSubTree(disks).String()
+		assert.Contains(t, rendered, "mirror across NVMe + HDD")
+	})
 }
 
 // captureStdout runs fn while stdout is redirected to a pipe, then

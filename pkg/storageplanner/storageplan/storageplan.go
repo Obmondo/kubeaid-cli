@@ -24,9 +24,12 @@ type StoragePlan struct {
 	// 2 disks across which the OS will get installed, with RAID 1 enabled.
 	OS,
 
-	// 2 disks across which the ZFS pool will be running, with RAIDZ-1 enabled.
-	// We'll carve out ZFS volumes for : ContainerD's image store, pod logs and pod ephemeral volumes.
-	// Remaining of the ZFS pool will be used by OpenEBS ZFS LocalPV provisioner CSI driver.
+	// 2 disks across which the ZFS pool runs, as a ZFS mirror
+	// (two-disk RAID-1 semantics — the executor template does
+	// `zpool create primary mirror …`; raidz-1 needs ≥ 3 disks
+	// anyway). We carve out ZFS volumes for ContainerD's image
+	// store, pod logs, and pod ephemeral volumes; the remainder
+	// backs the OpenEBS ZFS LocalPV provisioner CSI driver.
 	ZFS,
 
 	// Disks across which the CEPH cluster will be running.
@@ -39,14 +42,29 @@ type StoragePlanExecutorTemplateValues struct {
 
 // Returns the UI tree, which can be used to pretty print the storage-plan.
 //
-// Used by the standalone kubeaid-storagectl tool (one plan per print);
-// the group-level StoragePlans.PrettyPrint builds its tree from
-// Disk.getUITree directly so it can collapse identical layouts across
-// servers in a node-group into one display.
+// Used by the standalone kubeaid-storagectl tool: one plan per print,
+// per-disk allocation visible because that tool's job is to inspect
+// individual servers. The bootstrap-time group-level rendering lives
+// in StoragePlans.PrettyPrint and uses the compact composition + ZFS
+// sub-volume summary instead.
 func (s *StoragePlan) getUITree() *tree.Tree {
 	t := tree.Root(s.ServerID)
 	for _, disk := range s.Disks {
-		t = t.Child(disk.getUITree())
+		label := disk.Name
+		if disk.Unallocated() > 0 {
+			label += fmt.Sprintf(" (%d GB unallocated)", disk.Unallocated())
+		}
+		diskTree := tree.Root(label)
+		if disk.Allocations.OS > 0 {
+			diskTree = diskTree.Child(fmt.Sprintf("OS   : %d GB", disk.Allocations.OS))
+		}
+		if disk.Allocations.ZFS > 0 {
+			diskTree = diskTree.Child(fmt.Sprintf("ZFS  : %d GB", disk.Allocations.ZFS))
+		}
+		if disk.Allocations.CEPH > 0 {
+			diskTree = diskTree.Child(fmt.Sprintf("CEPH : %d GB", disk.Allocations.CEPH))
+		}
+		t = t.Child(diskTree)
 	}
 	return t
 }

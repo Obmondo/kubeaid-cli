@@ -3,13 +3,7 @@
 
 package storageplan
 
-import (
-	"fmt"
-
-	"github.com/charmbracelet/lipgloss/tree"
-
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-)
+import "github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 
 type (
 	Disk struct {
@@ -66,29 +60,6 @@ func (d *Disk) Allocated() int {
 // Returns the amount of unallocated storage.
 func (d *Disk) Unallocated() int {
 	return (d.Size - d.Allocated())
-}
-
-// getUITree renders the per-disk allocation subtree: disk-name label
-// (with " (N GB unallocated)" suffix when applicable) and one child
-// per non-zero allocation (OS / ZFS / CEPH). Shared by
-// StoragePlan.getUITree (per-server display) and
-// StoragePlans.PrettyPrint (collapsed per-group display).
-func (d *Disk) getUITree() *tree.Tree {
-	label := d.Name
-	if d.Unallocated() > 0 {
-		label += fmt.Sprintf(" (%d GB unallocated)", d.Unallocated())
-	}
-	t := tree.Root(label)
-	if d.Allocations.OS > 0 {
-		t = t.Child(fmt.Sprintf("OS   : %d GB", d.Allocations.OS))
-	}
-	if d.Allocations.ZFS > 0 {
-		t = t.Child(fmt.Sprintf("ZFS  : %d GB", d.Allocations.ZFS))
-	}
-	if d.Allocations.CEPH > 0 {
-		t = t.Child(fmt.Sprintf("CEPH : %d GB", d.Allocations.CEPH))
-	}
-	return t
 }
 
 // Assigns priority scores to the disk, for OS and ZFS installations.
