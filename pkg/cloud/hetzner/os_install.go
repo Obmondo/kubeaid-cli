@@ -10,16 +10,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"time"
-
-	"k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type (
@@ -211,41 +207,25 @@ func (h *Hetzner) waitForHBMSReachable(
 //     rebooted into the target OS yet), and showing a touch prompt
 //     every 20s for failing connections would carpet the operator's
 //     terminal.
-//  2. Once TCP is open, raise the "Tap YubiKey" hint (no-op when the
-//     agent has no yubikey-backed identity) and run the real SSH
-//     handshake. The hint clears as soon as the handshake completes.
+//  2. Once TCP is open, route through the per-host sshPool: the touch
+//     prompt fires on the FIRST successful open per host (cached for
+//     reuse by later prereq-infra steps like generateStoragePlan);
+//     subsequent polls / ops on the same host don't touch the card.
 //
-// Auth: kubeone's SSH client gets both the agent socket (yubikey-
+// Auth: the pool's opener supplies both the agent socket (yubikey-
 // resident keys — operator's PrivateKey is empty in that case; see
-// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey
-// bytes (file-based key path). Same shape as waitForNATGatewaySSH in
+// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey bytes
+// (file-based key path). Same shape as waitForNATGatewaySSH in
 // server.go.
 func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey string) bool {
 	if !isTCPPortOpen(ctx, address, 22, 3*time.Second) {
 		return false
 	}
 
-	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch(
+	_, err := h.sshPool.getOrOpen(ctx, address, privateKey,
 		fmt.Sprintf("verify Hetzner bare-metal server at %s reachable via SSH", address),
 	)
-	defer releaseTouchHint()
-
-	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
-		Context: ctx,
-
-		Hostname:    address,
-		Port:        22,
-		Username:    "root",
-		AgentSocket: os.Getenv(constants.EnvNameSSHAuthSock),
-		PrivateKey:  []byte(privateKey),
-
-		Timeout: 5 * time.Second,
-	})
-	if err != nil {
-		return false
-	}
-	connection.Close()
-	return true
+	return err == nil
 }
 
 // isTCPPortOpen returns true when a TCP connection to address:port

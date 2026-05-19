@@ -25,6 +25,14 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	bar := progress.FromCtx(ctx)
 
+	// SSH connections opened during this phase (isHBMSReachable's
+	// post-install probe, generateStoragePlan's disk scan) live in
+	// h.sshPool; the same authenticated channel is reused across ops
+	// targeting the same host. Reclaim them on every exit path —
+	// success, error, panic — so we don't leak goroutines / file
+	// descriptors past the phase boundary.
+	defer h.sshPool.closeAll()
+
 	if config.UsingHetznerBareMetal() {
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		if err := h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
