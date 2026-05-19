@@ -23,16 +23,32 @@ import (
 //nolint:gocognit,nestif
 func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	bar := progress.FromCtx(ctx)
 
 	if config.UsingHetznerBareMetal() {
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		if err := h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
 			return fmt.Errorf("creating Hetzner Bare Metal SSH key: %w", err)
 		}
+		bar.Substep("Registered Hetzner Bare Metal SSH key")
 
-		if err := h.InstallOSOnAllHBMS(ctx); err != nil {
+		// OS install is the longest single step in the bare-metal
+		// path: 8-12 minutes per server in parallel. Surface a
+		// transient "installing…" line under the spinner so the
+		// operator can see why the bar's been sitting at the same
+		// step for several minutes; the count is rendered up front
+		// so they have a sense of the wall-clock floor.
+		bmHostCount := countBareMetalHosts(hetznerConfig)
+		releaseInstall := bar.InProgress(fmt.Sprintf(
+			"Installing OS on %d bare-metal server(s) (~8-12 min per server, in parallel)",
+			bmHostCount,
+		))
+		err := h.InstallOSOnAllHBMS(ctx)
+		releaseInstall()
+		if err != nil {
 			return fmt.Errorf("installing OS on HBMS: %w", err)
 		}
+		bar.Substep(fmt.Sprintf("Installed OS on %d bare-metal server(s)", bmHostCount))
 
 		if err := h.GenerateStoragePlans(ctx, hetznerConfig); err != nil {
 			return fmt.Errorf("generating storage plans: %w", err)
@@ -40,8 +56,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 
 		hydrateNodeGroupLabels(hetznerConfig)
 	}
-
-	bar := progress.FromCtx(ctx)
 
 	// HCloud Network is only created for modes that actually host
 	// HCloud servers (hcloud, hybrid). Pure bare-metal stays nil here
@@ -99,6 +113,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		if err != nil {
 			return fmt.Errorf("creating VSwitch: %w", err)
 		}
+		bar.Substep("Created Hetzner Bare Metal vSwitch")
 
 		// vSwitch ↔ HCloud Network only matters when there's a
 		// Network — i.e. hybrid mode. Pure bare-metal stops at the
@@ -108,23 +123,19 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 			if err := h.ConnectVSwitchWithHetznerNetwork(ctx, network); err != nil {
 				return fmt.Errorf("connecting VSwitch with Hetzner Network: %w", err)
 			}
+			bar.Substep("Connected vSwitch to Hetzner Network")
 		}
 
-		if config.ControlPlaneInHetznerBareMetal() {
-			for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
-				if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
-					return fmt.Errorf("attaching control-plane server %s to VSwitch: %w", host.ServerID, err)
-				}
-			}
+		bmHostCount := countBareMetalHosts(hetznerConfig)
+		releaseAttach := bar.InProgress(fmt.Sprintf(
+			"Attaching %d bare-metal server(s) to vSwitch", bmHostCount,
+		))
+		attachErr := attachAllBareMetalServersToVSwitch(ctx, h, hetznerConfig, vswitchID)
+		releaseAttach()
+		if attachErr != nil {
+			return attachErr
 		}
-
-		for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
-			for _, host := range nodeGroup.BareMetalHosts {
-				if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
-					return fmt.Errorf("attaching node-group server %s to VSwitch: %w", host.ServerID, err)
-				}
-			}
-		}
+		bar.Substep(fmt.Sprintf("Attached %d bare-metal server(s) to vSwitch", bmHostCount))
 	}
 
 	// Workload-cluster-connecting-to-VPN: attach the existing VPN
@@ -150,6 +161,49 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		}
 	}
 
+	return nil
+}
+
+// countBareMetalHosts counts every bare-metal host declared on the
+// Hetzner config — both the CP block (when control-plane is on BM)
+// and every BM node-group. Used to label progress-bar lines so the
+// operator knows how many servers are involved in a parallel step.
+func countBareMetalHosts(hetznerConfig *config.HetznerConfig) int {
+	count := 0
+	if config.ControlPlaneInHetznerBareMetal() {
+		count += len(hetznerConfig.ControlPlane.BareMetal.BareMetalHosts)
+	}
+	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
+		count += len(nodeGroup.BareMetalHosts)
+	}
+	return count
+}
+
+// attachAllBareMetalServersToVSwitch walks the CP + every BM node-
+// group and registers each host against vswitchID. Extracted so the
+// progress-bar caller can wrap the whole walk in a single
+// InProgress / Substep pair — Robot's vSwitch attach is one call
+// per server, so the count is what the operator sees moving.
+func attachAllBareMetalServersToVSwitch(
+	ctx context.Context,
+	h *Hetzner,
+	hetznerConfig *config.HetznerConfig,
+	vswitchID int,
+) error {
+	if config.ControlPlaneInHetznerBareMetal() {
+		for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
+			if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
+				return fmt.Errorf("attaching control-plane server %s to VSwitch: %w", host.ServerID, err)
+			}
+		}
+	}
+	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
+		for _, host := range nodeGroup.BareMetalHosts {
+			if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
+				return fmt.Errorf("attaching node-group server %s to VSwitch: %w", host.ServerID, err)
+			}
+		}
+	}
 	return nil
 }
 
