@@ -86,8 +86,16 @@ type (
 	}
 
 	HetznerCredentials struct {
+		// APIToken is the HCloud Cloud-API token; required for any
+		// mode that touches HCloud (hcloud, hybrid). Pure bare-metal
+		// clusters don't talk to the HCloud API at all and may leave
+		// this empty — the requirement is enforced via cross-mode
+		// validation in pkg/config/parser/validate.go, not by the
+		// struct-level notblank tag, since "required" here is
+		// conditional on cloud.hetzner.mode.
+		//
 		//nolint:gosec // This struct intentionally models user-provided Hetzner credentials.
-		APIToken string                   `yaml:"apiToken" validate:"notblank"`
+		APIToken string                   `yaml:"apiToken"`
 		Robot    *HetznerRobotCredentials `yaml:"robot"`
 	}
 

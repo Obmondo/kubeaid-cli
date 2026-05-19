@@ -103,6 +103,48 @@ func TestRenderSecretsQuotesYAMLMetacharacters(t *testing.T) {
 	}
 }
 
+// TestRenderSecretsPureBareMetalSkipsAPIToken proves that the
+// prompt-time form's "hide API-token input for pure-BM" pairs
+// cleanly with the secrets template — no apiToken line is rendered
+// for pure bare-metal clusters, since that mode doesn't touch the
+// HCloud API. Robot creds still render. The resulting YAML must
+// parse and satisfy struct validation (notblank is gone from
+// APIToken; only cross-mode validation in pkg/config/parser/
+// validate.go enforces it for hcloud / hybrid).
+func TestRenderSecretsPureBareMetalSkipsAPIToken(t *testing.T) {
+	cfg := &PromptedConfig{
+		CloudProvider:        "hetzner",
+		HetznerMode:          "bare-metal",
+		HetznerAPIToken:      "", // pure-BM: input hidden, value empty
+		HetznerRobotUser:     "u",
+		HetznerRobotPassword: "p",
+	}
+	dir := t.TempDir()
+	require.NoError(t, writeConfigFiles(dir, cfg))
+
+	body, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(body), "apiToken",
+		"pure-BM secrets.yaml must not carry an apiToken line — raw bytes:\n%s", string(body))
+	assert.Contains(t, string(body), `user: "u"`)
+	assert.Contains(t, string(body), `password: "p"`)
+
+	parsed := &config.SecretsConfig{}
+	require.NoError(t, yaml.Unmarshal(body, parsed))
+	require.NotNil(t, parsed.Hetzner, "hetzner: block must still render")
+	assert.Empty(t, parsed.Hetzner.APIToken, "APIToken must parse as empty")
+	require.NotNil(t, parsed.Hetzner.Robot)
+	assert.Equal(t, "u", parsed.Hetzner.Robot.User)
+
+	// Struct validation must pass — apiToken's notblank tag is gone,
+	// and the cross-mode check in pkg/config/parser/validate.go only
+	// fires when UsingHCloud() (irrelevant for this pure-BM case).
+	v := validatorV10.New(validatorV10.WithRequiredStructEnabled())
+	require.NoError(t, v.RegisterValidation("notblank", nonStandardValidators.NotBlank))
+	assert.NoError(t, v.Struct(parsed))
+}
+
 // TestRenderSecretsOmitsRobotWhenIncomplete proves the defensive
 // guard: if user or password is missing (a half-state we don't
 // expect to hit but shouldn't render either), the whole robot block

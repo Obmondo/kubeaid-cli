@@ -99,26 +99,6 @@ func TestCreateHetznerBareMetalSSHKey(t *testing.T) {
 			},
 		},
 		{
-			name:    "mismatched name with same fingerprint returns error",
-			keyName: "my-key",
-			sshKeyPair: config.SSHKeyPairConfig{
-				Fingerprint: "aa:bb:cc:dd",
-			},
-			handler: func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == robotKeyPath && r.Method == http.MethodGet {
-					w.WriteHeader(http.StatusOK)
-					body, _ := json.Marshal(GetKeysResponse{
-						{Key: Key{Name: "different-name", Fingerprint: "aa:bb:cc:dd"}},
-					})
-					_, _ = w.Write(body)
-					return
-				}
-				w.WriteHeader(http.StatusNotFound)
-			},
-			wantErr:    true,
-			wantErrMsg: "different name but same fingerprint",
-		},
-		{
 			name:    "mismatched fingerprint with same name returns error",
 			keyName: "my-key",
 			sshKeyPair: config.SSHKeyPairConfig{
@@ -207,4 +187,48 @@ func TestCreateHetznerBareMetalSSHKey(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestCreateHetznerBareMetalSSHKey_ReusesExistingByFingerprint covers
+// the same-fingerprint-different-name idempotency path separately
+// because it has to mutate the package-level config.ParsedGeneralConfig
+// — running in the same parallel group as the rest would race that
+// global. The reuse path is the common case for operators sharing one
+// SSH key (yubikey, or a hand-onboarded entry from a prior cluster)
+// across multiple Robot accounts / clusters.
+func TestCreateHetznerBareMetalSSHKey_ReusesExistingByFingerprint(t *testing.T) {
+	orig := config.ParsedGeneralConfig
+	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
+
+	const existingName = "operator-key"
+	config.ParsedGeneralConfig = &config.GeneralConfig{
+		Cloud: config.CloudConfig{
+			Hetzner: &config.HetznerConfig{
+				SSHKeyPair: config.HetznerSSHKeyPair{Name: "my-key"},
+			},
+		},
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == robotKeyPath && r.Method == http.MethodGet {
+			w.WriteHeader(http.StatusOK)
+			body, _ := json.Marshal(GetKeysResponse{
+				{Key: Key{Name: existingName, Fingerprint: "aa:bb:cc:dd"}},
+			})
+			_, _ = w.Write(body)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+
+	h, server := newTestHetznerWithRobotServer(handler)
+	defer server.Close()
+
+	err := h.CreateHetznerBareMetalSSHKey(context.Background(), "my-key", config.SSHKeyPairConfig{
+		Fingerprint: "aa:bb:cc:dd",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, existingName,
+		config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name,
+		"cfg.SSHKeyPair.Name must be rewritten to the Robot entry's name")
 }

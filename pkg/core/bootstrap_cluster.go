@@ -56,18 +56,25 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"NetBird preflight failed")
 
 	// Pre-flight: when the user opted into OIDC, probe Keycloak's
-	// discovery endpoint before any infrastructure is touched.
-	// Catches typo'd issuer URLs / unreachable Keycloak before
-	// Hetzner VMs (etc.) are provisioned.
+	// discovery endpoint before any infrastructure is touched —
+	// catches typo'd issuer URLs / unreachable Keycloak before
+	// Hetzner VMs (etc.) are provisioned. Defense-in-depth: the
+	// config-prompt already probed the same URL; this re-check
+	// catches drift between prompt-write and bootstrap-run
+	// (NetBird went down, operator hand-edited issuerUrl).
 	//
-	// Skipped entirely (no spinner step) when:
+	// Runs silently — no bar.Describe — because the success case is
+	// the boring 99 % path and progress-bar real estate is better
+	// spent on steps the operator actually waits on. The probe is
+	// fast (a single HTTPS GET) and the failure path surfaces a
+	// clear error via assert.AssertErrNil.
+	//
+	// Skipped entirely when:
 	//   - apiServer.oidc isn't set, OR
 	//   - cluster.keycloak.mode == managed (the issuer is provisioned
 	//     by THIS bootstrap run; probing now would NXDOMAIN /
-	//     TLS-mismatch). ValidateOIDCDiscovery has the same internal
-	//     skip but the spinner step would still flash.
+	//     TLS-mismatch).
 	if shouldValidateOIDCNow() {
-		bar.Describe("Validating OIDC issuer")
 		assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
 			"OIDC issuer validation failed")
 	}

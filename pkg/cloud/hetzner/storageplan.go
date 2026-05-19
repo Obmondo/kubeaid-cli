@@ -7,9 +7,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"time"
-
-	"k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
@@ -114,20 +111,19 @@ func (h *Hetzner) generateStoragePlan(ctx context.Context,
 		return nil, fmt.Errorf("getting server IP: %w", err)
 	}
 
-	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
-		Context: ctx,
-
-		Hostname:   address,
-		Port:       22,
-		Username:   "root",
-		PrivateKey: []byte(privateKey),
-
-		Timeout: time.Second * 10,
-	})
+	// Reuse the SSH connection isHBMSReachable opened during the
+	// install-wait phase. Cache-hit ⇒ no new TCP+KEX, no new yubikey
+	// touch. If the cache somehow missed (operator skipped the OS
+	// install via idempotency, host SSH-reachable from the start),
+	// the pool opens fresh and tells the operator with a touch hint;
+	// the same connection then services every storage-plan command
+	// (lsblk + ethtool + …) over its single authenticated channel.
+	connection, err := h.sshPool.getOrOpen(ctx, address, privateKey,
+		fmt.Sprintf("scan disks on Hetzner bare-metal server at %s", address),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("opening SSH connection to %s: %w", address, err)
 	}
-	defer connection.Close()
 
 	commandExecutor := commandexecutor.NewSSHCommandExecutor(connection)
 

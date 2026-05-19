@@ -577,6 +577,7 @@ func TestValidateHCloudConfig(t *testing.T) {
 	tests := []struct {
 		name       string
 		general    *config.GeneralConfig
+		secrets    *config.SecretsConfig
 		wantErr    bool
 		wantErrSub string
 	}{
@@ -589,6 +590,21 @@ func TestValidateHCloudConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantErrSub: "HCloud specific details not provided",
+		},
+		{
+			name: "missing HCloud API token is rejected (cross-mode validation)",
+			general: &config.GeneralConfig{
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{
+						Mode:         constants.HetznerModeHCloud,
+						HCloud:       &config.HCloudConfig{},
+						ControlPlane: config.HetznerControlPlane{HCloud: &config.HCloudControlPlane{}},
+					},
+				},
+			},
+			secrets:    &config.SecretsConfig{Hetzner: &config.HetznerCredentials{}},
+			wantErr:    true,
+			wantErrSub: "hetzner.apiToken is required",
 		},
 		{
 			name: "control-plane in HCloud but no HCloud control-plane details is rejected",
@@ -640,8 +656,24 @@ func TestValidateHCloudConfig(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			origGeneral := config.ParsedGeneralConfig
-			t.Cleanup(func() { config.ParsedGeneralConfig = origGeneral })
+			origSecrets := config.ParsedSecretsConfig
+			t.Cleanup(func() {
+				config.ParsedGeneralConfig = origGeneral
+				config.ParsedSecretsConfig = origSecrets
+			})
 			config.ParsedGeneralConfig = tc.general
+
+			// Default to a valid stub secrets so cases that don't
+			// care about the apiToken precondition still exercise
+			// their original assertion. The "missing token"
+			// regression overrides this with an empty token.
+			secrets := tc.secrets
+			if secrets == nil {
+				secrets = &config.SecretsConfig{
+					Hetzner: &config.HetznerCredentials{APIToken: "stub-token"},
+				}
+			}
+			config.ParsedSecretsConfig = secrets
 
 			err := validateHCloudConfig()
 			if tc.wantErr {

@@ -51,7 +51,7 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 
 		HetznerBMCPServerIDs:          []string{"1234567", "1234568", "1234569"},
 		HetznerBMCPPrivateIPs:         []string{"10.0.1.1", "10.0.1.2", "10.0.1.3"},
-		HetznerBMNodeGroupName:        "bm-acme-workers",
+		HetznerBMNodeGroupName:        "workers",
 		HetznerBMNodeGroupServerIDs:   []string{"1234570"},
 		HetznerBMNodeGroupPrivateIPs:  []string{"10.0.1.10"},
 		HetznerBMEndpointHost:         "1.2.3.4",
@@ -106,7 +106,7 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, `subnetCIDRBlock: "10.0.1.0/24"`)
 
 	// Bare-metal node group.
-	assert.Contains(t, general, "name: bm-acme-workers")
+	assert.Contains(t, general, "name: workers")
 	assert.Contains(t, general, `serverID: "1234570"`)
 	assert.Contains(t, general, "privateIP: 10.0.1.10")
 

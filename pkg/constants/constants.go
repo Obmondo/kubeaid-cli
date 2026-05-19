@@ -241,7 +241,18 @@ const (
 	// Bump this constant when a newer LTS becomes available in the HRobot catalogue.
 	HBMSInstallDistributionLatestUbuntu = "Ubuntu 24.04 LTS base"
 	HBMSOSInstallationPollInterval      = 20 * time.Second
-	HBMSOSInstallationMaxWaitTime       = 12 * time.Minute
+	// HBMSOSInstallationMaxWaitTime is the per-server upper bound the
+	// post-reset SSH probe waits for the freshly-installed OS to come
+	// up. Hetzner installimage takes 8-15 min on normal hardware
+	// (1-3 min reset → rescue boot, 5-10 min partition + debootstrap
+	// + first-boot package install, 1-2 min first boot + sshd up).
+	// 20 min absorbs the slow tail (HDD instead of NVMe, apt mirror
+	// in a busier DC, wipeDisks=true triggering secure-erase before
+	// partitioning) with margin to spare — dying mid-bootstrap is
+	// worse than waiting another few minutes on an install that
+	// eventually completes. Don't unbump without a corresponding
+	// investigation note.
+	HBMSOSInstallationMaxWaitTime = 20 * time.Minute
 )
 
 // HCloudARMLocations lists HCloud datacenters that stock ARM

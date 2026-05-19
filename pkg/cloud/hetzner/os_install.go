@@ -7,12 +7,11 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
-
-	"k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
@@ -84,7 +83,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("os installation failed on %d server(s): %v", len(errs), errs)
+		return fmt.Errorf("OS installation failed on %d Hetzner bare-metal server(s): %v", len(errs), errs)
 	}
 
 	slog.InfoContext(ctx, "All Hetzner Bare Metal servers are ready")
@@ -108,11 +107,11 @@ func (h *Hetzner) installOSOnHBMS(
 	}
 
 	if h.isHBMSReachable(hbmsCtx, address, privateKey) {
-		slog.InfoContext(hbmsCtx, "HBMS already reachable via SSH, skipping OS installation")
+		slog.InfoContext(hbmsCtx, "Hetzner bare-metal server already reachable via SSH, skipping OS installation")
 		return nil
 	}
 
-	slog.InfoContext(hbmsCtx, "Installing OS on HBMS")
+	slog.InfoContext(hbmsCtx, "Installing OS on Hetzner bare-metal server")
 
 	if err := h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
@@ -124,7 +123,7 @@ func (h *Hetzner) installOSOnHBMS(
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
 
-	slog.InfoContext(hbmsCtx, "OS installation completed, HBMS is reachable")
+	slog.InfoContext(hbmsCtx, "OS installation completed, Hetzner bare-metal server is reachable")
 	return nil
 }
 
@@ -165,10 +164,10 @@ func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
 		}).
 		Post(fmt.Sprintf("/reset/%s", serverID))
 	if err != nil {
-		return fmt.Errorf("resetting HBMS %s: %w", serverID, err)
+		return fmt.Errorf("resetting Hetzner bare-metal server %s: %w", serverID, err)
 	}
 	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("resetting HBMS %s: unexpected status %d", serverID, response.StatusCode())
+		return fmt.Errorf("resetting Hetzner bare-metal server %s: unexpected status %d", serverID, response.StatusCode())
 	}
 
 	slog.InfoContext(ctx, "Triggered hardware reset")
@@ -188,10 +187,10 @@ func (h *Hetzner) waitForHBMSReachable(
 		}
 
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("timed out waiting for HBMS %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
+			return fmt.Errorf("timed out waiting for Hetzner bare-metal server %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
 		}
 
-		slog.InfoContext(ctx, "HBMS not yet reachable after OS installation, will retry...",
+		slog.InfoContext(ctx, "Hetzner bare-metal server not yet reachable after OS installation, will retry...",
 			slog.Duration("interval", constants.HBMSOSInstallationPollInterval),
 		)
 		time.Sleep(constants.HBMSOSInstallationPollInterval)
@@ -199,20 +198,47 @@ func (h *Hetzner) waitForHBMSReachable(
 }
 
 // isHBMSReachable attempts a single SSH connection to check if the HBMS is reachable.
+//
+// Two-phase to keep the yubikey-touch UX sane:
+//
+//  1. Cheap TCP probe on port 22 — no auth, no signing, no card touch.
+//     The vast majority of polls during the 8-15 min install land here
+//     (rescue is up but sshd hasn't started yet, or the install hasn't
+//     rebooted into the target OS yet), and showing a touch prompt
+//     every 20s for failing connections would carpet the operator's
+//     terminal.
+//  2. Once TCP is open, route through the per-host sshPool: the touch
+//     prompt fires on the FIRST successful open per host (cached for
+//     reuse by later prereq-infra steps like generateStoragePlan);
+//     subsequent polls / ops on the same host don't touch the card.
+//
+// Auth: the pool's opener supplies both the agent socket (yubikey-
+// resident keys — operator's PrivateKey is empty in that case; see
+// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey bytes
+// (file-based key path). Same shape as waitForNATGatewaySSH in
+// server.go.
 func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey string) bool {
-	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
-		Context: ctx,
+	if !isTCPPortOpen(ctx, address, 22, 3*time.Second) {
+		return false
+	}
 
-		Hostname:   address,
-		Port:       22,
-		Username:   "root",
-		PrivateKey: []byte(privateKey),
+	_, err := h.sshPool.getOrOpen(ctx, address, privateKey,
+		fmt.Sprintf("verify Hetzner bare-metal server at %s reachable via SSH", address),
+	)
+	return err == nil
+}
 
-		Timeout: 5 * time.Second,
-	})
+// isTCPPortOpen returns true when a TCP connection to address:port
+// succeeds within timeout. Cheap reachability check used to gate the
+// (more expensive, yubikey-touching) SSH handshake — without it, every
+// poll during the OS install would either prompt the operator for a
+// touch or noisily fail the SSH handshake on a closed port.
+func isTCPPortOpen(ctx context.Context, address string, port int, timeout time.Duration) bool {
+	d := net.Dialer{Timeout: timeout}
+	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return false
 	}
-	connection.Close()
+	_ = conn.Close()
 	return true
 }

@@ -35,22 +35,27 @@ import (
 // write here. Mirrors the pattern used for keycloak-admin on managed
 // VPN clusters.
 //
-// No-op for non-Hetzner clusters and when the API token isn't set
-// (the validator should have caught that earlier, but stay defensive).
+// No-op for non-Hetzner clusters. The HCloud API token is required
+// for any mode that talks to HCloud (hcloud, hybrid) — pure
+// bare-metal skips it entirely since ccm-hetzner is the only CCM
+// deployed and it reads Robot creds, not the hcloud key.
 func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Client) error {
 	hetznerSecrets := config.ParsedSecretsConfig.Hetzner
 	hetznerCfg := config.ParsedGeneralConfig.Cloud.Hetzner
 	if hetznerSecrets == nil || hetznerCfg == nil {
 		return nil
 	}
-	if hetznerSecrets.APIToken == "" {
-		return fmt.Errorf(
-			"secrets.yaml: hetzner.apiToken is empty — required for kube-system/cloud-credentials so the HCloud CCM can start",
-		)
-	}
 
-	stringData := map[string]string{
-		"hcloud": hetznerSecrets.APIToken,
+	stringData := map[string]string{}
+
+	if config.UsingHCloud() {
+		if hetznerSecrets.APIToken == "" {
+			return fmt.Errorf(
+				"secrets.yaml: hetzner.apiToken is empty — required for cloud.hetzner.mode=%q so the HCloud CCM can start",
+				hetznerCfg.Mode,
+			)
+		}
+		stringData["hcloud"] = hetznerSecrets.APIToken
 	}
 
 	// HCloud Network name — required when the CCM is configured to

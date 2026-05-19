@@ -21,9 +21,10 @@ import (
 // constants since the route table repeats them in two cases each
 // (collection vs item) and goconst would otherwise complain.
 const (
-	pathSegClients      = "clients"
-	pathSegClientScopes = "client-scopes"
-	pathSegUsers        = "users"
+	pathSegClients         = "clients"
+	pathSegClientScopes    = "client-scopes"
+	pathSegUsers           = "users"
+	pathSegProtocolMappers = "protocol-mappers"
 )
 
 // fakeKeycloak is an in-memory mock of just enough of Keycloak's
@@ -515,12 +516,12 @@ func (f *fakeKeycloak) handleClientScopesList(w http.ResponseWriter, r *http.Req
 func (f *fakeKeycloak) handleClientScopeByID(w http.ResponseWriter, r *http.Request, realm string, parts []string) {
 	scopeID := parts[0]
 	switch {
-	case len(parts) == 2 && parts[1] == "protocol-mappers":
+	case len(parts) == 2 && parts[1] == pathSegProtocolMappers:
 		f.handleScopeProtocolMappersList(w, r, realm, scopeID)
-	case len(parts) == 3 && parts[1] == "protocol-mappers" && parts[2] == "models":
+	case len(parts) == 3 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
 		// Keycloak's POST endpoint is /protocol-mappers/models
 		f.handleScopeProtocolMapperCreate(w, r, realm, scopeID)
-	case len(parts) == 4 && parts[1] == "protocol-mappers" && parts[2] == "models":
+	case len(parts) == 4 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
 		// /protocol-mappers/models/{mapperID} — PUT updates the
 		// named mapper in-place. Matches gocloak.UpdateClientScopeProtocolMapper.
 		f.handleScopeProtocolMapperUpdate(w, r, realm, scopeID, parts[3])

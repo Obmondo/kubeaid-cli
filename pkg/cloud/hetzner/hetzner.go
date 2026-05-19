@@ -59,12 +59,19 @@ type Hetzner struct {
 	serverClient       serverClient
 	loadBalancerClient loadBalancerClient
 
+	// sshPool caches SSH connections per bare-metal host for the
+	// lifetime of a prereq-infra phase. See pkg/cloud/hetzner/ssh_pool.go
+	// for the lifecycle contract — ProvisionPrerequisiteInfrastructure
+	// defers sshPool.closeAll() to reclaim cached connections.
+	sshPool *sshConnPool
+
 	sleepFunc func(time.Duration)
 }
 
 func NewHetznerCloudProvider() cloud.CloudProvider {
 	hetznerClient := &Hetzner{
 		sleepFunc: time.Sleep,
+		sshPool:   newSSHConnPool(),
 	}
 
 	// Construct HCloud client, if we're using HCloud.

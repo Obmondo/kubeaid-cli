@@ -715,9 +715,16 @@ func renderServerInfo(info *robotServerInfo) string {
 // promptWorkerNodeGroupName collects the single worker node-group
 // name. One group only at prompt time — multi-group setups are
 // supported by editing general.yaml after generation.
+//
+// Default is just "workers" rather than "<cluster-name>-workers":
+// the cluster name already lives in cluster.name and shows up in
+// every label / annotation that needs cluster context; baking it
+// into the node-group label again only adds noise (operators see
+// "kbm-obmondo-com / kbm-obmondo-com-workers" in the storage-plan
+// tree, kubectl get nodes, etc.).
 func promptWorkerNodeGroupName(cfg *PromptedConfig) error {
 	if cfg.HetznerBMNodeGroupName == "" {
-		cfg.HetznerBMNodeGroupName = cfg.ClusterName + "-workers"
+		cfg.HetznerBMNodeGroupName = "workers"
 	}
 	return huh.NewForm(
 		huh.NewGroup(

@@ -65,7 +65,7 @@ func TestRenderHetznerHybridVPN(t *testing.T) {
 		HetznerVSwitchVLANID:     "4001",
 		HetznerVSwitchSubnetCIDR: "10.0.1.0/24",
 
-		HetznerBMNodeGroupName:       "hybrid-acme-workers",
+		HetznerBMNodeGroupName:       "workers",
 		HetznerBMNodeGroupServerIDs:  []string{"1234570", "1234571"},
 		HetznerBMNodeGroupPrivateIPs: []string{"10.0.1.10", "10.0.1.11"},
 		HetznerBMServerPublicIPs: map[string]string{
@@ -99,7 +99,7 @@ func TestRenderHetznerHybridVPN(t *testing.T) {
 
 	// Worker node group renders alongside an empty hcloud node group.
 	assert.Contains(t, general, "hcloud: []")
-	assert.Contains(t, general, "name: hybrid-acme-workers")
+	assert.Contains(t, general, "name: workers")
 	assert.Contains(t, general, `serverID: "1234570"`)
 	assert.Contains(t, general, "privateIP: 10.0.1.10")
 	assert.Contains(t, general, "Robot main IP: 5.5.5.10")

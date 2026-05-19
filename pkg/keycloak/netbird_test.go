@@ -117,7 +117,7 @@ func TestReconcileNetBird_GroupsScopeAndMapper(t *testing.T) {
 	}))
 
 	// Scope exists with the token-scope attribute on.
-	groupsScope := findScopeByName(t, fake, "acme", NetBirdGroupsScopeName)
+	groupsScope := findScopeByName(t, fake, NetBirdGroupsScopeName)
 	require.NotNil(t, groupsScope.ClientScopeAttributes,
 		"groups scope must carry the include.in.token.scope attribute")
 	require.NotNil(t, groupsScope.ClientScopeAttributes.IncludeInTokenScope)
@@ -143,14 +143,14 @@ func TestReconcileNetBird_GroupsScopeAndMapper(t *testing.T) {
 	}
 
 	// Attached to netbird-client as a default scope.
-	nbClient := findClientInFake(t, fake, "acme", netBirdClientID)
+	nbClient := findClientInFake(t, fake, netBirdClientID)
 	require.NotNil(t, nbClient.DefaultClientScopes)
 	assert.Contains(t, *nbClient.DefaultClientScopes, NetBirdGroupsScopeName,
 		"groups must be a default scope on netbird-client")
 
 	// netbird-backend doesn't issue user tokens → must NOT inherit
 	// the scope (matches the docstring + NetBird's docs Step 3).
-	nbBackend := findClientInFake(t, fake, "acme", "netbird-backend")
+	nbBackend := findClientInFake(t, fake, "netbird-backend")
 	if nbBackend.DefaultClientScopes != nil {
 		assert.NotContains(t, *nbBackend.DefaultClientScopes, NetBirdGroupsScopeName,
 			"groups scope must not bleed onto the backend client")
@@ -184,7 +184,7 @@ func TestReconcileNetBird_ScopesHaveConsentScreenText(t *testing.T) {
 		NetBirdAPIScopeName:    "API",
 		NetBirdGroupsScopeName: "Groups",
 	} {
-		scope := findScopeByName(t, fake, "acme", scopeName)
+		scope := findScopeByName(t, fake, scopeName)
 		require.NotNilf(t, scope.ClientScopeAttributes,
 			"%s scope must carry attributes", scopeName)
 		require.NotNilf(t, scope.ClientScopeAttributes.ConsentScreenText,
@@ -216,7 +216,7 @@ func TestReconcileNetBird_AudienceMapperHasClientID(t *testing.T) {
 		NetBirdBackendSecret: "s",
 	}))
 
-	apiScope := findScopeByName(t, fake, "acme", NetBirdAPIScopeName)
+	apiScope := findScopeByName(t, fake, NetBirdAPIScopeName)
 	mapper := findMapperByName(t, apiScope, netBirdAudienceMapperName)
 	require.NotNil(t, mapper.ProtocolMappersConfig)
 	require.NotNil(t, mapper.ProtocolMappersConfig.IncludedClientAudience)
@@ -261,7 +261,7 @@ func TestReconcileProtocolMapper_DriftUpdate(t *testing.T) {
 	}))
 	assert.Equal(t, preWrites+1, fake.writeCount, "drift triggers exactly one update")
 
-	apiScope := findScopeByName(t, fake, testRealm, NetBirdAPIScopeName)
+	apiScope := findScopeByName(t, fake, NetBirdAPIScopeName)
 	mapper := findMapperByName(t, apiScope, netBirdAudienceMapperName)
 	require.NotNil(t, mapper.ProtocolMappersConfig)
 	require.NotNil(t, mapper.ProtocolMappersConfig.IncludedClientAudience)
@@ -283,16 +283,16 @@ func TestReconcileProtocolMapper_DriftUpdate(t *testing.T) {
 // audience-mapper assertions above. They keep the test bodies
 // focused on what's interesting (the typed config field), not on
 // the map-traversal mechanics.
-func findScopeByName(t *testing.T, fake *fakeKeycloak, realm, name string) *gocloak.ClientScope {
+func findScopeByName(t *testing.T, fake *fakeKeycloak, name string) *gocloak.ClientScope {
 	t.Helper()
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	for _, s := range fake.scopes[realm] {
+	for _, s := range fake.scopes[testRealm] {
 		if s.Name != nil && *s.Name == name {
 			return s
 		}
 	}
-	t.Fatalf("scope %q not found in realm %q", name, realm)
+	t.Fatalf("scope %q not found in realm %q", name, testRealm)
 	return nil
 }
 

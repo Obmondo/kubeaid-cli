@@ -101,7 +101,7 @@ func TestReconcileClient_DeviceAuthGrantAttribute(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	client := findClientInFake(t, fake, testRealm, "netbird-client")
+	client := findClientInFake(t, fake, "netbird-client")
 	require.NotNil(t, client.Attributes, "Attributes map must be set when DeviceAuthorizationGrantEnabled=true")
 	assert.Equal(t, "true", (*client.Attributes)[keycloakAttrDeviceAuthorizationGrantEnabled])
 }
@@ -129,7 +129,7 @@ func TestEnsureClientDeviceAuthorizationGrant(t *testing.T) {
 	require.NoError(t, r.EnsureClientDeviceAuthorizationGrant(
 		context.Background(), testRealm, "netbird-client", true,
 	))
-	client := findClientInFake(t, fake, testRealm, "netbird-client")
+	client := findClientInFake(t, fake, "netbird-client")
 	require.NotNil(t, client.Attributes)
 	assert.Equal(t, "true", (*client.Attributes)[keycloakAttrDeviceAuthorizationGrantEnabled])
 	assert.Equal(t, preWrites+1, fake.writeCount, "exactly one update write")
@@ -144,16 +144,16 @@ func TestEnsureClientDeviceAuthorizationGrant(t *testing.T) {
 // findClientInFake fetches a stored client by clientId out of the
 // fake. Inlined helper because the existing tests cared about
 // write-count side effects, not the stored representation.
-func findClientInFake(t *testing.T, fake *fakeKeycloak, realm, clientID string) *gocloak.Client {
+func findClientInFake(t *testing.T, fake *fakeKeycloak, clientID string) *gocloak.Client {
 	t.Helper()
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	for _, c := range fake.clients[realm] {
+	for _, c := range fake.clients[testRealm] {
 		if c.ClientID != nil && *c.ClientID == clientID {
 			return c
 		}
 	}
-	t.Fatalf("client %q not found in fake (realm %q)", clientID, realm)
+	t.Fatalf("client %q not found in fake (realm %q)", clientID, testRealm)
 	return nil
 }
 
