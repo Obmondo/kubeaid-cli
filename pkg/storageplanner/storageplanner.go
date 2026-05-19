@@ -212,10 +212,44 @@ func getDisks(
 		return nil, fmt.Errorf("unmarshalling lsblk output: %w", err)
 	}
 
+	// Log the raw lsblk output BEFORE filtering. The
+	// allocate-storage-plan error path otherwise hides single-disk
+	// surprises (operator believes the box has 2 disks; kubeaid-cli
+	// silently dropped one as DiskTypeUnknown because it had a
+	// transport kubeaid-cli doesn't recognise yet, like usb / sas /
+	// virtio under a vendor-customised SKU).
+	if len(lsblkOutput.BlockDevices) == 0 {
+		slog.WarnContext(ctx, "lsblk returned no block devices",
+			slog.String("raw-output", stdout))
+	}
+	for _, row := range lsblkOutput.BlockDevices {
+		slog.InfoContext(ctx, "lsblk row",
+			slog.String("name", row.Name),
+			slog.String("transport", row.TransportType),
+			slog.Bool("rotational", row.RotationalDevice),
+			slog.Int("size-bytes", row.Size),
+			slog.String("partition-table-type", row.PartitionTableType),
+			slog.String("classified-as", row.GetDiskType()),
+		)
+	}
+
 	// Filter out rows which correspond to unknown disk types.
+	// Capture which names get dropped so the error path can surface
+	// them — a "second disk present in lsblk but classified Unknown"
+	// case is otherwise indistinguishable from "second disk missing".
+	var droppedNames []string
 	lsblkOutput.BlockDevices = slices.DeleteFunc(lsblkOutput.BlockDevices, func(row LSBLKOutputRow) bool {
-		return row.GetDiskType() == constants.DiskTypeUnknown
+		drop := row.GetDiskType() == constants.DiskTypeUnknown
+		if drop {
+			droppedNames = append(droppedNames, fmt.Sprintf(
+				"%s (tran=%q, rota=%t)", row.Name, row.TransportType, row.RotationalDevice))
+		}
+		return drop
 	})
+	if len(droppedNames) > 0 {
+		slog.WarnContext(ctx, "Filtered disks with unrecognised type",
+			slog.String("dropped", strings.Join(droppedNames, "; ")))
+	}
 
 	disks := make([]*storageplan.Disk, len(lsblkOutput.BlockDevices))
 	for i, row := range lsblkOutput.BlockDevices {
