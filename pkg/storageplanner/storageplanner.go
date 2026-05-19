@@ -51,7 +51,10 @@ func allocateStoragePlan(
 		d.Allocations.OS += osSize
 	})
 	if err != nil {
-		return nil, fmt.Errorf("couldn't find 2 disks suitable for OS installation (%d GB each) — %s",
+		return nil, fmt.Errorf(
+			"kubeaid-cli requires 2 disks per server for the RAID-1 OS volume + ZFS mirror "+
+				"but couldn't find 2 suitable for OS installation (%d GB each) — %s. "+
+				"If this is a single-disk Hetzner SKU, order a 2-disk SKU or attach an extra drive via Robot",
 			osSize, describeDisks(disks))
 	}
 	s.OS = osDisks
