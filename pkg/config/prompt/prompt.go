@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/huh/spinner"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
@@ -36,6 +37,12 @@ var (
 
 // PromptedConfig holds all the values collected from interactive prompts and auto-detection.
 type PromptedConfig struct {
+	// ConfigsDirectory is the on-disk path the rendered general.yaml
+	// and secrets.yaml are written to. Not rendered into the
+	// templates — held only so the Hetzner bare-metal add-loop can
+	// scan sibling cluster directories for already-used server IDs.
+	ConfigsDirectory string
+
 	// Cluster.
 	ClusterName           string
 	ClusterType           string
@@ -137,7 +144,42 @@ type PromptedConfig struct {
 	HetznerRobotUser     string
 	HetznerRobotPassword string
 
-	// Bare Metal.
+	// HetznerBMKnownServerIDs is the cached Robot inventory fetched
+	// at credential-validation time (on Enter past the password
+	// field). Used to seed huh.Input.Suggestions for server-ID
+	// autocomplete in the BM add-loop. Transient — not rendered into
+	// general.yaml or secrets.yaml.
+	HetznerBMKnownServerIDs []string
+
+	// Hetzner bare-metal — populated only when HetznerMode is
+	// "bare-metal" (and, in the future, "hybrid" for the BM
+	// node-group leg). Lengths line up: CPServerIDs[i] pairs with
+	// CPPrivateIPs[i]; same for NodeGroupServerIDs/NodeGroupPrivateIPs.
+	HetznerBMCPServerIDs          []string
+	HetznerBMCPPrivateIPs         []string
+	HetznerBMNodeGroupName        string
+	HetznerBMNodeGroupServerIDs   []string
+	HetznerBMNodeGroupPrivateIPs  []string
+	HetznerBMEndpointHost         string
+	HetznerBMEndpointIsFailoverIP bool
+	// HetznerBMServerPublicIPs maps a Robot server ID to the public
+	// IPv4 the Robot webservice returned for it at validation time.
+	// Rendered as a `# id NNN → IP` comment alongside each host in
+	// general.yaml so the operator can sanity-check the IDs map to
+	// the boxes they expected. Not load-bearing — bootstrap re-reads
+	// these via the Robot API at run time.
+	HetznerBMServerPublicIPs map[string]string
+
+	// Hetzner vSwitch — required for hybrid mode (kubeaid-cli's
+	// CreateVSwitch is called unconditionally for hybrid) and
+	// reserved for the pure-bare-metal auto-create follow-up.
+	// Hetzner's webservice rejects VLAN IDs outside 4000-4091, so
+	// the prompt validates that range up front.
+	HetznerVSwitchName       string
+	HetznerVSwitchVLANID     string
+	HetznerVSwitchSubnetCIDR string
+
+	// Bare Metal (generic, not Hetzner).
 	BareMetalSSHPort      string
 	BareMetalEndpointHost string
 	BareMetalEndpointPort string
@@ -190,6 +232,8 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	detected := autoDetect()
 
 	cfg := &PromptedConfig{
+		ConfigsDirectory: configsDirectory,
+
 		// SRE defaults.
 		ClusterType:           constants.ClusterTypeWorkload,
 		SSHUsername:           "git",
@@ -572,7 +616,17 @@ func runWorkloadKeycloakForm(cfg *PromptedConfig) error {
 			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
 		}
 
-		probeErr := probeOIDCIssuer(context.Background(), cfg.KeycloakDNS, cfg.KeycloakRealm)
+		// Visible feedback during the probe — without it the form
+		// freezes silently for up to promptOIDCProbeTimeout (10s)
+		// when NetBird is down or the realm is unreachable.
+		var probeErr error
+		_ = spinner.New().
+			Title(fmt.Sprintf("  Validating Keycloak at https://%s/auth/realms/%s ...", cfg.KeycloakDNS, cfg.KeycloakRealm)).
+			Action(func() {
+				probeErr = probeOIDCIssuer(context.Background(), cfg.KeycloakDNS, cfg.KeycloakRealm)
+			}).
+			Run()
+
 		if probeErr == nil {
 			// /auth/realms — keycloakx chart base path; must match
 			// the URL probeOIDCIssuer just hit, the JWT `iss` claim

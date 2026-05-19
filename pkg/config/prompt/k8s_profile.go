@@ -328,11 +328,11 @@ func renderK8sProfileTable(profiles []K8sProfile) string {
 
 // pickK8sProfileTitle renders the "Pick a Kubernetes version
 // profile" picker header. When the auto-detected KubeAid release
-// tag is known it appends "  ·  KubeAid <tag>" inline — lipgloss-
-// styled so the brand name and the locked-in tag stand out without
-// taking a separate banner row above the picker. Empty kubeAidTag
-// falls back to the plain title (offline run, or autodetect
-// fetched nothing).
+// tag is known it appends "  ★  KubeAid <tag>" inline — the same
+// star marks the recommended Balanced row in the comparison table,
+// so eye-jumping between the title brand and the row highlight
+// feels intentional. Empty kubeAidTag falls back to the plain
+// title (offline run, or autodetect fetched nothing).
 func pickK8sProfileTitle(kubeAidTag string) string {
 	const plain = "  Pick a Kubernetes version profile"
 	if kubeAidTag == "" {
@@ -347,6 +347,6 @@ func pickK8sProfileTitle(kubeAidTag string) string {
 		Render(kubeAidTag)
 	sep := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
-		Render("  ·  ")
+		Render("  ★  ")
 	return plain + sep + brand + " " + tag
 }

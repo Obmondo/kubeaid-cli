@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 type hetznerPrompter struct{}
@@ -19,7 +21,11 @@ func newHetznerProvider() *hetznerPrompter {
 
 func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	var lines []string
-	if cfg.HetznerHCloudZone != "" {
+
+	// hcloud / hybrid: HCloud sizing applies to the (HCloud) control
+	// plane. Pure bare-metal mode has none of those — show server
+	// IDs instead so the operator can verify the IDs they typed.
+	if cfg.HetznerMode == constants.HetznerModeHCloud || cfg.HetznerMode == constants.HetznerModeHybrid {
 		lines = append(lines,
 			fmt.Sprintf("  Zone:          %s", cfg.HetznerHCloudZone),
 			fmt.Sprintf("  Machine type:  %s", cfg.HetznerCPMachineType),
@@ -27,8 +33,42 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 			fmt.Sprintf("  CP replicas:   %s", cfg.HetznerCPReplicas),
 		)
 	}
+
+	if cfg.HetznerMode == constants.HetznerModeBareMetal {
+		lines = append(lines,
+			fmt.Sprintf("  CP replicas:   %s", cfg.HetznerCPReplicas),
+			fmt.Sprintf("  CP servers:    %s", formatServerSummary(cfg.HetznerBMCPServerIDs, cfg.HetznerBMServerPublicIPs)),
+			fmt.Sprintf("  Worker group:  %s", cfg.HetznerBMNodeGroupName),
+			fmt.Sprintf("  Worker hosts:  %s", formatServerSummary(cfg.HetznerBMNodeGroupServerIDs, cfg.HetznerBMServerPublicIPs)),
+			fmt.Sprintf("  API endpoint:  %s%s", cfg.HetznerBMEndpointHost, failoverSuffix(cfg.HetznerBMEndpointIsFailoverIP)),
+		)
+	}
+
 	lines = append(lines, fmt.Sprintf("  Mode:          %s", cfg.HetznerMode))
 	return lines
+}
+
+// formatServerSummary renders a comma-separated list of server IDs,
+// each optionally suffixed with the public IP the Robot lookup
+// returned. Used in the bare-metal summary box so the operator can
+// double-check IDs map to expected boxes before confirming.
+func formatServerSummary(ids []string, ips map[string]string) string {
+	parts := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if ip, ok := ips[id]; ok && ip != "" {
+			parts = append(parts, fmt.Sprintf("%s (%s)", id, ip))
+			continue
+		}
+		parts = append(parts, id)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func failoverSuffix(isFailover bool) string {
+	if isFailover {
+		return " (Failover IP)"
+	}
+	return ""
 }
 
 func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
@@ -42,16 +82,28 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 	// HA selector: 3 replicas for HA, 1 otherwise.
 	haChoice := cfg.HetznerCPReplicas != "1"
 
+	// Robot username + password masked (the username is a Robot web-
+	// service identifier, typically distinct from the operator's
+	// human account name — leaking it on-screen during a pairing /
+	// screen-share offers no upside).
+	//
+	// Password's Validate hits Robot's GET /server once Enter is
+	// pressed. On success the resulting inventory is cached on cfg
+	// for the BM add-loop's autocomplete; on failure (401 / network)
+	// the operator sees the error inline and stays on the field
+	// instead of finding out later when the first server-ID lookup
+	// fails.
 	robotGroup := huh.NewGroup(
 		huh.NewInput().
 			Title("Robot username:").
+			EchoMode(huh.EchoModePassword).
 			Value(&cfg.HetznerRobotUser).
 			Validate(nonEmpty),
 		huh.NewInput().
 			Title("Robot password:").
 			EchoMode(huh.EchoModePassword).
 			Value(&cfg.HetznerRobotPassword).
-			Validate(nonEmpty),
+			Validate(validateRobotCredentials(cfg)),
 	).WithHideFunc(func() bool {
 		return cfg.HetznerMode != "bare-metal" && cfg.HetznerMode != "hybrid"
 	})
@@ -66,6 +118,19 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 			Value(&cfg.HetznerSSHKeyPath).
 			Validate(validateSSHKeyPath),
 	).WithHide(detected.SSHAgentAvail)
+
+	// HA toggle drives the CP replica count across every Hetzner
+	// mode. hcloud / hybrid scale identical machines, so 1 vs 3 is a
+	// trivial knob there. For bare-metal it's still 1 or 3 — even
+	// counts (2 / 4) lose etcd quorum, and 5+ dedicated CP servers is
+	// rare enough that the prompt doesn't surface it (operator can
+	// edit general.yaml after generation for unusual topologies).
+	haGroup := huh.NewGroup(
+		huh.NewConfirm().
+			Title("Enable high availability for the control plane?").
+			Description("Yes → 3 CP servers (recommended for production). No → 1 CP server.").
+			Value(&haChoice),
+	)
 
 	err := huh.NewForm(
 		huh.NewGroup(
@@ -84,11 +149,7 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 				Validate(nonEmpty),
 		).Title("Hetzner credentials").Description("Step 3/4"),
 		sshKeyGroup,
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Enable high availability for the control plane?").
-				Value(&haChoice),
-		),
+		haGroup,
 		robotGroup,
 	).Run()
 	if err != nil {
@@ -110,18 +171,61 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 		)
 	}
 
-	if haChoice {
-		cfg.HetznerCPReplicas = "3"
-	} else {
-		cfg.HetznerCPReplicas = "1"
-	}
-
-	if cfg.HetznerMode == "hcloud" || cfg.HetznerMode == "hybrid" {
+	switch cfg.HetznerMode {
+	case constants.HetznerModeHCloud:
 		// Default zone, smallest machine type, and LB region matching the zone.
+		cfg.HetznerCPReplicas = "1"
+		if haChoice {
+			cfg.HetznerCPReplicas = "3"
+		}
 		cfg.HetznerHCloudZone = "eu-central"
 		cfg.HetznerCPMachineType = "cax21"
 		cfg.HetznerRegion = "hel1"
 		cfg.HetznerLBRegion = cfg.HetznerRegion
+		return nil
+
+	case constants.HetznerModeHybrid:
+		// HCloud-side CP defaults — same shape as pure hcloud mode,
+		// since the control plane lives in HCloud for hybrid.
+		cfg.HetznerCPReplicas = "1"
+		if haChoice {
+			cfg.HetznerCPReplicas = "3"
+		}
+		cfg.HetznerHCloudZone = "eu-central"
+		cfg.HetznerCPMachineType = "cax21"
+		cfg.HetznerRegion = "hel1"
+		cfg.HetznerLBRegion = cfg.HetznerRegion
+
+		// Bare-metal worker node group + vSwitch. vSwitch is required:
+		// CreateVSwitch in prerequisite_infrastructure.go runs
+		// unconditionally for hybrid and panics on a nil block.
+		if err := runHetznerHybridBareMetalForm(cfg); err != nil {
+			return fmt.Errorf("collecting Hetzner hybrid bare-metal config: %w", err)
+		}
+		return nil
+
+	case constants.HetznerModeBareMetal:
+		// HA toggle pins the CP replica count to 1 (single) or 3
+		// (quorum-safe) — the add-loop below collects exactly that
+		// many servers without a per-iteration "add another?" prompt.
+		cfg.HetznerCPReplicas = "1"
+		if haChoice {
+			cfg.HetznerCPReplicas = "3"
+		}
+		// Strip the hcloud defaults pre-set in ConfigFromPrompt so
+		// the summary box and the rendered general.yaml don't carry
+		// orphan hcloud fields. nodeGroups.bareMetal carries Region
+		// indirectly via the chosen servers, so HetznerRegion stays
+		// blank — kubeaid-cli reads it from Robot at bootstrap.
+		cfg.HetznerHCloudZone = ""
+		cfg.HetznerCPMachineType = ""
+		cfg.HetznerRegion = ""
+		cfg.HetznerLBRegion = ""
+
+		if err := runHetznerBareMetalForm(cfg); err != nil {
+			return fmt.Errorf("collecting Hetzner bare-metal config: %w", err)
+		}
+		return nil
 	}
 
 	return nil

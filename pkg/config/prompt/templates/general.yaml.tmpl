@@ -104,7 +104,7 @@ cloud:
 {{- else }}
       privateKeyFilePath: {{ .HetznerSSHKeyPath }}
 {{- end }}
-{{- if or (eq .HetznerMode "hcloud") (eq .HetznerMode "hybrid") }}
+{{- if eq .HetznerMode "hcloud" }}
     hcloud:
       zone: {{ .HetznerHCloudZone }}
       imageName: ubuntu-24.04
@@ -127,6 +127,91 @@ cloud:
         - {{ .HetznerRegion }}
     nodeGroups:
       hcloud: []
+{{- end }}
+{{- if eq .HetznerMode "hybrid" }}
+    hcloud:
+      zone: {{ .HetznerHCloudZone }}
+      imageName: ubuntu-24.04
+      hetznerNetwork:
+        cidr: "10.0.0.0/16"
+        hcloudServersSubnetCIDR: "10.0.0.0/24"
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      zfs:
+        size: 220
+      vSwitch:
+        name: {{ .HetznerVSwitchName }}
+        vlanID: {{ .HetznerVSwitchVLANID }}
+        subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
+    controlPlane:
+      hcloud:
+        machineType: {{ .HetznerCPMachineType }}
+        replicas: {{ .HetznerCPReplicas }}
+        loadBalancer:
+          enabled: true
+          region: {{ .HetznerLBRegion }}
+{{- if eq .ClusterType "vpn" }}
+          endpoint: {{ .ControlPlaneEndpoint }}
+{{- else }}
+          endpoint:
+{{- end }}
+      regions:
+        - {{ .HetznerRegion }}
+    nodeGroups:
+      hcloud: []
+      bareMetal:
+        - name: {{ .HetznerBMNodeGroupName }}
+          zfs:
+            size: 220
+          bareMetalHosts:
+{{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
+            # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
+            - serverID: "{{ $id }}"
+              privateIP: {{ index $.HetznerBMNodeGroupPrivateIPs $i }}
+{{- end }}
+{{- end }}
+{{- if eq .HetznerMode "bare-metal" }}
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      zfs:
+        size: 220
+      vSwitch:
+        name: {{ .HetznerVSwitchName }}
+        vlanID: {{ .HetznerVSwitchVLANID }}
+        subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
+    controlPlane:
+      bareMetal:
+        endpoint:
+          isFailoverIP: {{ .HetznerBMEndpointIsFailoverIP }}
+          host: {{ .HetznerBMEndpointHost }}
+        bareMetalHosts:
+{{- range $i, $id := .HetznerBMCPServerIDs }}
+          # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
+          - serverID: "{{ $id }}"
+            privateIP: {{ index $.HetznerBMCPPrivateIPs $i }}
+{{- end }}
+      regions: []
+    nodeGroups:
+      bareMetal:
+        - name: {{ .HetznerBMNodeGroupName }}
+          zfs:
+            size: 220
+          bareMetalHosts:
+{{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
+            # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
+            - serverID: "{{ $id }}"
+              privateIP: {{ index $.HetznerBMNodeGroupPrivateIPs $i }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if eq .CloudProvider "bare-metal" }}

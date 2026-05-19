@@ -6,16 +6,21 @@ package setup
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/prompt"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
 )
 
-// Prepare resolves the config source, optionally generates config files via interactive prompt,
-// and parses config files. It returns a cleanup function that should run at process finalization
-// to remove temp config dirs created for stdin-based configs.
+// Prepare resolves the config source and parses the config files. Returns
+// a cleanup function the caller runs at process finalization to remove
+// temp config dirs created for stdin-based configs.
+//
+// Does NOT run the interactive prompt — that's the dedicated job of
+// `kubeaid-cli config generate`. The earlier silent-prompt fallback
+// here meant `cluster bootstrap` could surprise an operator with a TUI
+// when they expected a parse failure, and the split also makes the
+// command boundaries cleaner: `config generate` writes, `cluster
+// bootstrap` reads.
 func Prepare(ctx context.Context) (func(), error) {
 	cleanup := parser.CleanupTempConfigsDirectory
 
@@ -27,18 +32,13 @@ func Prepare(ctx context.Context) (func(), error) {
 	if err != nil {
 		return cleanup, fmt.Errorf("checking config files: %w", err)
 	}
-
 	if !exists {
-		slog.InfoContext(ctx, "Config files not found, starting interactive setup",
-			slog.String("path", globals.ConfigsDirectory),
+		return cleanup, fmt.Errorf(
+			"config files not found under %q — run `kubeaid-cli config generate` first to create them",
+			globals.ConfigsDirectory,
 		)
-
-		if err := prompt.ConfigFromPrompt(globals.ConfigsDirectory); err != nil {
-			return cleanup, fmt.Errorf("interactive config setup failed: %w", err)
-		}
 	}
 
 	parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
-
 	return cleanup, nil
 }

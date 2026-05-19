@@ -6,9 +6,11 @@ package prompt
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -98,6 +100,78 @@ func sshGitURL(s string) error {
 		return errors.New("must be SSH form (e.g. git@github.com:org/repo.git)")
 	}
 	return nil
+}
+
+// ipv4 validates that s is a non-empty IPv4 address.
+// Used for Hetzner bare-metal control-plane host private IPs and the
+// API server endpoint host, both of which must resolve at parse time
+// (validator tags `ipv4` / `ip`).
+func ipv4(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	parsed := net.ParseIP(strings.TrimSpace(s))
+	if parsed == nil || parsed.To4() == nil {
+		return errors.New("must be a valid IPv4 address (e.g. 10.0.0.5)")
+	}
+	return nil
+}
+
+// cidrv4 validates that s parses as an IPv4 CIDR (e.g. 10.0.1.0/24).
+// Used for the Hetzner vSwitch subnet block — server private IPs
+// must live within this range, and Hetzner rejects malformed CIDRs.
+func cidrv4(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	_, _, err := net.ParseCIDR(strings.TrimSpace(s))
+	if err != nil {
+		return errors.New("must be a valid IPv4 CIDR (e.g. 10.0.1.0/24)")
+	}
+	return nil
+}
+
+// hetznerVLANID validates a Hetzner vSwitch VLAN ID — the webservice
+// only accepts 4000-4091 (inclusive). Anything outside is rejected at
+// prompt time so the operator catches a typo before bootstrap.
+func hetznerVLANID(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return errors.New("must be numeric")
+	}
+	const minVLAN, maxVLAN = 4000, 4091
+	if n < minVLAN || n > maxVLAN {
+		return fmt.Errorf("hetzner vSwitch VLAN ID must be in %d-%d", minVLAN, maxVLAN)
+	}
+	return nil
+}
+
+// ipv4InSubnet returns a validator that requires s to be a valid
+// IPv4 inside cidr. cidr is captured at validator-build time; an
+// empty cidr disables the containment check (validator falls back to
+// plain ipv4) so the prompt still works when vSwitch wasn't asked
+// for (pure-hcloud mode).
+func ipv4InSubnet(cidr string) func(string) error {
+	return func(s string) error {
+		if err := ipv4(s); err != nil {
+			return err
+		}
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			return nil
+		}
+		_, subnet, err := net.ParseCIDR(cidr)
+		if err != nil || subnet == nil {
+			return nil
+		}
+		if !subnet.Contains(net.ParseIP(strings.TrimSpace(s))) {
+			return fmt.Errorf("must be inside the vSwitch subnet %s", cidr)
+		}
+		return nil
+	}
 }
 
 // httpsURL validates that s is a non-empty https:// URL with a host.
