@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 type (
@@ -201,15 +203,33 @@ func (h *Hetzner) waitForHBMSReachable(
 
 // isHBMSReachable attempts a single SSH connection to check if the HBMS is reachable.
 //
-// Auth: hands the connection both the agent socket (yubikey-resident keys
-// — operator's PrivateKey is empty in that case; see
-// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey bytes
-// (file-based key path). Same shape as waitForNATGatewaySSH in server.go;
-// dropping the agent here was the root cause of "timed out waiting for
-// HBMS to become reachable" reports from yubikey-only operators, where
-// the install actually succeeded but the SSH probe had no credentials
-// to authenticate with.
+// Two-phase to keep the yubikey-touch UX sane:
+//
+//  1. Cheap TCP probe on port 22 — no auth, no signing, no card touch.
+//     The vast majority of polls during the 8-15 min install land here
+//     (rescue is up but sshd hasn't started yet, or the install hasn't
+//     rebooted into the target OS yet), and showing a touch prompt
+//     every 20s for failing connections would carpet the operator's
+//     terminal.
+//  2. Once TCP is open, raise the "Tap YubiKey" hint (no-op when the
+//     agent has no yubikey-backed identity) and run the real SSH
+//     handshake. The hint clears as soon as the handshake completes.
+//
+// Auth: kubeone's SSH client gets both the agent socket (yubikey-
+// resident keys — operator's PrivateKey is empty in that case; see
+// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey
+// bytes (file-based key path). Same shape as waitForNATGatewaySSH in
+// server.go.
 func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey string) bool {
+	if !isTCPPortOpen(ctx, address, 22, 3*time.Second) {
+		return false
+	}
+
+	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		fmt.Sprintf("verify HBMS at %s reachable via SSH", address),
+	)
+	defer releaseTouchHint()
+
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
 		Context: ctx,
 
@@ -225,5 +245,20 @@ func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey strin
 		return false
 	}
 	connection.Close()
+	return true
+}
+
+// isTCPPortOpen returns true when a TCP connection to address:port
+// succeeds within timeout. Cheap reachability check used to gate the
+// (more expensive, yubikey-touching) SSH handshake — without it, every
+// poll during the OS install would either prompt the operator for a
+// touch or noisily fail the SSH handshake on a closed port.
+func isTCPPortOpen(ctx context.Context, address string, port int, timeout time.Duration) bool {
+	d := net.Dialer{Timeout: timeout}
+	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(address, fmt.Sprintf("%d", port)))
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
 	return true
 }
