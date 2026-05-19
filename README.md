@@ -53,19 +53,23 @@ go install github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-cli@latest
 
 ## Quick start
 
-1. Generate sample config files for your cloud provider:
+1. Walk through the interactive prompt to generate `general.yaml` and `secrets.yaml`:
 
    ```sh
-   kubeaid-cli config generate <aws|azure|hetzner|bare-metal|local>
+   kubeaid-cli config generate --configs-directory ./outputs/configs/<cluster>/
    ```
 
-2. Edit the generated `general.yaml` and `secrets.yaml` in the output directory.
+2. Review the generated files (the prompt covers everything required to
+   bootstrap; hand-edit only when you want to override defaults).
 
-3. Bootstrap a cluster:
+3. Bootstrap the cluster:
 
    ```sh
-   kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<provider>/
+   kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<cluster>/
    ```
+
+   `cluster bootstrap` fails fast if the configs are missing — run
+   `config generate` first.
 
 ## Usage
 
@@ -77,7 +81,7 @@ kubeaid-cli [command] [flags]
 
 | Command | Description |
 |---|---|
-| `config generate <provider>` | Generate sample general and secrets config files |
+| `config generate` | Interactively generate `general.yaml` and `secrets.yaml` via the config prompt |
 | `devenv create` | Create a local development environment |
 | `cluster bootstrap` | Bootstrap a new Kubernetes cluster |
 | `cluster upgrade <provider>` | Upgrade an existing cluster |
