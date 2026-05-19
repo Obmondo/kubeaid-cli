@@ -36,6 +36,12 @@ var (
 
 // PromptedConfig holds all the values collected from interactive prompts and auto-detection.
 type PromptedConfig struct {
+	// ConfigsDirectory is the on-disk path the rendered general.yaml
+	// and secrets.yaml are written to. Not rendered into the
+	// templates — held only so the Hetzner bare-metal add-loop can
+	// scan sibling cluster directories for already-used server IDs.
+	ConfigsDirectory string
+
 	// Cluster.
 	ClusterName           string
 	ClusterType           string
@@ -137,7 +143,26 @@ type PromptedConfig struct {
 	HetznerRobotUser     string
 	HetznerRobotPassword string
 
-	// Bare Metal.
+	// Hetzner bare-metal — populated only when HetznerMode is
+	// "bare-metal" (and, in the future, "hybrid" for the BM
+	// node-group leg). Lengths line up: CPServerIDs[i] pairs with
+	// CPPrivateIPs[i]; same for NodeGroupServerIDs/NodeGroupPrivateIPs.
+	HetznerBMCPServerIDs          []string
+	HetznerBMCPPrivateIPs         []string
+	HetznerBMNodeGroupName        string
+	HetznerBMNodeGroupServerIDs   []string
+	HetznerBMNodeGroupPrivateIPs  []string
+	HetznerBMEndpointHost         string
+	HetznerBMEndpointIsFailoverIP bool
+	// HetznerBMServerPublicIPs maps a Robot server ID to the public
+	// IPv4 the Robot webservice returned for it at validation time.
+	// Rendered as a `# id NNN → IP` comment alongside each host in
+	// general.yaml so the operator can sanity-check the IDs map to
+	// the boxes they expected. Not load-bearing — bootstrap re-reads
+	// these via the Robot API at run time.
+	HetznerBMServerPublicIPs map[string]string
+
+	// Bare Metal (generic, not Hetzner).
 	BareMetalSSHPort      string
 	BareMetalEndpointHost string
 	BareMetalEndpointPort string
@@ -190,6 +215,8 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	detected := autoDetect()
 
 	cfg := &PromptedConfig{
+		ConfigsDirectory: configsDirectory,
+
 		// SRE defaults.
 		ClusterType:           constants.ClusterTypeWorkload,
 		SSHUsername:           "git",

@@ -6,6 +6,7 @@ package prompt
 import (
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -96,6 +97,21 @@ func sshGitURL(s string) error {
 	}
 	if giturl.IsHTTP(strings.TrimSpace(s)) {
 		return errors.New("must be SSH form (e.g. git@github.com:org/repo.git)")
+	}
+	return nil
+}
+
+// ipv4 validates that s is a non-empty IPv4 address.
+// Used for Hetzner bare-metal control-plane host private IPs and the
+// API server endpoint host, both of which must resolve at parse time
+// (validator tags `ipv4` / `ip`).
+func ipv4(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	parsed := net.ParseIP(strings.TrimSpace(s))
+	if parsed == nil || parsed.To4() == nil {
+		return errors.New("must be a valid IPv4 address (e.g. 10.0.0.5)")
 	}
 	return nil
 }

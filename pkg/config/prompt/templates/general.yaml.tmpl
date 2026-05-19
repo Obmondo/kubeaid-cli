@@ -128,6 +128,40 @@ cloud:
     nodeGroups:
       hcloud: []
 {{- end }}
+{{- if eq .HetznerMode "bare-metal" }}
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      zfs:
+        size: 220
+    controlPlane:
+      bareMetal:
+        endpoint:
+          isFailoverIP: {{ .HetznerBMEndpointIsFailoverIP }}
+          host: {{ .HetznerBMEndpointHost }}
+        bareMetalHosts:
+{{- range $i, $id := .HetznerBMCPServerIDs }}
+          # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
+          - serverID: "{{ $id }}"
+            privateIP: {{ index $.HetznerBMCPPrivateIPs $i }}
+{{- end }}
+      regions: []
+    nodeGroups:
+      bareMetal:
+        - name: {{ .HetznerBMNodeGroupName }}
+          zfs:
+            size: 220
+          bareMetalHosts:
+{{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
+            # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
+            - serverID: "{{ $id }}"
+              privateIP: {{ index $.HetznerBMNodeGroupPrivateIPs $i }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if eq .CloudProvider "bare-metal" }}
   bare-metal:
