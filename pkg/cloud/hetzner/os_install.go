@@ -87,7 +87,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("os installation failed on %d server(s): %v", len(errs), errs)
+		return fmt.Errorf("OS installation failed on %d Hetzner bare-metal server(s): %v", len(errs), errs)
 	}
 
 	slog.InfoContext(ctx, "All Hetzner Bare Metal servers are ready")
@@ -111,11 +111,11 @@ func (h *Hetzner) installOSOnHBMS(
 	}
 
 	if h.isHBMSReachable(hbmsCtx, address, privateKey) {
-		slog.InfoContext(hbmsCtx, "HBMS already reachable via SSH, skipping OS installation")
+		slog.InfoContext(hbmsCtx, "Hetzner bare-metal server already reachable via SSH, skipping OS installation")
 		return nil
 	}
 
-	slog.InfoContext(hbmsCtx, "Installing OS on HBMS")
+	slog.InfoContext(hbmsCtx, "Installing OS on Hetzner bare-metal server")
 
 	if err := h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
@@ -127,7 +127,7 @@ func (h *Hetzner) installOSOnHBMS(
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
 
-	slog.InfoContext(hbmsCtx, "OS installation completed, HBMS is reachable")
+	slog.InfoContext(hbmsCtx, "OS installation completed, Hetzner bare-metal server is reachable")
 	return nil
 }
 
@@ -168,10 +168,10 @@ func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
 		}).
 		Post(fmt.Sprintf("/reset/%s", serverID))
 	if err != nil {
-		return fmt.Errorf("resetting HBMS %s: %w", serverID, err)
+		return fmt.Errorf("resetting Hetzner bare-metal server %s: %w", serverID, err)
 	}
 	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("resetting HBMS %s: unexpected status %d", serverID, response.StatusCode())
+		return fmt.Errorf("resetting Hetzner bare-metal server %s: unexpected status %d", serverID, response.StatusCode())
 	}
 
 	slog.InfoContext(ctx, "Triggered hardware reset")
@@ -191,10 +191,10 @@ func (h *Hetzner) waitForHBMSReachable(
 		}
 
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("timed out waiting for HBMS %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
+			return fmt.Errorf("timed out waiting for Hetzner bare-metal server %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
 		}
 
-		slog.InfoContext(ctx, "HBMS not yet reachable after OS installation, will retry...",
+		slog.InfoContext(ctx, "Hetzner bare-metal server not yet reachable after OS installation, will retry...",
 			slog.Duration("interval", constants.HBMSOSInstallationPollInterval),
 		)
 		time.Sleep(constants.HBMSOSInstallationPollInterval)
@@ -226,7 +226,7 @@ func (h *Hetzner) isHBMSReachable(ctx context.Context, address, privateKey strin
 	}
 
 	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch(
-		fmt.Sprintf("verify HBMS at %s reachable via SSH", address),
+		fmt.Sprintf("verify Hetzner bare-metal server at %s reachable via SSH", address),
 	)
 	defer releaseTouchHint()
 

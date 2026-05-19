@@ -46,7 +46,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		err := h.InstallOSOnAllHBMS(ctx)
 		releaseInstall()
 		if err != nil {
-			return fmt.Errorf("installing OS on HBMS: %w", err)
+			return fmt.Errorf("installing OS on Hetzner bare-metal servers: %w", err)
 		}
 		bar.Substep(fmt.Sprintf("Installed OS on %d bare-metal server(s)", bmHostCount))
 
