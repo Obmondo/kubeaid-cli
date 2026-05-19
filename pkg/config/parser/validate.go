@@ -410,6 +410,15 @@ func validateHCloudConfig() error {
 	if hetznerConfig.HCloud == nil {
 		return errors.New("HCloud specific details not provided")
 	}
+	// HCloud API token is required for modes that talk to HCloud
+	// (hcloud, hybrid); pure bare-metal stays optional because no
+	// HCloud client is constructed. The struct-level notblank tag
+	// was dropped in secrets.go since "required" here is conditional
+	// on cloud.hetzner.mode rather than always-on.
+	if config.ParsedSecretsConfig.Hetzner == nil ||
+		config.ParsedSecretsConfig.Hetzner.APIToken == "" {
+		return errors.New("secrets.yaml: hetzner.apiToken is required for cloud.hetzner.mode in {hcloud, hybrid}")
+	}
 	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}
