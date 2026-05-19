@@ -23,22 +23,50 @@ type (
 	StoragePlans map[NodeGroupName][]*StoragePlan
 )
 
+// PrettyPrint renders the storage plans as a tree. Since
+// AreStoragePlansAlike enforces an identical layout across every
+// server in a node group, the layout is shown ONCE per group with
+// the server IDs listed in the group header — repeating the same
+// disk allocations N times added noise without adding info.
 func (s StoragePlans) PrettyPrint() {
-	// Construct node-group tree.
-	// NOTE : By x-tree, we indicate a tree with xs as children.
 	t := tree.Root(".").Enumerator(tree.RoundedEnumerator)
 	for nodeGroupName, storagePlans := range s {
-
-		// Construct node-tree for each node-group.
-		nodeTree := tree.Root(nodeGroupName)
-		for _, storagePlan := range storagePlans {
-			nodeTree.Child(storagePlan.getUITree())
+		if len(storagePlans) == 0 {
+			continue
 		}
 
-		t = t.Child(nodeTree)
+		// All N plans are alike; show the first's disk layout under
+		// a group label that names the servers it applies to.
+		header := nodeGroupName + " " + serverIDsHeader(storagePlans)
+		groupTree := tree.Root(header)
+		for _, disk := range storagePlans[0].Disks {
+			groupTree.Child(disk.getUITree())
+		}
+
+		t = t.Child(groupTree)
 	}
 
 	fmt.Println(t.String())
+}
+
+// serverIDsHeader renders a "(N servers: ID1, ID2, ID3)" suffix for
+// the node-group tree header. Single-server groups get "(server ID)";
+// large groups (>4) get a truncated list so a 20-node worker pool
+// doesn't blow out the line width.
+func serverIDsHeader(storagePlans []*StoragePlan) string {
+	if len(storagePlans) == 1 {
+		return fmt.Sprintf("(server %s)", storagePlans[0].ServerID)
+	}
+	ids := make([]string, 0, len(storagePlans))
+	for _, sp := range storagePlans {
+		ids = append(ids, sp.ServerID)
+	}
+	const previewCount = 4
+	if len(ids) > previewCount {
+		shown := strings.Join(ids[:previewCount], ", ")
+		return fmt.Sprintf("(%d servers: %s, …+%d more)", len(ids), shown, len(ids)-previewCount)
+	}
+	return fmt.Sprintf("(%d servers: %s)", len(ids), strings.Join(ids, ", "))
 }
 
 func (s *StoragePlans) GetApproval(ctx context.Context) {

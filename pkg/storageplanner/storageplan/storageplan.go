@@ -38,38 +38,16 @@ type StoragePlanExecutorTemplateValues struct {
 }
 
 // Returns the UI tree, which can be used to pretty print the storage-plan.
+//
+// Used by the standalone kubeaid-storagectl tool (one plan per print);
+// the group-level StoragePlans.PrettyPrint builds its tree from
+// Disk.getUITree directly so it can collapse identical layouts across
+// servers in a node-group into one display.
 func (s *StoragePlan) getUITree() *tree.Tree {
 	t := tree.Root(s.ServerID)
 	for _, disk := range s.Disks {
-
-		// Construct allocation-tree for each disk.
-
-		allocationTreeLabel := disk.Name
-		if disk.Unallocated() > 0 {
-			allocationTreeLabel += fmt.Sprintf(" (%d GB unallocated)", disk.Unallocated())
-		}
-
-		allocationTree := tree.Root(allocationTreeLabel)
-
-		if disk.Allocations.OS > 0 {
-			allocationTree = allocationTree.Child(
-				fmt.Sprintf("OS   : %d GB", disk.Allocations.OS),
-			)
-		}
-		if disk.Allocations.ZFS > 0 {
-			allocationTree = allocationTree.Child(
-				fmt.Sprintf("ZFS  : %d GB", disk.Allocations.ZFS),
-			)
-		}
-		if disk.Allocations.CEPH > 0 {
-			allocationTree = allocationTree.Child(
-				fmt.Sprintf("CEPH : %d GB", disk.Allocations.CEPH),
-			)
-		}
-
-		t = t.Child(allocationTree)
+		t = t.Child(disk.getUITree())
 	}
-
 	return t
 }
 
