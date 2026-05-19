@@ -7,15 +7,18 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
 )
 
 func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) error {
@@ -114,16 +117,27 @@ func (h *Hetzner) generateStoragePlan(ctx context.Context,
 		return nil, fmt.Errorf("getting server IP: %w", err)
 	}
 
+	// Auth: pass both the agent socket (yubikey-resident keys —
+	// privateKey is empty in that case; see
+	// parser.hydrateSSHKeyPairFromAgent) AND the supplied PrivateKey
+	// bytes (file-based key path). Without AgentSocket, kubeone's
+	// SSH client rejects yubikey-only configs with "must specify at
+	// least one of password, private key, keyfile or agent socket".
+	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch(
+		fmt.Sprintf("scan disks on Hetzner bare-metal server at %s", address),
+	)
 	connection, err := ssh.NewConnection(ssh.NewConnector(ctx), ssh.Opts{
 		Context: ctx,
 
-		Hostname:   address,
-		Port:       22,
-		Username:   "root",
-		PrivateKey: []byte(privateKey),
+		Hostname:    address,
+		Port:        22,
+		Username:    "root",
+		AgentSocket: os.Getenv(constants.EnvNameSSHAuthSock),
+		PrivateKey:  []byte(privateKey),
 
 		Timeout: time.Second * 10,
 	})
+	releaseTouchHint()
 	if err != nil {
 		return nil, fmt.Errorf("opening SSH connection to %s: %w", address, err)
 	}
