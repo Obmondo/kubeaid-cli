@@ -4,14 +4,14 @@
 package storageplan
 
 import (
-	"bytes"
-	"io"
-	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
 )
 
 func TestAreStoragePlansAlike(t *testing.T) {
@@ -96,118 +96,200 @@ func TestAreStoragePlansAlike(t *testing.T) {
 	}
 }
 
-func TestServerIDsHeader(t *testing.T) {
-	mkPlans := func(ids ...string) []*StoragePlan {
-		out := make([]*StoragePlan, len(ids))
-		for i, id := range ids {
-			out[i] = &StoragePlan{ServerID: id}
-		}
-		return out
+// mkRenderPlan builds a StoragePlan with two identical disks — the
+// typical 2-disk AX-series server shape. The OS volume (50 GB) and
+// ZFS pool (the default size) allocations are fixed; the raw disk
+// size and the per-disk Rook Ceph allocation are the varied inputs.
+func mkRenderPlan(serverID, diskType string, size, ceph int) *StoragePlan {
+	mk := func(name string) *Disk {
+		d := &Disk{Name: name, Type: diskType, Size: size}
+		d.Allocations.OS = 50                            // a 50 GB RAID-1 OS volume.
+		d.Allocations.ZFS = constants.ZFSPoolDefaultSize // the default-sized ZFS pool.
+		d.Allocations.CEPH = ceph
+		return d
 	}
-
-	tests := []struct {
-		name  string
-		plans []*StoragePlan
-		want  string
-	}{
-		{
-			name:  "single server uses singular phrasing",
-			plans: mkPlans("100"),
-			want:  "(server 100)",
-		},
-		{
-			name:  "two servers list both",
-			plans: mkPlans("100", "101"),
-			want:  "(2 servers: 100, 101)",
-		},
-		{
-			name:  "three servers (typical HA CP) list all",
-			plans: mkPlans("100", "101", "102"),
-			want:  "(3 servers: 100, 101, 102)",
-		},
-		{
-			name:  "four servers list all",
-			plans: mkPlans("100", "101", "102", "103"),
-			want:  "(4 servers: 100, 101, 102, 103)",
-		},
-		{
-			name:  "five servers truncate after four with a +N more suffix",
-			plans: mkPlans("100", "101", "102", "103", "104"),
-			want:  "(5 servers: 100, 101, 102, 103, …+1 more)",
-		},
-		{
-			name:  "large node-group truncates aggressively",
-			plans: mkPlans("100", "101", "102", "103", "104", "105", "106", "107"),
-			want:  "(8 servers: 100, 101, 102, 103, …+4 more)",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, serverIDsHeader(tc.plans))
-		})
+	return &StoragePlan{
+		ServerID: serverID,
+		Disks:    []*Disk{mk("nvme0n1"), mk("nvme1n1")},
 	}
 }
 
-// TestStoragePlansPrettyPrintRendersCompactSummary proves the
-// per-group rendering uses the new compact shape (disk composition +
-// ZFS pool sub-volume breakdown) rather than the old per-disk
-// allocation subtree.
-func TestStoragePlansPrettyPrintRendersCompactSummary(t *testing.T) {
-	mkPlan := func(serverID, diskType string, size int) *StoragePlan {
-		// Two disks per server, both of the same type+size — typical
-		// 2 × NVMe AX52 shape. Mirror semantics make the visible pool
-		// capacity equal to one disk's ZFS allocation.
-		mk := func(name string) *Disk {
-			d := &Disk{Name: name, Type: diskType, Size: size}
-			d.Allocations.OS = 50
-			d.Allocations.ZFS = 220
-			return d
-		}
-		return &StoragePlan{
-			ServerID: serverID,
-			Disks:    []*Disk{mk("nvme0n1"), mk("nvme1n1")},
-		}
-	}
-
+// TestStoragePlansRender proves the storage layout renders as a single
+// bordered box: one section per node group, an underlined uppercase
+// header, the OS / ZFS / sub-volume / Rook Ceph rows, and a
+// destructive-change warning below the box.
+func TestStoragePlansRender(t *testing.T) {
 	plans := StoragePlans{
 		"control-plane": {
-			mkPlan("100", "NVMe", 1000),
-			mkPlan("101", "NVMe", 1000),
-			mkPlan("102", "NVMe", 1000),
+			mkRenderPlan("100", "NVMe", 474, 204),
+			mkRenderPlan("101", "NVMe", 474, 204),
+			mkRenderPlan("102", "NVMe", 474, 204),
 		},
-		"workers": {mkPlan("200", "HDD", 2000)},
+		"gpu-workers": {
+			mkRenderPlan("200", "NVMe", 1900, 1630),
+			mkRenderPlan("201", "NVMe", 1900, 1630),
+		},
+		"workers": {
+			mkRenderPlan("300", "HDD", 1900, 1630),
+			mkRenderPlan("301", "HDD", 1900, 1630),
+			mkRenderPlan("302", "HDD", 1900, 1630),
+		},
 	}
 
-	got := captureStdout(t, plans.PrettyPrint)
+	got := plans.render()
+	t.Logf("rendered storage layout:\n%s", got)
 
-	// Group headers (unchanged from the previous shape).
-	assert.Contains(t, got, "control-plane (3 servers: 100, 101, 102)")
-	assert.Contains(t, got, "workers (server 200)")
+	// Box framing — title in the top border, rounded corners.
+	assert.Contains(t, got, "Storage layout · KubeAid recommended")
+	assert.Contains(t, got, "╭")
+	assert.Contains(t, got, "╮")
+	assert.Contains(t, got, "╰")
+	assert.Contains(t, got, "╯")
 
-	// New shape — disk composition lines, one per group.
-	assert.Contains(t, got, "Disks per server: 2 × NVMe 1 TB")
-	assert.Contains(t, got, "Disks per server: 2 × HDD 2 TB")
+	// Each node group is its own section: a header, a full-width rule,
+	// then its rows. The control plane gets a plain title; worker node
+	// groups are tagged "NodeGroup: <name>" with the verbatim name.
+	assert.Contains(t, got, "Control plane")
+	assert.Contains(t, got, "NodeGroup: gpu-workers")
+	assert.Contains(t, got, "NodeGroup: workers")
+	assert.NotContains(t, got, "NodeGroup: control-plane")
+	assert.NotContains(t, got, "CONTROL-PLANE") // group names are no longer upper-cased
+	assert.Contains(t, got, "3 servers · 2 × NVMe 474 GB")
+	assert.Contains(t, got, "2 servers · 2 × NVMe 1.9 TB")
+	assert.Contains(t, got, "3 servers · 2 × HDD 1.9 TB")
+	// One full-width rule per group, inside the frame — no ├┤ crossbar.
+	assert.NotContains(t, got, "├")
+	assert.NotContains(t, got, "┤")
+	assert.Equal(t, 3, strings.Count(got, "│ ─"))
 
-	// ZFS pool header — names the pool, the RAID mode, and the OS-side facts.
-	assert.Contains(t, got, `ZFS pool "primary" — mirror across 2 NVMe (OS: ext4 on RAID-1)`)
-	assert.Contains(t, got, `ZFS pool "primary" — mirror across 2 HDD (OS: ext4 on RAID-1)`)
+	// OS volume row.
+	assert.Contains(t, got, "OS volume")
+	assert.Contains(t, got, "ext4 · RAID-1")
 
-	// Sub-volume breakdown — rendered once per group.
-	assert.Equal(t, 2, strings.Count(got, "/var/lib/containerd"))
-	assert.Equal(t, 2, strings.Count(got, "100 GB"))
-	assert.Equal(t, 2, strings.Count(got, "/var/log/pods"))
-	assert.Equal(t, 2, strings.Count(got, "/var/lib/kubelet/pods"))
-	assert.Equal(t, 2, strings.Count(got, "OpenEBS ZFS LocalPV"))
-	// OpenEBS gets the pool's remainder above the three reserved sub-volumes
-	// (220 - 100 - 50 - 50 = 20 GB on the default-sized pool).
-	assert.Equal(t, 2, strings.Count(got, " 20 GB free"))
+	// ZFS pool row keeps its real size; its mount points are listed
+	// beneath it as a bulleted list, one set per group.
+	assert.Contains(t, got, `ZFS pool "primary"`)
+	assert.Contains(t, got, "220 GB") // the pool's real partition size
+	assert.Contains(t, got, "mirror · 2 NVMe")
+	assert.Contains(t, got, "mirror · 2 HDD")
+	assert.Equal(t, 3, strings.Count(got, "● /var/lib/containerd"))
+	assert.Equal(t, 3, strings.Count(got, "● /var/log/pods"))
+	assert.Equal(t, 3, strings.Count(got, "● /var/lib/kubelet/pods"))
+	// pod-ephemeral and OpenEBS LocalPV are no longer listed, and the
+	// estimated per-volume sizes (and their "~" prefix) are gone.
+	assert.NotContains(t, got, "pod ephemeral")
+	assert.NotContains(t, got, "OpenEBS")
+	assert.NotContains(t, got, "~")
 
-	// Old per-disk subtree must NOT render — that was the noisy shape.
-	assert.NotContains(t, got, "nvme0n1 (730 GB unallocated)",
-		"per-disk subtree should be gone — compact summary replaces it")
-	assert.NotContains(t, got, "OS   : 50 GB",
-		"per-disk allocation lines should be gone from the group rendering")
+	// Rook Ceph OSD section — a header carrying the per-group OSD count,
+	// then one indented sub-row per disk type with its per-OSD size.
+	assert.Equal(t, 3, strings.Count(got, "Rook Ceph OSD"))
+	assert.Equal(t, 3, strings.Count(got, "2 OSDs · one per disk"))
+	assert.Equal(t, 2, strings.Count(got, "● 2 × NVMe")) // control-plane + gpu-workers
+	assert.Equal(t, 1, strings.Count(got, "● 2 × HDD"))  // workers
+	assert.Contains(t, got, "204 GB")                    // control-plane CEPH alloc
+	assert.Contains(t, got, "1.6 TB")                    // worker CEPH alloc
+
+	// The warning and the ZFS-quota note sit on their own lines below
+	// the box.
+	assert.Contains(t, got, storageBoxWarning)
+	assert.Contains(t, got, storageBoxZFSNote)
+
+	// Server IDs are not leaked into the header — the previous shape
+	// printed "(3 servers: 100, 101, 102)"; the box shows just the count.
+	assert.NotContains(t, got, "100, 101")
+	assert.NotContains(t, got, "(server ")
+
+	// Groups render control-plane first, then alphabetical.
+	cpAt := strings.Index(got, "Control plane")
+	gpuAt := strings.Index(got, "NodeGroup: gpu-workers")
+	workersAt := strings.Index(got, "NodeGroup: workers")
+	require.True(t, cpAt >= 0 && gpuAt >= 0 && workersAt >= 0)
+	assert.Less(t, cpAt, gpuAt, "control-plane before gpu-workers")
+	assert.Less(t, gpuAt, workersAt, "gpu-workers before workers")
+
+	// Every box line is exactly the same display width — the frame
+	// and the crossbar only line up if the column maths is right.
+	lines := strings.Split(got, "\n")
+	require.Greater(t, len(lines), 3)
+	boxLines := lines[:len(lines)-2] // the last two lines are the warning + ZFS note.
+	width := utf8.RuneCountInString(boxLines[0])
+	for i, line := range boxLines {
+		assert.Equal(t, width, utf8.RuneCountInString(line),
+			"box line %d has a mismatched width: %q", i, line)
+	}
+	assert.True(t, strings.HasPrefix(boxLines[0], "╭"), "first line is the top border")
+	assert.True(t, strings.HasPrefix(boxLines[len(boxLines)-1], "╰"), "last box line is the bottom border")
+}
+
+func TestStoragePlansRenderOmitsCephWhenUnallocated(t *testing.T) {
+	// A small SKU whose disks are fully consumed by OS + ZFS leaves no
+	// CEPH space — the Rook Ceph row must not render.
+	plans := StoragePlans{
+		"control-plane": {mkRenderPlan("100", "NVMe", 270, 0)},
+	}
+	got := plans.render()
+
+	assert.NotContains(t, got, "Rook Ceph OSD")
+	assert.Contains(t, got, "OS volume")
+	assert.Contains(t, got, `ZFS pool "primary"`)
+}
+
+func TestStoragePlansRenderEmpty(t *testing.T) {
+	assert.Empty(t, StoragePlans{}.render(),
+		"no node groups should render nothing, not an empty box")
+}
+
+func TestSortedGroupNames(t *testing.T) {
+	t.Run("control-plane pinned first, rest alphabetical", func(t *testing.T) {
+		plans := StoragePlans{
+			"workers":       {},
+			"gpu-workers":   {},
+			"control-plane": {},
+			"infra":         {},
+		}
+		got := plans.sortedGroupNames()
+		assert.Equal(t, []string{"control-plane", "gpu-workers", "infra", "workers"}, got)
+	})
+	t.Run("no control-plane → pure alphabetical", func(t *testing.T) {
+		plans := StoragePlans{"workers": {}, "infra": {}}
+		assert.Equal(t, []string{"infra", "workers"}, plans.sortedGroupNames())
+	})
+}
+
+func TestServerCount(t *testing.T) {
+	cases := []struct {
+		n    int
+		want string
+	}{
+		{1, "1 server"},
+		{2, "2 servers"},
+		{3, "3 servers"},
+		{0, "0 servers"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.want, serverCount(tc.n))
+	}
+}
+
+func TestMirroredSize(t *testing.T) {
+	cases := []struct {
+		name      string
+		total     int
+		diskCount int
+		want      int
+	}{
+		{"two-disk mirror halves the summed allocation", 100, 2, 50},
+		{"default ZFS pool across two disks", 440, 2, 220},
+		{"single disk returns the allocation as-is", 220, 1, 220},
+		{"zero disks does not divide by zero", 0, 0, 0},
+		{"three-disk group", 300, 3, 100},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, mirroredSize(tc.total, tc.diskCount))
+		})
+	}
 }
 
 func TestFormatDiskComposition(t *testing.T) {
@@ -272,78 +354,287 @@ func TestFormatDiskComposition(t *testing.T) {
 	}
 }
 
-func TestZFSPoolSubTreeAllocates(t *testing.T) {
+func TestFormatDiskShorthand(t *testing.T) {
+	mk := func(diskType string) *Disk { return &Disk{Type: diskType} }
+	cases := []struct {
+		name  string
+		disks []*Disk
+		want  string
+	}{
+		{
+			name:  "two identical disks collapse with a count",
+			disks: []*Disk{mk("NVMe"), mk("NVMe")},
+			want:  "2 NVMe",
+		},
+		{
+			name:  "single disk → bare type",
+			disks: []*Disk{mk("HDD")},
+			want:  "HDD",
+		},
+		{
+			name:  "heterogeneous types joined with ' + '",
+			disks: []*Disk{mk("NVMe"), mk("HDD")},
+			want:  "NVMe + HDD",
+		},
+		{
+			name:  "mixed multiplicities → only the repeated type counted",
+			disks: []*Disk{mk("NVMe"), mk("NVMe"), mk("HDD")},
+			want:  "2 NVMe + HDD",
+		},
+		{
+			name:  "empty input",
+			disks: []*Disk{},
+			want:  "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, formatDiskShorthand(tc.disks))
+		})
+	}
+}
+
+func TestCephRows(t *testing.T) {
+	mk := func(diskType string, cephAlloc int) *Disk {
+		d := &Disk{Type: diskType}
+		d.Allocations.CEPH = cephAlloc
+		return d
+	}
+	cases := []struct {
+		name  string
+		disks []*Disk
+		want  []boxItem
+	}{
+		{
+			name:  "uniform two-disk group → header + one sub-row",
+			disks: []*Disk{mk("NVMe", 730), mk("NVMe", 730)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "2 OSDs · one per disk"},
+				{kind: itemRow, indent: indentSubVolume, label: "● 2 × NVMe", size: "730 GB"},
+			},
+		},
+		{
+			name:  "heterogeneous server → a sub-row per disk type",
+			disks: []*Disk{mk("NVMe", 500), mk("NVMe", 500), mk("HDD", 1500), mk("HDD", 1500)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "4 OSDs · one per disk"},
+				{kind: itemRow, indent: indentSubVolume, label: "● 2 × NVMe", size: "500 GB"},
+				{kind: itemRow, indent: indentSubVolume, label: "● 2 × HDD", size: "1.5 TB"},
+			},
+		},
+		{
+			name:  "same type, differing OSD sizes → a sub-row each",
+			disks: []*Disk{mk("HDD", 1730), mk("HDD", 1730), mk("HDD", 2000), mk("HDD", 2000)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "4 OSDs · one per disk"},
+				{kind: itemRow, indent: indentSubVolume, label: "● 2 × HDD", size: "1.7 TB"},
+				{kind: itemRow, indent: indentSubVolume, label: "● 2 × HDD", size: "2 TB"},
+			},
+		},
+		{
+			name:  "different types but equal alloc → still split per type",
+			disks: []*Disk{mk("NVMe", 500), mk("HDD", 500)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "2 OSDs · one per disk"},
+				{kind: itemRow, indent: indentSubVolume, label: "● NVMe", size: "500 GB"},
+				{kind: itemRow, indent: indentSubVolume, label: "● HDD", size: "500 GB"},
+			},
+		},
+		{
+			name:  "single CEPH disk → 1 OSD, no count prefix on the sub-row",
+			disks: []*Disk{mk("NVMe", 500)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "1 OSD"},
+				{kind: itemRow, indent: indentSubVolume, label: "● NVMe", size: "500 GB"},
+			},
+		},
+		{
+			name:  "mixed alloc-vs-no-alloc → only allocated disks counted",
+			disks: []*Disk{mk("NVMe", 0), mk("NVMe", 500)},
+			want: []boxItem{
+				{kind: itemRow, indent: indentRow, label: "Rook Ceph OSD", note: "1 OSD"},
+				{kind: itemRow, indent: indentSubVolume, label: "● NVMe", size: "500 GB"},
+			},
+		},
+		{
+			name:  "disks without CEPH allocation → no rows",
+			disks: []*Disk{mk("NVMe", 0), mk("NVMe", 0)},
+			want:  nil,
+		},
+		{
+			name:  "empty input → no rows",
+			disks: []*Disk{},
+			want:  nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, cephRows(tc.disks))
+		})
+	}
+}
+
+func TestZFSRows(t *testing.T) {
 	mk := func(diskType string, zfs int) *Disk {
-		d := &Disk{Type: diskType, Size: 1000}
+		d := &Disk{Type: diskType}
 		d.Allocations.ZFS = zfs
 		return d
 	}
+	// find returns the row carrying label, failing the test if absent.
+	find := func(rows []boxItem, label string) boxItem {
+		for _, r := range rows {
+			if r.label == label {
+				return r
+			}
+		}
+		t.Fatalf("zfsRows produced no %q row", label)
+		return boxItem{}
+	}
 
-	t.Run("default 220 GB pool → 20 GB OpenEBS overflow", func(t *testing.T) {
-		// Mirror: both disks have the same ZFS allocation; the
-		// visible pool capacity = one disk's allocation.
-		disks := []*Disk{mk("NVMe", 220), mk("NVMe", 220)}
-		rendered := zfsPoolSubTree(disks).String()
+	t.Run("pool keeps its real size; mount points listed beneath it", func(t *testing.T) {
+		// Mirror: each disk carries the full pool allocation; capacity
+		// is one disk's worth — a real partition size, so it shows.
+		rows := zfsRows([]*Disk{mk("NVMe", 220), mk("NVMe", 220)})
 
-		assert.Contains(t, rendered, `ZFS pool "primary" — mirror across 2 NVMe (OS: ext4 on RAID-1)`)
-		assert.Contains(t, rendered, "/var/lib/containerd")
-		assert.Contains(t, rendered, "100 GB")
-		assert.Contains(t, rendered, "/var/log/pods")
-		assert.Contains(t, rendered, " 50 GB")
-		assert.Contains(t, rendered, "/var/lib/kubelet/pods")
-		assert.Contains(t, rendered, "OpenEBS ZFS LocalPV")
-		assert.Contains(t, rendered, " 20 GB free")
+		pool := find(rows, `ZFS pool "primary"`)
+		assert.Equal(t, "220 GB", pool.size)
+		assert.Equal(t, "mirror · 2 NVMe", pool.note)
+
+		// The mount points carry no size — the volumes have no quota,
+		// so a figure would just be a guess.
+		for _, label := range []string{
+			"● /var/lib/containerd",
+			"● /var/log/pods",
+			"● /var/lib/kubelet/pods",
+		} {
+			row := find(rows, label)
+			assert.Empty(t, row.size, "%s must carry no size", label)
+			assert.Empty(t, row.note)
+		}
 	})
 
-	t.Run("operator-bumped 500 GB pool → 300 GB OpenEBS", func(t *testing.T) {
-		disks := []*Disk{mk("NVMe", 500), mk("NVMe", 500)}
-		rendered := zfsPoolSubTree(disks).String()
-
-		// Reserved volumes don't move; only the OpenEBS remainder does.
-		assert.Contains(t, rendered, "100 GB")
-		assert.Contains(t, rendered, " 50 GB")
-		assert.Contains(t, rendered, "300 GB free")
+	t.Run("pool size tracks the operator's bareMetal.zfs.size", func(t *testing.T) {
+		rows := zfsRows([]*Disk{mk("NVMe", 500), mk("NVMe", 500)})
+		assert.Equal(t, "500 GB", find(rows, `ZFS pool "primary"`).size)
 	})
 
-	t.Run("under-sized pool → OpenEBS clamped to 0", func(t *testing.T) {
-		// Defensive — should never happen in practice (the planner
-		// rejects pools < 200 GB at config-validate time), but the
-		// renderer shouldn't underflow into a negative size.
-		disks := []*Disk{mk("NVMe", 100), mk("NVMe", 100)}
-		rendered := zfsPoolSubTree(disks).String()
-		assert.Contains(t, rendered, "  0 GB free")
-	})
-
-	t.Run("mixed disk types render shorthand in the header", func(t *testing.T) {
-		disks := []*Disk{mk("NVMe", 220), mk("HDD", 220)}
-		rendered := zfsPoolSubTree(disks).String()
-		assert.Contains(t, rendered, "mirror across NVMe + HDD")
+	t.Run("mixed disk types render shorthand in the pool note", func(t *testing.T) {
+		rows := zfsRows([]*Disk{mk("NVMe", 220), mk("HDD", 220)})
+		assert.Equal(t, "mirror · NVMe + HDD", find(rows, `ZFS pool "primary"`).note)
 	})
 }
 
-// captureStdout runs fn while stdout is redirected to a pipe, then
-// restores stdout and returns whatever fn wrote. Used by the
-// PrettyPrint regression test — the function prints directly via
-// fmt.Println rather than returning a string, so capturing is the
-// cheapest way to assert on its output.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	orig := os.Stdout
-	r, w, err := os.Pipe()
-	require.NoError(t, err)
-	os.Stdout = w
+// TestGroupItemsSizesMirrorByMirrorWidth proves the OS volume and ZFS
+// pool rows size their mirror from the disks that actually back that
+// mirror — not from every disk on the server. allocateStoragePlan
+// places the OS RAID-1 and the ZFS mirror on exactly two disks each,
+// so on a server with more than two disks the rest carry no OS/ZFS
+// allocation; dividing the summed allocation by the full disk count
+// would halve (or worse) the reported capacity.
+func TestGroupItemsSizesMirrorByMirrorWidth(t *testing.T) {
+	mk := func(name, diskType string, size, os, zfs, ceph int) *Disk {
+		d := &Disk{Name: name, Type: diskType, Size: size}
+		d.Allocations.OS = os
+		d.Allocations.ZFS = zfs
+		d.Allocations.CEPH = ceph
+		return d
+	}
+	find := func(items []boxItem, label string) boxItem {
+		for _, it := range items {
+			if it.label == label {
+				return it
+			}
+		}
+		t.Fatalf("groupItems produced no %q row", label)
+		return boxItem{}
+	}
 
-	done := make(chan struct{})
-	var buf bytes.Buffer
-	go func() {
-		_, _ = io.Copy(&buf, r)
-		close(done)
-	}()
+	tests := []struct {
+		name        string
+		disks       []*Disk
+		wantOSSize  string
+		wantZFSSize string
+		wantZFSNote string
+	}{
+		{
+			// A 2× NVMe + 2× HDD server: by the priority scores the OS
+			// RAID-1 lands on the HDDs and the ZFS mirror on the NVMes —
+			// two disjoint two-disk mirrors.
+			name: "2 NVMe + 2 HDD — disjoint OS and ZFS mirrors",
+			disks: []*Disk{
+				mk("nvme0n1", "NVMe", 500, 0, 300, 200),
+				mk("nvme1n1", "NVMe", 500, 0, 300, 200),
+				mk("sda", "HDD", 1000, 50, 0, 950),
+				mk("sdb", "HDD", 1000, 50, 0, 950),
+			},
+			wantOSSize:  "50 GB",
+			wantZFSSize: "300 GB",
+			wantZFSNote: "mirror · 2 NVMe",
+		},
+		{
+			// Four identical HDDs: OS and ZFS share the first two disks;
+			// the other two are CEPH-only.
+			name: "4 identical HDDs — two disks are CEPH-only",
+			disks: []*Disk{
+				mk("sda", "HDD", 500, 50, 220, 230),
+				mk("sdb", "HDD", 500, 50, 220, 230),
+				mk("sdc", "HDD", 500, 0, 0, 500),
+				mk("sdd", "HDD", 500, 0, 0, 500),
+			},
+			wantOSSize:  "50 GB",
+			wantZFSSize: "220 GB",
+			wantZFSNote: "mirror · 2 HDD",
+		},
+	}
 
-	fn()
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			items := groupItems(controlPlaneGroup, []*StoragePlan{{Disks: tc.disks}})
 
-	require.NoError(t, w.Close())
-	<-done
-	os.Stdout = orig
-	return buf.String()
+			osRow := find(items, "OS volume")
+			assert.Equal(t, tc.wantOSSize, osRow.size, "OS volume size")
+
+			zfsRow := find(items, `ZFS pool "primary"`)
+			assert.Equal(t, tc.wantZFSSize, zfsRow.size, "ZFS pool size")
+			assert.Equal(t, tc.wantZFSNote, zfsRow.note, "ZFS pool note")
+		})
+	}
+}
+
+// TestStoragePlansRenderSplitsCephByDiskType proves a heterogeneous
+// server renders the Rook Ceph OSD section as a header carrying the
+// total OSD count plus one indented sub-row per disk type — the NVMe
+// sub-row above the HDD one.
+func TestStoragePlansRenderSplitsCephByDiskType(t *testing.T) {
+	mk := func(name, diskType string, size, os, zfs, ceph int) *Disk {
+		d := &Disk{Name: name, Type: diskType, Size: size}
+		d.Allocations.OS, d.Allocations.ZFS, d.Allocations.CEPH = os, zfs, ceph
+		return d
+	}
+	plans := StoragePlans{"control-plane": {{Disks: []*Disk{
+		mk("nvme0n1", "NVMe", 1900, 0, 220, 1680),
+		mk("nvme1n1", "NVMe", 1900, 0, 220, 1680),
+		mk("sda", "HDD", 4000, 50, 0, 3950),
+		mk("sdb", "HDD", 4000, 50, 0, 3950),
+	}}}}
+
+	got := plans.render()
+	t.Logf("rendered storage layout:\n%s", got)
+
+	// One Rook Ceph OSD header, the total OSD count beside it.
+	assert.Contains(t, got, "Rook Ceph OSD")
+	assert.Contains(t, got, "4 OSDs · one per disk")
+
+	// One indented sub-row per disk type, each carrying its OSD size.
+	assert.Contains(t, got, "● 2 × NVMe")
+	assert.Contains(t, got, "● 2 × HDD")
+	assert.Contains(t, got, "1.7 TB") // per-NVMe-OSD size (1680 GB)
+
+	// Header sits above the NVMe sub-row, which sits above the HDD one.
+	header := strings.Index(got, "Rook Ceph OSD")
+	nvme := strings.Index(got, "● 2 × NVMe")
+	hdd := strings.Index(got, "● 2 × HDD")
+	require.True(t, header >= 0 && nvme >= 0 && hdd >= 0)
+	assert.Less(t, header, nvme, "Rook Ceph OSD header above the NVMe sub-row")
+	assert.Less(t, nvme, hdd, "NVMe sub-row above the HDD sub-row")
 }
