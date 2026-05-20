@@ -745,9 +745,18 @@ func TestIsArgoCDTransientTransportError(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "Unavailable without a dial-side substring is not transient",
+			// gRPC reports a dead or restarting argocd-server through
+			// several descriptions; this is the one that slipped past
+			// the old substring allowlist and aborted a bootstrap.
+			name: "Unavailable keepalive ping timeout is transient",
+			err: grpcStatus.Error(codes.Unavailable,
+				"keepalive ping failed to receive ACK within timeout"),
+			want: true,
+		},
+		{
+			name: "Unavailable server-shutting-down is transient",
 			err:  grpcStatus.Error(codes.Unavailable, "server shutting down"),
-			want: false,
+			want: true,
 		},
 		{
 			name: "FailedPrecondition repo-fetch is NOT this category",

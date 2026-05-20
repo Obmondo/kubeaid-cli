@@ -74,10 +74,9 @@ var (
 	// recovery from the kubectl port-forward to argocd-server dying
 	// mid-Sync. The classic trigger is syncing the argocd ArgoCD app
 	// itself — that restarts argocd-server and severs the active
-	// port-forward, so the next gRPC call comes back as codes.Unavailable
-	// "dial proxy: connect: connection refused". On each matching
-	// failure we reconnect (re-port-forward + recreate the application
-	// client) and retry Sync.
+	// port-forward, so the next gRPC call comes back with the transport
+	// code codes.Unavailable. On each such failure we reconnect
+	// (re-port-forward + recreate the application client) and retry Sync.
 	argoCDPortForwardMaxAttempts = 10
 	argoCDPortForwardBackoff     = 5 * time.Second
 )
@@ -619,32 +618,27 @@ func isArgoCDRepoFetchError(err error) bool {
 		strings.Contains(msg, "ssh: handshake failed")
 }
 
-// isArgoCDTransientTransportError reports whether err looks like a
-// transient transport-layer failure between kubeaid-cli and the
+// isArgoCDTransientTransportError reports whether err from m.client.Sync
+// is a transient transport-layer failure between kubeaid-cli and the
 // argocd-server — almost always the kubectl port-forward dying mid-call.
 // The headline trigger is syncing the argocd ArgoCD app itself: that
-// restarts argocd-server and severs the active port-forward, so the
-// next gRPC call surfaces as
+// restarts argocd-server and severs the active port-forward.
 //
-//	code = Unavailable desc = "connection error: desc = \"transport:
-//	error while dialing: error dial proxy: dial tcp 127.0.0.1:NNNNN:
-//	connect: connection refused\""
-//
-// The gRPC code is the typed signal — argocd-server itself doesn't
-// return Unavailable; it's the transport layer (port-forward proxy)
-// bubbling up through the gRPC client. The substring guard keeps us
-// scoped to dial-side failures and avoids over-matching on
-// codes.Unavailable cases that wouldn't recover from a reconnect.
+// gRPC surfaces that one underlying condition through several
+// descriptions depending on timing — "connect: connection refused" and
+// "error dial proxy" (a re-dial failed), "keepalive ping failed to
+// receive ACK within timeout" (an established connection went dead),
+// "transport is closing", "broken pipe". They all carry
+// codes.Unavailable, gRPC's canonical retryable code: "the service is
+// currently unavailable ... most likely a transient condition, which
+// can be corrected by retrying with a backoff". So we classify on the
+// code alone. An earlier substring allowlist over the description only
+// ever produced false negatives — a new wording (the keepalive timeout)
+// slipped straight through to a fatal return. A genuinely-down
+// argocd-server still terminates the bootstrap: the caller bounds
+// retries at argoCDPortForwardMaxAttempts.
 func isArgoCDTransientTransportError(err error) bool {
-	if status.Code(err) != codes.Unavailable {
-		return false
-	}
-	msg := err.Error()
-	return strings.Contains(msg, "connect: connection refused") ||
-		strings.Contains(msg, "error dial proxy") ||
-		strings.Contains(msg, "transport is closing") ||
-		strings.Contains(msg, "broken pipe") ||
-		strings.Contains(msg, "use of closed network connection")
+	return status.Code(err) == codes.Unavailable
 }
 
 // syncArgoCDAppWithProgress wraps syncArgoCDApp with the
