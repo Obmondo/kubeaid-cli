@@ -69,6 +69,17 @@ var (
 	// retry Sync.
 	argoCDRepoFetchMaxAttempts = 5
 	argoCDRepoFetchBackoff     = 10 * time.Second
+
+	// argoCDPortForwardMaxAttempts / argoCDPortForwardBackoff govern
+	// recovery from the kubectl port-forward to argocd-server dying
+	// mid-Sync. The classic trigger is syncing the argocd ArgoCD app
+	// itself — that restarts argocd-server and severs the active
+	// port-forward, so the next gRPC call comes back as codes.Unavailable
+	// "dial proxy: connect: connection refused". On each matching
+	// failure we reconnect (re-port-forward + recreate the application
+	// client) and retry Sync.
+	argoCDPortForwardMaxAttempts = 10
+	argoCDPortForwardBackoff     = 5 * time.Second
 )
 
 type ArgoCDAppManager struct {
@@ -343,6 +354,12 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 			)
 			return
 		}
+		// Point the manager at the freshly-created application client.
+		// Without this, every Sync/Get after a reconnect keeps hitting
+		// the old (now-dead) port-forward — RecreateArgoCDApplicationClient
+		// replaces the global, but mgr.client still holds the previous
+		// interface value, so the retry loops above wouldn't make progress.
+		mgr.client = globals.ArgoCDApplicationClient
 	}
 	return mgr
 }
@@ -602,6 +619,34 @@ func isArgoCDRepoFetchError(err error) bool {
 		strings.Contains(msg, "ssh: handshake failed")
 }
 
+// isArgoCDTransientTransportError reports whether err looks like a
+// transient transport-layer failure between kubeaid-cli and the
+// argocd-server — almost always the kubectl port-forward dying mid-call.
+// The headline trigger is syncing the argocd ArgoCD app itself: that
+// restarts argocd-server and severs the active port-forward, so the
+// next gRPC call surfaces as
+//
+//	code = Unavailable desc = "connection error: desc = \"transport:
+//	error while dialing: error dial proxy: dial tcp 127.0.0.1:NNNNN:
+//	connect: connection refused\""
+//
+// The gRPC code is the typed signal — argocd-server itself doesn't
+// return Unavailable; it's the transport layer (port-forward proxy)
+// bubbling up through the gRPC client. The substring guard keeps us
+// scoped to dial-side failures and avoids over-matching on
+// codes.Unavailable cases that wouldn't recover from a reconnect.
+func isArgoCDTransientTransportError(err error) bool {
+	if status.Code(err) != codes.Unavailable {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "connect: connection refused") ||
+		strings.Contains(msg, "error dial proxy") ||
+		strings.Contains(msg, "transport is closing") ||
+		strings.Contains(msg, "broken pipe") ||
+		strings.Contains(msg, "use of closed network connection")
+}
+
 // syncArgoCDAppWithProgress wraps syncArgoCDApp with the
 // "↻ Syncing X" / "✓ Synced X" sub-step pair so the operator sees
 // which app is in flight at any given moment. Used by
@@ -688,55 +733,17 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
     `)
 	}
 
-	repoFetchAttempts := 0
+	attempts := syncRetryAttempts{}
 	for {
 		_, err := m.client.Sync(ctx, applicationSyncRequest)
 		if err != nil {
-			if strings.Contains(err.Error(), "another operation is already in progress") {
-				// A sync operation triggered by a previous iteration (or by
-				// ArgoCD's own auto-sync) is still running. Wait for it to
-				// finish, then loop back and re-evaluate.
-				slog.WarnContext(ctx,
-					"An ArgoCD App sync operation is already in progress. Waiting before retrying",
-					logger.Error(err),
-				)
-				time.Sleep(argoCDSyncInProgressBackoff)
+			retry, fatalErr := m.classifyAndHandleSyncError(ctx, err, name, appNamespace, &attempts)
+			if fatalErr != nil {
+				return fatalErr
+			}
+			if retry {
 				continue
 			}
-
-			// Repo-fetch failure (slow SSH handshake to gitea, repo-server
-			// hiccup, etc.) — issue a hard refresh so ArgoCD re-asks
-			// repo-server for the source revision, then retry Sync.
-			// Bounded so a genuinely-broken repo URL fails out instead
-			// of looping forever.
-			if isArgoCDRepoFetchError(err) && repoFetchAttempts < argoCDRepoFetchMaxAttempts {
-				repoFetchAttempts++
-				slog.WarnContext(ctx,
-					"ArgoCD sync failed on repo fetch; hard-refreshing and retrying",
-					slog.Int("attempt", repoFetchAttempts),
-					slog.Int("max-attempts", argoCDRepoFetchMaxAttempts),
-					logger.Error(err),
-				)
-				if _, refreshErr := m.client.Get(ctx, &application.ApplicationQuery{
-					Name:         &name,
-					Project:      []string{constants.ArgoCDProjectKubeAid},
-					AppNamespace: &appNamespace,
-					Refresh:      ptr.To(string(argoCDV1Aplha1.RefreshTypeHard)),
-				}); refreshErr != nil {
-					slog.WarnContext(ctx,
-						"Hard refresh request failed; will retry sync anyway",
-						logger.Error(refreshErr),
-					)
-				}
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(argoCDRepoFetchBackoff):
-				}
-				continue
-			}
-
-			return fmt.Errorf("failed syncing ArgoCD application %q: %w", name, err)
 		}
 
 		// Wait for ArgoCD to materialize the root app's child Applications,
@@ -765,6 +772,104 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		slog.InfoContext(ctx, "ArgoCD App not synced yet; re-triggering sync")
 		time.Sleep(argoCDSyncRetryInterval)
 	}
+}
+
+// syncRetryAttempts tracks the bounded retry counters per error class
+// that syncArgoCDApp's loop is allowed to burn through. Held by-pointer
+// in classifyAndHandleSyncError so the counters survive across loop
+// iterations.
+type syncRetryAttempts struct {
+	repoFetch   int
+	portForward int
+}
+
+// classifyAndHandleSyncError inspects err from m.client.Sync and decides
+// whether the loop should retry, return a wrapped fatal error, or fall
+// through to the post-success path.
+//
+// Returns:
+//   - retry=true,  fatalErr=nil — caller should `continue` the loop.
+//     A backoff sleep / reconnect / hard-refresh has already happened
+//     here as appropriate for the matched error class.
+//   - retry=false, fatalErr!=nil — caller should `return fatalErr`.
+//   - retry=false, fatalErr=nil — caller should fall through to the
+//     post-success path (currently unreachable; kept so the call site
+//     stays defensive).
+func (m *ArgoCDAppManager) classifyAndHandleSyncError(
+	ctx context.Context,
+	err error,
+	name, appNamespace string,
+	attempts *syncRetryAttempts,
+) (retry bool, fatalErr error) {
+	// A sync operation triggered by a previous iteration (or by
+	// ArgoCD's own auto-sync) is still running. Wait for it to
+	// finish, then loop back and re-evaluate.
+	if strings.Contains(err.Error(), "another operation is already in progress") {
+		slog.WarnContext(ctx,
+			"An ArgoCD App sync operation is already in progress. Waiting before retrying",
+			logger.Error(err),
+		)
+		time.Sleep(argoCDSyncInProgressBackoff)
+		return true, nil
+	}
+
+	// Port-forward died mid-Sync — typically because syncing the
+	// argocd app itself restarted argocd-server. Re-establish the
+	// port-forward (which also refreshes m.client), wait, then retry
+	// Sync. Bounded so a genuinely-down apiserver fails out instead
+	// of spinning forever.
+	if isArgoCDTransientTransportError(err) && attempts.portForward < argoCDPortForwardMaxAttempts {
+		attempts.portForward++
+		slog.WarnContext(ctx,
+			"ArgoCD sync failed on transport (port-forward likely died); reconnecting and retrying",
+			slog.Int("attempt", attempts.portForward),
+			slog.Int("max-attempts", argoCDPortForwardMaxAttempts),
+			logger.Error(err),
+		)
+		if m.reconnect != nil {
+			m.reconnect(ctx)
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(argoCDPortForwardBackoff):
+		}
+		return true, nil
+	}
+
+	// Repo-fetch failure (slow SSH handshake to gitea, repo-server
+	// hiccup, etc.) — issue a hard refresh so ArgoCD re-asks
+	// repo-server for the source revision, then retry Sync. Bounded
+	// so a genuinely-broken repo URL fails out instead of looping
+	// forever.
+	if isArgoCDRepoFetchError(err) && attempts.repoFetch < argoCDRepoFetchMaxAttempts {
+		attempts.repoFetch++
+		slog.WarnContext(ctx,
+			"ArgoCD sync failed on repo fetch; hard-refreshing and retrying",
+			slog.Int("attempt", attempts.repoFetch),
+			slog.Int("max-attempts", argoCDRepoFetchMaxAttempts),
+			logger.Error(err),
+		)
+		if _, refreshErr := m.client.Get(ctx, &application.ApplicationQuery{
+			Name:         &name,
+			Project:      []string{constants.ArgoCDProjectKubeAid},
+			AppNamespace: &appNamespace,
+			Refresh:      ptr.To(string(argoCDV1Aplha1.RefreshTypeHard)),
+		}); refreshErr != nil {
+			slog.WarnContext(ctx,
+				"Hard refresh request failed; will retry sync anyway",
+				logger.Error(refreshErr),
+			)
+		}
+		select {
+		case <-ctx.Done():
+			return false, ctx.Err()
+		case <-time.After(argoCDRepoFetchBackoff):
+		}
+		return true, nil
+	}
+
+	return false, fmt.Errorf("failed syncing ArgoCD application %q: %w", name, err)
 }
 
 // waitForRootArgoCDChildren blocks until the root ArgoCD app has been
