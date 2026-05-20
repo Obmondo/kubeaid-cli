@@ -164,6 +164,32 @@ func TestAccessibleClusters(t *testing.T) {
 	}
 }
 
+func TestManagementInfoHost(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"https URL with an explicit port", "https://netbird.acme.com:443", "netbird.acme.com"},
+		{"https URL without a port", "https://netbird.acme.com", "netbird.acme.com"},
+		{"http URL", "http://netbird.acme.com:80", "netbird.acme.com"},
+		{"empty URL", "", ""},
+		// The real daemon always emits a scheme; a bare host:port is not
+		// a parseable URL host and yields "" (the caller skips the check).
+		{"bare host:port without a scheme", "netbird.acme.com:443", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, ManagementInfo{URL: tc.url}.Host())
+		})
+	}
+}
+
 // withStub swaps the package-level runNetbirdStatus for the duration of fn,
 // then restores it. Centralised so tests don't reach into package state
 // repeatedly.

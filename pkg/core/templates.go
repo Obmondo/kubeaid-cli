@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cert"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
@@ -664,7 +665,64 @@ func requireOperatorOnNetBird(ctx context.Context) error {
 		)
 	}
 
+	// The daemon reports "Connected" — but to which mesh? An operator
+	// who ran `netbird up` against a different NetBird server (their
+	// personal netbird.io account, another customer's mesh) clears the
+	// check above yet still cannot reach this cluster's Keycloak.
+	//
+	// Obmondo provisions Keycloak and NetBird Mgmt as siblings —
+	// keycloak.<base> and netbird.<base> — so the mesh that hosts this
+	// cluster's Keycloak is derivable from cluster.keycloak.dns. The
+	// server check is skipped (not failed) when either side can't be
+	// determined: a hard pre-flight gate must not block a valid
+	// bootstrap on a guess.
+	expectedHost := expectedNetBirdHost(cluster.Keycloak.DNS)
+	actualHost := status.Management.Host()
+
+	switch {
+	case expectedHost == "":
+		slog.DebugContext(ctx,
+			"skipping NetBird management-server check: cluster.keycloak.dns "+
+				"is not a keycloak.<base> name, so the expected NetBird host "+
+				"cannot be derived",
+			slog.String("keycloakDNS", cluster.Keycloak.DNS),
+		)
+
+	case actualHost == "":
+		slog.DebugContext(ctx,
+			"skipping NetBird management-server check: the daemon reported "+
+				"no parseable management URL",
+			slog.String("managementURL", status.Management.URL),
+		)
+
+	case !strings.EqualFold(expectedHost, actualHost):
+		return fmt.Errorf(
+			"NetBird daemon is connected to the %q mesh, but this workload "+
+				"cluster's Keycloak at %s lives on %q — run "+
+				"`netbird up --management-url https://%s` to switch to the "+
+				"correct mesh before running `kubeaid-cli bootstrap`",
+			actualHost, cluster.Keycloak.DNS, expectedHost, expectedHost,
+		)
+	}
+
 	return nil
+}
+
+// expectedNetBirdHost derives the NetBird Management hostname a
+// workload cluster's operator must be meshed with, from the cluster's
+// Keycloak DNS. Obmondo provisions the two as siblings: a Keycloak at
+// "keycloak.<base>" implies a NetBird mesh at "netbird.<base>".
+//
+// Returns "" when keycloakDNS does not carry the "keycloak." prefix —
+// the "netbird.<base>" derivation would then be guesswork, and
+// requireOperatorOnNetBird must not hard-fail a bootstrap on a guess.
+func expectedNetBirdHost(keycloakDNS string) string {
+	base, ok := strings.CutPrefix(keycloakDNS, "keycloak.")
+	if !ok {
+		return ""
+	}
+
+	return "netbird." + base
 }
 
 // shouldValidateOIDCNow reports whether the pre-flight OIDC
