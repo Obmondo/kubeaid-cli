@@ -39,9 +39,14 @@ type fakeArgoCDAppClient struct {
 	listResponse *argoCDV1Alpha1.ApplicationList
 	listErr      error
 
+	// Single-shot Sync response, used when syncResponses is empty.
 	syncResponse *argoCDV1Alpha1.Application
 	syncErr      error
-	syncCalled   int
+	// Sequenced Sync responses, indexed by invocation. Index past the
+	// end pins to the last entry (so the fake can settle on a final
+	// outcome). Mirrors getResponses.
+	syncResponses []fakeSyncResponse
+	syncCalled    int
 
 	getResponses []fakeGetResponse
 	getCalled    int
@@ -53,12 +58,25 @@ type fakeGetResponse struct {
 	err error
 }
 
+type fakeSyncResponse struct {
+	app *argoCDV1Alpha1.Application
+	err error
+}
+
 func (f *fakeArgoCDAppClient) List(_ context.Context, _ *application.ApplicationQuery, _ ...grpc.CallOption) (*argoCDV1Alpha1.ApplicationList, error) {
 	return f.listResponse, f.listErr
 }
 
 func (f *fakeArgoCDAppClient) Sync(_ context.Context, _ *application.ApplicationSyncRequest, _ ...grpc.CallOption) (*argoCDV1Alpha1.Application, error) {
-	f.syncCalled++
+	defer func() { f.syncCalled++ }()
+	if len(f.syncResponses) > 0 {
+		idx := f.syncCalled
+		if idx >= len(f.syncResponses) {
+			idx = len(f.syncResponses) - 1
+		}
+		r := f.syncResponses[idx]
+		return r.app, r.err
+	}
 	return f.syncResponse, f.syncErr
 }
 
@@ -687,6 +705,149 @@ func TestSyncArgoCDAppReissuesSync(t *testing.T) {
 				"Sync must be re-issued, not just polled")
 		})
 	}
+}
+
+// TestIsArgoCDTransientTransportError pins which errors syncArgoCDApp
+// will treat as recoverable port-forward failures vs. fatal returns.
+func TestIsArgoCDTransientTransportError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "nil is not transient",
+			err:  nil,
+			want: false,
+		},
+		{
+			name: "plain error is not transient",
+			err:  errors.New("permission denied"),
+			want: false,
+		},
+		{
+			name: "Unavailable with dial-proxy connect-refused is transient",
+			err: grpcStatus.Error(codes.Unavailable,
+				`connection error: desc = "transport: error while dialing: error dial proxy: dial tcp 127.0.0.1:39671: connect: connection refused"`),
+			want: true,
+		},
+		{
+			name: "Unavailable with broken pipe is transient",
+			err: grpcStatus.Error(codes.Unavailable,
+				`connection error: desc = "transport: write tcp 127.0.0.1:53214->127.0.0.1:53218: write: broken pipe"`),
+			want: true,
+		},
+		{
+			name: "Unavailable with transport-is-closing is transient",
+			err:  grpcStatus.Error(codes.Unavailable, "transport is closing"),
+			want: true,
+		},
+		{
+			name: "Unavailable without a dial-side substring is not transient",
+			err:  grpcStatus.Error(codes.Unavailable, "server shutting down"),
+			want: false,
+		},
+		{
+			name: "FailedPrecondition repo-fetch is NOT this category",
+			err:  grpcStatus.Error(codes.FailedPrecondition, "resolving repo revision: ssh: handshake failed"),
+			want: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, isArgoCDTransientTransportError(tc.err))
+		})
+	}
+}
+
+// TestSyncArgoCDAppRetriesOnPortForwardFailure covers syncArgoCDApp's
+// recovery path for the kubectl port-forward dying mid-Sync — the
+// classic case being the argocd ArgoCD app self-syncing and restarting
+// argocd-server. On each codes.Unavailable connect-refused failure,
+// syncArgoCDApp must call reconnect and re-issue Sync, bounded by
+// argoCDPortForwardMaxAttempts so a genuinely-down apiserver still
+// fails out.
+func TestSyncArgoCDAppRetriesOnPortForwardFailure(t *testing.T) {
+	// Shrink intervals so the test doesn't sleep for real.
+	// Not t.Parallel() — these are package-level vars.
+	origSyncRetry := argoCDSyncRetryInterval
+	origPortFwdBackoff := argoCDPortForwardBackoff
+	t.Cleanup(func() {
+		argoCDSyncRetryInterval = origSyncRetry
+		argoCDPortForwardBackoff = origPortFwdBackoff
+	})
+	argoCDSyncRetryInterval = time.Millisecond
+	argoCDPortForwardBackoff = time.Millisecond
+
+	portForwardErr := grpcStatus.Error(codes.Unavailable,
+		`connection error: desc = "transport: error while dialing: error dial proxy: dial tcp 127.0.0.1:39671: connect: connection refused"`)
+
+	t.Run("recovers after reconnect", func(t *testing.T) {
+		client := &fakeArgoCDAppClient{
+			// Get: OutOfSync (enters sync path) → Synced (after sync).
+			getResponses: []fakeGetResponse{
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+				{app: syncedApp()},
+			},
+			// Sync: Unavailable twice, then success.
+			syncResponses: []fakeSyncResponse{
+				{err: portForwardErr},
+				{err: portForwardErr},
+				{app: &argoCDV1Alpha1.Application{}},
+			},
+		}
+		reconnectCalls := 0
+		mgr := NewArgoCDAppManager(client, func(_ context.Context) {
+			reconnectCalls++
+		})
+
+		err := mgr.syncArgoCDApp(context.Background(), constants.ArgoCDAppArgoCD, nil)
+		require.NoError(t, err)
+		assert.GreaterOrEqual(t, client.syncCalled, 3,
+			"Sync must be retried past the transient transport failures")
+		assert.Equal(t, 2, reconnectCalls,
+			"reconnect must fire once per transient transport failure")
+	})
+
+	t.Run("gives up after argoCDPortForwardMaxAttempts", func(t *testing.T) {
+		// All Sync calls keep failing with the transport error — should
+		// surface as a fatal "failed syncing ArgoCD application" once
+		// the bounded retry counter is exhausted.
+		client := &fakeArgoCDAppClient{
+			getResponses: []fakeGetResponse{
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+			},
+			syncResponses: []fakeSyncResponse{{err: portForwardErr}},
+		}
+		mgr := NewArgoCDAppManager(client, func(_ context.Context) {})
+
+		err := mgr.syncArgoCDApp(context.Background(), constants.ArgoCDAppArgoCD, nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed syncing ArgoCD application")
+		assert.Equal(t, argoCDPortForwardMaxAttempts+1, client.syncCalled,
+			"Sync should be called exactly maxAttempts+1 times before giving up")
+	})
+
+	t.Run("nil reconnect still retries and bounds attempts", func(t *testing.T) {
+		// reconnect=nil is the path the unit tests historically used; the
+		// bounded retry must still trip and surface a fatal error rather
+		// than panicking or looping forever.
+		client := &fakeArgoCDAppClient{
+			getResponses: []fakeGetResponse{
+				{app: appWithOverallStatus(argoCDV1Alpha1.SyncStatusCodeOutOfSync)},
+			},
+			syncResponses: []fakeSyncResponse{{err: portForwardErr}},
+		}
+		mgr := NewArgoCDAppManager(client, nil)
+
+		err := mgr.syncArgoCDApp(context.Background(), "my-app", nil)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "failed syncing ArgoCD application")
+	})
 }
 
 func TestIsArgoCDAppSynced(t *testing.T) {
