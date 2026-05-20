@@ -308,12 +308,67 @@ func TestRequireOperatorOnNetBird(t *testing.T) {
 		})
 	})
 
-	t.Run("workload + keycloak + connected daemon: passes", func(t *testing.T) {
+	t.Run("workload + keycloak + daemon on the matching mesh: passes", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				// keycloak.vpn.acme.com → expected mesh netbird.vpn.acme.com.
+				return &netbird.Status{
+					DaemonStatus: netbird.DaemonStatusConnected,
+					Management:   netbird.ManagementInfo{URL: "https://netbird.vpn.acme.com:443"},
+				}, nil
+			})
+			require.NoError(t, requireOperatorOnNetBird(context.Background()))
+		})
+	})
+
+	t.Run("workload + keycloak + daemon on a different mesh: fails", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				// Daemon is Connected — but to the wrong NetBird server.
+				return &netbird.Status{
+					DaemonStatus: netbird.DaemonStatusConnected,
+					Management:   netbird.ManagementInfo{URL: "https://netbird.someoneelse.io:443"},
+				}, nil
+			})
+			err := requireOperatorOnNetBird(context.Background())
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "netbird.someoneelse.io") // the wrong mesh
+			assert.Contains(t, err.Error(), "netbird.vpn.acme.com")   // the expected mesh
+			assert.Contains(t, err.Error(), "netbird up --management-url")
+		})
+	})
+
+	t.Run("workload + keycloak + daemon reports no management URL: passes (cannot verify)", func(t *testing.T) {
 		withFreshGeneralConfig(t, func() {
 			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
 			config.ParsedGeneralConfig.Cluster.Keycloak = keycloakBlock
 			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
 				return &netbird.Status{DaemonStatus: netbird.DaemonStatusConnected}, nil
+			})
+			require.NoError(t, requireOperatorOnNetBird(context.Background()))
+		})
+	})
+
+	t.Run("workload + off-convention keycloak DNS: server check skipped, passes", func(t *testing.T) {
+		withFreshGeneralConfig(t, func() {
+			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
+			// DNS without the "keycloak." prefix — the expected NetBird
+			// host can't be derived, so the server check degrades to
+			// daemon-connected rather than guessing and false-failing.
+			config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+				Mode:  "external",
+				DNS:   "auth.acme.com",
+				Realm: "acme",
+			}
+			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
+				return &netbird.Status{
+					DaemonStatus: netbird.DaemonStatusConnected,
+					Management:   netbird.ManagementInfo{URL: "https://netbird.someoneelse.io:443"},
+				}, nil
 			})
 			require.NoError(t, requireOperatorOnNetBird(context.Background()))
 		})
@@ -346,4 +401,22 @@ func TestRequireOperatorOnNetBird(t *testing.T) {
 			assert.Contains(t, err.Error(), keycloakBlock.DNS)
 		})
 	})
+}
+
+func TestExpectedNetBirdHost(t *testing.T) {
+	cases := []struct {
+		name        string
+		keycloakDNS string
+		want        string
+	}{
+		{"conventional keycloak.<base> name", "keycloak.vpn.acme.com", "netbird.vpn.acme.com"},
+		{"deeper base is preserved", "keycloak.k8s.acme.io", "netbird.k8s.acme.io"},
+		{"off-convention DNS yields empty (no guess)", "auth.acme.com", ""},
+		{"empty DNS yields empty", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, expectedNetBirdHost(tc.keycloakDNS))
+		})
+	}
 }

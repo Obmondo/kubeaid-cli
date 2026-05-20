@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"strings"
 )
@@ -40,6 +41,20 @@ type ManagementInfo struct {
 	URL       string `json:"url"`
 	Connected bool   `json:"connected"`
 	Error     string `json:"error,omitempty"`
+}
+
+// Host returns the hostname of the management-server URL — e.g.
+// "https://netbird.acme.com:443" yields "netbird.acme.com" (scheme and
+// port stripped). Returns "" when URL is empty or unparseable, so a
+// caller can treat "can't tell" as "skip the check" rather than
+// mis-compare against a malformed value.
+func (m ManagementInfo) Host() string {
+	u, err := url.Parse(m.URL)
+	if err != nil {
+		return ""
+	}
+
+	return u.Hostname()
 }
 
 // PeersInfo describes the peers known to the daemon.
