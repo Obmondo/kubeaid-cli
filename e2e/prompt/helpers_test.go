@@ -201,6 +201,7 @@ func (c *console) send(s string) {
 func (c *console) sendLine(s string) {
 	c.t.Helper()
 	c.send("\x15" + s + "\r")
+	time.Sleep(200 * time.Millisecond) // let grouped forms move focus after text submission
 }
 
 // selectOption sends N down-arrow keystrokes then enter.
@@ -212,12 +213,14 @@ func (c *console) selectOption(index int) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	c.send("\r")
+	time.Sleep(200 * time.Millisecond) // let grouped forms move focus after select submission
 }
 
 // acceptDefault sends enter to accept the default value (pre-filled in huh).
 func (c *console) acceptDefault() {
 	c.t.Helper()
 	c.send("\r")
+	time.Sleep(100 * time.Millisecond) // let grouped forms advance before the next scripted input
 }
 
 // filterEnv removes any of the named variables from the environment slice.

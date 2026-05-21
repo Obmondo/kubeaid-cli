@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	configpkg "github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // TestBareMetal_PromptFlow tests the bare-metal provider prompt flow.
@@ -168,10 +170,10 @@ func TestAWS_PromptFlow(t *testing.T) {
 	// Step 3 — AWS credentials form.
 	// HOME is set to a scratch dir in newConsole so ~/.aws is empty.
 	c.expectString("Access Key ID:")
-	c.sendLine("AKIAIOSFODNN7EXAMPLE")
+	c.sendLine("aws-access-key")
 
 	c.expectString("Secret Access Key:")
-	c.sendLine("wJalrXUtnFEMI/K7MDENG")
+	c.sendLine("aws-secret-key")
 
 	c.expectString("Session Token")
 	c.acceptDefault()
@@ -236,9 +238,11 @@ func TestAWS_PromptFlow(t *testing.T) {
 	assert.NotEmpty(t, cluster["k8sVersion"], "k8sVersion should be auto-detected")
 
 	// Secrets.
-	assert.Contains(t, secrets, "accessKeyID: AKIAIOSFODNN7EXAMPLE")
-	assert.Contains(t, secrets, "secretAccessKey: wJalrXUtnFEMI/K7MDENG")
-	assert.Contains(t, secrets, "sessionToken:")
+	secretsConfig := parseSecretsConfig(t, secrets)
+	require.NotNil(t, secretsConfig.AWS)
+	assert.Equal(t, "aws-access-key", secretsConfig.AWS.AWSAccessKeyID)
+	assert.Equal(t, "aws-secret-key", secretsConfig.AWS.AWSSecretAccessKey)
+	assert.Empty(t, secretsConfig.AWS.AWSSessionToken)
 }
 
 // TestAzure_PromptFlow tests the Azure provider prompt flow.
@@ -323,8 +327,10 @@ func TestAzure_PromptFlow(t *testing.T) {
 	assert.NotEmpty(t, cluster["k8sVersion"], "k8sVersion should be auto-detected")
 
 	// Secrets.
-	assert.Contains(t, secrets, "clientID: client-id-123")
-	assert.Contains(t, secrets, "clientSecret: client-secret-456")
+	secretsConfig := parseSecretsConfig(t, secrets)
+	require.NotNil(t, secretsConfig.Azure)
+	assert.Equal(t, "client-id-123", secretsConfig.Azure.ClientID)
+	assert.Equal(t, "client-secret-456", secretsConfig.Azure.ClientSecret)
 }
 
 // TestHetznerHCloud_PromptFlow tests the Hetzner hcloud provider prompt flow.
@@ -413,5 +419,15 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	assert.NotEmpty(t, cluster["k8sVersion"], "k8sVersion should be auto-detected")
 
 	// Secrets.
-	assert.Contains(t, secrets, "apiToken: hetzner-token-abc")
+	secretsConfig := parseSecretsConfig(t, secrets)
+	require.NotNil(t, secretsConfig.Hetzner)
+	assert.Equal(t, "hetzner-token-abc", secretsConfig.Hetzner.APIToken)
+}
+
+func parseSecretsConfig(t *testing.T, secrets string) configpkg.SecretsConfig {
+	t.Helper()
+
+	var cfg configpkg.SecretsConfig
+	require.NoError(t, yaml.Unmarshal([]byte(secrets), &cfg))
+	return cfg
 }

@@ -221,112 +221,27 @@ func exitCleanlyOnAbort(errPtr *error) {
 //     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
 func ConfigFromPrompt(configsDirectory string) (returnErr error) {
+	detected := autoDetect()
+	cfg := defaultPromptedConfig(detected)
+	cfg.ConfigsDirectory = configsDirectory
+	state := &promptState{}
+	session := &promptSession{
+		detected: detected,
+		cfg:      cfg,
+		state:    state,
+	}
+
 	// Catch huh's user-abort sentinel at the single ConfigFromPrompt
 	// chokepoint so Ctrl+C exits with a friendly one-line message
 	// instead of the deeply-wrapped 'Failed preparing config files
 	// error=interactive config setup failed: collecting cluster
 	// basics: user aborted' chain that bubbles up through Prepare.
 	defer exitCleanlyOnAbort(&returnErr)
-
-	// Phase 1: Auto-detect.
-	detected := autoDetect()
-
-	cfg := &PromptedConfig{
-		ConfigsDirectory: configsDirectory,
-
-		// SRE defaults.
-		ClusterType:           constants.ClusterTypeWorkload,
-		SSHUsername:           "git",
-		KubeaidForkURL:        constants.KubeAidPublicHTTPSURL,
-		KubeaidConfigForkURL:  "git@github.com:Obmondo/kubeaid-config.git",
-		K8sVersion:            detected.K8sVersion,
-		KubePrometheusVersion: detected.KubePrometheusVersion,
-		KubeaidVersion:        detected.KubeAidVersion,
-		// Hetzner defaults — pre-set so the form pre-fills them on
-		// edit loops even before the Hetzner group has run once.
-		HetznerMode:          "hcloud",
-		HetznerHCloudZone:    "eu-central",
-		HetznerCPMachineType: "cax21",
-		HetznerRegion:        "hel1",
+	if err := session.pickK8sProfileIfNeeded(); err != nil {
+		return err
 	}
-
-	// Step 0: K8s version profile picker. Replaces today's silent
-	// "latest-1 minor" choice with an explicit picker showing four
-	// risk profiles (Proven / Balanced / Early Adopter / Bleeding
-	// Edge) so the operator can trade off freshness vs. stability.
-	// Picker overrides cfg.K8sVersion when the operator picks; on
-	// Ctrl+C / no selection / total fallback failure, the silent
-	// autodetect default in detected.K8sVersion is preserved.
-	pickedK8s, err := pickK8sProfile(detected)
-	if err != nil {
-		return fmt.Errorf("picking K8s profile: %w", err)
-	}
-	if pickedK8s != "" {
-		cfg.K8sVersion = pickedK8s
-	}
-
-	// Phase 2 + 3: Prompt loop — re-runs when the operator declines the summary.
-	for {
-		// Step 1: cluster basics — provider, name, kind.
-		if err := runBasicsForm(cfg); err != nil {
-			return fmt.Errorf("collecting cluster basics: %w", err)
-		}
-
-		// Steps 2a/2b/2c: VPN or OIDC details.
-		if cfg.ClusterType == constants.ClusterTypeVPN {
-			if err := runVPNKeycloakForm(cfg); err != nil {
-				return fmt.Errorf("collecting VPN Keycloak setup: %w", err)
-			}
-			// Auto-derive VPN DNS defaults from Keycloak DNS after group A.
-			applyVPNDefaults(cfg)
-
-			if err := runVPNEndpointsForm(cfg); err != nil {
-				return fmt.Errorf("collecting VPN endpoints: %w", err)
-			}
-
-			// Derive OIDC from Keycloak DNS — no separate prompt needed for VPN clusters.
-			// /auth/realms matches the keycloakx chart's base path; see
-			// parser/keycloak.go's hydrateKeycloakOIDC for the same
-			// derivation on the validate-config side.
-			cfg.EnableOIDC = true
-			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
-			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/auth/realms/" + cfg.KeycloakRealm
-			cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
-		} else {
-			if err := runWorkloadKeycloakForm(cfg); err != nil {
-				return fmt.Errorf("collecting workload Keycloak config: %w", err)
-			}
-		}
-
-		// Step 3: provider-specific credentials.
-		prompter := prompterForProvider(cfg.CloudProvider)
-		if err := prompter.RunCredentialsForm(cfg, detected); err != nil {
-			return fmt.Errorf("collecting provider credentials: %w", err)
-		}
-
-		// Step 4: Git / SSH.
-		if err := runGitSSHForm(cfg, detected); err != nil {
-			return fmt.Errorf("collecting Git/SSH config: %w", err)
-		}
-
-		// AWS derives its SSH key pair name from the deploy key path,
-		// which is only known after Step 4.
-		if aws, ok := prompterForProvider(cfg.CloudProvider).(*awsPrompter); ok {
-			aws.postProcess(cfg)
-		}
-
-		// Phase 3: summary + confirm.
-		printSummary(cfg)
-
-		confirmed, err := runConfirm()
-		if err != nil {
-			return fmt.Errorf("confirming config: %w", err)
-		}
-		if confirmed {
-			break
-		}
-		// Operator picked No — loop back; all cfg fields carry the
-		// last-entered values so the form reopens pre-filled.
+	if err := session.runPromptLoop(); err != nil {
+		return err
 	}
 
 	// Expand tilde in all file paths so that paths are absolute.
@@ -337,6 +252,176 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	}
 
 	printWorkloadNetBirdNextSteps(cfg)
+
+	return nil
+}
+
+func defaultPromptedConfig(detected *autoDetectedConfig) *PromptedConfig {
+	return &PromptedConfig{
+		ClusterType:           constants.ClusterTypeWorkload,
+		SSHUsername:           "git",
+		KubeaidForkURL:        constants.KubeAidPublicHTTPSURL,
+		KubeaidConfigForkURL:  "git@github.com:Obmondo/kubeaid-config.git",
+		K8sVersion:            detected.K8sVersion,
+		KubePrometheusVersion: detected.KubePrometheusVersion,
+		KubeaidVersion:        detected.KubeAidVersion,
+		HetznerMode:           "hcloud",
+		HetznerHCloudZone:     "eu-central",
+		HetznerCPMachineType:  "cax21",
+		HetznerRegion:         "hel1",
+	}
+}
+
+type promptSession struct {
+	detected *autoDetectedConfig
+	cfg      *PromptedConfig
+	state    *promptState
+}
+
+func (s *promptSession) pickK8sProfileIfNeeded() error {
+	if s.state.K8sProfile && s.cfg.K8sVersion != "" {
+		return nil
+	}
+
+	pickedK8s, err := pickK8sProfile(s.detected)
+	if err != nil {
+		return fmt.Errorf("picking K8s profile: %w", err)
+	}
+	if pickedK8s != "" {
+		s.cfg.K8sVersion = pickedK8s
+	}
+	s.state.K8sProfile = true
+
+	return nil
+}
+
+func (s *promptSession) runPromptLoop() error {
+	for {
+		if err := s.runPromptSteps(); err != nil {
+			return err
+		}
+		printSummary(s.cfg)
+
+		confirmed, err := runConfirm()
+		if err != nil {
+			return fmt.Errorf("confirming config: %w", err)
+		}
+		if confirmed {
+			return nil
+		}
+
+		// Operator picked No — loop back; all cfg fields carry the
+		// last-entered values so the form reopens pre-filled.
+		*s.state = promptState{}
+	}
+}
+
+func (s *promptSession) runPromptSteps() error {
+	if err := s.collectBasicsIfNeeded(); err != nil {
+		return err
+	}
+	if err := s.collectClusterAuthIfNeeded(); err != nil {
+		return err
+	}
+
+	prompter := prompterForProvider(s.cfg.CloudProvider)
+	if err := s.collectProviderCredentialsIfNeeded(prompter); err != nil {
+		return err
+	}
+	if err := s.collectGitSSHIfNeeded(); err != nil {
+		return err
+	}
+
+	if aws, ok := prompter.(*awsPrompter); ok {
+		aws.postProcess(s.cfg)
+	}
+
+	return nil
+}
+
+func (s *promptSession) collectBasicsIfNeeded() error {
+	if s.state.Basics && !missingBasics(s.cfg) {
+		return nil
+	}
+
+	if err := runBasicsForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting cluster basics: %w", err)
+	}
+	s.state.Basics = true
+
+	return nil
+}
+
+func (s *promptSession) collectClusterAuthIfNeeded() error {
+	if s.cfg.ClusterType == constants.ClusterTypeVPN {
+		return s.collectVPNConfigIfNeeded()
+	}
+	return s.collectWorkloadKeycloakIfNeeded()
+}
+
+func (s *promptSession) collectVPNConfigIfNeeded() error {
+	if !s.state.VPNKeycloak || missingVPNKeycloak(s.cfg) {
+		if err := runVPNKeycloakForm(s.cfg); err != nil {
+			return fmt.Errorf("collecting VPN Keycloak setup: %w", err)
+		}
+		s.state.VPNKeycloak = true
+	}
+
+	applyVPNDefaults(s.cfg)
+
+	if !s.state.VPNEndpoints || missingVPNEndpoints(s.cfg) {
+		if err := runVPNEndpointsForm(s.cfg); err != nil {
+			return fmt.Errorf("collecting VPN endpoints: %w", err)
+		}
+		s.state.VPNEndpoints = true
+	}
+
+	s.cfg.EnableOIDC = true
+	s.cfg.KeycloakRealm = deriveRealmFromDNS(s.cfg.KeycloakDNS)
+	// /auth/realms matches the keycloakx chart's base path; see
+	// parser/keycloak.go's hydrateKeycloakOIDC for the same
+	// derivation on the validate-config side.
+	s.cfg.OIDCIssuerURL = "https://" + s.cfg.KeycloakDNS + "/auth/realms/" + s.cfg.KeycloakRealm
+	s.cfg.OIDCClientID = "kubernetes-" + s.cfg.ClusterName
+
+	return nil
+}
+
+func (s *promptSession) collectWorkloadKeycloakIfNeeded() error {
+	if s.state.WorkloadKeycloak && !missingWorkloadKeycloak(s.cfg) {
+		return nil
+	}
+
+	if err := runWorkloadKeycloakForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting workload Keycloak config: %w", err)
+	}
+	s.state.WorkloadKeycloak = true
+
+	return nil
+}
+
+func (s *promptSession) collectProviderCredentialsIfNeeded(prompter ProviderPrompter) error {
+	if s.state.ProviderCredentials && !missingProviderPromptConfig(s.cfg) {
+		return nil
+	}
+
+	if err := prompter.RunCredentialsForm(s.cfg, s.detected); err != nil {
+		return fmt.Errorf("collecting provider credentials: %w", err)
+	}
+	s.state.ProviderCredentials = true
+
+	return nil
+}
+
+func (s *promptSession) collectGitSSHIfNeeded() error {
+	if s.state.GitSSH && !missingGitSSH(s.cfg) {
+		return nil
+	}
+
+	if err := runGitSSHForm(s.cfg, s.detected); err != nil {
+		return fmt.Errorf("collecting Git/SSH config: %w", err)
+	}
+	s.state.GitSSH = true
 
 	return nil
 }
@@ -726,7 +811,7 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 
 // runConfirm shows the "Looks good?" confirm and returns the operator's choice.
 func runConfirm() (bool, error) {
-	var confirmed bool
+	confirmed := true
 	err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewConfirm().

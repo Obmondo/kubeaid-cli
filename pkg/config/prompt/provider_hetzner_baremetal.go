@@ -69,6 +69,8 @@ func runHetznerBareMetalForm(cfg *PromptedConfig) error {
 type bmPhase int
 
 const (
+	defaultHetznerVSwitchSubnetCIDR = "10.0.1.0/24"
+
 	bmPhaseVSwitch bmPhase = iota
 	bmPhaseCP
 	bmPhaseWorkers
@@ -360,7 +362,7 @@ func promptVSwitchConfig(cfg *PromptedConfig) error {
 		cfg.HetznerVSwitchVLANID = "4000"
 	}
 	if cfg.HetznerVSwitchSubnetCIDR == "" {
-		cfg.HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
+		cfg.HetznerVSwitchSubnetCIDR = defaultHetznerVSwitchSubnetCIDR
 	}
 
 	return huh.NewForm(

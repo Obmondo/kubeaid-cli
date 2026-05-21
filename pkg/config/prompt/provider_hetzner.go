@@ -15,6 +15,12 @@ import (
 
 type hetznerPrompter struct{}
 
+const (
+	defaultHetznerHCloudZone  = "eu-central"
+	defaultHetznerMachineType = "cax21"
+	defaultHetznerRegion      = "hel1"
+)
+
 func newHetznerProvider() *hetznerPrompter {
 	return &hetznerPrompter{}
 }
@@ -190,9 +196,9 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 		if haChoice {
 			cfg.HetznerCPReplicas = "3"
 		}
-		cfg.HetznerHCloudZone = "eu-central"
-		cfg.HetznerCPMachineType = "cax21"
-		cfg.HetznerRegion = "hel1"
+		cfg.HetznerHCloudZone = defaultHetznerHCloudZone
+		cfg.HetznerCPMachineType = defaultHetznerMachineType
+		cfg.HetznerRegion = defaultHetznerRegion
 		cfg.HetznerLBRegion = cfg.HetznerRegion
 		return nil
 
@@ -203,9 +209,9 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 		if haChoice {
 			cfg.HetznerCPReplicas = "3"
 		}
-		cfg.HetznerHCloudZone = "eu-central"
-		cfg.HetznerCPMachineType = "cax21"
-		cfg.HetznerRegion = "hel1"
+		cfg.HetznerHCloudZone = defaultHetznerHCloudZone
+		cfg.HetznerCPMachineType = defaultHetznerMachineType
+		cfg.HetznerRegion = defaultHetznerRegion
 		cfg.HetznerLBRegion = cfg.HetznerRegion
 
 		// Bare-metal worker node group + vSwitch. vSwitch is required:

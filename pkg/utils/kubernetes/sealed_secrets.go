@@ -163,7 +163,7 @@ func GenerateSealedSecret(ctx context.Context, secretFilePath string) error {
 	if err != nil {
 		return err
 	}
-	if err := renameio.WriteFile(secretFilePath, sealedBytes, 0o600); err != nil {
+	if err := writeSealedSecretFile(secretFilePath, sealedBytes); err != nil {
 		return fmt.Errorf("atomically replacing secret file with sealed secret: %w", err)
 	}
 	return nil
@@ -226,7 +226,24 @@ func SealIfPlaintextChanged(ctx context.Context,
 	out := make([]byte, 0, len(header)+len(sealedBytes))
 	out = append(out, header...)
 	out = append(out, sealedBytes...)
-	return renameio.WriteFile(destinationFilePath, out, 0o600)
+	return writeSealedSecretFile(destinationFilePath, out)
+}
+
+func writeSealedSecretFile(filePath string, data []byte) error {
+	pendingFile, err := renameTempFileFn("", filePath)
+	if err != nil {
+		return fmt.Errorf("creating temporary sealed-secret file: %w", err)
+	}
+	defer func() { _ = pendingFile.Cleanup() }()
+
+	if _, err := pendingFile.Write(data); err != nil {
+		return fmt.Errorf("writing temporary sealed-secret file: %w", err)
+	}
+	if err := pendingFile.CloseAtomicallyReplace(); err != nil {
+		return fmt.Errorf("replacing sealed-secret file: %w", err)
+	}
+
+	return nil
 }
 
 // sealPlaintextToBytes runs kubeseal against plaintextBytes and returns
