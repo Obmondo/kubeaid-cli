@@ -34,8 +34,15 @@ const (
 
 	FlagNameKubeAidVersion = "kubeaid-version"
 
-	FlagNameManagementClusterName             = "management-cluster-name"
-	FlagNameManagementClusterNameDefaultValue = "kubeaid-bootstrapper"
+	FlagNameManagementClusterName = "management-cluster-name"
+
+	// ManagementClusterNamePrefix is prepended to the target cluster name when the operator
+	// does not supply --management-cluster-name explicitly. The resulting name
+	// (e.g. "kubeaid-mgmt-staging") scopes the local k3d bootstrap cluster to the
+	// target cluster, preventing a second bootstrap run — or a bootstrap of a different
+	// target cluster — from silently reusing a stale k3d cluster with leftover Cluster API
+	// state. Operators who supply the flag explicitly retain full control.
+	ManagementClusterNamePrefix = "kubeaid-mgmt-"
 
 	FlagNameConfigsDirectory             = "configs-directory"
 	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
