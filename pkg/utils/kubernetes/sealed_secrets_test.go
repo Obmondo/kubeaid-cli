@@ -161,19 +161,19 @@ func TestGenerateSealedSecret(t *testing.T) {
 			name: "openCert fails",
 			setupSecretFile: func(t *testing.T) string {
 				t.Helper()
-				return filepath.Join(t.TempDir(), "unused.yaml")
+				return writeSecretFile(t)
 			},
 			openCert: func(_ context.Context, _ kubeseal.ClientConfig, _, _, _ string) (io.ReadCloser, error) {
 				return nil, errors.New("cert unavailable")
 			},
 			wantErr:         true,
-			wantErrContains: "failed reading sealed secrets controller's certificate",
+			wantErrContains: "reading sealed secrets controller's certificate",
 		},
 		{
 			name: "parseKey fails",
 			setupSecretFile: func(t *testing.T) string {
 				t.Helper()
-				return filepath.Join(t.TempDir(), "unused.yaml")
+				return writeSecretFile(t)
 			},
 			openCert: func(_ context.Context, _ kubeseal.ClientConfig, _, _, _ string) (io.ReadCloser, error) {
 				return io.NopCloser(strings.NewReader("fake-cert")), nil
@@ -182,7 +182,7 @@ func TestGenerateSealedSecret(t *testing.T) {
 				return nil, errors.New("bad key format")
 			},
 			wantErr:         true,
-			wantErrContains: "failed retrieving the sealed secrets controller's public key",
+			wantErrContains: "retrieving sealed secrets controller's public key",
 		},
 		{
 			name: "secret file does not exist",
@@ -197,15 +197,13 @@ func TestGenerateSealedSecret(t *testing.T) {
 				return &rsa.PublicKey{}, nil
 			},
 			wantErr:         true,
-			wantErrContains: "failed opening secret file",
+			wantErrContains: "reading secret file",
 		},
 		{
 			name: "renameTempFile fails",
 			setupSecretFile: func(t *testing.T) string {
 				t.Helper()
-				p := filepath.Join(t.TempDir(), "secret.yaml")
-				require.NoError(t, os.WriteFile(p, []byte("apiVersion: v1\nkind: Secret\n"), 0o600))
-				return p
+				return writeSecretFile(t)
 			},
 			openCert: func(_ context.Context, _ kubeseal.ClientConfig, _, _, _ string) (io.ReadCloser, error) {
 				return io.NopCloser(strings.NewReader("fake-cert")), nil
@@ -213,11 +211,15 @@ func TestGenerateSealedSecret(t *testing.T) {
 			parseKey: func(_ io.Reader) (*rsa.PublicKey, error) {
 				return &rsa.PublicKey{}, nil
 			},
+			seal: func(_ kubeseal.ClientConfig, _ string, _ io.Reader, out io.Writer, _ *rsa.PublicKey, _ sealedSecretsV1Aplha1.SealingScope) error {
+				_, err := out.Write([]byte("sealed-data"))
+				return err
+			},
 			renameTempFile: func(_, _ string) (*renameio.PendingFile, error) {
 				return nil, errors.New("disk full")
 			},
 			wantErr:         true,
-			wantErrContains: "failed creating temporary sealed-secret file",
+			wantErrContains: "creating temporary sealed-secret file",
 		},
 		{
 			name: "seal fails",
@@ -240,7 +242,7 @@ func TestGenerateSealedSecret(t *testing.T) {
 				return renameio.TempFile(t.TempDir(), path)
 			},
 			wantErr:         true,
-			wantErrContains: "failed encrypting secret file",
+			wantErrContains: "encrypting secret",
 		},
 	}
 
@@ -287,6 +289,15 @@ func TestGenerateSealedSecret(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func writeSecretFile(t *testing.T) string {
+	t.Helper()
+
+	p := filepath.Join(t.TempDir(), "secret.yaml")
+	secret := []byte("apiVersion: v1\nkind: Secret\ndata:\n  key: dmFsdWU=\n")
+	require.NoError(t, os.WriteFile(p, secret, 0o600))
+	return p
 }
 
 // ── SealIfPlaintextChanged ───────────────────────────────────────────────────

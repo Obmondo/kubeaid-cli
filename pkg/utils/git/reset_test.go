@@ -4,6 +4,7 @@
 package git
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,8 +13,22 @@ import (
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHardResetRepoToRef(t *testing.T) {
+	repo, baseCommitHash, featureCommitHash := createTestRepoWithTagAndBranch(t)
+	headRef, err := repo.Head()
+	require.NoError(t, err)
+	require.Equal(t, featureCommitHash, headRef.Hash())
+
+	HardResetRepoToRef(context.Background(), repo, "v1.2.3")
+
+	headRef, err = repo.Head()
+	require.NoError(t, err)
+	assert.Equal(t, baseCommitHash, headRef.Hash())
+}
 
 func TestResolveGitRefToCommitHash(t *testing.T) {
 	repo, baseCommitHash, featureCommitHash := createTestRepoWithTagAndBranch(t)

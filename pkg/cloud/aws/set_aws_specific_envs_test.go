@@ -84,8 +84,8 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 
 			config.ParsedSecretsConfig = &config.SecretsConfig{
 				AWS: &config.AWSCredentials{
-					AWSAccessKeyID:     "AKIAIOSFODNN7EXAMPLE",
-					AWSSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+					AWSAccessKeyID:     "aws-access-key",
+					AWSSecretAccessKey: "aws-secret-key",
 					AWSSessionToken:    "test-session-token",
 				},
 			}
@@ -106,8 +106,8 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 			}
 			require.NoError(t, err)
 
-			assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", os.Getenv(constants.EnvNameAWSAccessKey))
-			assert.Equal(t, "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", os.Getenv(constants.EnvNameAWSSecretKey))
+			assert.Equal(t, "aws-access-key", os.Getenv(constants.EnvNameAWSAccessKey))
+			assert.Equal(t, "aws-secret-key", os.Getenv(constants.EnvNameAWSSecretKey))
 			assert.Equal(t, "test-session-token", os.Getenv(constants.EnvNameAWSSessionToken))
 			assert.Equal(t, "eu-west-1", os.Getenv(constants.EnvNameAWSRegion))
 			assert.Equal(t, tc.wantB64, os.Getenv(constants.EnvNameAWSB64EcodedCredentials))
