@@ -4,7 +4,7 @@
 package prompt
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // ProviderPrompter collects provider-specific credentials and config.

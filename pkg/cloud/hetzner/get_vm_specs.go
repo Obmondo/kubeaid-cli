@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
 )
 
 func (h *Hetzner) GetVMSpecs(ctx context.Context, machineType string) (*cloud.VMSpec, error) {

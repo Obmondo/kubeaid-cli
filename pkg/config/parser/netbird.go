@@ -6,7 +6,7 @@ package parser
 import (
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // hydrateNetBirdDefaults derives stun / turn DNS names and the static

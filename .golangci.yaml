@@ -23,7 +23,7 @@ formatters:
       # A list of prefixes, which, if set, checks import paths with the given prefixes are grouped
       # after 3rd-party packages.
       local-prefixes:
-        - github.com/Obmondo/kubeaid-bootstrap-script
+        - github.com/Obmondo/kubeaid-cli
 
     golines:
       max-len: 200
@@ -153,7 +153,7 @@ linters:
 
     exhaustruct:
       include:
-        - "^github.com/Obmondo/kubeaid-bootstrap-script"
+        - "^github.com/Obmondo/kubeaid-cli"
 
     gochecksumtype:
       # Presence of default case in switch statements satisfies exhaustiveness, if all members are

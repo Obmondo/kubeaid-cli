@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 )
 
 var ExecuteCommand = &cobra.Command{

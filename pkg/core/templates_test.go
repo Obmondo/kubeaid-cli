@@ -11,10 +11,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
 )
 
 // withFreshGeneralConfig swaps ParsedGeneralConfig for the duration of fn

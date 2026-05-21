@@ -8,7 +8,7 @@ import (
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
 )
 
 var (

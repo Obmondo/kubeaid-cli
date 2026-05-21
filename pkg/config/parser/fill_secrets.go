@@ -12,9 +12,9 @@ import (
 	"github.com/google/renameio"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/randval"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/randval"
 )
 
 // FillMissingSecrets auto-generates and persists random secret

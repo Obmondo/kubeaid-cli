@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root"
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root"
 )
 
 func main() {

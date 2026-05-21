@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 func TestGetRepoDir(t *testing.T) {
@@ -24,10 +24,10 @@ func TestGetRepoDir(t *testing.T) {
 	}{
 		{
 			name:      "github HTTPS URL with .git suffix",
-			url:       "https://github.com/Obmondo/kubeaid-bootstrap-script.git",
+			url:       "https://github.com/Obmondo/kubeaid-cli.git",
 			wantHost:  "github.com",
 			wantOwner: "Obmondo",
-			wantRepo:  "kubeaid-bootstrap-script",
+			wantRepo:  "kubeaid-cli",
 		},
 		{
 			name:      "github SCP-style SSH URL",

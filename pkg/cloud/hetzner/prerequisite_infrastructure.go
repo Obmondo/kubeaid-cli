@@ -10,11 +10,11 @@ import (
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 // ProvisionPrerequisiteInfrastructure provisions infrastructure required before CAPH starts

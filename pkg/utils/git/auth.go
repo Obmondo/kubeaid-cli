@@ -10,9 +10,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gossh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 // gitAuthMode reports which transport-auth construction path

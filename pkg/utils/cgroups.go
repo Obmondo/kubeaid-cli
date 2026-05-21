@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 // Returns whether the CGroup version on the host machine is 2.

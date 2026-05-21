@@ -1,4 +1,4 @@
-module github.com/Obmondo/kubeaid-bootstrap-script
+module github.com/Obmondo/kubeaid-cli
 
 go 1.26.0
 

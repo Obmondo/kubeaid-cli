@@ -12,8 +12,8 @@ import (
 	"k8c.io/kubeone/pkg/executor"
 	"k8c.io/kubeone/pkg/ssh"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 // sshConnOpener is the indirection that lets tests inject a fake

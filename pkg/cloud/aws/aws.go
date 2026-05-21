@@ -13,8 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws/services"
 )
 
 type AWS struct {

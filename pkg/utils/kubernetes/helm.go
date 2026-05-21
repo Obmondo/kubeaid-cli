@@ -18,7 +18,7 @@ import (
 	"helm.sh/helm/v3/pkg/getter"
 	"helm.sh/helm/v3/pkg/release"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 var helmListRetryDelay = 10 * time.Second

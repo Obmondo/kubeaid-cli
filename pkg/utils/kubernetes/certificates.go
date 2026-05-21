@@ -18,7 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 // certManagerCertificateGVK is the GroupVersionKind of cert-manager's

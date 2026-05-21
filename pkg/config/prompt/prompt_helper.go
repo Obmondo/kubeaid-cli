@@ -16,7 +16,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // printSummary renders the configuration summary box.

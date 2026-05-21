@@ -6,7 +6,7 @@ package upgrade
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 var UpgradeCmd = &cobra.Command{

@@ -21,16 +21,16 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 type SetupKubeAidConfigArgs struct {

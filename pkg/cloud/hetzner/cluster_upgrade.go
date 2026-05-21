@@ -18,7 +18,7 @@ import (
 
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 type (

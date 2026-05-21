@@ -16,7 +16,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // pausableWriter wraps an io.Writer with a runtime mute switch. While

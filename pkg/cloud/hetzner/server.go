@@ -19,9 +19,9 @@ import (
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	"k8s.io/utils/ptr"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 // GetHCloudServerIDsForCluster returns IDs of the HCloud servers associated with the given

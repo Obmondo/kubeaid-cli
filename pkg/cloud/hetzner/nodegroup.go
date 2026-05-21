@@ -4,8 +4,8 @@
 package hetzner
 
 import (
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // For each Hetzner Bare Metal node group, if the ZFS disks are NVMe,

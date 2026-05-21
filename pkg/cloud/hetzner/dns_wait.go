@@ -15,7 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/progress"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 // dnsResolveTimeout caps how long a single resolver query can take —

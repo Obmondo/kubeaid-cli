@@ -13,7 +13,7 @@ import (
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 type AWSMachineTemplateUpdates struct {

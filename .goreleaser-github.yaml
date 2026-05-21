@@ -20,9 +20,9 @@ builds:
     goarch: ["amd64", "arm64"]
     ldflags:
       - -s -w
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version={{ .Tag }}
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit={{ .ShortCommit }}
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date={{ .Date }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Version={{ .Tag }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Commit={{ .ShortCommit }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Date={{ .Date }}
   - id: kubeaid-storagectl
     main: ./cmd/kubeaid-storagectl
     binary: kubeaid-storagectl
@@ -30,9 +30,9 @@ builds:
     goarch: ["amd64", "arm64"]
     ldflags:
       - -s -w
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root/version.Version={{ .Tag }}
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root/version.Commit={{ .ShortCommit }}
-      - -X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-storagectl/root/version.Date={{ .Date }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Version={{ .Tag }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Commit={{ .ShortCommit }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Date={{ .Date }}
 
 upx:
   - enabled: true

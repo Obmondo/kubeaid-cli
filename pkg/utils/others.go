@@ -13,7 +13,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 // Returns value of the given environment variable.

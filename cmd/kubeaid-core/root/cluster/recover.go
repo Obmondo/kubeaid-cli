@@ -6,8 +6,8 @@ package cluster
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/core"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/core"
 )
 
 var RecoverCmd = &cobra.Command{

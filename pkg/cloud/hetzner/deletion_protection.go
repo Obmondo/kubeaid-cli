@@ -12,7 +12,7 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"k8s.io/utils/ptr"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // DisableDeletionProtection disables deletion protection on the KubeAPI LB and

@@ -9,11 +9,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/cluster/delete"
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/cluster/upgrade"
-	configSetup "github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/setup"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster/delete"
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster/upgrade"
+	configSetup "github.com/Obmondo/kubeaid-cli/pkg/config/setup"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 )
 
 var ClusterCmd = &cobra.Command{

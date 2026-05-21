@@ -7,7 +7,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 func (a *Azure) DeleteResourceGroup(ctx context.Context) error {

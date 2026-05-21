@@ -11,15 +11,15 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 //go:embed templates/*

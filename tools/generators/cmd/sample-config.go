@@ -11,9 +11,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
-	"github.com/Obmondo/kubeaid-bootstrap-script/tools/generators/pkg/structs"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/tools/generators/pkg/structs"
 )
 
 const (

@@ -20,7 +20,7 @@ import (
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // newVeleroTestScheme builds a scheme with coreV1 + veleroV1 types.

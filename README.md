@@ -43,7 +43,7 @@ brew install Obmondo/kubeaid-cli/kubeaid-cli
 ### From source
 
 ```sh
-go install github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-cli@latest
+go install github.com/Obmondo/kubeaid-cli/cmd/kubeaid-cli@latest
 ```
 
 ## Prerequisites

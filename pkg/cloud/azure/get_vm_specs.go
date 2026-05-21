@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 func (a *Azure) GetVMSpecs(ctx context.Context, vmType string) (*cloud.VMSpec, error) {

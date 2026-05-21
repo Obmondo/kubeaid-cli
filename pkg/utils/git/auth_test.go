@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // TestGitAuthModeFor pins both routing paths — file-based vs SSH-agent —

@@ -20,7 +20,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // runHetznerBareMetalForm collects bare-metal config in three phases:

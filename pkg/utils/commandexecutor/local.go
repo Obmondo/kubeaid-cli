@@ -12,7 +12,7 @@ import (
 	"github.com/go-cmd/cmd"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 type LocalCommandExecutor struct {

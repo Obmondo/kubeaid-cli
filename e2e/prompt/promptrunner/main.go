@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/prompt"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/prompt"
 )
 
 func main() {

@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 )
 
 // Generates storage plan for the intended server.

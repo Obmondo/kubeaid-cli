@@ -8,7 +8,7 @@ import (
 
 	"k8c.io/kubeone/pkg/executor"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 type SSHCommandExecutor struct {

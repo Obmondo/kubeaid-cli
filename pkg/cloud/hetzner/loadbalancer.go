@@ -14,8 +14,8 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"k8s.io/utils/ptr"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // CreateLB creates the Hetzner control-plane LB if it doesn't already

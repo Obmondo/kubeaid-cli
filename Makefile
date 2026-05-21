@@ -3,9 +3,9 @@ COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -s -w \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Version=$(VERSION) \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
-	-X github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
+	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Version=$(VERSION) \
+	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
+	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
 
 MANAGEMENT_CLUSTER_NAME := kubeaid-bootstrapper
 

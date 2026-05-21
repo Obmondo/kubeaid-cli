@@ -9,7 +9,7 @@ const TemplateNameStoragePlanExecutor = "templates/storage-plan-executor.sh.tmpl
 var (
 	CommonNonSecretTemplateNames = []string{
 		// For KubeAid Bootstrap Script general config.
-		"kubeaid-bootstrap-script.general.yaml.tmpl",
+		"kubeaid-cli.general.yaml.tmpl",
 
 		// For ArgoCD.
 		"argocd-apps/templates/argocd.yaml.tmpl",
