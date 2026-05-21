@@ -227,3 +227,13 @@ cloud:
 {{- if eq .CloudProvider "local" }}
   local: {}
 {{- end }}
+{{ if .Obmondo }}
+obmondo:
+{{- if .Obmondo.CustomerID }}
+  customerID: {{ .Obmondo.CustomerID }}
+{{- end }}
+  monitoring: {{ .Obmondo.Monitoring }}
+  certPath: {{ .Obmondo.CertPath }}
+  keyPath: {{ .Obmondo.KeyPath }}
+  teleportAgent: false
+{{- end }}

@@ -6,11 +6,15 @@ package prompt
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -199,6 +203,145 @@ func TestValidateSSHKeyPath(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := validateSSHKeyPath(tc.path)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errSubstr)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateObmondoCertPath(t *testing.T) {
+	dir := t.TempDir()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	certTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "cluster.customer"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, pub, priv)
+	require.NoError(t, err)
+
+	certPath := filepath.Join(dir, "client.crt")
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: der,
+	}), 0o600))
+
+	junkPath := filepath.Join(dir, "junk")
+	require.NoError(t, os.WriteFile(junkPath, []byte("not a cert"), 0o600))
+
+	tests := []struct {
+		name      string
+		path      string
+		wantErr   bool
+		errSubstr string
+	}{
+		{name: "valid certificate passes", path: certPath},
+		{name: "empty path is required", path: "", wantErr: true, errSubstr: "required"},
+		{
+			name:      "missing file fails with file-not-found",
+			path:      filepath.Join(dir, "missing.crt"),
+			wantErr:   true,
+			errSubstr: "file not found",
+		},
+		{
+			name:      "non-certificate contents fail",
+			path:      junkPath,
+			wantErr:   true,
+			errSubstr: "not a valid certificate",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateObmondoCertPath(tc.path)
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.errSubstr)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateObmondoKeyPath(t *testing.T) {
+	dir := t.TempDir()
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	certTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "cluster.customer"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, pub, priv)
+	require.NoError(t, err)
+	certPath := filepath.Join(dir, "client.crt")
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certDER,
+	}), 0o600))
+
+	keyDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	require.NoError(t, err)
+	keyPath := filepath.Join(dir, "client.key")
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyDER,
+	}), 0o600))
+
+	_, wrongPriv, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	wrongKeyDER, err := x509.MarshalPKCS8PrivateKey(wrongPriv)
+	require.NoError(t, err)
+	wrongKeyPath := filepath.Join(dir, "wrong-client.key")
+	require.NoError(t, os.WriteFile(wrongKeyPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: wrongKeyDER,
+	}), 0o600))
+
+	junkPath := filepath.Join(dir, "junk")
+	require.NoError(t, os.WriteFile(junkPath, []byte("not a key"), 0o600))
+
+	tests := []struct {
+		name      string
+		path      string
+		wantErr   bool
+		errSubstr string
+	}{
+		{name: "valid private key passes", path: keyPath},
+		{name: "empty path is required", path: "", wantErr: true, errSubstr: "required"},
+		{
+			name:      "missing file fails with file-not-found",
+			path:      filepath.Join(dir, "missing.key"),
+			wantErr:   true,
+			errSubstr: "file not found",
+		},
+		{
+			name:      "non-key contents fail",
+			path:      junkPath,
+			wantErr:   true,
+			errSubstr: "not a valid cert/key pair",
+		},
+		{
+			name:      "key that does not match cert fails",
+			path:      wrongKeyPath,
+			wantErr:   true,
+			errSubstr: "not a valid cert/key pair",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateObmondoKeyPath(certPath, tc.path)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.errSubstr)

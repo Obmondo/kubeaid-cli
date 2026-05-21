@@ -184,3 +184,34 @@ func TestRenderSecretsOmitsRobotWhenIncomplete(t *testing.T) {
 		})
 	}
 }
+
+func TestRenderObmondoSupportConfig(t *testing.T) {
+	cfg := &PromptedConfig{
+		CloudProvider: "local",
+		Obmondo: &config.ObmondoConfig{
+			Monitoring: true,
+			CertPath:   "/etc/obmondo/client.crt",
+			KeyPath:    "/etc/obmondo/client.key",
+		},
+	}
+
+	dir := t.TempDir()
+	require.NoError(t, writeConfigFiles(dir, cfg))
+
+	generalBody, err := os.ReadFile(filepath.Join(dir, "general.yaml"))
+	require.NoError(t, err)
+	general := string(generalBody)
+	assert.Contains(t, general, "obmondo:")
+	assert.Contains(t, general, "monitoring: true")
+	assert.Contains(t, general, "certPath: /etc/obmondo/client.crt")
+	assert.Contains(t, general, "keyPath: /etc/obmondo/client.key")
+	assert.Contains(t, general, "teleportAgent: false")
+	assert.NotContains(t, general, "customerID:")
+
+	secretsBody, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
+	require.NoError(t, err)
+
+	parsed := &config.SecretsConfig{}
+	require.NoError(t, yaml.Unmarshal(secretsBody, parsed))
+	assert.Nil(t, parsed.Obmondo)
+}
