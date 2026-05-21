@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
@@ -64,7 +65,8 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	utils.MustSetEnv(constants.EnvNameKubeconfig, managementClusterKubeconfigPath)
 
 	// Ensure that the K3D management cluster is created.
-	err = k3d.CreateK3DCluster(ctx, args.ManagementClusterName)
+	clusterName := resolveManagementClusterName(args.ManagementClusterName)
+	err = k3d.CreateK3DCluster(ctx, clusterName)
 	assert.AssertErrNil(ctx, err, "Failed creating K3D cluster")
 	bar.Substep("Created k3d management cluster")
 
@@ -83,4 +85,21 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 		ClusterClient:    managementClusterClient,
 		GitAuthMethod:    gitAuthMethod,
 	})
+}
+
+// resolveManagementClusterName returns the name to use for the local k3d bootstrap cluster.
+//
+// When the operator supplies --management-cluster-name explicitly, that value is used unchanged.
+// When the flag is omitted (empty string), the name is derived from the target cluster name in
+// general.yaml, scoping the k3d cluster to this bootstrap target. This prevents a second run —
+// or a bootstrap of a different target cluster — from silently reusing a stale k3d cluster
+// carrying the previous run's Cluster API state, Sealed Secrets keys, and ArgoCD registrations.
+func resolveManagementClusterName(explicit string) string {
+	if explicit != "" {
+		return explicit
+	}
+	return fmt.Sprintf("%s%s",
+		constants.ManagementClusterNamePrefix,
+		config.ParsedGeneralConfig.Cluster.Name,
+	)
 }
