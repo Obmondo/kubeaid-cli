@@ -6,8 +6,8 @@ package config
 import (
 	coreV1 "k8s.io/api/core/v1"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 var (

@@ -19,7 +19,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cert"
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 )
 
 // writeCert writes a self-signed cert with the given CN to a temp file and

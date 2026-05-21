@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/klist"
+	"github.com/Obmondo/kubeaid-cli/pkg/klist"
 )
 
 // makeRegistry creates a minimal registry directory tree under a temp dir and

@@ -17,7 +17,7 @@ import (
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // Mutates config.ParsedGeneralConfig — sequential only.

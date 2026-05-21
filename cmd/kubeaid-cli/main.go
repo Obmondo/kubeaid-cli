@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	kubeaidCoreRoot "github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
-	_ "github.com/Obmondo/kubeaid-bootstrap-script/internal/termsetup"
+	kubeaidCoreRoot "github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root"
+	_ "github.com/Obmondo/kubeaid-cli/internal/termsetup"
 )
 
 func main() {

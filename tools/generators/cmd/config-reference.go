@@ -15,8 +15,8 @@ import (
 	"github.com/go-sprout/sprout"
 	"github.com/go-sprout/sprout/registry/strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/tools/generators/pkg/structs"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/tools/generators/pkg/structs"
 )
 
 const (

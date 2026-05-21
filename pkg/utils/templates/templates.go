@@ -14,8 +14,8 @@ import (
 	"github.com/go-sprout/sprout/registry/encoding"
 	"github.com/go-sprout/sprout/registry/strings"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 func ParseAndExecuteTemplate(

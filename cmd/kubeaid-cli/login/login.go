@@ -31,9 +31,9 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/klist"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/netbird"
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
+	"github.com/Obmondo/kubeaid-cli/pkg/klist"
+	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
 )
 
 const (

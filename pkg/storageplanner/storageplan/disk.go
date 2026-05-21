@@ -3,7 +3,7 @@
 
 package storageplan
 
-import "github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
 type (
 	Disk struct {

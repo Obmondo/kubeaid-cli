@@ -14,7 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 )
 
 // K8sProfile is one row of the K8s version picker — a positioned

@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/klist"
+	"github.com/Obmondo/kubeaid-cli/pkg/klist"
 )
 
 // --------------------------------------------------------------------------

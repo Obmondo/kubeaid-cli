@@ -11,9 +11,9 @@ import (
 
 	"github.com/charmbracelet/lipgloss/tree"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
-	templateUtils "github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/templates"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
+	templateUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 type StoragePlan struct {

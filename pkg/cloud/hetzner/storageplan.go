@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/commandexecutor"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *config.HetznerConfig) error {

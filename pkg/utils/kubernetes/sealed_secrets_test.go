@@ -22,9 +22,9 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 // ── installSealedSecretsWithFactory ──────────────────────────────────────────

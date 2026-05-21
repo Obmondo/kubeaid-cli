@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/parser"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 // Prepare resolves the config source and parses the config files. Returns

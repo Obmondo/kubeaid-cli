@@ -18,14 +18,14 @@ import (
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/version"
 
-	awsCloudProvider "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/hetzner"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/git"
+	awsCloudProvider "github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 )
 
 // ConfigFilesExist checks whether both general.yaml and secrets.yaml exist at the given path.

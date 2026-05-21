@@ -11,14 +11,14 @@ import (
 	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
-	awsServices "github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/aws/services"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/cloud/azure"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/globals"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/kubernetes"
+	awsServices "github.com/Obmondo/kubeaid-cli/pkg/cloud/aws/services"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWorkflow bool) {

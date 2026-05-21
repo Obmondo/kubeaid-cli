@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/cmd/kubeaid-core/root"
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root"
 )
 
 func main() {

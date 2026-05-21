@@ -16,7 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 func newPostgresTestScheme(t *testing.T) *runtime.Scheme {

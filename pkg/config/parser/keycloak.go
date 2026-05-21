@@ -10,8 +10,8 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/config"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // hydrateKeycloakDefaults applies the derived defaults for the

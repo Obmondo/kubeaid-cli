@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	configSetup "github.com/Obmondo/kubeaid-bootstrap-script/pkg/config/setup"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/constants"
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils"
+	configSetup "github.com/Obmondo/kubeaid-cli/pkg/config/setup"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 )
 
 var DevenvCmd = &cobra.Command{

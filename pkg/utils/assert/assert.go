@@ -9,7 +9,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 // Panics if the given error isn't nil.

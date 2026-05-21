@@ -16,7 +16,7 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
-	"github.com/Obmondo/kubeaid-bootstrap-script/pkg/utils/giturl"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
