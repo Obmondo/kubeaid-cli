@@ -4,10 +4,12 @@
 package prompt
 
 import (
+	"bufio"
 	"context"
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
@@ -185,23 +187,75 @@ type PromptedConfig struct {
 	BareMetalEndpointPort string
 }
 
+var (
+	interruptedConfigSaveReader io.Reader = os.Stdin
+	interruptedConfigSaveWriter io.Writer = os.Stderr
+)
+
+func askSaveInterruptedConfig(configsDirectory string) (bool, error) {
+	if _, err := fmt.Fprintf(interruptedConfigSaveWriter,
+		"\nSave the answers entered so far to %s so the prompt can resume later? [y/N] ",
+		configsDirectory,
+	); err != nil {
+		return false, fmt.Errorf("writing save prompt: %w", err)
+	}
+
+	line, err := bufio.NewReader(interruptedConfigSaveReader).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("reading answer: %w", err)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 // exitCleanlyOnAbort detects huh's user-abort sentinel anywhere in
 // the wrapped error chain and replaces the noisy multi-frame error
-// with a single friendly line, exiting with status 130 (the
-// conventional Ctrl+C exit code). Called as a deferred from
+// with a single resumable-interrupt path, exiting with status 130
+// (the conventional Ctrl+C exit code). Called as a deferred from
 // ConfigFromPrompt with a pointer to the named return so it sees
 // the final wrapped error post-defer chain.
 //
 // Non-abort errors fall through unchanged — caller's slog.Error
 // chain still applies for those.
-func exitCleanlyOnAbort(errPtr *error) {
+func exitCleanlyOnAbort(
+	errPtr *error,
+	configsDirectory string,
+	cfg *PromptedConfig,
+	state *promptState,
+) {
 	if errPtr == nil || *errPtr == nil {
 		return
 	}
 	if !errors.Is(*errPtr, huh.ErrUserAborted) {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "  Cancelled — no config files written.")
+
+	save, err := askSaveInterruptedConfig(configsDirectory)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  Cancelled - failed reading save choice: %v\n", err)
+		os.Exit(1)
+	}
+	if !save {
+		fmt.Fprintln(os.Stderr, "  Cancelled - partial config not saved.")
+		os.Exit(130)
+	}
+
+	expandPaths(cfg)
+	if err := writeConfigFiles(configsDirectory, cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "  Cancelled - failed saving partial config: %v\n", err)
+		os.Exit(1)
+	}
+	if err := writePromptState(configsDirectory, state); err != nil {
+		fmt.Fprintf(os.Stderr, "  Cancelled - failed saving prompt state: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Fprintf(os.Stderr, "  Saved partial config to %s. Run the command again to continue.\n", configsDirectory)
 	os.Exit(130)
 }
 
@@ -226,9 +280,10 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	cfg.ConfigsDirectory = configsDirectory
 	state := &promptState{}
 	session := &promptSession{
-		detected: detected,
-		cfg:      cfg,
-		state:    state,
+		configsDirectory: configsDirectory,
+		detected:         detected,
+		cfg:              cfg,
+		state:            state,
 	}
 
 	// Catch huh's user-abort sentinel at the single ConfigFromPrompt
@@ -236,7 +291,11 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	// instead of the deeply-wrapped 'Failed preparing config files
 	// error=interactive config setup failed: collecting cluster
 	// basics: user aborted' chain that bubbles up through Prepare.
-	defer exitCleanlyOnAbort(&returnErr)
+	defer exitCleanlyOnAbort(&returnErr, configsDirectory, cfg, state)
+
+	if err := session.loadExistingConfigIfRequested(); err != nil {
+		return err
+	}
 	if err := session.pickK8sProfileIfNeeded(); err != nil {
 		return err
 	}
@@ -249,6 +308,9 @@ func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 
 	if err := writeConfigFiles(configsDirectory, cfg); err != nil {
 		return fmt.Errorf("writing config files: %w", err)
+	}
+	if err := removePromptState(configsDirectory); err != nil {
+		return fmt.Errorf("removing prompt state: %w", err)
 	}
 
 	printWorkloadNetBirdNextSteps(cfg)
@@ -273,9 +335,44 @@ func defaultPromptedConfig(detected *autoDetectedConfig) *PromptedConfig {
 }
 
 type promptSession struct {
-	detected *autoDetectedConfig
-	cfg      *PromptedConfig
-	state    *promptState
+	configsDirectory string
+	detected         *autoDetectedConfig
+	cfg              *PromptedConfig
+	state            *promptState
+}
+
+func (s *promptSession) loadExistingConfigIfRequested() error {
+	if !existingPromptConfigPresent(s.configsDirectory) {
+		return nil
+	}
+
+	loadExisting, err := confirmLoadExistingConfig(s.configsDirectory)
+	if err != nil {
+		return fmt.Errorf("confirming existing config load: %w", err)
+	}
+	if !loadExisting {
+		return nil
+	}
+
+	loadedState, stateLoaded, err := loadPromptState(s.configsDirectory)
+	if err != nil {
+		return fmt.Errorf("loading prompt state: %w", err)
+	}
+	loadedConfig, err := loadExistingPromptedConfigIfPresent(s.configsDirectory, s.cfg)
+	if err != nil {
+		return fmt.Errorf("loading existing config: %w", err)
+	}
+
+	switch {
+	case !loadedConfig:
+		*s.state = promptState{}
+	case stateLoaded:
+		*s.state = loadedState
+	default:
+		*s.state = completedPromptStateFromValues(s.cfg)
+	}
+
+	return nil
 }
 
 func (s *promptSession) pickK8sProfileIfNeeded() error {

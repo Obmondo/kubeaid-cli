@@ -1,0 +1,26 @@
+git:
+  sshUsername: git
+  useSSHAgent: false
+  privateKeyFilePath: /tmp/id_ed25519
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/KubeAid.git
+    version:
+  kubeaidConfig:
+    url: git@example.com:org/config.git
+    directory: demo
+cluster:
+  type: workload
+  name: demo
+  k8sVersion: v1.33.0
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/deploy_key
+cloud:
+  local: {}

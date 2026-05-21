@@ -45,21 +45,24 @@ first, review the output, then bootstrap.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		// Refuse to clobber an existing complete config pair —
-		// operators with a tweaked general.yaml shouldn't lose it to
-		// an accidental `config generate`. Partial state (dir exists,
-		// only one of the two files) falls through to the prompt so
-		// the operator can finish a previously interrupted run.
+		// Refuse to clobber an existing complete config pair unless
+		// the prompt can resume an interrupted or incomplete run.
+		// Partial state (dir exists, only one of the two files) falls
+		// through to the prompt as before.
 		generalPath := path.Join(globals.ConfigsDirectory, "general.yaml")
 		secretsPath := path.Join(globals.ConfigsDirectory, "secrets.yaml")
 		if fileExists(generalPath) && fileExists(secretsPath) {
-			slog.ErrorContext(ctx, "Config files already exist — refusing to overwrite",
-				slog.String("general", generalPath),
-				slog.String("secrets", secretsPath),
-			)
-			fmt.Fprintln(os.Stderr,
-				"\nDelete the files (or pass a different --configs-directory) to re-run the prompt.")
-			os.Exit(1)
+			needsResume, err := prompt.ConfigNeedsInteractiveResume(globals.ConfigsDirectory)
+			assert.AssertErrNil(ctx, err, "Failed checking existing config prompt state")
+			if !needsResume {
+				slog.ErrorContext(ctx, "Config files already exist — refusing to overwrite",
+					slog.String("general", generalPath),
+					slog.String("secrets", secretsPath),
+				)
+				fmt.Fprintln(os.Stderr,
+					"\nDelete the files (or pass a different --configs-directory) to re-run the prompt.")
+				os.Exit(1)
+			}
 		}
 
 		if err := os.MkdirAll(globals.ConfigsDirectory, 0o750); err != nil {

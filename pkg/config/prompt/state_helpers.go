@@ -6,13 +6,13 @@ package prompt
 import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
 type promptState struct {
-	K8sProfile          bool
-	Basics              bool
-	VPNKeycloak         bool
-	VPNEndpoints        bool
-	WorkloadKeycloak    bool
-	ProviderCredentials bool
-	GitSSH              bool
+	K8sProfile          bool `yaml:"k8sProfile"`
+	Basics              bool `yaml:"basics"`
+	VPNKeycloak         bool `yaml:"vpnKeycloak"`
+	VPNEndpoints        bool `yaml:"vpnEndpoints"`
+	WorkloadKeycloak    bool `yaml:"workloadKeycloak"`
+	ProviderCredentials bool `yaml:"providerCredentials"`
+	GitSSH              bool `yaml:"gitSSH"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {

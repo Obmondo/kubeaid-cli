@@ -1,0 +1,46 @@
+git:
+  sshUsername: git
+  useSSHAgent: false
+  privateKeyFilePath: /tmp/id_ed25519
+  knownHosts:
+    - "git.example ssh-ed25519 AAAA"
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/KubeAid.git
+    version: v1.2.3
+  kubeaidConfig:
+    url: git@example.com:org/config.git
+    directory: demo
+cluster:
+  type: workload
+  name: demo
+  k8sVersion: v1.33.0
+  enableAuditLogging: true
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+    oidc:
+      issuerUrl: https://keycloak.example.com/realms/demo
+      clientId: kubernetes-demo
+  keycloak:
+    mode: external
+    dns: keycloak.example.com
+    realm: demo
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/deploy_key
+kubePrometheus:
+  version: v0.15.0
+cloud:
+  azure:
+    tenantID: tenant
+    subscriptionID: subscription
+    location: westeurope
+    storageAccount: demosa
+    controlPlane:
+      loadBalancerType: Public
+      diskSizeGB: 128
+      vmSize: Standard_B2s
+      replicas: 3
