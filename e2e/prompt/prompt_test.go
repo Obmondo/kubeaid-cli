@@ -55,6 +55,9 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Looks good?")
 	c.acceptDefault()
 
+	c.expectString("Do you want Obmondo support?")
+	c.acceptDefault()
+
 	require.NoError(t, cmd.Wait(), "binary must exit cleanly")
 
 	general := readGeneratedFile(t, outputDir, "general.yaml")
@@ -88,6 +91,8 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 func TestLocal_PromptFlow(t *testing.T) {
 	binary := buildTestBinary(t)
 	sshKeyPath := setupDummySSHKey(t)
+	certPath := setupDummyCert(t)
+	keyPath := setupDummyTLSKey(t)
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
@@ -121,6 +126,15 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.expectString("Looks good?")
 	c.acceptDefault()
 
+	c.expectString("Do you want Obmondo support?")
+	c.send("y\r")
+
+	c.expectString("Obmondo mTLS cert path:")
+	c.sendLine(certPath)
+
+	c.expectString("Obmondo mTLS key path:")
+	c.sendLine(keyPath)
+
 	require.NoError(t, cmd.Wait(), "binary must exit cleanly")
 
 	general := readGeneratedFile(t, outputDir, "general.yaml")
@@ -137,6 +151,11 @@ func TestLocal_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "kubeaidConfig:")
 	assert.Contains(t, general, "url: git@github.com:Obmondo/kubeaid-config.git")
 	assert.Contains(t, general, "privateKeyFilePath: "+sshKeyPath)
+	assert.Contains(t, general, "obmondo:")
+	assert.Contains(t, general, "monitoring: true")
+	assert.Contains(t, general, "certPath: "+certPath)
+	assert.Contains(t, general, "keyPath: "+keyPath)
+	assert.Contains(t, general, "teleportAgent: false")
 
 	// K8s version should be auto-detected.
 	var generalMap map[string]any
@@ -200,6 +219,9 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
+	c.acceptDefault()
+
+	c.expectString("Do you want Obmondo support?")
 	c.acceptDefault()
 
 	require.NoError(t, cmd.Wait(), "binary must exit cleanly")
@@ -295,6 +317,9 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Looks good?")
 	c.acceptDefault()
 
+	c.expectString("Do you want Obmondo support?")
+	c.acceptDefault()
+
 	require.NoError(t, cmd.Wait(), "binary must exit cleanly")
 
 	general := readGeneratedFile(t, outputDir, "general.yaml")
@@ -382,6 +407,9 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Looks good?")
+	c.acceptDefault()
+
+	c.expectString("Do you want Obmondo support?")
 	c.acceptDefault()
 
 	require.NoError(t, cmd.Wait(), "binary must exit cleanly")

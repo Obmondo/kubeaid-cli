@@ -103,8 +103,7 @@ type TemplateValues struct {
 
 	// Raw file contents of ObmondoConfig.CertPath / KeyPath, populated when
 	// Obmondo.Monitoring is true. Base64-encoded into the obmondo-clientcert
-	// sealed-secret templates (one per consuming namespace). Stored as strings
-	// because go-sprout's base64Encode takes a string, not []byte.
+	// sealed-secret templates.
 	ObmondoCertFileContents string
 	ObmondoKeyFileContents  string
 
@@ -839,14 +838,9 @@ func getEmbeddedSecretTemplateNames() []string {
 	}
 
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
-		// mTLS client cert: consumed by kubeaid-agent (Obmondo API auth) and
-		// Alertmanager (alert push). Always required when monitoring is on —
-		// CertPath/KeyPath validated in validateConfigs.
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.ObmondoClientCertSecretTemplateNames...,
 		)
-
-		// alertmanager-main: Alertmanager's runtime config Secret.
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.AlertmanagerMainSecretTemplateName,
 		)

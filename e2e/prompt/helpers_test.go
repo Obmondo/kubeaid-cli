@@ -75,6 +75,30 @@ func setupDummySSHKey(t *testing.T) string {
 	return dst
 }
 
+func setupDummyCert(t *testing.T) string {
+	t.Helper()
+	root := repoRoot(t)
+	src := filepath.Join(root, "e2e", "compose", "configs", "certs", "gitea", "gitea.crt")
+	data, err := os.ReadFile(src)
+	require.NoError(t, err, "dummy cert must exist at %s", src)
+
+	dst := filepath.Join(t.TempDir(), "client.crt")
+	require.NoError(t, os.WriteFile(dst, data, 0o600)) //nolint:gosec // dst is under t.TempDir().
+	return dst
+}
+
+func setupDummyTLSKey(t *testing.T) string {
+	t.Helper()
+	root := repoRoot(t)
+	src := filepath.Join(root, "e2e", "compose", "configs", "certs", "gitea", "gitea.key")
+	data, err := os.ReadFile(src)
+	require.NoError(t, err, "dummy TLS key must exist at %s", src)
+
+	dst := filepath.Join(t.TempDir(), "client.key")
+	require.NoError(t, os.WriteFile(dst, data, 0o600)) //nolint:gosec // dst is under t.TempDir().
+	return dst
+}
+
 // console wraps a PTY for driving interactive prompts in tests.
 type console struct {
 	t    *testing.T

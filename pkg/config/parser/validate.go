@@ -272,25 +272,23 @@ func validateObmondoMonitoring(
 				"an Obmondo-issued mTLS cert is required",
 		)
 	}
+	if _, err := stat(obmondo.CertPath); err != nil {
+		return fmt.Errorf("obmondo.certPath does not exist: %w", err)
+	}
 	if obmondo.KeyPath == "" {
 		return errors.New(
 			"obmondo.monitoring is true but obmondo.keyPath is empty, " +
 				"the private key paired with obmondo.certPath is required",
 		)
 	}
-	if _, err := stat(obmondo.CertPath); err != nil {
-		return fmt.Errorf("obmondo.certPath does not exist: %w", err)
-	}
 	if _, err := stat(obmondo.KeyPath); err != nil {
 		return fmt.Errorf("obmondo.keyPath does not exist: %w", err)
 	}
 
-	teleportEnabled := obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
+	teleportEnabled := obmondo.TeleportAgent != nil && *obmondo.TeleportAgent
 	if teleportEnabled && (obmondoCredentials == nil || obmondoCredentials.TeleportAuthToken == "") {
 		return errors.New(
-			"obmondo.monitoring is true and obmondo.teleportAgent isn't false, " +
-				"but secrets.obmondo.teleportAuthToken is empty, it's required. " +
-				"Set obmondo.teleportAgent: false to skip teleport-kube-agent",
+			"obmondo.teleportAgent is true but secrets.obmondo.teleportAuthToken is empty",
 		)
 	}
 

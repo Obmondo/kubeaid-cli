@@ -901,7 +901,7 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 			wantErrSub: "obmondo.certPath",
 		},
 		{
-			name: "valid Cert + Key but missing teleport token is rejected",
+			name: "valid Cert + Key passes without teleport",
 			setup: func(t *testing.T) (*config.ObmondoConfig, *config.ObmondoCredentials) {
 				dir := t.TempDir()
 				cert := filepath.Join(dir, "c.pem")
@@ -910,18 +910,31 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 				require.NoError(t, os.WriteFile(key, []byte("k"), 0o600))
 				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key}, nil
 			},
-			wantErr:    true,
-			wantErrSub: "teleportAuthToken",
 		},
 		{
-			name: "valid Cert + Key + teleport token passes",
+			name: "teleportAgent true requires teleport token",
 			setup: func(t *testing.T) (*config.ObmondoConfig, *config.ObmondoCredentials) {
 				dir := t.TempDir()
 				cert := filepath.Join(dir, "c.pem")
 				key := filepath.Join(dir, "k.pem")
 				require.NoError(t, os.WriteFile(cert, []byte("c"), 0o600))
 				require.NoError(t, os.WriteFile(key, []byte("k"), 0o600))
-				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key},
+				enabled := true
+				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key, TeleportAgent: &enabled}, nil
+			},
+			wantErr:    true,
+			wantErrSub: "teleportAuthToken",
+		},
+		{
+			name: "teleportAgent true with teleport token passes",
+			setup: func(t *testing.T) (*config.ObmondoConfig, *config.ObmondoCredentials) {
+				dir := t.TempDir()
+				cert := filepath.Join(dir, "c.pem")
+				key := filepath.Join(dir, "k.pem")
+				require.NoError(t, os.WriteFile(cert, []byte("c"), 0o600))
+				require.NoError(t, os.WriteFile(key, []byte("k"), 0o600))
+				enabled := true
+				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key, TeleportAgent: &enabled},
 					&config.ObmondoCredentials{TeleportAuthToken: "tok"}
 			},
 		},
@@ -1072,10 +1085,16 @@ func TestValidateConfigHelpers(t *testing.T) {
 			wantErrSub: "certPath",
 		},
 		{
-			name: "Obmondo monitoring requires teleport token by default",
+			name: "Obmondo monitoring requires teleport token when agent enabled",
 			validate: func() error {
+				teleportAgentEnabled := true
 				return validateObmondoMonitoring(
-					&config.ObmondoConfig{Monitoring: true, CertPath: "cert.pem", KeyPath: "key.pem"},
+					&config.ObmondoConfig{
+						Monitoring:    true,
+						CertPath:      "cert.pem",
+						KeyPath:       "key.pem",
+						TeleportAgent: &teleportAgentEnabled,
+					},
 					nil,
 					statOK,
 				)

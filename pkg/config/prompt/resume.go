@@ -221,6 +221,14 @@ func applyGeneralConfigToPromptedConfig(general *config.GeneralConfig, cfg *Prom
 	if general.KubePrometheus != nil {
 		cfg.KubePrometheusVersion = firstNonEmpty(general.KubePrometheus.Version, cfg.KubePrometheusVersion)
 	}
+	if general.Obmondo != nil {
+		obmondo := ensureObmondoConfig(cfg)
+		obmondo.CustomerID = firstNonEmpty(general.Obmondo.CustomerID, obmondo.CustomerID)
+		obmondo.Monitoring = general.Obmondo.Monitoring
+		obmondo.CertPath = firstNonEmpty(general.Obmondo.CertPath, obmondo.CertPath)
+		obmondo.KeyPath = firstNonEmpty(general.Obmondo.KeyPath, obmondo.KeyPath)
+		obmondo.TeleportAgent = general.Obmondo.TeleportAgent
+	}
 
 	applyCloudConfigToPromptedConfig(&general.Cloud, cfg)
 }
@@ -366,6 +374,7 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		WorkloadKeycloak:    cfg.ClusterType == constants.ClusterTypeVPN || !missingWorkloadKeycloak(cfg),
 		ProviderCredentials: !missingProviderPromptConfig(cfg),
 		GitSSH:              !missingGitSSH(cfg),
+		ObmondoSupport:      !missingObmondoSupportConfig(cfg),
 	}
 }
 
@@ -374,7 +383,8 @@ func missingPromptedConfig(cfg *PromptedConfig) bool {
 		missingBasics(cfg) ||
 		missingGitSSH(cfg) ||
 		missingClusterModeConfig(cfg) ||
-		missingProviderRenderedConfig(cfg)
+		missingProviderRenderedConfig(cfg) ||
+		missingObmondoSupportConfig(cfg)
 }
 
 func missingClusterModeConfig(cfg *PromptedConfig) bool {

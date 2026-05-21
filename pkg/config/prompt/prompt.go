@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/huh/spinner"
 
+	configpkg "github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
@@ -185,6 +186,8 @@ type PromptedConfig struct {
 	BareMetalSSHPort      string
 	BareMetalEndpointHost string
 	BareMetalEndpointPort string
+
+	Obmondo *configpkg.ObmondoConfig
 }
 
 var (
@@ -274,6 +277,7 @@ func exitCleanlyOnAbort(
 //     Step 3 — Cloud credentials (provider-specific)
 //     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
+//   - Phase 4: Collect optional Obmondo support details after the summary is accepted.
 func ConfigFromPrompt(configsDirectory string) (returnErr error) {
 	detected := autoDetect()
 	cfg := defaultPromptedConfig(detected)
@@ -397,13 +401,16 @@ func (s *promptSession) runPromptLoop() error {
 		if err := s.runPromptSteps(); err != nil {
 			return err
 		}
-		printSummary(s.cfg)
+		printSummary(s.cfg, s.state)
 
 		confirmed, err := runConfirm()
 		if err != nil {
 			return fmt.Errorf("confirming config: %w", err)
 		}
 		if confirmed {
+			if err := s.collectObmondoSupportIfNeeded(); err != nil {
+				return err
+			}
 			return nil
 		}
 
@@ -519,6 +526,19 @@ func (s *promptSession) collectGitSSHIfNeeded() error {
 		return fmt.Errorf("collecting Git/SSH config: %w", err)
 	}
 	s.state.GitSSH = true
+
+	return nil
+}
+
+func (s *promptSession) collectObmondoSupportIfNeeded() error {
+	if s.state.ObmondoSupport && !missingObmondoSupportConfig(s.cfg) {
+		return nil
+	}
+
+	if err := runObmondoSupportForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting Obmondo support config: %w", err)
+	}
+	s.state.ObmondoSupport = true
 
 	return nil
 }
@@ -904,6 +924,54 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 	populateGitKnownHosts(cfg)
 
 	return nil
+}
+
+func runObmondoSupportForm(cfg *PromptedConfig) error {
+	obmondoSupport := obmondoSupportEnabled(cfg)
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Do you want Obmondo support?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&obmondoSupport),
+		).Title("Obmondo support").Description("Step 5/5"),
+	).Run(); err != nil {
+		return err
+	}
+	if !obmondoSupport {
+		cfg.Obmondo = nil
+		return nil
+	}
+
+	obmondo := ensureObmondoConfig(cfg)
+	obmondo.Monitoring = true
+
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Obmondo mTLS cert path:").
+				Value(&obmondo.CertPath).
+				Validate(validateObmondoCertPath),
+			huh.NewInput().
+				Title("Obmondo mTLS key path:").
+				Value(&obmondo.KeyPath).
+				Validate(func(keyPath string) error {
+					return validateObmondoKeyPath(obmondo.CertPath, keyPath)
+				}),
+		).Title("Obmondo support details").Description("Step 5/5"),
+	).Run()
+}
+
+func obmondoSupportEnabled(cfg *PromptedConfig) bool {
+	return cfg.Obmondo != nil && cfg.Obmondo.Monitoring
+}
+
+func ensureObmondoConfig(cfg *PromptedConfig) *configpkg.ObmondoConfig {
+	if cfg.Obmondo == nil {
+		cfg.Obmondo = &configpkg.ObmondoConfig{}
+	}
+	return cfg.Obmondo
 }
 
 // runConfirm shows the "Looks good?" confirm and returns the operator's choice.

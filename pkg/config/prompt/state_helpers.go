@@ -13,6 +13,7 @@ type promptState struct {
 	WorkloadKeycloak    bool `yaml:"workloadKeycloak"`
 	ProviderCredentials bool `yaml:"providerCredentials"`
 	GitSSH              bool `yaml:"gitSSH"`
+	ObmondoSupport      bool `yaml:"obmondoSupport"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {
@@ -175,4 +176,11 @@ func missingGitSSH(cfg *PromptedConfig) bool {
 		return true
 	}
 	return !cfg.UseSSHAgent && cfg.SSHKeyPath == ""
+}
+
+func missingObmondoSupportConfig(cfg *PromptedConfig) bool {
+	if !obmondoSupportEnabled(cfg) {
+		return false
+	}
+	return cfg.Obmondo.CertPath == "" || cfg.Obmondo.KeyPath == ""
 }

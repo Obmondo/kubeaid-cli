@@ -4,6 +4,7 @@
 package prompt
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -16,11 +17,12 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // printSummary renders the configuration summary box.
-func printSummary(cfg *PromptedConfig) {
+func printSummary(cfg *PromptedConfig, state *promptState) {
 	lines := []string{
 		fmt.Sprintf("  Cluster:       %s (%s)", cfg.ClusterName, cfg.ClusterType),
 		fmt.Sprintf("  K8s version:   %s (auto-detected)", cfg.K8sVersion),
@@ -51,6 +53,9 @@ func printSummary(cfg *PromptedConfig) {
 			fmt.Sprintf("  Deploy key:    %s", cfg.KubeaidConfigDeployKeyPath),
 			fmt.Sprintf("  Git push:      %s", gitAuth),
 		)
+	}
+	if state != nil && state.ObmondoSupport {
+		lines = append(lines, fmt.Sprintf("  Obmondo:       %t", obmondoSupportEnabled(cfg)))
 	}
 
 	fmt.Println()
@@ -197,6 +202,40 @@ func validateSSHKeyPath(p string) error {
 	return nil
 }
 
+func validateObmondoCertPath(p string) error {
+	if strings.TrimSpace(p) == "" {
+		return errRequired
+	}
+
+	certPath := expandTilde(p)
+	if _, err := os.Stat(certPath); err != nil {
+		return fmt.Errorf("file not found: %s", certPath)
+	}
+
+	if _, err := cert.ReadCN(certPath); err != nil {
+		return fmt.Errorf("not a valid certificate: %w", err)
+	}
+
+	return nil
+}
+
+func validateObmondoKeyPath(certPath, keyPath string) error {
+	if strings.TrimSpace(keyPath) == "" {
+		return errRequired
+	}
+
+	expandedKeyPath := expandTilde(keyPath)
+	if _, err := os.Stat(expandedKeyPath); err != nil {
+		return fmt.Errorf("file not found: %s", expandedKeyPath)
+	}
+
+	if _, err := tls.LoadX509KeyPair(expandTilde(certPath), expandedKeyPath); err != nil {
+		return fmt.Errorf("not a valid cert/key pair: %w", err)
+	}
+
+	return nil
+}
+
 // validateSSHPrivateKey parses the given bytes as an SSH private key. Encrypted
 // keys are considered valid — the passphrase will be supplied later.
 func validateSSHPrivateKey(data []byte) error {
@@ -310,4 +349,8 @@ func expandPaths(cfg *PromptedConfig) {
 	cfg.SSHKeyPath = expandTilde(cfg.SSHKeyPath)
 	cfg.KubeaidConfigDeployKeyPath = expandTilde(cfg.KubeaidConfigDeployKeyPath)
 	cfg.HetznerSSHKeyPath = expandTilde(cfg.HetznerSSHKeyPath)
+	if cfg.Obmondo != nil {
+		cfg.Obmondo.CertPath = expandTilde(cfg.Obmondo.CertPath)
+		cfg.Obmondo.KeyPath = expandTilde(cfg.Obmondo.KeyPath)
+	}
 }
