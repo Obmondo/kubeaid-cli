@@ -53,6 +53,10 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
+	// Expose the binary's own version so pkg/ code can read it without
+	// importing cmd/ (which would create a circular dependency).
+	globals.KubeaidCLIVersion = version.Version
+
 	// Subcommands.
 	RootCmd.AddCommand(config.ConfigCmd)
 	RootCmd.AddCommand(devenv.DevenvCmd)

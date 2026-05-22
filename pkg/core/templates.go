@@ -143,6 +143,27 @@ type TemplateValues struct {
 	// in-cluster Secret post-sync, then read-back here on
 	// subsequent runs so the SealedSecret in git stays correct.
 	NetBirdPostgresDSN string
+
+	// KubeaidStoragectlVersion is the pinned kubeaid-storagectl release
+	// tag rendered into global.kubeaidStoragectl.version in the
+	// capi-cluster Helm values. Empty for dev/local builds so the chart
+	// falls back to its own `latest` logic; set to globals.KubeaidCLIVersion
+	// for release builds so each bare-metal node downloads the storagectl
+	// binary that matches the kubeaid-cli release that bootstrapped it.
+	KubeaidStoragectlVersion string
+}
+
+// storagectlVersion returns the kubeaid-storagectl version string to pin
+// in the capi-cluster Helm values. For dev / unset builds it returns ""
+// so the chart falls back to its `{{ else }}latest{{ end }}` branch. For
+// release builds it echoes the version verbatim so each bare-metal node
+// downloads the storagectl binary that matches the kubeaid-cli release
+// that bootstrapped it.
+func storagectlVersion(cliVersion string) string {
+	if cliVersion == "" || cliVersion == "dev" {
+		return ""
+	}
+	return cliVersion
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
@@ -176,6 +197,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		ObmondoCredentials: config.ParsedSecretsConfig.Obmondo,
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
+
+		KubeaidStoragectlVersion: storagectlVersion(globals.KubeaidCLIVersion),
 	}
 
 	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.

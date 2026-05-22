@@ -13,6 +13,11 @@ global:
     # drift to whatever the fork's default branch happens to be at
     # node bootstrap time.
     version: {{ .KubeaidFork.Version }}
+  # Pinned so each bare-metal node downloads the kubeaid-storagectl binary
+  # that matches the kubeaid-cli release that bootstrapped it. Empty on
+  # dev builds, which makes the chart fall back to `latest`.
+  kubeaidStoragectl:
+    version: {{ .KubeaidStoragectlVersion }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigFork.URL }}
   additionalUsers: {{- .AdditionalUsers | toYAML | nindent 4 }}

@@ -14,6 +14,12 @@ import (
 var (
 	ConfigsDirectory,
 
+	// KubeaidCLIVersion is the version of the kubeaid-cli binary, injected
+	// from the version package via ldflags at build time. Set once at startup
+	// in cmd/kubeaid-core/root/root.go. Empty string and "dev" both mean a
+	// local / unreleased build; consumers must treat those the same way.
+	KubeaidCLIVersion,
+
 	CloudProviderName string
 	CloudProvider cloud.CloudProvider
 
