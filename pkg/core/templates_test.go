@@ -403,6 +403,40 @@ func TestRequireOperatorOnNetBird(t *testing.T) {
 	})
 }
 
+func TestStoragectlVersion(t *testing.T) {
+	cases := []struct {
+		name       string
+		cliVersion string
+		want       string
+	}{
+		{
+			name:       "dev build yields empty (chart falls back to latest)",
+			cliVersion: "dev",
+			want:       "",
+		},
+		{
+			name:       "empty string yields empty (unset ldflags, same as dev)",
+			cliVersion: "",
+			want:       "",
+		},
+		{
+			name:       "release version passes through verbatim",
+			cliVersion: "v1.2.3",
+			want:       "v1.2.3",
+		},
+		{
+			name:       "pre-release tag passes through verbatim",
+			cliVersion: "v1.2.3-rc.1",
+			want:       "v1.2.3-rc.1",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, storagectlVersion(tc.cliVersion))
+		})
+	}
+}
+
 func TestExpectedNetBirdHost(t *testing.T) {
 	cases := []struct {
 		name        string
