@@ -1,167 +1,119 @@
-# Bare-metal provisioning — rescue-first OS + storage layout
+# Bare-metal provisioning
 
-> Status: design proposal. Not yet implemented — see "Implementation work".
+How Hetzner bare-metal nodes get their OS and disk layout. The last
+section is a proposed improvement; everything before it is how kubeaid-cli
+works today.
 
-Decide and approve the disk layout *before* the OS is installed, by doing
-all provisioning work from the Hetzner rescue system. Identify nodes by
-hostname (no on-disk state file). Never run a destructive disk operation on
-a live node.
+## OS install
 
-## Why
+CAPH installs the OS on bare-metal nodes, not kubeaid-cli.
 
-- Today the OS is installed *before* the disk layout is planned:
-  installimage runs with defaults, the storage planner then plans *around*
-  whatever it produced, and `installImage.vg0.rootVolumeSize` feeds only the
-  planner — never the install.
-- The re-run check (`isHBMSReachable`) is cluster-blind. "SSH answers"
-  cannot tell a node provisioned for another cluster apart from a fresh
-  one, so re-provisioning a node into a new cluster silently inherits stale
-  state.
-
-## Invariants
-
-1. Destructive disk operations (`installimage`, `sfdisk`, `zpool create`)
-   run **only from rescue** — never on a live, booted node.
-2. installimage never runs without passing the single approval gate.
-3. Booting into rescue is non-destructive, so it needs no consent. A data
-   wipe always needs explicit operator approval. Two separate consents.
-4. Recognition uses **exact-match** signals only — hostname, named ZFS
-   objects, GPT partition labels — never partition-size comparison
-   (MiB/MB/sector rounding makes size matching unreliable).
-5. No persisted state file. Cluster identity lives in the hostname.
-
-## Identity and state
-
-- Hostname is `<cluster>-<group>-<index>`, set by the generated installimage
-  config.
-- `<group>` is `control-plane` or the node-group name. Detection keys on
-  **cluster + group**; the index is cosmetic (uniqueness, plus a readable
-  `kubectl get nodes`).
-- Match the hostname against the *known* cluster and group names from
-  general.yaml — never free-parse it. Both cluster and group names can
-  contain `-`, so splitting on `-` is ambiguous.
-- "Is storage done?" is a runtime check, not a flag: `zpool list primary`
-  plus `zfs list` for the expected datasets.
-
-## The flow
-
-### Phase 1 — classify every declared host
+kubeaid-cli renders these values for the capi-cluster chart:
 
 ```
-GET /boot/{id}/rescue -> note `active`   (context only — never triggers a reset alone)
-
-SSH reachable?  (TCP:22, then handshake with our key; short timeout + retries)
-|
-+- YES -> hostname?
-|   +- rescue                          -> PROVISION    (already in rescue)
-|   +- <this cluster>-<this group>-<n> -> OURS -> zpool list primary + zfs list:
-|   |      +- pool + datasets present  -> DONE  -> skip
-|   |      +- missing / partial        -> REDO-STORAGE
-|   +- any other hostname              -> FOREIGN -> WIPE candidate
-|
-+- NO -> off / fresh / unreachable     -> PROVISION    (fresh)
-         reach rescue: active -> reset;  inactive -> activate rescue -> reset
+bareMetal:
+  wipeDisks: <bool>
+  installImage:
+    imagePath: <Ubuntu image>
+    vg0:
+      size: <GB>
+      rootVolumeSize: <GB>
 ```
 
-`GET /boot/{id}/rescue` reports whether rescue is *queued for the next
-boot* — it is not "currently in rescue", and it auto-clears once the server
-boots into rescue. It is context for the `SSH = NO` branch only; it never
-decides a reset on its own and never authorises a wipe. There is no Robot
-API endpoint for the currently-running OS, so "in rescue" can only be
-detected in-band, via the hostname.
+The chart turns that into a `HetznerBareMetalMachineTemplate`. Its
+`installImage` block is a normal installimage config: an EFI partition, a
+`/boot` partition, an LVM group `vg0` of `vg0.size` GB with a root volume
+of `rootVolumeSize` GB, software RAID-1 across the OS disks, and a
+post-install script. CAPH boots each host into the Hetzner rescue system
+and runs installimage there. If `wipeDisks` is set, it wipes every disk on
+the host first.
 
-### Phases 2-5
+`vg0` is not the whole disk. installimage only carves the EFI, `/boot` and
+`vg0` partitions, so the rest of the disk is left unpartitioned. OS
+upgrades reuse this path; `cluster_upgrade.go` just points `installImage`
+at a new image.
+
+## Storage (ZFS / Ceph)
+
+The ZFS and Ceph layout is not part of `installImage`. It happens on the
+node, after the OS is up.
+
+A `preKubeadmCommand` in the chart (`KubeadmConfig` for node groups,
+`KubeadmControlPlane` for the control plane) downloads the
+`kubeaid-storagectl` binary from kubeaid-cli's GitHub releases and runs
+`kubeaid-storagectl plan execute`. That carves the leftover disk space
+into the ZFS pool and the Ceph partition. It runs during cloud-init,
+before containerd is installed, so containerd's data lands on ZFS.
+
+The storagectl version is pinned by `global.kubeaidStoragectl.version`.
+kubeaid-cli sets it to its own release version; dev builds leave it empty
+and the chart falls back to `latest`.
+
+## The storage plan
+
+kubeaid-cli builds a storage plan during the prerequisite phase, but it is
+mostly informational. The plan stays in memory and is never written to
+general.yaml. kubeaid-cli uses it for the approval box shown to the
+operator, and to label node groups. The ZFS and Ceph allocations never
+reach CAPH; the node recomputes its own plan when `kubeaid-storagectl`
+runs.
+
+The one part of the plan that does reach CAPH is the OS disk selection.
+kubeaid-cli writes the OS disks' WWNs into each `HetznerBareMetalHost`'s
+`rootDeviceHints`, so CAPH builds the OS RAID on the right disks.
+
+## kubeaid-cli's prerequisite phase
+
+For bare-metal, `ProvisionPrerequisiteInfrastructure` does four things:
+
+1. Register the SSH key with Hetzner Robot.
+2. `InstallOSOnAllHBMS`: for each server, skip it if it is already
+   SSH-reachable, otherwise install a base Ubuntu (Robot's one-shot Linux
+   install) and wait for it to come up.
+3. `GenerateStoragePlans`: SSH into each server, scan its disks, build the
+   storage plan, and show the operator the approval box.
+4. Label the node groups.
+
+## The throwaway double-install
+
+Step 2 is wasteful. It runs a full OS install, 8 to 15 minutes per server,
+only to get the server SSH-reachable so step 3 can scan its disks. CAPH
+then installs the OS again. Every bare-metal server ends up installed
+twice.
+
+The skip check, `isHBMSReachable`, is also cluster-blind. A server still
+running another cluster's OS answers SSH and gets skipped, so the scan
+runs against whatever is on it. That is harmless in practice, since
+`lsblk` reports the disks correctly either way and CAPH wipes and
+reinstalls anyway. The install itself is still pure waste.
+
+## Possible improvement
+
+The throwaway install only exists to make an unreachable server SSH-able
+so we can run `lsblk` on it. The Hetzner rescue system does that far
+faster: it is a full Debian environment with `lsblk` already present, and
+apt is there if some tool is missing.
+
+So step 2 can boot rescue instead of installing an OS:
 
 ```
-Phase 2  Bring every non-DONE host into rescue
-         already in rescue   -> nothing
-         off + rescue queued -> reset
-         off / foreign / redo, not queued -> activate rescue -> reset
-         -> wait for SSH + hostname == rescue      (non-destructive — no consent)
-
-Phase 3  From rescue: scan disks (lsblk, WWNs, NVMe/SATA) -> storage plan per host
-         per node-group: AreStoragePlansAlike must hold
-
-Phase 4  ONE approval gate — the per-server box:
-            control-plane
-              srv-1  fresh                      -> install
-              srv-2  foreign (cluster acme-old) -> WIPE + reinstall
-            node-group gpu-workers
-              srv-3  provisioned (this cluster) -> skip
-              srv-4  OS ok, storage incomplete  -> redo storage
-         operator approves once; every wipe is shown up front
-
-Phase 5  Execute (only past Phase 4), all from rescue:
-         PROVISION    -> generate installimage config (layout + hostname)
-                      -> installimage -> reboot -> carve storage (executor)
-         REDO-STORAGE -> zap partitions 5/6 + any partial pool -> carve storage
-                         (OS partitions 1-4 untouched — no installimage re-run)
-
--> all hosts ready -> hand off to CAPH / Cluster API
+for each server:
+  SSH reachable   -> scan it now
+  not reachable   -> boot it into rescue, then scan
 ```
 
-The storage executor stays a simple, non-idempotent script: it only ever
-sees a clean storage area — fresh after installimage, or post-zap on the
-redo path. Zapping partitions 5/6 on the redo path is safe because
-incomplete storage means the node never finished provisioning, so there is
-no data there.
+The scan is read-only: `lsblk` reads disk sizes, WWNs and disk type. So
+`GenerateStoragePlans` does not change at all. It does not care whether it
+SSH'd into rescue or into an installed OS. Nothing is installed in the
+prerequisite phase, and CAPH still does the real install afterwards. This
+replaces an 8-15 minute install with a 1-2 minute rescue boot, and the
+only code that changes is the "not reachable" branch of
+`InstallOSOnAllHBMS`.
 
-## Failure handling
-
-When the operator rejects a host's wipe at Phase 4:
-
-- **control-plane host** — hard-fail the bootstrap. A control-plane node
-  cannot be skipped: etcd quorum needs the full odd count.
-- **node-group host** — skip it for this run. If the group would drop below
-  its minimum count, hard-fail instead. The skip must propagate everywhere
-  downstream: the storage plan, `AreStoragePlansAlike`, and the CAPH machine
-  template.
-
-## Implementation work
-
-**0. Resolve the CAPH question first (blocker).** Trace how the storage
-plan and `HetznerBareMetalMachineTemplate.Spec...InstallImage` reach CAPH
-today. This decides whether kubeaid-cli runs installimage itself or hands
-CAPH a generated config. The items below assume kubeaid-cli drives it —
-confirm before committing to them.
-
-1. **HRobot rescue plumbing** — `POST` / `GET` / `DELETE /boot/{id}/rescue`
-   alongside the existing `/boot/{id}/linux` and `/reset/{id}` calls; a
-   wait-for-rescue helper (SSH + `hostname == rescue`).
-2. **Per-host classification** — the Phase 1 logic in `os_install.go`: SSH
-   probe, then hostname, then rescue / ours / foreign, plus the `zpool` /
-   `zfs` storage check for an "ours" node. Replaces the reachability-only
-   skip.
-3. **installimage config generation** — compose a custom installimage
-   config (disk layout from the approved plan, plus `HOSTNAME`) and run
-   installimage from rescue. Replaces the bare `/boot/{id}/linux` one-shot
-   in `activateHRobotLinuxInstallation`.
-4. **Scan-from-rescue** — move `generateStoragePlan`'s disk scan to the
-   rescue system, and reorder `prerequisite_infrastructure.go` so the plan
-   precedes the OS install.
-5. **Approval gate** — extend the existing bordered approval box to be
-   per-server-state-aware (install / wipe / skip / redo-storage).
-6. **Storage executor** — keep it non-idempotent; ensure it runs only from
-   rescue; add the redo-storage "zap partitions 5/6 + any partial pool
-   first" step; stamp GPT partition labels (`kubeaid-os`, `kubeaid-zfs`,
-   `kubeaid-ceph`) when carving.
-7. **Failure handling** — control-plane wipe-rejection hard-fails;
-   node-group skip with a minimum-count check and downstream propagation.
-8. **Validation** — cluster and group names must be RFC-1123-label-safe,
-   and `<cluster>-<group>-<index>` must stay <= 63 characters.
-
-This is a sizable change to the bare-metal prerequisite phase, not a single
-PR. Items 1-8 are roughly ordered, but several parallelise.
-
-## Open threads
-
-- **CAPH integration** (item 0) — the real prerequisite.
-- **ZFS tooling in the target OS** — if the executor runs from rescue, the
-  installed OS still needs `zfsutils-linux` to import the pool at boot, so
-  the installimage config must install it into the target.
-- **Index-assignment rule** — cosmetic, but one is needed (for example,
-  enumeration order at install time).
-- **Optional** — mount the on-disk partitions from rescue to enrich the
-  approval box (for example, "disk holds cluster acme-old").
-- Assumes no concurrent kubeaid-cli run against the same servers — a re-run
-  resumes a dead run, not a live one.
+There is a heavier alternative. CAPH inspects each `HetznerBareMetalHost`
+and lists its disks under `HardwareDetails`, so kubeaid-cli could read
+that and skip scanning altogether. But `HardwareDetails` is only filled in
+after the host is registered and CAPH has run, so kubeaid-cli would have
+to create the `HetznerBareMetalHost` objects before building the storage
+plan, which reorders the bootstrap. Rescue-scan needs none of that, so it
+is the better first step.
