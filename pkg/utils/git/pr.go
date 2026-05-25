@@ -11,6 +11,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	goGit "github.com/go-git/go-git/v5"
@@ -62,7 +63,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	}
 
 	author, attributedMessage := OperatorAttribution(commitMessage)
-	commit, err := workTree.Commit(attributedMessage, &goGit.CommitOptions{
+	commit, err := commitWithGPGRetry(ctx, workTree, attributedMessage, &goGit.CommitOptions{
 		Author: author,
 		Signer: CommitSigner(ctx),
 		// AllowEmptyCommits stays false (the default) — the
@@ -105,6 +106,90 @@ func AddCommitAndPushChanges(ctx context.Context,
 	}
 
 	return commitObject.Hash
+}
+
+// commitWithGPGRetry wraps workTree.Commit so a transient GPG signing
+// failure — most often "Card error" when the operator's YubiKey is
+// unplugged, locked, or its gpg-agent connection has gone stale —
+// becomes an interactive retry instead of an abort. The operator sees
+// a prompt with the gpg stderr, re-seats / touches the card, and
+// presses ENTER to try again. Any non-signing commit error propagates
+// straight back to the caller, so genuine configuration mistakes
+// (bad author, dirty index, etc.) still surface via the existing
+// assert path.
+//
+// Infinite retry-on-ENTER mirrors WaitUntilPRMerged's loop: the
+// operator is in control, Ctrl+C aborts. No attempt cap, because the
+// failure mode this exists for ("I knocked the YubiKey out, plug it
+// back in") shouldn't be artificially limited.
+func commitWithGPGRetry(ctx context.Context,
+	workTree *goGit.Worktree,
+	message string,
+	opts *goGit.CommitOptions,
+) (plumbing.Hash, error) {
+	stdin := bufio.NewReader(os.Stdin)
+	bar := progress.FromCtx(ctx)
+
+	for {
+		hash, err := workTree.Commit(message, opts)
+		if err == nil {
+			return hash, nil
+		}
+
+		if !isGPGSigningError(err) {
+			return plumbing.ZeroHash, err
+		}
+
+		slog.WarnContext(ctx, "GPG signing failed; prompting operator to retry",
+			slog.String("error", err.Error()))
+
+		// Same Pause / save-cursor / Resume / restore-cursor dance as
+		// WaitUntilPRMerged so the spinner can't clobber the prompt
+		// and the whole block disappears cleanly on retry success.
+		bar.Pause()
+		fmt.Fprint(os.Stderr, "\033[s")
+		fmt.Fprintln(os.Stderr, renderGPGRetryBox(err))
+		fmt.Fprint(os.Stderr, "> ")
+
+		if readErr := readLineCtx(ctx, stdin); readErr != nil {
+			return plumbing.ZeroHash, readErr
+		}
+
+		fmt.Fprint(os.Stderr, "\033[u\033[J")
+		bar.Resume()
+	}
+}
+
+// isGPGSigningError reports whether err originated in our gpgAgentSigner.
+// We tag every signer failure with the "gpg signing failed" prefix
+// (see gpg_signer.go), so a substring match is a reliable gate without
+// coupling this file to the signer's concrete error type.
+func isGPGSigningError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "gpg signing failed")
+}
+
+// renderGPGRetryBox lays the retry prompt out in the same rounded-border
+// style as renderPRMergeBox / the K8s profile picker. The full gpg
+// stderr is included verbatim because the recovery action depends on
+// it: "Card error" → re-seat the card; "No pinentry" → set up
+// pinentry-tty; "Operation cancelled" → don't cancel the PIN prompt
+// this time. Hiding the underlying message would force the operator
+// to dig through the log file.
+func renderGPGRetryBox(err error) string {
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	hintStyle := lipgloss.NewStyle().Faint(true)
+
+	content := lipgloss.JoinVertical(
+		lipgloss.Left,
+		headerStyle.Render("GPG commit signing failed"),
+		err.Error(),
+		"",
+		hintStyle.Render("Re-insert / touch your YubiKey, then press ENTER to retry  •  Ctrl+C to abort"),
+	)
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Render(content)
 }
 
 // WaitUntilPRMerged blocks until the operator confirms via stdin that
