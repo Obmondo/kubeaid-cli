@@ -626,6 +626,18 @@ type (
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
 		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
 
+		// ZFS specific configuration for control-plane nodes. The
+		// upstream CAPH chart's KubeadmControlPlane.yaml dereferences
+		// $.Values.controlPlane.bareMetal.zfs.size, so a missing field
+		// here panics at template render with "nil pointer evaluating
+		// interface {}.size" — exactly the failure that wedged a
+		// kbm-obmondo-com bootstrap. Mirrored from the node-group
+		// shape (HetznerBareMetalNodeGroup.ZFS) so CP and worker pools
+		// declare their pool size the same way; rendered into
+		// values-capi-cluster.yaml via toIndentYAML on the whole
+		// HetznerBareMetalControlPlane struct.
+		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
+
 		StoragePlan storageplan.StoragePlan `yaml:"-"`
 	}
 

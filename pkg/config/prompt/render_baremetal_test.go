@@ -6,6 +6,7 @@ package prompt
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	validatorV10 "github.com/go-playground/validator/v10"
@@ -118,6 +119,20 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "regions:")
 	assert.Contains(t, general, "- fsn1")
 	assert.NotContains(t, general, "regions: []", "bare-metal must NOT emit an empty regions list")
+
+	// Control-plane ZFS block — the chart's KubeadmControlPlane.yaml
+	// dereferences $.Values.controlPlane.bareMetal.zfs.size, so the
+	// absence of this block previously panicked helm template with
+	// "nil pointer evaluating interface {}.size" mid-bootstrap.
+	cpBlockStart := strings.Index(general, "controlPlane:")
+	require.NotEqual(t, -1, cpBlockStart, "controlPlane block must exist")
+	cpThroughEnd := general[cpBlockStart:]
+	nodeGroupsIdx := strings.Index(cpThroughEnd, "nodeGroups:")
+	require.NotEqual(t, -1, nodeGroupsIdx, "nodeGroups must follow controlPlane")
+	cpBlock := cpThroughEnd[:nodeGroupsIdx]
+	assert.Contains(t, cpBlock, "zfs:",
+		"controlPlane.bareMetal must carry a zfs block; otherwise helm template panics on a nil deref")
+	assert.Contains(t, cpBlock, "size: 220")
 
 	// Cluster-level fields rendered the same way as hcloud.
 	assert.Contains(t, general, "name: bm-acme")
