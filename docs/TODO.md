@@ -131,3 +131,41 @@ right server first.
 Deferred rather than bundled into the bootstrap fix because `login`
 keys off klist's `global.yaml`, not `general.yaml` — a different
 config surface worth handling on its own.
+
+### Detect `make build` dev versions in `storagectlVersion`
+
+`Makefile:1` injects `VERSION = $(git describe --tags --always --dirty)`
+into `cmd/kubeaid-core/root/version.Version`, so a local `make build`
+run produces a string like `v0.23.0-54-g0d24247-dirty`. The gate in
+`pkg/core/templates.go:162` (`storagectlVersion`) only treats `""` and
+`"dev"` as dev, so any Makefile-built kubeaid-cli pins that describe
+string into `global.kubeaidStoragectl.version` of the rendered
+`values-capi-cluster.yaml`. Result: every commit on main produces a
+noise diff + PR in kubeaid-config on every bootstrap run, and the
+chart's `latest` fallback (intended for dev) never fires.
+
+Extend the gate to recognise git-describe dev markers:
+
+- suffix `-dirty` → dev (return `""`)
+- segment `-g<hex>` (post-tag git-describe form, with or without
+  `-dirty`) → dev
+
+Release tags from goreleaser (`{{ .Tag }}` → `v0.23.0`, `v0.23.0-rc.1`)
+keep passing through verbatim. Extend `TestStoragectlVersion` with the
+new dev cases (`v0.23.0-dirty`, `v0.23.0-54-g0d24247`,
+`v0.23.0-54-g0d24247-dirty`) so the regex can't drift silently.
+
+### Pre-flight ArgoCD-rendered Helm values against the chart's schema
+
+A broader-scope follow-up to the Hetzner bare-metal regions fix: a
+local pre-flight that runs `helm template --validate` (or
+`kubeconform`, or `jsonschema`) against the rendered
+`values-capi-cluster.yaml` before kubeaid-cli pushes the kubeaid-config
+PR. The bare-metal regions case was caught the hard way (ArgoCD sync
+failure) because `go-playground/validator` only checks slice
+non-nil-ness on `required` — a Helm schema's `minItems`, `pattern`,
+or other JSONSchema constraints aren't enforced on the Go side. A
+pre-flight surfaces the failure as a clean field-level error from
+kubeaid-cli with the offending path, same shape as the parser's
+existing `validate` errors. Defer until we hit the next case from a
+different field; the regions one is fixed at source.
