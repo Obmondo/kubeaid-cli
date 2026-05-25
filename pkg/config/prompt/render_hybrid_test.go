@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/creasty/defaults"
 	validatorV10 "github.com/go-playground/validator/v10"
 	nonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	"github.com/stretchr/testify/assert"
@@ -112,6 +113,13 @@ func TestRenderHetznerHybridVPN(t *testing.T) {
 	parsed := &config.GeneralConfig{}
 	//nolint:musttag // GeneralConfig has hydrated runtime fields without yaml tags by design — same waiver as pkg/config/parser/parse.go.
 	require.NoError(t, yaml.Unmarshal(body, parsed))
+
+	// Match the production parse path: apply creasty defaults so
+	// struct fields tagged with `default:"…"` (e.g. ZFSConfig.Size's
+	// "220") populate before validation. Without this, validators that
+	// rely on the default would fail here even though the production
+	// parse path satisfies them.
+	require.NoError(t, defaults.Set(parsed))
 
 	v := validatorV10.New(validatorV10.WithRequiredStructEnabled())
 	require.NoError(t, v.RegisterValidation("notblank", nonStandardValidators.NotBlank))

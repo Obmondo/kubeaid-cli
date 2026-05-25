@@ -6,9 +6,9 @@ package prompt
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
+	"github.com/creasty/defaults"
 	validatorV10 "github.com/go-playground/validator/v10"
 	nonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	"github.com/stretchr/testify/assert"
@@ -120,19 +120,14 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "- fsn1")
 	assert.NotContains(t, general, "regions: []", "bare-metal must NOT emit an empty regions list")
 
-	// Control-plane ZFS block — the chart's KubeadmControlPlane.yaml
-	// dereferences $.Values.controlPlane.bareMetal.zfs.size, so the
-	// absence of this block previously panicked helm template with
-	// "nil pointer evaluating interface {}.size" mid-bootstrap.
-	cpBlockStart := strings.Index(general, "controlPlane:")
-	require.NotEqual(t, -1, cpBlockStart, "controlPlane block must exist")
-	cpThroughEnd := general[cpBlockStart:]
-	nodeGroupsIdx := strings.Index(cpThroughEnd, "nodeGroups:")
-	require.NotEqual(t, -1, nodeGroupsIdx, "nodeGroups must follow controlPlane")
-	cpBlock := cpThroughEnd[:nodeGroupsIdx]
-	assert.Contains(t, cpBlock, "zfs:",
-		"controlPlane.bareMetal must carry a zfs block; otherwise helm template panics on a nil deref")
-	assert.Contains(t, cpBlock, "size: 220")
+	// Rendered general.yaml must NOT carry static zfs blocks anywhere —
+	// the storage-plan approval flow is what owns the value, and the
+	// `default:"220"` struct tags supply 220 if the file omits it. A
+	// static literal here misleads operators into thinking 220 is baked
+	// in (it isn't; struct default is) and would silently drift if any
+	// of the three positions were hand-edited.
+	assert.NotContains(t, general, "zfs:",
+		"general.yaml.tmpl must not bake any static zfs blocks; struct defaults supply the value")
 
 	// Cluster-level fields rendered the same way as hcloud.
 	assert.Contains(t, general, "name: bm-acme")
@@ -157,6 +152,14 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	//nolint:musttag // GeneralConfig has hydrated runtime fields without yaml tags by design — same waiver as pkg/config/parser/parse.go.
 	require.NoError(t, yaml.Unmarshal(body, parsed),
 		"rendered general.yaml should unmarshal cleanly")
+
+	// Apply creasty/defaults same as pkg/config/parser/parse.go:63 does in
+	// production. Without this step, struct fields tagged with `default:"…"`
+	// stay zero-valued after yaml.Unmarshal, so validators that rely on
+	// the default (e.g. ZFSConfig.Size's `required,gt=200` default:"220")
+	// would fail here even though the production parse path satisfies them.
+	require.NoError(t, defaults.Set(parsed),
+		"rendered general.yaml should accept defaults.Set (matches parse.go path)")
 
 	v := validatorV10.New(validatorV10.WithRequiredStructEnabled())
 	require.NoError(t, v.RegisterValidation("notblank", nonStandardValidators.NotBlank))
