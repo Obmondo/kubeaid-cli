@@ -602,7 +602,18 @@ type (
 		HCloud    *HCloudControlPlane           `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal"`
 
-		Regions []string `yaml:"regions" validate:"required"`
+		// Regions is the list of Hetzner regions (lower-case IDs:
+		// "fsn1", "hel1", "ash", ...) the CAPH chart constrains
+		// control-plane placement to. The upstream chart's
+		// values.schema.json requires minItems: 1; go-playground's
+		// `required` only checks slice non-nil-ness, so we add
+		// `min=1` here to fail an empty list at parse time rather
+		// than surface a cryptic helm-schema rejection at ArgoCD
+		// sync time. Bare-metal mode populates this from each
+		// chosen Robot server's DC (see HetznerBMCPRegions in the
+		// prompt config); hcloud / hybrid modes populate it from
+		// the operator-picked HetznerRegion.
+		Regions []string `yaml:"regions" validate:"required,min=1,dive,notblank"`
 	}
 
 	HCloudControlPlane struct {

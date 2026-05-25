@@ -208,6 +208,7 @@ func TestLoadExistingPromptedConfigHetznerHybridTopology(t *testing.T) {
 	want.HetznerCPReplicas = "3"
 	want.HetznerLBRegion = "hel1"
 	want.HetznerRegion = "hel1"
+	want.HetznerBMCPRegions = []string{"hel1"}
 	want.HetznerVSwitchName = "hybrid-vswitch"
 	want.HetznerVSwitchVLANID = "4001"
 	want.HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
@@ -235,6 +236,8 @@ func TestLoadExistingPromptedConfigHetznerHybridTopology(t *testing.T) {
 	assert.Equal(t, "3", got.HetznerCPReplicas)
 	assert.Equal(t, "hel1", got.HetznerLBRegion)
 	assert.Equal(t, "hel1", got.HetznerRegion)
+	assert.Equal(t, []string{"hel1"}, got.HetznerBMCPRegions,
+		"resume must mirror controlPlane.regions onto HetznerBMCPRegions so a re-render doesn't drop back to []")
 	assert.Equal(t, "hybrid-vswitch", got.HetznerVSwitchName)
 	assert.Equal(t, "4001", got.HetznerVSwitchVLANID)
 	assert.Equal(t, "10.0.1.0/24", got.HetznerVSwitchSubnetCIDR)

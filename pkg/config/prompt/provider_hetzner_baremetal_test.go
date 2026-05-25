@@ -400,3 +400,85 @@ func TestAppendServerAndNextIndex(t *testing.T) {
 	assert.Equal(t, 2, nextIndex(cfg, roleWorker))
 	assert.Equal(t, []string{"200"}, cfg.HetznerBMNodeGroupServerIDs)
 }
+
+// TestHetznerDCToRegion pins the DC->region mapping that
+// appendServer relies on. A miss here means the rendered
+// global.HetznerConfig.ControlPlane.Regions list either ends up empty
+// (back to the ArgoCD-sync-time failure we're fixing) or carries
+// values that don't match Hetzner's region identifiers.
+func TestHetznerDCToRegion(t *testing.T) {
+	tests := []struct {
+		name string
+		dc   string
+		want string
+	}{
+		{name: "empty input yields empty (caller skips it)", dc: "", want: ""},
+		{name: "uppercase Falkenstein", dc: "FSN1-DC14", want: "fsn1"},
+		{name: "uppercase Helsinki", dc: "HEL1-DC2", want: "hel1"},
+		{name: "uppercase Nuremberg with single digit", dc: "NBG1-DC3", want: "nbg1"},
+		{name: "uppercase Ashburn without trailing digit on prefix", dc: "ASH-DC1", want: "ash"},
+		{name: "uppercase Singapore", dc: "SIN-DC1", want: "sin"},
+		{name: "lowercase fixture-style input", dc: "hel1-dc4", want: "hel1"},
+		{name: "mixed case", dc: "Fsn1-Dc14", want: "fsn1"},
+		{name: "DC string without -DC separator passes through lowercased", dc: "FSN1", want: "fsn1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, hetznerDCToRegion(tc.dc))
+		})
+	}
+}
+
+// TestAppendServerCapturesCPRegions exercises the appendServer hook
+// that powers the global.HetznerConfig.ControlPlane.Regions render.
+// Worker servers must NOT contribute (their DCs are irrelevant —
+// node-group placement isn't constrained by `regions`), and a
+// repeat CP DC must not produce duplicates.
+func TestAppendServerCapturesCPRegions(t *testing.T) {
+	cfg := &PromptedConfig{HetznerBMServerPublicIPs: map[string]string{}}
+
+	appendServer(cfg, roleControlPlane, "100", "10.0.0.1", &robotServerInfo{DC: "FSN1-DC14"})
+	appendServer(cfg, roleControlPlane, "101", "10.0.0.2", &robotServerInfo{DC: "FSN1-DC18"})
+	appendServer(cfg, roleControlPlane, "102", "10.0.0.3", &robotServerInfo{DC: "HEL1-DC2"})
+	appendServer(cfg, roleWorker, "200", "10.0.0.10", &robotServerInfo{DC: "ASH-DC1"})
+
+	assert.Equal(t, []string{"fsn1", "hel1"}, cfg.HetznerBMCPRegions,
+		"CP regions: unique, ordered, worker DC ('ash') intentionally excluded")
+}
+
+// TestAppendServerHandlesNilInfo guards the bare-metal path against
+// degraded Robot responses — if the lookup returned no metadata at
+// all we still want the ID/IP recorded, just without contributing
+// to the region set. Cheap insurance against a NPE when Robot is
+// flaky mid-prompt.
+func TestAppendServerHandlesNilInfo(t *testing.T) {
+	cfg := &PromptedConfig{HetznerBMServerPublicIPs: map[string]string{}}
+
+	appendServer(cfg, roleControlPlane, "100", "10.0.0.1", nil)
+
+	assert.Equal(t, []string{"100"}, cfg.HetznerBMCPServerIDs)
+	assert.Empty(t, cfg.HetznerBMCPRegions)
+}
+
+// TestAppendUniqueRegion locks the dedup + skip-empty behaviour of
+// the small helper used by appendServer. Direct unit coverage means
+// a regression here doesn't have to travel through the full
+// appendServer machinery to be caught.
+func TestAppendUniqueRegion(t *testing.T) {
+	tests := []struct {
+		name    string
+		initial []string
+		add     string
+		want    []string
+	}{
+		{name: "empty region is a no-op", initial: nil, add: "", want: nil},
+		{name: "first region appended", initial: nil, add: "fsn1", want: []string{"fsn1"}},
+		{name: "second distinct region appended in order", initial: []string{"fsn1"}, add: "hel1", want: []string{"fsn1", "hel1"}},
+		{name: "duplicate region is skipped", initial: []string{"fsn1", "hel1"}, add: "fsn1", want: []string{"fsn1", "hel1"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, appendUniqueRegion(tc.initial, tc.add))
+		})
+	}
+}

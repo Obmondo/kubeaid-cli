@@ -543,12 +543,18 @@ func nextIndex(cfg *PromptedConfig, r role) int {
 
 // appendServer records an accepted server against the appropriate
 // role's slice on cfg, and decorates the public-IP map for later use
-// in the summary box + YAML comments.
+// in the summary box + YAML comments. For control-plane servers, also
+// stores the server's Hetzner region (derived from Robot's DC field)
+// onto cfg.HetznerBMCPRegions — without this the rendered chart values
+// carry `regions: []` and ArgoCD's CAPH schema check rejects the sync.
 func appendServer(cfg *PromptedConfig, r role, id, privateIP string, info *robotServerInfo) {
 	switch r {
 	case roleControlPlane:
 		cfg.HetznerBMCPServerIDs = append(cfg.HetznerBMCPServerIDs, id)
 		cfg.HetznerBMCPPrivateIPs = append(cfg.HetznerBMCPPrivateIPs, privateIP)
+		if info != nil {
+			cfg.HetznerBMCPRegions = appendUniqueRegion(cfg.HetznerBMCPRegions, hetznerDCToRegion(info.DC))
+		}
 	case roleWorker:
 		cfg.HetznerBMNodeGroupServerIDs = append(cfg.HetznerBMNodeGroupServerIDs, id)
 		cfg.HetznerBMNodeGroupPrivateIPs = append(cfg.HetznerBMNodeGroupPrivateIPs, privateIP)
@@ -558,6 +564,44 @@ func appendServer(cfg *PromptedConfig, r role, id, privateIP string, info *robot
 	if info != nil {
 		cfg.HetznerBMServerPublicIPs[id] = info.PublicIP
 	}
+}
+
+// hetznerDCToRegion maps a Hetzner Robot DC name (e.g. "FSN1-DC14",
+// "HEL1-DC2", "ASH-DC1") to the lower-case region identifier that
+// CAPH's chart accepts ("fsn1", "hel1", "ash"). Robot returns the DC
+// with a `-DC<rack>` suffix; HCloud regions don't carry that suffix,
+// so we trim it.
+//
+// Case-insensitive on the separator so test fixtures using lowercase
+// `-dc<n>` form behave the same as the upstream uppercase. Returns ""
+// on empty input so callers can skip adding it to the region set
+// rather than push an empty string and trip schema `pattern` checks
+// downstream.
+func hetznerDCToRegion(dc string) string {
+	if dc == "" {
+		return ""
+	}
+	upper := strings.ToUpper(dc)
+	base, _, _ := strings.Cut(upper, "-DC")
+	return strings.ToLower(base)
+}
+
+// appendUniqueRegion adds region to regions if it isn't already
+// present and non-empty. Preserves insertion order so the rendered
+// regions list reflects the order servers were added — keeps re-runs
+// of the prompt against the same server set deterministic, which
+// matters for SealedSecret byte-stability and the no-op-diff guard
+// in AddCommitAndPushChanges.
+func appendUniqueRegion(regions []string, region string) []string {
+	if region == "" {
+		return regions
+	}
+	for _, existing := range regions {
+		if existing == region {
+			return regions
+		}
+	}
+	return append(regions, region)
 }
 
 // lookupAction is the operator's choice after a Robot lookup outcome —

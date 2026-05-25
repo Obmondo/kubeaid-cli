@@ -51,6 +51,7 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 
 		HetznerBMCPServerIDs:          []string{"1234567", "1234568", "1234569"},
 		HetznerBMCPPrivateIPs:         []string{"10.0.1.1", "10.0.1.2", "10.0.1.3"},
+		HetznerBMCPRegions:            []string{"fsn1"},
 		HetznerBMNodeGroupName:        "workers",
 		HetznerBMNodeGroupServerIDs:   []string{"1234570"},
 		HetznerBMNodeGroupPrivateIPs:  []string{"10.0.1.10"},
@@ -109,6 +110,14 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "name: workers")
 	assert.Contains(t, general, `serverID: "1234570"`)
 	assert.Contains(t, general, "privateIP: 10.0.1.10")
+
+	// Control-plane regions populated from the chosen Robot servers'
+	// DCs — without this the rendered values-capi-cluster.yaml carries
+	// `regions: []` and ArgoCD's CAPH schema check (minItems: 1)
+	// rejects the sync.
+	assert.Contains(t, general, "regions:")
+	assert.Contains(t, general, "- fsn1")
+	assert.NotContains(t, general, "regions: []", "bare-metal must NOT emit an empty regions list")
 
 	// Cluster-level fields rendered the same way as hcloud.
 	assert.Contains(t, general, "name: bm-acme")
