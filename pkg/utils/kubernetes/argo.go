@@ -744,8 +744,19 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		// and for argocd-repo-server to start serving on :8081 — otherwise
 		// the subsequent per-child sync hits "connection refused" or "App
 		// not found" on revision resolution.
+		//
+		// `resources` is the per-request sync-scope filter the caller
+		// passed. On the management cluster it narrows the root sync to
+		// the mgmt-app subset (see managementClusterRootChildResources);
+		// on the main cluster post-pivot it's nil so root creates the
+		// full App set. Passing it through means the wait expects
+		// exactly the Application CRs that the sync ACTUALLY asked to
+		// create — not every kind:Application declared under root, which
+		// on mgmt always includes 7 workload-only Apps (cilium,
+		// ccm-hetzner, kube-prometheus, ...) that the filter
+		// deliberately excluded.
 		if name == constants.ArgoCDAppRoot {
-			return waitForRootArgoCDChildren(ctx)
+			return waitForRootArgoCDChildren(ctx, syncResourceAppNames(resources))
 		}
 
 		// isArgoCDAppSynced hard-refreshes the App, so this both checks the
@@ -867,7 +878,7 @@ func (m *ArgoCDAppManager) classifyAndHandleSyncError(
 }
 
 // waitForRootArgoCDChildren blocks until the root ArgoCD app has been
-// reconciled and all its declared child Applications exist as Application
+// reconciled and the expected child Applications exist as Application
 // CRs.
 //
 // "Reconciled" means root.status.sync.status is Synced or OutOfSync —
@@ -876,15 +887,23 @@ func (m *ArgoCDAppManager) classifyAndHandleSyncError(
 // reachable so the subsequent per-child syncs don't trip "connection
 // refused" on :8081 during revision resolution.
 //
-// The required-child list is read from root.status.resources, so the
-// wait stays in sync with whatever the root declares — no hardcoded
-// list to drift out of date.
+// `expected` is the list of child Application names we actually asked
+// the sync operation to create:
+//
+//   - Non-empty (management cluster, narrowed sync) → wait for exactly
+//     these. root.status.resources also lists the workload-only
+//     children declared in the source repo (cilium, ccm-hetzner, etc.);
+//     waiting on those would loop until the 3-minute deadline because
+//     the sync was scoped to exclude them by design.
+//   - Empty (main cluster, full root sync with resources == nil) →
+//     fall back to every kind:Application listed in root.status.resources,
+//     so the wait stays in sync with whatever the source repo declares.
 //
 // Errors on context cancellation or 3-minute deadline.
-func waitForRootArgoCDChildren(ctx context.Context) error {
+func waitForRootArgoCDChildren(ctx context.Context, expected []string) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		reconciled, declared, missing, err := rootAppReadyForChildSync(ctx)
+		reconciled, declared, missing, err := rootAppReadyForChildSync(ctx, expected)
 		if err != nil {
 			slog.WarnContext(ctx,
 				"Failed querying root ArgoCD app",
@@ -931,11 +950,18 @@ func waitForRootArgoCDChildren(ctx context.Context) error {
 //   - reconciled: root.status.sync.status is Synced or OutOfSync — i.e.
 //     ArgoCD has talked to repo-server and computed a diff at least once.
 //     Out-of-sync is fine; we only need proof the repo is reachable.
-//   - declared:   count of kind: Application entries in root.status.resources.
-//     0 means ArgoCD hasn't yet listed root's children — keep waiting.
-//   - missing:    declared child names that don't yet exist as Application CRs.
+//   - declared:   number of child Application CRs the caller cares about
+//     (see `expected` below). 0 means ArgoCD hasn't yet listed root's
+//     children — keep waiting.
+//   - missing:    expected child names that don't yet exist as Application CRs.
 //   - err:        transient API error; caller should keep retrying.
-func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) {
+//
+// `expected` selects which child Applications to watch for. Pass the
+// names that the just-issued sync operation was scoped to (the
+// SyncOperationResource.Name list). When empty/nil, falls back to every
+// kind:Application listed under root.status.resources — appropriate
+// for an un-narrowed sync on the main cluster.
+func rootAppReadyForChildSync(ctx context.Context, expected []string) (bool, int, []string, error) {
 	rootName := constants.ArgoCDAppRoot
 	rootApp, err := globals.ArgoCDApplicationClient.Get(ctx, &application.ApplicationQuery{
 		Name:         &rootName,
@@ -954,13 +980,19 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 	reconciled := rootApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeSynced ||
 		rootApp.Status.Sync.Status == argoCDV1Aplha1.SyncStatusCodeOutOfSync
 
-	var declared []string
-	for _, r := range rootApp.Status.Resources {
-		if r.Kind == "Application" {
-			declared = append(declared, r.Name)
+	// Pick the watch-set: the caller's filter wins, since root.status.resources
+	// over-declares relative to what was actually applied on the management
+	// cluster (the workload-only Apps live there even though the sync was
+	// narrowed to exclude them).
+	watchSet := expected
+	if len(watchSet) == 0 {
+		for _, r := range rootApp.Status.Resources {
+			if r.Kind == "Application" {
+				watchSet = append(watchSet, r.Name)
+			}
 		}
 	}
-	if len(declared) == 0 {
+	if len(watchSet) == 0 {
 		return reconciled, 0, nil, nil
 	}
 
@@ -973,7 +1005,7 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 				logger.Error(reconnectErr),
 			)
 		}
-		return reconciled, len(declared), nil, fmt.Errorf("listing ArgoCD apps: %w", err)
+		return reconciled, len(watchSet), nil, fmt.Errorf("listing ArgoCD apps: %w", err)
 	}
 
 	existing := map[string]bool{}
@@ -982,12 +1014,29 @@ func rootAppReadyForChildSync(ctx context.Context) (bool, int, []string, error) 
 	}
 
 	var missing []string
-	for _, name := range declared {
+	for _, name := range watchSet {
 		if !existing[name] {
 			missing = append(missing, name)
 		}
 	}
-	return reconciled, len(declared), missing, nil
+	return reconciled, len(watchSet), missing, nil
+}
+
+// syncResourceAppNames returns the .Name of every kind:Application in
+// resources, in input order. Returns nil when resources is empty so
+// callers can treat "no filter" as "watch everything root declares" —
+// see waitForRootArgoCDChildren for the contract.
+func syncResourceAppNames(resources []*argoCDV1Aplha1.SyncOperationResource) []string {
+	if len(resources) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(resources))
+	for _, r := range resources {
+		if r != nil && r.Kind == "Application" {
+			out = append(out, r.Name)
+		}
+	}
+	return out
 }
 
 // isArgoCDAppSynced returns whether the given ArgoCD App is synced or not.

@@ -1214,3 +1214,144 @@ func TestArgoCDHelmValues(t *testing.T) {
 		})
 	}
 }
+
+// TestSyncResourceAppNames pins the bridge between the per-request
+// sync-resource filter passed to syncArgoCDApp and the watch-set
+// rootAppReadyForChildSync uses. Dropping a name here, or letting a
+// non-Application kind sneak through, would either over-wait (the
+// root-sync-wait-respects-filter bug) or under-wait (missing an App
+// that the sync actually asked to create).
+func TestSyncResourceAppNames(t *testing.T) {
+	tests := []struct {
+		name      string
+		resources []*argoCDV1Alpha1.SyncOperationResource
+		want      []string
+	}{
+		{
+			name: "nil",
+			want: nil,
+		},
+		{
+			name:      "empty",
+			resources: []*argoCDV1Alpha1.SyncOperationResource{},
+			want:      nil,
+		},
+		{
+			name: "preserves order and filters non-Application kinds",
+			resources: []*argoCDV1Alpha1.SyncOperationResource{
+				{Group: "argoproj.io", Kind: "Application", Name: "argocd"},
+				{Group: "", Kind: "ConfigMap", Name: "should-be-skipped"},
+				{Group: "argoproj.io", Kind: "Application", Name: "secrets"},
+				nil,
+				{Group: "argoproj.io", Kind: "Application", Name: "cert-manager"},
+			},
+			want: []string{"argocd", "secrets", "cert-manager"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, syncResourceAppNames(tc.resources))
+		})
+	}
+}
+
+// TestRootAppReadyForChildSyncRespectsExpected exercises the
+// management-cluster contract: when root.status.resources lists more
+// children than the sync was actually scoped to create, the wait must
+// be gated on the caller's expected-name set — not on every declared
+// kind:Application. The cluster we debugged showed 14 declared
+// children (6 mgmt, 7 workload-only, plus root itself) of which only
+// the 6 mgmt Apps were ever asked to be created; without this filter
+// the wait loops on the 7 ghost Apps until the 3-minute deadline.
+//
+// Sequential rather than t.Parallel(): stubs globals.ArgoCDApplicationClient.
+func TestRootAppReadyForChildSyncRespectsExpected(t *testing.T) {
+	rootWithDeclaredChildren := func(declared ...string) *argoCDV1Alpha1.Application {
+		resources := make([]argoCDV1Alpha1.ResourceStatus, 0, len(declared))
+		for _, n := range declared {
+			resources = append(resources, argoCDV1Alpha1.ResourceStatus{
+				Group: "argoproj.io",
+				Kind:  "Application",
+				Name:  n,
+				// OutOfSync mirrors the real-world bug state — root has
+				// declared the child but the Application CR doesn't yet
+				// exist in the cluster.
+				Status: argoCDV1Alpha1.SyncStatusCodeOutOfSync,
+			})
+		}
+		return &argoCDV1Alpha1.Application{
+			Status: argoCDV1Alpha1.ApplicationStatus{
+				Sync:      argoCDV1Alpha1.SyncStatus{Status: argoCDV1Alpha1.SyncStatusCodeOutOfSync},
+				Resources: resources,
+			},
+		}
+	}
+
+	appList := func(names ...string) *argoCDV1Alpha1.ApplicationList {
+		items := make([]argoCDV1Alpha1.Application, 0, len(names))
+		for _, n := range names {
+			items = append(items, argoCDV1Alpha1.Application{
+				ObjectMeta: metaV1.ObjectMeta{Name: n},
+			})
+		}
+		return &argoCDV1Alpha1.ApplicationList{Items: items}
+	}
+
+	mgmtApps := []string{"argocd", "sealed-secrets", "secrets", "cert-manager", "cluster-api-operator", "capi-cluster"}
+	workloadGhosts := []string{"cilium", "ccm-hetzner", "kube-prometheus", "rook-ceph", "netbird-operator", "hetzner-robot", "kubeaid-agent"}
+	allDeclared := append(append([]string{}, mgmtApps...), workloadGhosts...)
+
+	tests := []struct {
+		name         string
+		expected     []string
+		root         *argoCDV1Alpha1.Application
+		existing     *argoCDV1Alpha1.ApplicationList
+		wantDeclared int
+		wantMissing  []string
+	}{
+		{
+			name:         "management cluster — workload ghosts are NOT waited for",
+			expected:     mgmtApps,
+			root:         rootWithDeclaredChildren(allDeclared...),
+			existing:     appList(mgmtApps...),
+			wantDeclared: len(mgmtApps),
+			wantMissing:  nil,
+		},
+		{
+			name:         "main cluster — nil filter falls back to root.status.resources",
+			expected:     nil,
+			root:         rootWithDeclaredChildren(allDeclared...),
+			existing:     appList(mgmtApps...), // workload Apps not yet materialized
+			wantDeclared: len(allDeclared),
+			wantMissing:  workloadGhosts,
+		},
+		{
+			name:         "management cluster — one expected child still missing",
+			expected:     mgmtApps,
+			root:         rootWithDeclaredChildren(allDeclared...),
+			existing:     appList(mgmtApps[:len(mgmtApps)-1]...),
+			wantDeclared: len(mgmtApps),
+			wantMissing:  []string{mgmtApps[len(mgmtApps)-1]},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			orig := globals.ArgoCDApplicationClient
+			t.Cleanup(func() { globals.ArgoCDApplicationClient = orig })
+			globals.ArgoCDApplicationClient = &fakeFullApplicationServiceClient{
+				fakeArgoCDAppClient: fakeArgoCDAppClient{
+					getResponses: []fakeGetResponse{{app: tc.root}},
+					listResponse: tc.existing,
+				},
+			}
+
+			reconciled, declared, missing, err := rootAppReadyForChildSync(context.Background(), tc.expected)
+			require.NoError(t, err)
+			assert.True(t, reconciled, "OutOfSync should count as reconciled here")
+			assert.Equal(t, tc.wantDeclared, declared)
+			assert.ElementsMatch(t, tc.wantMissing, missing)
+		})
+	}
+}
