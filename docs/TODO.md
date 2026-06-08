@@ -112,6 +112,112 @@ to get the new `NetworkRouter` / `NetworkResource` / `SidecarProfile`
 CRDs while keeping the legacy `NB*` CRDs available for in-flight
 configs.
 
+#### Status update (2026-06-08)
+
+- `awaitNetBirdOperatorToken` now pauses bootstrap until the
+  operator pastes a service-user PAT and creates
+  `netbird/netbird-mgmt-api-key`, so a fresh bootstrap doesn't lock
+  the cluster on the operator's `failurePolicy: Fail` webhook with a
+  missing-Secret deployment.
+- **NetBird Mgmt rejects Keycloak-issued JWTs** — the auto-mint path
+  (option 2 above) is *not directly buildable*. Test: a JWT minted
+  via `client_credentials` against `netbird-backend` is rejected at
+  `/api/users` with 401 because Mgmt looks up the JWT's `sub` claim
+  in its internal user DB, and service-account users have never
+  logged in via the dashboard. Either upstream Mgmt needs an
+  `azp`-based admin path or kubeaid-cli needs to pre-seed the user
+  record (no obvious way to do that without a human session).
+
+### NetBird operator PAT rotation
+
+NetBird user PATs cap at 180 days; service-user PATs may allow
+longer but no official no-expiry. Cluster ops on a 180-day
+rotation isn't acceptable long-term. Two options:
+
+1. **In-cluster CronJob** — uses the current PAT to mint a new one
+   via NetBird Mgmt's `POST /api/users/<id>/tokens`, patches the
+   `netbird-mgmt-api-key` Secret, rolls the operator. Schedule
+   every ~5 months. Self-perpetuating once seeded.
+
+2. **Upstream patch** — allow `--no-expiry` (or a much longer cap,
+   e.g. 5y) on service-user PATs only. Smaller Mgmt-side change;
+   maintainers likely receptive given the automation-friendly
+   service-user framing.
+
+Pair (1) into the operator-token gate's chart overlay; pursue (2)
+in parallel and drop the CronJob when it lands.
+
+### Cilium components must reach kube-apiserver without DNS
+
+Bug seen on the `netbird-obmondo-com` bootstrap: after
+`DisableControlPlaneLBPublicInterface` runs, every Cilium component
+(both operator Deployment and agent DaemonSet) crashloops because
+its `KUBERNETES_SERVICE_HOST` is the public hostname
+(`api.vpn.<cluster>`), which resolves to the now-blackholed public
+LB IP via the host's `/etc/resolv.conf` (hostNetwork pods skip
+CoreDNS — `dnsPolicy: ClusterFirst` is silently downgraded to
+`Default`). Go's HTTP client tries the first IP in the resolution
+list and hangs on the TCP blackhole for the full kernel retry
+window (~75–127s), so fallback to the LB private IP never fires
+within the operator's startup deadline.
+
+Two layered fixes:
+
+1. **In-cluster `KUBERNETES_SERVICE_HOST`** — overlay the cilium
+   values to pin `k8sServiceHost` to `{{ .ControlPlaneLBPrivateIP }}`
+   instead of the hostname. Bypasses DNS entirely. Simplest, but
+   loses the symbolic reference to the cluster endpoint.
+
+2. **`hostAliases` via upstream chart PR** — keep
+   `k8sServiceHost: api.vpn.<cluster>` and inject a hostAliases
+   entry mapping that hostname to the LB private IP, so
+   kubelet-managed `/etc/hosts` resolves it correctly even for
+   hostNetwork pods. Requires upstream Cilium PR for
+   `extraHostAliases` / `operator.extraHostAliases` values (draft
+   prepared in this session's chat, not yet filed).
+
+Pursue (2) upstream; ship (1) as the immediate kubeaid-cli fix in
+`values-cilium.yaml.tmpl`. Drop (1) when (2) is released.
+
+### CoreDNS hosts block leaves the disabled public IP
+
+`pkg/core/templates/k8s-configs/coredns.configmap.yaml.tmpl`
+emits both the LB's bootstrap public IP and the steady-state
+private IP, with the public IP first. After
+`DisableControlPlaneLBPublicInterface` runs, the public entry
+points at a blackhole, but stays in the ConfigMap forever — every
+pod looking up `api.vpn.<cluster>` via CoreDNS still gets the dead
+address as the preferred answer.
+
+Two fixes:
+
+- **Reorder** — emit the private IP first. Clients hit it
+  instantly; public stays as harmless fallback.
+- **Conditional emit** — only include the public IP while the LB
+  public interface is still up. After
+  `DisableControlPlaneLBPublicInterface` runs, re-render and push
+  the ConfigMap without the public line. Cleaner long-term.
+
+Reorder is a one-line change; conditional emit needs the disable
+step to trigger a re-render. Land reorder first; build conditional
+emit as part of the same flow that re-disables on rerun.
+
+### Default the netbird-operator webhook to `failurePolicy: Ignore`
+
+The upstream chart ships `MutatingWebhookConfiguration` with
+`failurePolicy: Fail`. On a single-CP cluster where the operator
+itself crashloops (missing API key, cert-manager not yet ready,
+etc.), this blocks every cluster-wide Pod create — including the
+operator's own rollouts, making it almost impossible to recover
+without SSH-into-the-node patches. Overlay
+`webhook.failurePolicy: Ignore` in
+`values-netbird-operator.yaml.tmpl` so the cluster degrades
+gracefully when the operator is unhealthy. Optional sidecar
+injection is the worst-case loss; an unwedged cluster is the win.
+
+Belongs with the broader operator-config TODO above, but worth
+shipping standalone if that wider work slips.
+
 ### Hard-fail `kubeaid-cli login` on a NetBird mesh mismatch
 
 `pickCluster` (`cmd/kubeaid-cli/login/login.go`) compares the local
