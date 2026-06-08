@@ -13,11 +13,17 @@ global:
     # drift to whatever the fork's default branch happens to be at
     # node bootstrap time.
     version: {{ .KubeaidFork.Version }}
+  {{- /* kubeaid-storagectl is only fetched by the Hetzner bare-metal
+       KubeadmConfig / KubeadmControlPlane templates. Skip emitting it
+       for hcloud-only (or other-provider) clusters so the rendered
+       values file doesn't carry config the chart never reads. */ -}}
+  {{- if and .HetznerConfig (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
   # Pinned so each bare-metal node downloads the kubeaid-storagectl binary
   # that matches the kubeaid-cli release that bootstrapped it. Empty on
   # dev builds, which makes the chart fall back to `latest`.
   kubeaidStoragectl:
     version: {{ .KubeaidStoragectlVersion }}
+  {{- end }}
   kubeaidConfig:
     repo: {{ .KubeaidConfigFork.URL }}
   additionalUsers: {{- .AdditionalUsers | toYAML | nindent 4 }}
