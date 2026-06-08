@@ -208,6 +208,13 @@ netbird:
       NETBIRD_MGMT_API_ENDPOINT: https://{{ .ClusterConfig.NetBird.DNS }}:443
       NETBIRD_MGMT_GRPC_API_ENDPOINT: https://{{ .ClusterConfig.NetBird.DNS }}:443
       AUTH_AUTHORITY: https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}
+      # Upstream kubeaid netbird chart defaults this to a "netbird-vpn-api"
+      # scope name; kubeaid-cli's Keycloak reconciler creates the scope as
+      # "api" (NetBirdAPIScopeName in pkg/keycloak/netbird.go), and the
+      # PKCEAuthorizationFlow Scope above already asks for "api". Without
+      # this override the dashboard requests netbird-vpn-api, Keycloak
+      # rejects with invalid_scope, and SSO never completes.
+      AUTH_SUPPORTED_SCOPES: openid profile email offline_access api
     ingress:
       enabled: true
       className: traefik
