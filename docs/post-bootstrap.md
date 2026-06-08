@@ -16,7 +16,7 @@ By the time bootstrap returns, the cluster has:
 |---|---|---|
 | Keycloak admin console | `https://keycloak.<vpn-dns>/auth/admin/` | you (this doc) |
 | NetBird dashboard | `https://netbird.<vpn-dns>/` | you (this doc) |
-| Realm `<derived>` (e.g. `obmondo` for `obmondo.com`) | Keycloak | kubeaid-cli created it |
+| Realm `<derived>` (e.g. `acme` for `acme.com`) | Keycloak | kubeaid-cli created it |
 | OIDC client `netbird-client` (public, device flow + PKCE) | Keycloak realm | kubeaid-cli |
 | OIDC client `netbird-backend` (confidential, service account) | Keycloak realm | kubeaid-cli |
 | OIDC client `kubernetes-<cluster>` (public, PKCE — for kubelogin) | Keycloak realm | kubeaid-cli |
@@ -38,7 +38,7 @@ gateway and run `kubectl get secret -n keycloakx keycloak-admin -o jsonpath='{.d
 Then:
 
 1. Top-left realm dropdown → switch from `master` to your cluster's realm
-   (the derived one, e.g. `obmondo`). **Every step below assumes you're
+   (the derived one, e.g. `acme`). **Every step below assumes you're
    in this realm, not `master`.**
 2. **Users** → **Add user**.
    - Username, email, first/last name as usual.
@@ -189,64 +189,153 @@ top) so kubectl from your laptop won't reach it directly. The path:
 
 ## Break-glass: reaching the cluster when NetBird is down
 
-Day-to-day, everything goes through the NetBird mesh. But the mesh is
-an overlay on top of HCloud's private network, so when NetBird Mgmt
-itself wedges — pod crashloop, DB outage, expired Keycloak token, you
-name it — the mesh is unusable and `kubectl`-over-mesh stops working.
+> **TL;DR** Every cluster VM is reachable from the NAT gateway over
+> SSH, on the same key you used to provision it. `laptop → NAT GW →
+> any private host` is the universal recovery path. It works whether
+> or not k8s, NetBird, or Keycloak is healthy — you only need the NAT
+> GW VM and the HCloud private network alive.
 
-You always have a second path: SSH-jump through the NAT GW. The NAT
-GW's SSH listener is on the public internet (gated by SSH key + your
-HCloud firewall, not by NetBird), and from the NAT GW every other
-server in `10.0.0.0/24` is one hop away on the same SSH key. This
-works whether or not the cluster, NetBird, or Keycloak is healthy —
-the only two pieces that have to be alive are the NAT GW VM itself
-and the HCloud private network. Both are infrastructure-level
-objects you can rebuild from the HCloud Console / `hcloud` CLI even
-when every k8s component is dead.
+Day-to-day, `kubectl` goes through the NetBird mesh. When the mesh
+breaks (NetBird Mgmt crashloop, Keycloak DB outage, expired token,
+…), you fall back to one of three paths below — pick by how badly
+broken things are.
 
-### SSH jump
+### Before you start: collect these values
 
-One-shot:
+| Value | Where to find it |
+|---|---|
+| `<nat-gw-ip>` | `hcloud server list \| grep nat-g` — the public IPv4 |
+| `<cp-private-ip>` | `kubectl get node -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}'` or `hcloud server list \| grep control-plane` |
+| `<cp-lb-id>` | `hcloud load-balancer list \| grep <cluster-name>` — first column |
+| Your SSH key | The one in `general.yaml` `cloud.hetzner.sshKeyPair.privateKeyFilePath` |
 
+Set them as env vars once so the commands below copy-paste cleanly:
+
+```sh
+export NATGW=49.13.139.134                 # <-- yours
+export CP=10.0.0.4                         # <-- yours
+export CPLB=6329157                        # <-- yours
+export HCLOUD_TOKEN=...                    # token with read+write on LBs
 ```
-ssh -J root@<nat-gw-public-ip> root@10.0.0.5    # control plane
-ssh -J root@<nat-gw-public-ip> root@10.0.0.7    # any worker
+
+### Path 1 — SSH straight to the control plane (fastest)
+
+Use when you need to run a single `kubectl` command or look at logs
+on the node.
+
+```sh
+ssh -J root@$NATGW root@$CP
+# you're now on the CP node:
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get nodes
+sudo kubectl --kubeconfig /etc/kubernetes/admin.conf -n netbird logs deploy/netbird-management
 ```
 
-Or persistent via `~/.ssh/config`:
+The `/etc/kubernetes/admin.conf` client cert is cluster-admin and has
+no OIDC / Keycloak / NetBird dependency — works even when SSO is
+completely broken.
+
+For repeated use add this to `~/.ssh/config`:
 
 ```
 Host vpn-natgw
-  HostName  <nat-gw-public-ip>
-  User      root
+  HostName     49.13.139.134
+  User         root
   IdentityFile ~/.ssh/id_ed25519
 
 Host vpn-*
-  ProxyJump vpn-natgw
-  User      root
+  ProxyJump    vpn-natgw
+  User         root
   IdentityFile ~/.ssh/id_ed25519
 ```
 
-Then `ssh vpn-cp` (alias for the control plane) / `ssh vpn-worker-1`
-etc., based on whatever your hostname map is.
+then `ssh vpn-cp` (where `vpn-cp` resolves to `10.0.0.4` via your
+hostname map or `/etc/hosts`).
 
-### `kubectl` when NetBird is down
+### Path 2 — `kubectl` from your laptop via SSH tunnel
 
-Three options, pick by how bad the outage is:
+Use when you want full kubectl ergonomics (autocomplete, k9s, your
+local plugins) without re-enabling the public LB.
 
-| Scenario | Path |
-|---|---|
-| NetBird Mgmt down / mesh broken, cluster otherwise healthy | SSH-jump to the **CP node** → `sudo kubectl --kubeconfig /etc/kubernetes/admin.conf …`. The bootstrap client-cert in `admin.conf` is cluster-admin and has no OIDC / Keycloak / NetBird dependency. This is the canonical break-glass path. |
-| Rather use kubectl from your laptop | Port-forward the apiserver over the SSH jump: `ssh -J root@<nat-gw> -L 6443:10.0.0.6:6443 root@10.0.0.5`. Point a local kubeconfig at `https://127.0.0.1:6443` and copy `/etc/kubernetes/admin.conf` (plus the embedded CA) onto your laptop first. |
-| Cluster's on fire — you want public kube-apiserver back, briefly | `HCLOUD_TOKEN=… hcloud load-balancer enable-public-interface <cp-lb-id>`. Reverses `DisableControlPlaneLBPublicInterface` for the duration of the incident. Turn it off again when done — kubeaid-cli will re-disable on the next bootstrap re-run anyway. |
+The trick: kubeadm's apiserver TLS cert always includes `kubernetes`
+in its SAN list, so we point the kubeconfig at `https://kubernetes:<port>`,
+map that hostname to `127.0.0.1` in `/etc/hosts`, and tunnel the port
+to the apiserver. TLS verifies cleanly.
+
+**Step 1.** One-time: add the hostname mapping. Pick any local port
+that's free on your laptop — `63422` here, but anything outside the
+ephemeral range works:
+
+```sh
+echo '127.0.0.1 kubernetes' | sudo tee -a /etc/hosts
+export LOCAL_PORT=63422
+```
+
+**Step 2.** Copy the admin kubeconfig off the CP node — once:
+
+```sh
+scp -J root@$NATGW root@$CP:/etc/kubernetes/admin.conf ~/.kube/netbird-admin.conf
+```
+
+**Step 3.** Rewrite the server URL to `https://kubernetes:$LOCAL_PORT`.
+The original file has `server: https://10.0.0.3:6443` (or the public
+LB IP) — swap it out:
+
+```sh
+sed -i "s|server: https://.*:6443|server: https://kubernetes:$LOCAL_PORT|" \
+  ~/.kube/netbird-admin.conf
+```
+
+**Step 4.** Open a backgrounded SSH tunnel. `-f` backgrounds after
+auth, `-N` skips opening a shell — the tunnel stays up until you kill
+the ssh PID.
+
+```sh
+ssh -fN -L $LOCAL_PORT:127.0.0.1:6443 -J root@$NATGW root@$CP
+```
+
+**Step 5.** `kubectl` just works:
+
+```sh
+export KUBECONFIG=~/.kube/netbird-admin.conf
+kubectl get nodes
+kubectl -n netbird logs deploy/netbird-management
+```
+
+Or alias it so you don't have to set `KUBECONFIG` every shell:
+
+```sh
+alias knb='kubectl --kubeconfig ~/.kube/netbird-admin.conf'
+knb get nodes
+```
+
+**To stop the tunnel:**
+
+```sh
+pkill -f "ssh -fN -L $LOCAL_PORT"
+```
+
+### Path 3 — re-enable the public LB interface (cluster on fire)
+
+Use when both other paths are too slow and you want the kube-apiserver
+on the open internet for a few minutes. Reverses kubeaid-cli's
+`DisableControlPlaneLBPublicInterface`.
+
+```sh
+hcloud load-balancer enable-public-interface $CPLB
+# ...incident work — your normal kubeconfig works again...
+hcloud load-balancer disable-public-interface $CPLB
+```
+
+> **Don't forget the second command.** If you leave the public
+> interface enabled, the cluster's API is on the open internet until
+> the next `kubeaid-cli bootstrap` re-run disables it again.
 
 ### Multi-node and partial failures
 
 Same shape scales: every HCloud server in the private network is
 reachable from the NAT GW with the same key. Worker died, etcd
 corrupted, kubelet wedged on a single node, network split — none of
-that affects the SSH path. `laptop → NAT GW → any private host` is
-the universal recovery topology.
+that affects the SSH path.
 
 For specific failure modes:
 
