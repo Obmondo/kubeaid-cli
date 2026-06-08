@@ -1,5 +1,15 @@
 ---
 hcloud-cloud-controller-manager:
+  # DaemonSet over Deployment: the chart's Deployment template binds
+  # hostPort 8233 for /metrics with hostNetwork=true. On a single-CP
+  # cluster a rolling update can't surge a second Pod onto the same
+  # node (port collision), so any values-file change mid-bootstrap
+  # silently leaves the old (wrong-env) Pod running until someone
+  # deletes it by hand. The DaemonSet template uses containerPort
+  # only, terminates-then-creates per node, and works for any number
+  # of control-plane nodes — CCM's leader election handles HA.
+  kind: DaemonSet
+
   additionalTolerations:
     - key: node.kubernetes.io/not-ready
       operator: Exists
