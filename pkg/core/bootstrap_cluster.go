@@ -267,6 +267,18 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"VPN cluster endpoint verification failed",
 	)
 
+	// Block until the operator has minted a NetBird service-user PAT
+	// and persisted it as the netbird-mgmt-api-key Secret. Without it
+	// the netbird-operator pod can't start, and its
+	// MutatingWebhookConfiguration on Pods (failurePolicy: Fail)
+	// blocks every cluster-wide Pod create. Better to discover and
+	// fix while the LB public interface is still up. No-op when the
+	// cluster doesn't host the netbird-operator.
+	assert.AssertErrNil(ctx,
+		awaitNetBirdOperatorToken(ctx, mainClusterClient),
+		"Failed waiting for NetBird operator API-key Secret",
+	)
+
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
