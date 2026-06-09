@@ -74,18 +74,19 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 	return usingClusterAPI
 }
 
-// Returns the namespace (capi-cluster / capi-cluster-<customer-id>) where the 'cloud-credentials'
-// Kubernetes Secret will exist. This Kubernetes Secret will be used by Cluster API to communicate
-// with the underlying cloud provider.
+// GetCapiClusterNamespace returns the namespace where the cloud-credentials
+// Secret lives and where CAPI watches Cluster / Machine resources.
+//
+// Always "capi-cluster". Earlier revisions appended the Obmondo customer ID
+// (e.g. capi-cluster-enableit) under the assumption that one management
+// cluster would host multiple customers; in practice the management cluster
+// is throw-away and each workload cluster's CAPI is single-tenant, so the
+// suffix added complexity without isolating anything real. Existing clusters
+// running CAPI under the old per-customer namespace need a one-time
+// migration (kubectl get + replace + apply) or to opt back into the old
+// behaviour via the chart's global.capiClusterNamespace values key.
 func GetCapiClusterNamespace() string {
-	capiClusterNamespace := defaultCapiClusterNamespace
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.CustomerID != "" {
-		capiClusterNamespace = fmt.Sprintf(
-			defaultCapiClusterNamespace+"-%s",
-			config.ParsedGeneralConfig.Obmondo.CustomerID,
-		)
-	}
-	return capiClusterNamespace
+	return defaultCapiClusterNamespace
 }
 
 // capiStatusRow is one row of the live status table — a single
