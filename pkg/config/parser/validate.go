@@ -380,6 +380,20 @@ func validateHetznerConfig() error {
 		return errors.New("hetzner credentials not provided")
 	}
 
+	// HCloud API token is required for every Hetzner mode, including
+	// pure bare-metal: the cloud-credentials Secret now renders it
+	// unconditionally because CAPH's getAndValidateHCloudToken()
+	// rejects an empty/missing hcloud key in every controller's
+	// Reconcile() (including HetznerBareMetalMachine — even though
+	// the bare-metal reconcile path only touches Robot API), AND
+	// kubeaid-cli's vSwitch-to-HCloud-Network bridging at bootstrap
+	// uses the same token. Earlier revisions allowed an empty value
+	// here for bare-metal under the assumption that bare-metal never
+	// touched HCloud — that assumption is wrong.
+	if config.ParsedSecretsConfig.Hetzner.APIToken == "" {
+		return errors.New("secrets.yaml: hetzner.apiToken is required for every cloud.hetzner.mode (hcloud, hybrid, bare-metal)")
+	}
+
 	if config.ParsedGeneralConfig.Cluster.Type == constants.ClusterTypeVPN {
 		if config.ParsedGeneralConfig.Cloud.Hetzner.Mode != constants.HetznerModeHCloud {
 			return errors.New(
@@ -408,15 +422,8 @@ func validateHCloudConfig() error {
 	if hetznerConfig.HCloud == nil {
 		return errors.New("HCloud specific details not provided")
 	}
-	// HCloud API token is required for modes that talk to HCloud
-	// (hcloud, hybrid); pure bare-metal stays optional because no
-	// HCloud client is constructed. The struct-level notblank tag
-	// was dropped in secrets.go since "required" here is conditional
-	// on cloud.hetzner.mode rather than always-on.
-	if config.ParsedSecretsConfig.Hetzner == nil ||
-		config.ParsedSecretsConfig.Hetzner.APIToken == "" {
-		return errors.New("secrets.yaml: hetzner.apiToken is required for cloud.hetzner.mode in {hcloud, hybrid}")
-	}
+	// hetzner.apiToken presence is enforced unconditionally in
+	// validateHetznerConfig — no per-mode check needed here anymore.
 	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}

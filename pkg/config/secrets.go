@@ -86,13 +86,17 @@ type (
 	}
 
 	HetznerCredentials struct {
-		// APIToken is the HCloud Cloud-API token; required for any
-		// mode that touches HCloud (hcloud, hybrid). Pure bare-metal
-		// clusters don't talk to the HCloud API at all and may leave
-		// this empty — the requirement is enforced via cross-mode
-		// validation in pkg/config/parser/validate.go, not by the
-		// struct-level notblank tag, since "required" here is
-		// conditional on cloud.hetzner.mode.
+		// APIToken is the HCloud Cloud-API token. Required for every
+		// Hetzner mode — hcloud, hybrid, AND bare-metal — because:
+		//   - CAPH's getAndValidateHCloudToken() runs as the first
+		//     step of every controller's Reconcile() (including the
+		//     bare-metal HetznerBareMetalMachine reconciler) and
+		//     bails on empty;
+		//   - kubeaid-cli's vSwitch-to-HCloud-Network bridging at
+		//     bootstrap calls the HCloud API directly.
+		// Enforced via validateHetznerConfig in
+		// pkg/config/parser/validate.go rather than a struct-level
+		// notblank tag, so the error message names the exact field.
 		//
 		//nolint:gosec // This struct intentionally models user-provided Hetzner credentials.
 		APIToken string                   `yaml:"apiToken"`

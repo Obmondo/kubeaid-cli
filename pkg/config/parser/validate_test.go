@@ -544,8 +544,23 @@ func TestValidateHetznerConfig(t *testing.T) {
 			wantErrSub: "hetzner credentials not provided",
 		},
 		{
-			name:    "VPN cluster type with non-hcloud mode is rejected",
-			secrets: &config.SecretsConfig{Hetzner: &config.HetznerCredentials{}},
+			name: "missing API token is rejected (bare-metal still needs it)",
+			secrets: &config.SecretsConfig{Hetzner: &config.HetznerCredentials{
+				APIToken: "",
+			}},
+			general: &config.GeneralConfig{
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{Mode: constants.HetznerModeBareMetal},
+				},
+			},
+			wantErr:    true,
+			wantErrSub: "hetzner.apiToken is required",
+		},
+		{
+			name: "VPN cluster type with non-hcloud mode is rejected",
+			secrets: &config.SecretsConfig{Hetzner: &config.HetznerCredentials{
+				APIToken: "test-token",
+			}},
 			general: &config.GeneralConfig{
 				Cluster: config.ClusterConfig{Type: constants.ClusterTypeVPN},
 				Cloud: config.CloudConfig{Hetzner: &config.HetznerConfig{
@@ -590,21 +605,6 @@ func TestValidateHCloudConfig(t *testing.T) {
 			},
 			wantErr:    true,
 			wantErrSub: "HCloud specific details not provided",
-		},
-		{
-			name: "missing HCloud API token is rejected (cross-mode validation)",
-			general: &config.GeneralConfig{
-				Cloud: config.CloudConfig{
-					Hetzner: &config.HetznerConfig{
-						Mode:         constants.HetznerModeHCloud,
-						HCloud:       &config.HCloudConfig{},
-						ControlPlane: config.HetznerControlPlane{HCloud: &config.HCloudControlPlane{}},
-					},
-				},
-			},
-			secrets:    &config.SecretsConfig{Hetzner: &config.HetznerCredentials{}},
-			wantErr:    true,
-			wantErrSub: "hetzner.apiToken is required",
 		},
 		{
 			name: "control-plane in HCloud but no HCloud control-plane details is rejected",
