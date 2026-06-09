@@ -173,6 +173,16 @@ type PromptedConfig struct {
 	// these via the Robot API at run time.
 	HetznerBMServerPublicIPs map[string]string
 
+	// HetznerBMCPRegions is the unique-set of Hetzner region IDs
+	// (lower-case, e.g. "fsn1", "hel1", "ash") derived from each
+	// chosen control-plane Robot server's DC field. Rendered into
+	// global.HetznerConfig.ControlPlane.Regions so the upstream
+	// CAPH chart's `minItems: 1` schema check passes — previously
+	// bare-metal mode emitted `regions: []` on the theory that
+	// kubeaid-cli would fill it from Robot at bootstrap, but the
+	// schema validates BEFORE that runtime step ever runs.
+	HetznerBMCPRegions []string
+
 	// Hetzner vSwitch — required for hybrid mode (kubeaid-cli's
 	// CreateVSwitch is called unconditionally for hybrid) and
 	// reserved for the pure-bare-metal auto-create follow-up.

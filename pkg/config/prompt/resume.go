@@ -295,6 +295,13 @@ func applyHetznerConfigToPromptedConfig(hetzner *config.HetznerConfig, cfg *Prom
 	}
 	if len(hetzner.ControlPlane.Regions) > 0 {
 		cfg.HetznerRegion = firstNonEmpty(hetzner.ControlPlane.Regions[0], cfg.HetznerRegion)
+		// Mirror the whole list onto cfg.HetznerBMCPRegions so a
+		// resumed bare-metal session re-renders the same regions
+		// rather than dropping back to the empty list the template
+		// used to emit. hcloud / hybrid modes only use the first
+		// element via HetznerRegion above, so the extra copy here
+		// is harmless for them.
+		cfg.HetznerBMCPRegions = append([]string{}, hetzner.ControlPlane.Regions...)
 	}
 	if hetzner.BareMetal != nil && hetzner.BareMetal.VSwitch != nil {
 		vSwitch := hetzner.BareMetal.VSwitch

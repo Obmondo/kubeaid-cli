@@ -142,8 +142,6 @@ cloud:
         vg0:
           size: 80
           rootVolumeSize: 50
-      zfs:
-        size: 220
       vSwitch:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
@@ -166,8 +164,6 @@ cloud:
       hcloud: []
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
-          zfs:
-            size: 220
           bareMetalHosts:
 {{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
             # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
@@ -183,8 +179,6 @@ cloud:
         vg0:
           size: 80
           rootVolumeSize: 50
-      zfs:
-        size: 220
       vSwitch:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
@@ -200,12 +194,13 @@ cloud:
           - serverID: "{{ $id }}"
             privateIP: {{ index $.HetznerBMCPPrivateIPs $i }}
 {{- end }}
-      regions: []
+      regions:
+{{- range .HetznerBMCPRegions }}
+        - {{ . }}
+{{- end }}
     nodeGroups:
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
-          zfs:
-            size: 220
           bareMetalHosts:
 {{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
             # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}

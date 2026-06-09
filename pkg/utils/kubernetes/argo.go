@@ -1149,7 +1149,15 @@ func setupKubeAgentArgoCDProjectRole(ctx context.Context, projectClient project.
 		Policies:    policies,
 		Groups:      []string{constants.ArgoCDRoleKubeAidAgent},
 	}
-	kubeAidProject.Spec.Roles = append(kubeAidProject.Spec.Roles, projectRole)
+	// Upsert rather than append. ArgoCD rejects an Update that would
+	// produce two roles with the same name, so a re-run of bootstrap
+	// after the first attempt already added kubeaid-agent (e.g.
+	// previous run got past this step but failed later on rook-ceph)
+	// would otherwise fail with "role 'kubeaid-agent' already exists"
+	// — wedging every subsequent re-run until the operator manually
+	// edits the project. Replacing the role in place also picks up
+	// any policy/description changes in newer kubeaid-cli releases.
+	kubeAidProject.Spec.Roles = upsertProjectRole(kubeAidProject.Spec.Roles, projectRole)
 
 	// Update the project 'kubeaid' by adding role 'kubeaid-agent' details
 	projectRequest := &project.ProjectUpdateRequest{
@@ -1200,6 +1208,22 @@ func setupKubeAgentArgoCDProjectRole(ctx context.Context, projectClient project.
 	}
 
 	return nil
+}
+
+// upsertProjectRole returns roles with role replacing any entry whose
+// Name matches role.Name, or with role appended when no match exists.
+// Used by setupKubeAgentArgoCDProjectRole to stay idempotent across
+// bootstrap re-runs — ArgoCD's project Update rejects duplicate role
+// names, so a plain append would wedge every operator who hits a
+// downstream failure after the first run added the role.
+func upsertProjectRole(roles []argoCDV1Aplha1.ProjectRole, role argoCDV1Aplha1.ProjectRole) []argoCDV1Aplha1.ProjectRole {
+	for i, existing := range roles {
+		if existing.Name == role.Name {
+			roles[i] = role
+			return roles
+		}
+	}
+	return append(roles, role)
 }
 
 func getKubeAidAgentRolePolicy(resource, action, effect string) string {

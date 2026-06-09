@@ -255,6 +255,30 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// or when the read fails (panel falls back to the kubectl command).
 	keycloakAdminPassword := readKeycloakAdminPasswordForPanel(ctx, mainClusterClient)
 
+	// Verify the user-facing endpoints of a managed-Keycloak VPN
+	// cluster (Keycloak realm, NetBird dashboard, NetBird Mgmt API)
+	// before locking down the control-plane LB. Catches the class of
+	// "pods are Ready but SSO is broken" bugs that otherwise only
+	// surface on first user login — long after kubeaid-cli has exited
+	// and DisableControlPlaneLBPublicInterface has cut off the easy
+	// debug path. No-op on non-VPN clusters.
+	assert.AssertErrNil(ctx,
+		verifyVPNClusterEndpoints(ctx),
+		"VPN cluster endpoint verification failed",
+	)
+
+	// Block until the operator has minted a NetBird service-user PAT
+	// and persisted it as the netbird-mgmt-api-key Secret. Without it
+	// the netbird-operator pod can't start, and its
+	// MutatingWebhookConfiguration on Pods (failurePolicy: Fail)
+	// blocks every cluster-wide Pod create. Better to discover and
+	// fix while the LB public interface is still up. No-op when the
+	// cluster doesn't host the netbird-operator.
+	assert.AssertErrNil(ctx,
+		awaitNetBirdOperatorToken(ctx, mainClusterClient),
+		"Failed waiting for NetBird operator API-key Secret",
+	)
+
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")

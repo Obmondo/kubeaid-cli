@@ -1355,3 +1355,53 @@ func TestRootAppReadyForChildSyncRespectsExpected(t *testing.T) {
 		})
 	}
 }
+
+// TestUpsertProjectRole pins the idempotency contract for
+// setupKubeAgentArgoCDProjectRole. A plain append() here let a
+// re-run-after-partial-failure trip ArgoCD's "role already exists"
+// validation and wedged every subsequent bootstrap attempt. Replacing
+// in-place by name also lets us pick up policy/description changes in
+// newer kubeaid-cli releases without operator surgery.
+func TestUpsertProjectRole(t *testing.T) {
+	role := func(name, description string) argoCDV1Alpha1.ProjectRole {
+		return argoCDV1Alpha1.ProjectRole{Name: name, Description: description}
+	}
+
+	tests := []struct {
+		name    string
+		roles   []argoCDV1Alpha1.ProjectRole
+		new     argoCDV1Alpha1.ProjectRole
+		want    []argoCDV1Alpha1.ProjectRole
+		wantLen int
+	}{
+		{
+			name:    "appends into empty slice",
+			roles:   nil,
+			new:     role("kubeaid-agent", "v1"),
+			want:    []argoCDV1Alpha1.ProjectRole{role("kubeaid-agent", "v1")},
+			wantLen: 1,
+		},
+		{
+			name:    "appends when no name match",
+			roles:   []argoCDV1Alpha1.ProjectRole{role("readonly", "read")},
+			new:     role("kubeaid-agent", "v1"),
+			want:    []argoCDV1Alpha1.ProjectRole{role("readonly", "read"), role("kubeaid-agent", "v1")},
+			wantLen: 2,
+		},
+		{
+			name:    "replaces in place when name matches and preserves length",
+			roles:   []argoCDV1Alpha1.ProjectRole{role("readonly", "read"), role("kubeaid-agent", "v1"), role("admin", "all")},
+			new:     role("kubeaid-agent", "v2-with-extra-policy"),
+			want:    []argoCDV1Alpha1.ProjectRole{role("readonly", "read"), role("kubeaid-agent", "v2-with-extra-policy"), role("admin", "all")},
+			wantLen: 3,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := upsertProjectRole(tc.roles, tc.new)
+			assert.Equal(t, tc.want, got)
+			assert.Len(t, got, tc.wantLen)
+		})
+	}
+}
