@@ -92,31 +92,17 @@ func TestUsingClusterAPI(t *testing.T) {
 }
 
 func TestGetCapiClusterNamespace(t *testing.T) {
+	// Result is constant — the customerid suffix was removed because the
+	// management cluster is throwaway and each workload cluster's CAPI
+	// is single-tenant. Test guards against accidental reintroduction.
 	tests := []struct {
 		name    string
 		obmondo *config.ObmondoConfig
-		want    string
 	}{
-		{
-			name:    "no Obmondo config returns default namespace",
-			obmondo: nil,
-			want:    testCapiClusterNamespace,
-		},
-		{
-			name:    "Obmondo config with empty CustomerID returns default namespace",
-			obmondo: &config.ObmondoConfig{CustomerID: ""},
-			want:    testCapiClusterNamespace,
-		},
-		{
-			name:    "Obmondo config with CustomerID returns namespaced variant",
-			obmondo: &config.ObmondoConfig{CustomerID: "acme"},
-			want:    "capi-cluster-acme",
-		},
-		{
-			name:    "CustomerID with hyphens is preserved",
-			obmondo: &config.ObmondoConfig{CustomerID: "my-company-123"},
-			want:    "capi-cluster-my-company-123",
-		},
+		{"no Obmondo config", nil},
+		{"Obmondo config with empty CustomerID", &config.ObmondoConfig{CustomerID: ""}},
+		{"Obmondo config with CustomerID", &config.ObmondoConfig{CustomerID: "acme"}},
+		{"CustomerID with hyphens", &config.ObmondoConfig{CustomerID: "my-company-123"}},
 	}
 
 	// Mutates ParsedGeneralConfig — sequential only.
@@ -126,8 +112,7 @@ func TestGetCapiClusterNamespace(t *testing.T) {
 			t.Cleanup(func() { config.ParsedGeneralConfig.Obmondo = original })
 			config.ParsedGeneralConfig.Obmondo = tc.obmondo
 
-			got := GetCapiClusterNamespace()
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, testCapiClusterNamespace, GetCapiClusterNamespace())
 		})
 	}
 }
