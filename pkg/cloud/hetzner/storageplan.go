@@ -38,10 +38,27 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
+			// Pass VG0.Size (the WHOLE LVM volume group footprint), NOT
+			// VG0.RootVolumeSize (the root LV inside the VG). The chart's
+			// preKubeadm script (KubeadmControlPlane.yaml /
+			// KubeadmConfig.yaml) calls
+			// `kubeaid-storagectl plan execute --os-size {{ vg0.size }}`,
+			// so the on-node planner reserves the full VG footprint. If
+			// kubeaid-cli's preview planner reserved only the root LV
+			// (50 GB on a 80/50 split), the operator's prompt would over-
+			// report Ceph capacity by `(vg0.size - rootVolumeSize) × disks
+			// × servers` — visibly inconsistent with the actual layout the
+			// node carves at boot (caught in the wild on a 6-server kbm
+			// cluster: prompt said 204 GB Ceph per disk, on-node said 174).
+			//
+			// The 30 GB of unused space inside vg0 is LVM-managed headroom
+			// for future LVs, not bare-disk capacity ZFS or Ceph can claim,
+			// so the VG size is the correct value to subtract from each
+			// disk's available pool.
 			sp, err := h.generateStoragePlan(nodeCtx,
 				host,
 				privateKey,
-				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
+				hetznerConfig.BareMetal.InstallImage.VG0.Size,
 				hetznerConfig.BareMetal.ZFS.Size,
 			)
 			if err != nil {
@@ -75,10 +92,13 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 				slog.String("server-id", host.ServerID),
 			})
 
+			// Same VG0.Size vs RootVolumeSize rationale as the
+			// control-plane branch above — see that comment for the
+			// "prompt over-reports Ceph" failure mode this avoids.
 			sp, err := h.generateStoragePlan(nodeCtx,
 				host,
 				privateKey,
-				hetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize,
+				hetznerConfig.BareMetal.InstallImage.VG0.Size,
 				hetznerConfig.BareMetal.ZFS.Size,
 			)
 			if err != nil {
