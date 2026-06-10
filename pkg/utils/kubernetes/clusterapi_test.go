@@ -14,10 +14,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
+	"k8s.io/utils/ptr"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -33,15 +35,19 @@ const (
 	testCapiClusterNamespace = "capi-cluster"
 )
 
-// newClusterAPITestScheme builds a scheme that includes coreV1 and
-// cluster-api types. summarizeCAPIStatus is intentionally cloud-agnostic
-// — it reads only Cluster + Machine, never provider-specific types —
-// so we don't register CAPH/CAPA/CAPZ scheme here.
+// newClusterAPITestScheme builds a scheme that includes coreV1,
+// cluster-api types, and CAPH types. CAPH is included so summarizeCAPIStatus
+// tests can cover the Hetzner-only overlay path that reads HBMM
+// status directly to bypass the Machine controller's lagged copy of
+// InfrastructureRef status. Non-Hetzner test cases simply don't seed
+// HBMM objects; the overlay then has nothing to read and the row falls
+// through to the generic Machine-derived status.
 func newClusterAPITestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 	s := runtime.NewScheme()
 	require.NoError(t, coreV1.AddToScheme(s))
 	require.NoError(t, clusterAPIV1Beta1.AddToScheme(s))
+	require.NoError(t, caphV1Beta1.AddToScheme(s))
 	return s
 }
 
@@ -291,6 +297,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 
 	tests := []struct {
 		name             string
+		cloudProvider    string // "" leaves globals.CloudProviderName untouched; "hetzner" exercises HBMM overlay
 		preExist         []runtime.Object
 		wantReady        bool
 		wantRowCount     int
@@ -421,6 +428,123 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			wantFailedRow:    true,
 			wantStatusSubstr: "error during placement (resource_unavailable",
 		},
+		{
+			// CAPH-specific overlay: the Machine row's Status must come
+			// from HBMM's live Ready-condition message, NOT the stale
+			// Machine.status copy. Real-world shape: CAPH bounced the
+			// host registering → image-installing → back to registering
+			// after a transient SSH glitch; HBMM message reflects the
+			// current "registering" state, but the Machine controller
+			// hasn't refreshed InfrastructureReady's message yet so
+			// machineStatusDetail would return the stale
+			// "image-installing" string. The overlay must win.
+			name:          "hetzner — HBMM live message overlays stale Machine status",
+			cloudProvider: constants.CloudProviderHetzner,
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-g7nxx",
+						Namespace: testCapiClusterNamespace,
+					},
+					Spec: clusterAPIV1Beta1.MachineSpec{
+						InfrastructureRef: coreV1.ObjectReference{
+							Kind: "HetznerBareMetalMachine",
+							Name: "kbm-cp-g7nxx",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{
+									Type:    "Ready",
+									Status:  metaV1.ConditionFalse,
+									Reason:  "NotReady",
+									Message: "* InfrastructureReady: host (1455733) is still provisioning - state \"image-installing\"",
+								},
+							},
+						},
+					},
+				},
+				&caphV1Beta1.HetznerBareMetalMachine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "kbm-cp-g7nxx",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: caphV1Beta1.HetznerBareMetalMachineStatus{
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{
+								Type:    clusterAPIV1Beta1.ReadyCondition,
+								Status:  coreV1.ConditionFalse,
+								Reason:  "StillProvisioning",
+								Message: "host (1455733) is still provisioning - state \"registering\"",
+							},
+						},
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+			wantStatusSubstr: "state \"registering\"",
+		},
+		{
+			// HBMM terminal failure (status.failureMessage set) wins
+			// over both the Ready condition and the Machine row's
+			// inferred message — the operator should see exactly what
+			// CAPH considers fatal (e.g. CheckDisk permanent error)
+			// without us paraphrasing.
+			name:          "hetzner — HBMM failureMessage overrides everything else",
+			cloudProvider: constants.CloudProviderHetzner,
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "w-bad-disk",
+						Namespace: testCapiClusterNamespace,
+					},
+					Spec: clusterAPIV1Beta1.MachineSpec{
+						InfrastructureRef: coreV1.ObjectReference{
+							Kind: "HetznerBareMetalMachine",
+							Name: "kbm-w-bad-disk",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+					},
+				},
+				&caphV1Beta1.HetznerBareMetalMachine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "kbm-w-bad-disk",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: caphV1Beta1.HetznerBareMetalMachineStatus{
+						FailureMessage: ptr.To("CheckDisk failed (permanent error): Airflow_Temperature_Cel in_the_past"),
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioning),
+			wantStatusSubstr: "CheckDisk failed (permanent error)",
+		},
 	}
 
 	for _, tc := range tests {
@@ -433,6 +557,12 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			})
 			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			config.ParsedGeneralConfig.Obmondo = nil
+
+			if tc.cloudProvider != "" {
+				origCloud := globals.CloudProviderName
+				t.Cleanup(func() { globals.CloudProviderName = origCloud })
+				globals.CloudProviderName = tc.cloudProvider
+			}
 
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
