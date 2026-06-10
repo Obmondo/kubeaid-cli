@@ -578,20 +578,29 @@ func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 		netbirdURL = "https://netbird." + strings.TrimPrefix(cfg.KeycloakDNS, "keycloak.")
 	}
 
+	clusterGroup := "k8s-" + cfg.ClusterName
+
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 	fmt.Fprintln(os.Stderr, "  Two manual steps before `kubeaid-cli bootstrap`:")
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "  1. Generate a NetBird setup key for this cluster's nodes:")
-	fmt.Fprintf(os.Stderr, "       %s  →  Setup Keys  →  Create key\n", netbirdURL)
+	fmt.Fprintf(os.Stderr, "       %s  →  Settings  →  Setup Keys  →  Create Setup Key\n", netbirdURL)
+	fmt.Fprintln(os.Stderr, "     In the dialog set:")
+	fmt.Fprintf(os.Stderr, "       Name:                  %s\n", cfg.ClusterName)
+	fmt.Fprintln(os.Stderr, "       Make this key reusable: ON   (every node enrolls with this same key)")
+	fmt.Fprintln(os.Stderr, "       Usage limit:            blank (or set to expected node count + headroom)")
+	fmt.Fprintln(os.Stderr, "       Ephemeral Peers:        OFF  (cluster nodes are long-lived)")
+	fmt.Fprintln(os.Stderr, "       Allow Extra DNS Labels: OFF")
+	fmt.Fprintf(os.Stderr, "       Auto-assigned groups:   %s   (the group the ACL in step 2 targets)\n", clusterGroup)
 	fmt.Fprintln(os.Stderr, "     Paste the generated value into secrets.yaml under:")
 	fmt.Fprintln(os.Stderr, "       netbird:")
 	fmt.Fprintln(os.Stderr, "         setupKey: <paste here>")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "  2. Configure NetBird group ACLs so your laptop can reach the new cluster:")
 	fmt.Fprintf(os.Stderr, "       In %s, ensure a NBPolicy lets your laptop's group reach\n", netbirdURL)
-	fmt.Fprintf(os.Stderr, "       the cluster peer (typically the group %q) on TCP 6443.\n", "k8s-"+cfg.ClusterName)
+	fmt.Fprintf(os.Stderr, "       the cluster peer (typically the group %q) on TCP 6443.\n", clusterGroup)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 }
