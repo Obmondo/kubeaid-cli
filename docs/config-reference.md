@@ -111,11 +111,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -391,11 +391,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -455,7 +455,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | endpoint | [`HetznerBareMetalControlPlaneEndpoint`](#hetznerbaremetalcontrolplaneendpoint) |  |  |
 | bareMetalHosts | [][`HetznerBareMetalHost`](#hetznerbaremetalhost) |  |  |
-| zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration for control-plane nodes. The<br>upstream CAPH chart's KubeadmControlPlane.yaml dereferences<br>$.Values.controlPlane.bareMetal.zfs.size, so a missing field<br>here panics at template render with "nil pointer evaluating<br>interface {}.size" — exactly the failure that wedged a<br>kbm-obmondo-com bootstrap. Mirrored from the node-group<br>shape (HetznerBareMetalNodeGroup.ZFS) so CP and worker pools<br>declare their pool size the same way; rendered into<br>values-capi-cluster.yaml via toIndentYAML on the whole<br>HetznerBareMetalControlPlane struct.<br> |
+| zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS pool size on each control-plane node. See ZFSConfig.Size for sizing rules.<br> |
 
 ## HetznerBareMetalControlPlaneEndpoint
 
@@ -509,7 +509,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | hcloud | [`HCloudControlPlane`](#hcloudcontrolplane) |  |  |
 | bareMetal | [`HetznerBareMetalControlPlane`](#hetznerbaremetalcontrolplane) |  |  |
-| regions | []`string` |  | Regions is the list of Hetzner regions (lower-case IDs:<br>"fsn1", "hel1", "ash", ...) the CAPH chart constrains<br>control-plane placement to. The upstream chart's<br>values.schema.json requires minItems: 1; go-playground's<br>`required` only checks slice non-nil-ness, so we add<br>`min=1` here to fail an empty list at parse time rather<br>than surface a cryptic helm-schema rejection at ArgoCD<br>sync time. Bare-metal mode populates this from each<br>chosen Robot server's DC (see HetznerBMCPRegions in the<br>prompt config); hcloud / hybrid modes populate it from<br>the operator-picked HetznerRegion.<br> |
+| regions | []`string` |  | Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)<br>the CAPH chart constrains control-plane placement to. At least one is required.<br> |
 
 ## HetznerCredentials
 
@@ -517,7 +517,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| apiToken | `string` |  | APIToken is the HCloud Cloud-API token. Required for every<br>Hetzner mode — hcloud, hybrid, AND bare-metal — because:<br>  - CAPH's getAndValidateHCloudToken() runs as the first<br>    step of every controller's Reconcile() (including the<br>    bare-metal HetznerBareMetalMachine reconciler) and<br>    bails on empty;<br>  - kubeaid-cli's vSwitch-to-HCloud-Network bridging at<br>    bootstrap calls the HCloud API directly.<br>Enforced via validateHetznerConfig in<br>pkg/config/parser/validate.go rather than a struct-level<br>notblank tag, so the error message names the exact field.<br> |
+| apiToken | `string` |  | APIToken is the HCloud Cloud-API token. Required for every Hetzner mode.<br> |
 | robot | [`HetznerRobotCredentials`](#hetznerrobotcredentials) |  |  |
 
 ## HetznerNetworkConfig
