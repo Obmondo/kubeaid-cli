@@ -582,7 +582,7 @@ type (
 	}
 
 	InstallImageConfig struct {
-		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2404-noble-amd64-base.tar.gz" validate:"notblank"`
+		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst" validate:"notblank"`
 		VG0       VG0Config `yaml:"vg0"`
 	}
 
