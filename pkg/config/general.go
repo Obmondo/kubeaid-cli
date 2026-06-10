@@ -602,17 +602,8 @@ type (
 		HCloud    *HCloudControlPlane           `yaml:"hcloud"`
 		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal"`
 
-		// Regions is the list of Hetzner regions (lower-case IDs:
-		// "fsn1", "hel1", "ash", ...) the CAPH chart constrains
-		// control-plane placement to. The upstream chart's
-		// values.schema.json requires minItems: 1; go-playground's
-		// `required` only checks slice non-nil-ness, so we add
-		// `min=1` here to fail an empty list at parse time rather
-		// than surface a cryptic helm-schema rejection at ArgoCD
-		// sync time. Bare-metal mode populates this from each
-		// chosen Robot server's DC (see HetznerBMCPRegions in the
-		// prompt config); hcloud / hybrid modes populate it from
-		// the operator-picked HetznerRegion.
+		// Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)
+		// the CAPH chart constrains control-plane placement to. At least one is required.
 		Regions []string `yaml:"regions" validate:"required,min=1,dive,notblank"`
 	}
 
@@ -626,16 +617,7 @@ type (
 		Endpoint       HetznerBareMetalControlPlaneEndpoint `yaml:"endpoint"       validate:"required"`
 		BareMetalHosts []*HetznerBareMetalHost              `yaml:"bareMetalHosts" validate:"required,gt=0"`
 
-		// ZFS specific configuration for control-plane nodes. The
-		// upstream CAPH chart's KubeadmControlPlane.yaml dereferences
-		// $.Values.controlPlane.bareMetal.zfs.size, so a missing field
-		// here panics at template render with "nil pointer evaluating
-		// interface {}.size" — exactly the failure that wedged a
-		// kbm-obmondo-com bootstrap. Mirrored from the node-group
-		// shape (HetznerBareMetalNodeGroup.ZFS) so CP and worker pools
-		// declare their pool size the same way; rendered into
-		// values-capi-cluster.yaml via toIndentYAML on the whole
-		// HetznerBareMetalControlPlane struct.
+		// ZFS pool size on each control-plane node. See ZFSConfig.Size for sizing rules.
 		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
 		StoragePlan storageplan.StoragePlan `yaml:"-"`
