@@ -120,12 +120,33 @@ type capiStatusRow struct {
 // spinner's 100ms re-render goroutine can't \r-overwrite the table rows,
 // resumes on exit. Caller should NOT wrap with bar.InProgress — the
 // bar's substep stream is below the persisted table. After this returns
-// nil, the caller emits its own "✓ Main cluster Machines provisioned"
-// substep.
+// nil, the caller emits its own "✓ Main cluster reachable (CP + worker
+// Machine joined)" substep.
+//
+// Predicate: Cluster.Status.Phase=Provisioned + ReadyCondition=True
+// AND at least one control-plane Machine in Phase=Running with a
+// Node ref AND (when worker Machines exist at all) at least one
+// worker Machine in Phase=Running with a Node ref.
+//
+// Why all three:
+//   - Cluster Provisioned alone fires as soon as the InfrastructureCluster
+//     (HetznerCluster) reports ready (control-plane endpoint set). That can
+//     be 10+ min before kubeadm-init finishes on the first CP node; downstream
+//     steps then i/o-timeout against an unreachable API.
+//   - One CP Machine Running with a Node proves kubeadm-init finished and the
+//     API server is genuinely reachable.
+//   - One worker Machine Running with a Node proves a schedulable, untainted
+//     node exists for the workload-cluster chart installs (Cilium, CCM,
+//     kube-prometheus, …). The worker check is skipped for single-CP
+//     clusters with no worker MachineDeployments declared — those clusters
+//     accept CP-only scheduling on purpose.
+//
+// The stricter all-Machines-Running gate (every CP + every worker) runs
+// separately in WaitForAllMachinesRunning, just before clusterctl move.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
 	return waitForCAPIStableState(ctx,
-		"Waiting for main cluster Machines to come up",
-		"main cluster did not reach Provisioned+Ready",
+		"Waiting for main cluster (CP + worker Machine to join)",
+		"main cluster did not reach Provisioned with one CP + one worker Machine Running",
 		func(c context.Context) ([]capiStatusRow, bool, error) {
 			return summarizeCAPIStatus(c, managementClusterClient)
 		},
@@ -341,7 +362,11 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	}
 
 	rows := make([]capiStatusRow, 0, 1+len(machines.Items))
-	ready := false
+
+	// clusterReady reflects only the Cluster CR's own predicate
+	// (Phase=Provisioned + ReadyCondition=True). It's necessary but
+	// not sufficient — see the gates below.
+	clusterReady := false
 
 	if cluster != nil {
 		clusterRow := capiStatusRow{
@@ -355,12 +380,27 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 			for _, condition := range cluster.Status.Conditions {
 				if condition.Type == clusterAPIV1Beta1.ReadyCondition &&
 					condition.Status == coreV1.ConditionTrue {
-					ready = true
+					clusterReady = true
 					break
 				}
 			}
 		}
 	}
+
+	// Track how many CP / worker Machines exist at all (any phase) and
+	// how many of each have reached Phase=Running + NodeRef. The wait
+	// must not declare success until at least one CP AND at least one
+	// worker have joined the cluster — the Cluster CR's "Provisioned"
+	// phase fires as soon as HetznerCluster.status.ready flips True
+	// (control-plane endpoint configured), which can be 10+ minutes
+	// before the first node actually registers. Downstream steps
+	// (SaveProvisionedClusterKubeconfig → CreateKubernetesClient →
+	// HelmInstall Cilium → ...) then i/o-timeout against an unreachable
+	// API or schedule against zero untainted nodes. Gating here on
+	// real Machine progress lets kubeaid-cli sit through the long
+	// provisioning window with a single accurate spinner rather than
+	// failing-then-retrying downstream.
+	var cpTotal, cpRunning, workerTotal, workerRunning int
 
 	for _, m := range machines.Items {
 		detail := machineStatusDetail(&m)
@@ -377,9 +417,44 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 			Failed:   isMachineFailed(&m),
 		}
 		rows = append(rows, row)
+
+		// Select the right pair of counters once per Machine. Default
+		// to the worker accumulators; the CP label flips them.
+		total, running := &workerTotal, &workerRunning
+		if isControlPlaneMachine(&m) {
+			total, running = &cpTotal, &cpRunning
+		}
+		*total++
+
+		if m.Status.Phase != string(clusterAPIV1Beta1.MachinePhaseRunning) || m.Status.NodeRef == nil {
+			continue
+		}
+		*running++
 	}
 
+	// Final predicate: Cluster reached Provisioned, AND at least one CP
+	// Machine is Running with a Node, AND (when worker Machines are
+	// expected — i.e. any non-CP Machine exists) at least one worker
+	// Machine is Running with a Node. The worker check is skipped when
+	// cpTotal>0 and workerTotal==0 so a single-CP cluster (no worker
+	// MachineDeployments declared) doesn't deadlock here.
+	ready := clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0)
+
 	return rows, ready, firstErr
+}
+
+// isControlPlaneMachine reports whether the Machine is a control-plane
+// Machine, distinguished by the `cluster.x-k8s.io/control-plane` label
+// that CAPI's KubeadmControlPlane controller stamps onto every CP
+// Machine. Workers (owned by MachineSets under MachineDeployments)
+// don't carry the label. Value-agnostic — CAPI sets the label with an
+// empty value on most versions, so we check key presence only.
+func isControlPlaneMachine(m *clusterAPIV1Beta1.Machine) bool {
+	if m.Labels == nil {
+		return false
+	}
+	_, ok := m.Labels[clusterAPIV1Beta1.MachineControlPlaneLabel]
+	return ok
 }
 
 // hbmmStatusMessages reads HetznerBareMetalMachine CRs in the capi-cluster

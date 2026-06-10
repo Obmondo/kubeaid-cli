@@ -198,7 +198,11 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 		wantErr    bool
 	}{
 		{
-			name: "returns nil when cluster is provisioned and ready",
+			// Predicate also requires at least one CP Machine + one
+			// worker Machine in Phase=Running with a Node ref — the
+			// Cluster CR being Provisioned alone isn't enough since
+			// it can fire 10+ min before kubeadm-init finishes.
+			name: "returns nil when cluster is provisioned and CP + worker Machine are Running",
 			preExist: []runtime.Object{
 				&clusterAPIV1Beta1.Cluster{
 					ObjectMeta: metaV1.ObjectMeta{
@@ -213,6 +217,29 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 								Status: "True",
 							},
 						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "worker-1-node"},
 					},
 				},
 			},
@@ -306,7 +333,10 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 		wantStatusSubstr string // substring expected in some row's Status column
 	}{
 		{
-			name: "happy path — cluster provisioned and ready, machine running",
+			// Single-CP cluster (no worker MachineDeployments). The
+			// worker-running gate is skipped when no worker Machines
+			// exist, so this minimum shape is still "ready".
+			name: "ready — single CP Machine Running with NodeRef, no workers expected",
 			preExist: []runtime.Object{
 				&clusterAPIV1Beta1.Cluster{
 					ObjectMeta: metaV1.ObjectMeta{
@@ -324,9 +354,13 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 					ObjectMeta: metaV1.ObjectMeta{
 						Name:      "cp-1",
 						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
 					},
 					Status: clusterAPIV1Beta1.MachineStatus{
-						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
 						Conditions: clusterAPIV1Beta1.Conditions{
 							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
 						},
@@ -335,6 +369,145 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			},
 			wantReady:        true,
 			wantRowCount:     2,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			// kbm-obmondo-com shape that surfaced the bug: Cluster CR
+			// already at Provisioned+Ready (HetznerCluster endpoint set)
+			// but the CP Machine is still in `ensure-provisioned` and no
+			// worker has joined. The old predicate marked this ready and
+			// downstream steps i/o-timed-out against an unreachable API.
+			// New predicate must hold ready=false here.
+			name: "NOT ready — Cluster Provisioned, CP+workers exist but none Running yet",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     3,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			// CP joined but workers haven't. Common pre-pivot state on
+			// bare-metal: kubeadm-init done on the first CP node 5-10 min
+			// before workers finish installimage. Must remain not-ready
+			// because downstream chart installs need an untainted node.
+			name: "NOT ready — CP Machine Running but no worker Running yet",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     3,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			// Full happy path with workers — one CP Running, one worker
+			// Running, both with NodeRef. ready=true, kubeaid-cli can
+			// proceed to install Cilium on the workload cluster.
+			name: "ready — 1 CP + 1 worker Machine Running with NodeRef",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-1",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "worker-1-node"},
+					},
+				},
+			},
+			wantReady:        true,
+			wantRowCount:     3,
 			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
 		},
 		{
