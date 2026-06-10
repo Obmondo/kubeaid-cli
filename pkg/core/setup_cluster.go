@@ -13,7 +13,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	coreV1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	clusterctlV1 "sigs.k8s.io/cluster-api/cmd/clusterctl/api/v1alpha3"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -364,6 +367,24 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	providerName := globals.CloudProviderName
 
 	// Sync the Infrastructure Provider component.
+	//
+	// SyncArgoCDApp blocks until ArgoCD reports the resource Synced —
+	// which depends on the InfrastructureProvider CR going Ready. The
+	// CAPI Operator can wedge that for 10+ minutes when something
+	// downstream is wrong (missing namespace, RBAC denial, image pull
+	// failure, manifestPatches reference a bad path). The spinner
+	// shows the same generic "Syncing..." line the whole time and
+	// the operator has no visible signal of WHAT's stuck. Launch a
+	// background watcher that polls the InfrastructureProvider's
+	// status conditions every 20s and surfaces any False/Unknown
+	// condition via slog Warn — operator tailing the log sees the
+	// actual blocker (e.g. "InstallFailed: namespaces capi-cluster
+	// not found") within 20 seconds instead of debugging it cold.
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
+	go logInfrastructureProviderConditions(watchCtx, clusterClient,
+		getInfrastructureProviderName(), kubernetes.GetCapiClusterNamespace())
+
 	releaseSync := bar.InProgress(
 		fmt.Sprintf("Syncing %s infrastructure-provider component", providerName),
 	)
@@ -377,6 +398,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		},
 	)
 	releaseSync()
+	watchCancel()
 	assert.AssertErrNil(ctx, err, "Failed syncing capi-cluster infrastructure provider ArgoCD app")
 	bar.Substep(
 		fmt.Sprintf("Synced %s infrastructure-provider component", providerName),
@@ -458,6 +480,86 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	bar.Substep(
 		fmt.Sprintf("%s controller pod Running", providerName),
 	)
+}
+
+// logInfrastructureProviderConditions polls the InfrastructureProvider
+// CR every 20 seconds and surfaces any False/Unknown condition via
+// slog so an operator tailing the log sees the actual blocker (e.g.
+// "InstallFailed: namespaces capi-cluster not found",
+// "ImagePullBackOff", "EnsuringComponents") instead of staring at a
+// generic "Syncing infrastructure-provider component" spinner.
+//
+// Returns when ctx is cancelled — the caller cancels it after
+// SyncArgoCDApp returns. Failures to read the CR are logged at WARN
+// but never abort: this is a diagnostic sidecar, not a critical path.
+func logInfrastructureProviderConditions(
+	ctx context.Context,
+	clusterClient client.Client,
+	name, namespace string,
+) {
+	gvk := schema.GroupVersionKind{
+		Group:   "operator.cluster.x-k8s.io",
+		Version: "v1alpha2",
+		Kind:    string(clusterctlV1.InfrastructureProviderType),
+	}
+
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+
+	logCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("provider", name),
+		slog.String("namespace", namespace),
+	})
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(gvk)
+		err := clusterClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, obj)
+		if err != nil {
+			slog.WarnContext(logCtx, "Polling InfrastructureProvider failed; will retry",
+				slog.Any("err", err),
+			)
+			continue
+		}
+
+		conditions, found, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+		if !found || len(conditions) == 0 {
+			slog.InfoContext(logCtx,
+				"InfrastructureProvider has no status conditions yet — operator hasn't observed it")
+			continue
+		}
+
+		var allReady = true
+		for _, raw := range conditions {
+			cond, ok := raw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			ctype, _, _ := unstructured.NestedString(cond, "type")
+			status, _, _ := unstructured.NestedString(cond, "status")
+			if status == "True" {
+				continue
+			}
+			allReady = false
+			reason, _, _ := unstructured.NestedString(cond, "reason")
+			message, _, _ := unstructured.NestedString(cond, "message")
+			slog.WarnContext(logCtx, "InfrastructureProvider condition not ready",
+				slog.String("type", ctype),
+				slog.String("status", status),
+				slog.String("reason", reason),
+				slog.String("message", message),
+			)
+		}
+		if allReady {
+			slog.InfoContext(logCtx, "All InfrastructureProvider conditions are True; sync should complete shortly")
+		}
+	}
 }
 
 // Returns the name of the InfrastructureProvider component.

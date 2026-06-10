@@ -127,6 +127,21 @@ hetzner:
   controlPlane:
     regions: {{- .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
+    {{- /* Bare-metal control-plane endpoint — sourced from
+         cloud.hetzner.controlPlane.bareMetal.endpoint.host
+         (typically a Robot failover IP managed by
+         hetzner-failover-script). Without this, HetznerCluster
+         reports ControlPlaneEndpointNotSet ("disabled LoadBalancer
+         and not yet provided ControlPlane endpoint") and every
+         downstream reconcile — KubeadmConfig, HBMHost, Machine —
+         stalls waiting for Cluster infrastructure to be Ready.
+         The hcloud/hybrid branch below still owns its own endpoint
+         emission for the VPN-cluster pre-created LB shape. */ -}}
+    {{- if eq .HetznerConfig.Mode "bare-metal" }}
+    endpoint:
+      host: {{ .ControlPlaneEndpoint | quote }}
+    {{- end }}
+
     {{- /* When kubeaid-cli pre-provisions the control-plane LB
          (cluster.type=vpn, or workload connecting to an existing
          HCloudVPNCluster), the chart consumes the pre-created LB
