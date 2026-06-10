@@ -36,8 +36,37 @@ type (
 		// Kube Prometheus installation specific details.
 		KubePrometheus *KubePrometheusConfig `yaml:"kubePrometheus"`
 
+		// KubeaidStoragectl pins the kubeaid-storagectl release tag
+		// used by the bare-metal preKubeadm script when carving the
+		// ZFS pool and Ceph partition. Leave nil (block omitted) to
+		// fall back to the kubeaid-cli binary's own release version,
+		// which is the right default for most operators — every node
+		// downloads the storagectl that ships with the kubeaid-cli
+		// release that bootstrapped it. Set explicitly to override:
+		//
+		//   - to pin against a tag newer/older than kubeaid-cli for
+		//     testing a fix or rolling back, or
+		//   - to point at an unreleased dev build when running a
+		//     `go run ./cmd/kubeaid-cli` development bootstrap (the
+		//     CLI's KubeaidCLIVersion is empty there and the chart
+		//     would otherwise fall through to `latest`, which 404s if
+		//     no release has been published yet).
+		KubeaidStoragectl *KubeaidStoragectlConfig `yaml:"kubeaidStoragectl"`
+
 		// Obmondo customer specific details.
 		Obmondo *ObmondoConfig `yaml:"obmondo"`
+	}
+
+	// KubeaidStoragectlConfig pins the kubeaid-storagectl release.
+	// See GeneralConfig.KubeaidStoragectl for when to set it.
+	KubeaidStoragectlConfig struct {
+		// Version is the GitHub release tag of kubeaid-storagectl —
+		// rendered into the chart as `global.kubeaidStoragectl.version`
+		// and used to build the `releases/download/<version>/` URL the
+		// node's preKubeadm wget hits. Empty string is treated as "not
+		// set" and falls back to kubeaid-cli's own version, same as
+		// omitting the parent block.
+		Version string `yaml:"version"`
 	}
 
 	// Git specific details, used by KubeAid CLI,

@@ -51,6 +51,7 @@
 - [KubeAidForkConfig](#kubeaidforkconfig)
 - [KubePrometheusConfig](#kubeprometheusconfig)
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
+- [KubeaidStoragectlConfig](#kubeaidstoragectlconfig)
 - [LocalConfig](#localconfig)
 - [NetBirdConfig](#netbirdconfig)
 - [NetBirdCredentials](#netbirdcredentials)
@@ -368,6 +369,7 @@ We require the KubeAid and KubeAid Config repositories to be hosted in the same 
 | cluster | [`ClusterConfig`](#clusterconfig) |  | Kubernetes specific details.<br> |
 | cloud | [`CloudConfig`](#cloudconfig) |  | Cloud provider specific details.<br> |
 | kubePrometheus | [`KubePrometheusConfig`](#kubeprometheusconfig) |  | Kube Prometheus installation specific details.<br> |
+| kubeaidStoragectl | [`KubeaidStoragectlConfig`](#kubeaidstoragectlconfig) |  | KubeaidStoragectl pins the kubeaid-storagectl release tag<br>used by the bare-metal preKubeadm script when carving the<br>ZFS pool and Ceph partition. Leave nil (block omitted) to<br>fall back to the kubeaid-cli binary's own release version,<br>which is the right default for most operators — every node<br>downloads the storagectl that ships with the kubeaid-cli<br>release that bootstrapped it. Set explicitly to override:<br><br>  - to pin against a tag newer/older than kubeaid-cli for<br>    testing a fix or rolling back, or<br>  - to point at an unreleased dev build when running a<br>    `go run ./cmd/kubeaid-cli` development bootstrap (the<br>    CLI's KubeaidCLIVersion is empty there and the chart<br>    would otherwise fall through to `latest`, which 404s if<br>    no release has been published yet).<br> |
 | obmondo | [`ObmondoConfig`](#obmondoconfig) |  | Obmondo customer specific details.<br> |
 
 ## GitConfig
@@ -636,6 +638,15 @@ re-encryption noise that produced spurious PRs on every run.</p>
 |-------|------|---------|-------------|
 | url | `string` |  | KubeAid Config repository SSH URL.<br> |
 | directory | `string` |  | Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid<br>Config files for this cluster will be contained.<br><br>When not specified, the directory name will default to the cluster name.<br><br>So, suppose your cluster name is 'staging'. Then, the directory name will default to<br>'staging'. Or you can customize it to something like 'staging.qa'.<br> |
+
+## KubeaidStoragectlConfig
+
+<p>KubeaidStoragectlConfig pins the kubeaid-storagectl release.
+See GeneralConfig.KubeaidStoragectl for when to set it.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| version | `string` |  | Version is the GitHub release tag of kubeaid-storagectl —<br>rendered into the chart as `global.kubeaidStoragectl.version`<br>and used to build the `releases/download/<version>/` URL the<br>node's preKubeadm wget hits. Empty string is treated as "not<br>set" and falls back to kubeaid-cli's own version, same as<br>omitting the parent block.<br> |
 
 ## LocalConfig
 

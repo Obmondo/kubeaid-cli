@@ -405,34 +405,59 @@ func TestRequireOperatorOnNetBird(t *testing.T) {
 
 func TestStoragectlVersion(t *testing.T) {
 	cases := []struct {
-		name       string
-		cliVersion string
-		want       string
+		name             string
+		operatorOverride string
+		cliVersion       string
+		want             string
 	}{
 		{
-			name:       "dev build yields empty (chart falls back to latest)",
+			name:       "no override, dev build yields empty (chart falls back to latest)",
 			cliVersion: "dev",
 			want:       "",
 		},
 		{
-			name:       "empty string yields empty (unset ldflags, same as dev)",
+			name:       "no override, empty CLI version (unset ldflags) yields empty",
 			cliVersion: "",
 			want:       "",
 		},
 		{
-			name:       "release version passes through verbatim",
+			name:       "no override, release CLI version passes through verbatim",
 			cliVersion: "v1.2.3",
 			want:       "v1.2.3",
 		},
 		{
-			name:       "pre-release tag passes through verbatim",
+			name:       "no override, pre-release CLI tag passes through verbatim",
 			cliVersion: "v1.2.3-rc.1",
 			want:       "v1.2.3-rc.1",
+		},
+		{
+			name:             "operator override wins over a release CLI version",
+			operatorOverride: "v9.9.9",
+			cliVersion:       "v1.2.3",
+			want:             "v9.9.9",
+		},
+		{
+			name:             "operator override unblocks dev builds (no release tagged yet)",
+			operatorOverride: "v0.0.0-pre-release",
+			cliVersion:       "dev",
+			want:             "v0.0.0-pre-release",
+		},
+		{
+			name:             "operator override unblocks empty CLI version too",
+			operatorOverride: "v0.0.0-pre-release",
+			cliVersion:       "",
+			want:             "v0.0.0-pre-release",
+		},
+		{
+			name:             "empty override falls back to CLI version (treats omitted-block and explicit-empty identically)",
+			operatorOverride: "",
+			cliVersion:       "v1.2.3",
+			want:             "v1.2.3",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, storagectlVersion(tc.cliVersion))
+			assert.Equal(t, tc.want, storagectlVersion(tc.operatorOverride, tc.cliVersion))
 		})
 	}
 }
