@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -318,6 +319,27 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 		}
 	}
 
+	// Hetzner bare-metal-specific overlay. Machine.status.conditions are
+	// CAPI's lazy copy of CAPH's HBMM status: when HBMM transitions
+	// between in-progress sub-states (registering ↔ image-installing
+	// after a CAPH backoff/retry) but the Machine-level condition type
+	// + status stay the same (InfrastructureReady=False), the Machine
+	// controller often doesn't bump the message. The wait table then
+	// reads a stale "image-installing" while operators tailing kubectl
+	// see "registering" live. Read HBMM directly so the table reflects
+	// CAPH's current state without waiting for Machine to catch up. List
+	// failure is logged + non-fatal: we fall back to machineStatusDetail.
+	var hbmmOverrides map[string]string
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		if msgs, hbmmErr := hbmmStatusMessages(ctx, mgmtClient); hbmmErr == nil {
+			hbmmOverrides = msgs
+		} else {
+			slog.WarnContext(ctx,
+				"Failed reading HBMM live statuses; using Machine-derived status",
+				slog.Any("error", hbmmErr))
+		}
+	}
+
 	rows := make([]capiStatusRow, 0, 1+len(machines.Items))
 	ready := false
 
@@ -341,16 +363,79 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	}
 
 	for _, m := range machines.Items {
+		detail := machineStatusDetail(&m)
+		if m.Spec.InfrastructureRef.Kind == "HetznerBareMetalMachine" {
+			if override, ok := hbmmOverrides[m.Spec.InfrastructureRef.Name]; ok && override != "" {
+				detail = override
+			}
+		}
+
 		row := capiStatusRow{
 			Resource: "Machine/" + m.Name,
 			Phase:    m.Status.Phase,
-			Status:   machineStatusDetail(&m),
+			Status:   detail,
 			Failed:   isMachineFailed(&m),
 		}
 		rows = append(rows, row)
 	}
 
 	return rows, ready, firstErr
+}
+
+// hbmmStatusMessages reads HetznerBareMetalMachine CRs in the capi-cluster
+// namespace and returns a map of HBMM name -> live status message.
+//
+// Used by summarizeCAPIStatus to overlay the Machine row's status when
+// CAPI's lagged copy of CAPH status is staler than what CAPH itself sees.
+// See the caller for the full rationale.
+//
+// Empty map (no error) when no HBMMs exist yet — typical very early in
+// bootstrap before kubeadm-control-plane has rolled the first Machine.
+func hbmmStatusMessages(ctx context.Context, mgmtClient client.Client) (map[string]string, error) {
+	hbmms := &caphV1Beta1.HetznerBareMetalMachineList{}
+	if err := mgmtClient.List(ctx, hbmms, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+		return nil, err
+	}
+
+	out := make(map[string]string, len(hbmms.Items))
+	for i := range hbmms.Items {
+		hbmm := &hbmms.Items[i]
+		if msg := hbmmLiveMessage(hbmm); msg != "" {
+			out[hbmm.Name] = msg
+		}
+	}
+	return out, nil
+}
+
+// hbmmLiveMessage returns the most informative single-line message from
+// an HBMM's status:
+//   - terminal failure first (status.failureMessage),
+//   - then the Ready condition's Message (where CAPH writes the live
+//     "host (<id>) is still provisioning - state '<X>'" string),
+//   - then the Ready condition's Reason as a token fallback when Message
+//     is empty (typical right after the condition is first seeded).
+//
+// Returns "" when nothing's failing, no Ready condition exists yet, or
+// the Ready condition is True — in which case the caller should fall back
+// to the generic Machine-derived status (or no override at all when the
+// Machine itself is Running).
+func hbmmLiveMessage(hbmm *caphV1Beta1.HetznerBareMetalMachine) string {
+	if hbmm.Status.FailureMessage != nil && *hbmm.Status.FailureMessage != "" {
+		return firstNonEmptyLine(*hbmm.Status.FailureMessage)
+	}
+	for _, c := range hbmm.Status.Conditions {
+		if c.Type != clusterAPIV1Beta1.ReadyCondition {
+			continue
+		}
+		if c.Status == coreV1.ConditionTrue {
+			return ""
+		}
+		if c.Message != "" {
+			return firstNonEmptyLine(c.Message)
+		}
+		return string(c.Reason)
+	}
+	return ""
 }
 
 // summarizeMachinesForPivot lists Machines in the capi-cluster
