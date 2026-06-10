@@ -12,6 +12,7 @@ import (
 	goGit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	gossh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -37,18 +38,34 @@ func GetRepoDir(parsedURL *giturl.ParsedURL) string {
 
 // requestTouchIfAuth returns a touch-release closure that surfaces a
 // "👉 Tap YubiKey to <reason>" sub-step while a git transport op is
-// in flight — but only when authMethod is non-nil. HTTPS-routed
-// operations (CloneRepo nullifies authMethod for HTTPS URLs in
-// clone.go) don't use SSH auth at all, so the YubiKey prompt would be
-// a misleading lie there: the operator's tap can't satisfy a TLS
-// request. Returns a no-op closure in that case.
+// in flight — but only on the agent-backed SSH path, which is the
+// only path that actually reaches a hardware token.
+//
+// No-op closures returned for:
+//   - HTTPS-routed ops (authMethod nil; CloneRepo nullifies it for
+//     HTTPS URLs in clone.go). The operator's tap can't satisfy a
+//     TLS request, so the prompt would be a lie.
+//   - File-backed SSH (authMethod is *gossh.PublicKeys, constructed
+//     by gossh.NewPublicKeysFromFile when the operator configured
+//     git.privateKeyFilePath). The library signs in-process from the
+//     unencrypted private-key bytes; nothing reaches the smartcard.
+//
+// We can't rely on RequestYubiKeyTouch's own hasYubiKey gate to
+// suppress these cases: that gate fires on "any cardno: identity
+// loaded in $SSH_AUTH_SOCK", which is true whenever the operator has
+// a YubiKey plugged in for unrelated uses (GPG signing, ad-hoc gitea
+// SSH outside this bootstrap).
 //
 // Pair via `defer requestTouchIfAuth(ctx, "...", authMethod)()` around
-// the actual transport call; the underlying RequestYubiKeyTouch is
-// still gated on hasYubiKey, so the touch only renders when there's
-// actually a YubiKey-backed identity loaded in the SSH agent.
+// the actual transport call.
 func requestTouchIfAuth(ctx context.Context, reason string, authMethod transport.AuthMethod) func() {
 	if authMethod == nil {
+		return func() {}
+	}
+	// Agent-backed auth comes through gossh.NewSSHAgentAuth as a
+	// *PublicKeysCallback. Anything else (PublicKeys, HTTP BasicAuth)
+	// is file-backed or non-SSH and doesn't touch the card.
+	if _, isAgent := authMethod.(*gossh.PublicKeysCallback); !isAgent {
 		return func() {}
 	}
 	return progress.FromCtx(ctx).RequestYubiKeyTouch(reason)
