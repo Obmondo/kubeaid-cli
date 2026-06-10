@@ -153,13 +153,37 @@ type TemplateValues struct {
 	KubeaidStoragectlVersion string
 }
 
-// storagectlVersion returns the kubeaid-storagectl version string to pin
-// in the capi-cluster Helm values. For dev / unset builds it returns ""
-// so the chart falls back to its `{{ else }}latest{{ end }}` branch. For
-// release builds it echoes the version verbatim so each bare-metal node
-// downloads the storagectl binary that matches the kubeaid-cli release
-// that bootstrapped it.
-func storagectlVersion(cliVersion string) string {
+// operatorStoragectlVersionOverride returns the operator-set value of
+// general.yaml's `kubeaidStoragectl.version`, or "" when the block is
+// omitted entirely. Nil-safe by design — most general.yaml files don't
+// carry the block, and reaching through the pointer chain unguarded
+// would panic on a perfectly valid config.
+func operatorStoragectlVersionOverride() string {
+	cfg := config.ParsedGeneralConfig.KubeaidStoragectl
+	if cfg == nil {
+		return ""
+	}
+	return cfg.Version
+}
+
+// storagectlVersion returns the kubeaid-storagectl version string to
+// pin in the capi-cluster Helm values, in priority order:
+//
+//  1. Operator override from general.yaml's
+//     `kubeaidStoragectl.version`. Wins over everything when set —
+//     lets an operator pin against a tag newer/older than kubeaid-cli
+//     for testing a fix, roll back without re-releasing kubeaid-cli,
+//     or point at an unreleased dev build during `go run` bootstrap.
+//  2. kubeaid-cli's own KubeaidCLIVersion. The default and almost-
+//     always-right answer — every node downloads the storagectl that
+//     ships with the release that bootstrapped it.
+//  3. Empty string when neither is meaningful (dev builds with no
+//     override). The chart's preKubeadm template then takes its
+//     `{{ else }}latest{{ end }}` branch.
+func storagectlVersion(operatorOverride, cliVersion string) string {
+	if operatorOverride != "" {
+		return operatorOverride
+	}
 	if cliVersion == "" || cliVersion == "dev" {
 		return ""
 	}
@@ -198,7 +222,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
 
-		KubeaidStoragectlVersion: storagectlVersion(globals.KubeaidCLIVersion),
+		KubeaidStoragectlVersion: storagectlVersion(
+			operatorStoragectlVersionOverride(),
+			globals.KubeaidCLIVersion,
+		),
 	}
 
 	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.
