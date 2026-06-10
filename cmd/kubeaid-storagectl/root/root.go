@@ -20,8 +20,16 @@ var RootCmd = &cobra.Command{
 	Use: "kubeaid-storagectl",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Create logger.
-		logger.CreateLogger(globals.IsDebugModeEnabled, []io.Writer{os.Stdout})
+		// Create logger. CreateLogger expects {fileWriter, stdoutWriter}
+		// and indexes writers[1] — passing only os.Stdout panicked with
+		// `index out of range [1] with length 1` on every node bootstrap
+		// (cloud-init runcmd invocation), turning the storage-plan step
+		// into a hard failure even on otherwise-healthy nodes. Storagectl
+		// runs inside cloud-init where stdout already lands in
+		// /var/log/cloud-init-output.log, so we want NO separate log file
+		// — discard the file writer and route the stdout writer through.
+		// Same convention as the generator tool (tools/generators/cmd/main.go).
+		logger.CreateLogger(globals.IsDebugModeEnabled, []io.Writer{io.Discard, os.Stdout})
 	},
 
 	RunE: func(cmd *cobra.Command, args []string) error {
