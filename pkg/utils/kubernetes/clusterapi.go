@@ -41,6 +41,15 @@ const (
 	// emDash is the placeholder rendered in a status-table cell when
 	// there's no value to show.
 	emDash = "—"
+
+	// statusMaxWidth caps the Status column's char count to keep the
+	// lipgloss table from overflowing on long CAPH error messages.
+	// 120 fits a typical 140-column terminal once the Resource and
+	// Phase columns are also rendered, and leaves enough room for the
+	// "<state> + first error fragment" content operators actually
+	// need to spot. The full untruncated message is still available
+	// via slog's persisted log file.
+	statusMaxWidth = 120
 )
 
 var (
@@ -758,7 +767,7 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 		if phase == "" {
 			phase = emDash
 		}
-		status := r.Status
+		status := truncateForTable(r.Status, statusMaxWidth)
 		if status == "" {
 			status = emDash
 		}
@@ -784,6 +793,26 @@ func renderCAPIStatusTable(rows []capiStatusRow) string {
 		})
 
 	return t.Render()
+}
+
+// truncateForTable returns s clipped to max runes with a trailing ellipsis
+// when it overruns. Rune-based (not byte-based) so a multi-byte tail
+// character isn't sliced mid-codepoint — the column messages routinely
+// contain em-dashes / curly quotes from CAPH error strings. Returns s
+// unchanged when it fits; returns s unchanged when max <= 0.
+func truncateForTable(s string, max int) string {
+	if max <= 0 {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) <= max {
+		return s
+	}
+	keep := max - 1
+	if keep < 1 {
+		keep = 1
+	}
+	return string(runes[:keep]) + "…"
 }
 
 // renderMainClusterNodesTable returns a `kubectl get nodes -o wide`-style

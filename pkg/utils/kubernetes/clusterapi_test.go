@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1562,6 +1563,35 @@ func TestWaitForCPNodesNetworkingReady(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
+		})
+	}
+}
+
+// TestTruncateForTable pins the rendering rules the Status column relies on:
+// short strings pass through unchanged, long strings clip with an ellipsis,
+// multi-byte tail characters never get sliced mid-codepoint, and a non-positive
+// max returns the input untouched (defensive — caller shouldn't pass 0/negative
+// but the helper must not panic).
+func TestTruncateForTable(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		max  int
+		want string
+	}{
+		{"short string passes through", "hello", 10, "hello"},
+		{"exactly at max passes through", "hello", 5, "hello"},
+		{"one over max gets ellipsis", "hello!", 5, "hell…"},
+		{"long realistic CAPH msg truncates", strings.Repeat("a", 300), 10, "aaaaaaaaa…"},
+		{"non-ASCII tail preserved (rune-based)", "abc—def", 5, "abc—…"},
+		{"empty input stays empty", "", 10, ""},
+		{"zero max returns input untouched", "anything", 0, "anything"},
+		{"negative max returns input untouched", "anything", -5, "anything"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := truncateForTable(tc.in, tc.max)
+			assert.Equal(t, tc.want, got)
 		})
 	}
 }
