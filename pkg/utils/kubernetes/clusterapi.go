@@ -120,11 +120,23 @@ type capiStatusRow struct {
 // spinner's 100ms re-render goroutine can't \r-overwrite the table rows,
 // resumes on exit. Caller should NOT wrap with bar.InProgress — the
 // bar's substep stream is below the persisted table. After this returns
-// nil, the caller emits its own "✓ Main cluster Machines provisioned"
+// nil, the caller emits its own "✓ Main cluster CAPI Cluster Provisioned"
 // substep.
+//
+// UX note: the predicate gates on `Cluster.Status.Phase=Provisioned` +
+// `ReadyCondition=True`, which fires as soon as the InfrastructureCluster
+// (HetznerCluster) reports ready and the control-plane endpoint is set. It
+// does NOT wait for every Machine to be Running with a Node ref. Workers
+// stuck in `ensure-provisioned` or even CheckDisk permanent-error can leave
+// the Cluster row green here. The all-Machines-Running gate runs separately
+// in WaitForAllMachinesRunning, just before clusterctl move. The spinner
+// label and the success substep say "Cluster" (not "Machines") on purpose
+// so the operator isn't surprised by green-then-broken downstream — earlier
+// labels said "Machines provisioned" which led an operator to expect joined
+// nodes and surface this asymmetry.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
 	return waitForCAPIStableState(ctx,
-		"Waiting for main cluster Machines to come up",
+		"Waiting for main cluster CAPI Cluster to reach Provisioned",
 		"main cluster did not reach Provisioned+Ready",
 		func(c context.Context) ([]capiStatusRow, bool, error) {
 			return summarizeCAPIStatus(c, managementClusterClient)
