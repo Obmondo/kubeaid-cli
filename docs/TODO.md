@@ -275,3 +275,60 @@ pre-flight surfaces the failure as a clean field-level error from
 kubeaid-cli with the offending path, same shape as the parser's
 existing `validate` errors. Defer until we hit the next case from a
 different field; the regions one is fixed at source.
+
+### Apply Hetzner Robot stateless firewall on bare-metal nodes
+
+Bare-metal nodes need a public v4 attached during bootstrap so cloud-
+init can `apt-get update / install` (cloud-init pulls cloud-init +
+apparmor in the post-install script, then containerd + runc + kubeadm
+in preKubeadm). The original design intent was private-IP-only via
+NetBird, but stripping the public IP outright breaks the egress those
+APT pulls need.
+
+Mitigation: keep the public IP attached but apply Hetzner Robot's
+per-server stateless firewall to block all ingress + all egress
+*except* DNS (53/udp + 53/tcp) and the return-traffic high-port range
+that stateless rules need to allow explicitly. Outbound APT mirror
+traffic stays open during the install window, then the firewall is
+locked down once the node is up on NetBird and direct internet egress
+isn't needed.
+
+Implementation shape (mirrors `CreateHetznerBareMetalSSHKey`):
+
+- New method on the Hetzner client: `EnsureRobotFirewall(serverID,
+  rules)` that PUTs `/firewall/<serverID>` with the templated rules.
+  Idempotent — Robot returns the current config; only re-PUT if it
+  differs.
+- Called from `ProvisionPrerequisiteInfrastructure` after the
+  SSH-reachable wait passes, before `GenerateStoragePlans` runs.
+- Rules template lives in `pkg/cloud/hetzner/firewall.go` (or chart
+  values if operators need to tweak per-cluster). Default ruleset:
+  outbound 53/udp+tcp to anywhere, inbound established (high ports
+  32768+) for return traffic, deny rest. Override hook for operators
+  who need to expose additional ports (e.g. failover-IP-fronted
+  apiserver before NetBird takes over).
+- Timing of the lock-down: open during cloud-init, tightened once
+  NetBird agent is up on the node. Easiest UX: apply the strict rules
+  from kubeaid-cli only after the workload-cluster ArgoCD apps have
+  synced and NetBird peer is registered. Pre-NetBird the rules stay
+  open for egress to the world.
+
+Open questions before implementation:
+
+- Apply pre-NetBird or post-NetBird? Pre is safer (smaller exposed
+  window) but breaks the APT install if rules are too strict; post is
+  simpler but leaves the node with full public egress for the install
+  window.
+- Per-server vs per-cluster API call shape: Robot's firewall API is
+  per-server. Looping over each host is fine for the kbm fleet size,
+  but rate limits start mattering on bigger clusters. Worth
+  benchmarking before committing.
+- What about the failover IP / control-plane endpoint? The Robot
+  firewall rules apply to the server's main IP; the failover IP gets
+  delivered to whichever server currently holds it, and its inbound
+  traffic is subject to the receiving server's firewall. Rules must
+  allow inbound 6443 from the operator's egress IPs (or accept that
+  the operator reaches the API via NetBird only).
+
+Filed by request — keep public IP attached during bootstrap, tighten
+afterwards via Hetzner Robot firewall, default-deny except DNS.
