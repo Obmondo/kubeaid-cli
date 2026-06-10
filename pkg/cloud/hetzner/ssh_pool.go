@@ -100,7 +100,20 @@ func (p *sshConnPool) getOrOpen(ctx context.Context, address, privateKey, touchR
 		return conn, nil
 	}
 
-	releaseTouchHint := progress.FromCtx(ctx).RequestYubiKeyTouch(touchReason)
+	// Only surface the YubiKey-touch hint on the agent-backed path.
+	// File-backed keys (privateKey non-empty) sign in-process via the
+	// supplied bytes and never reach the smartcard, so the prompt
+	// would mislead the operator into tapping for a sig that won't
+	// happen — see the privateKey-vs-agent split documented at
+	// os_install.go::isHBMSReachable. The progress bar's hasYubiKey
+	// gate fires on "any cardno: identity loaded in $SSH_AUTH_SOCK",
+	// which is true whenever the operator has the YubiKey plugged in
+	// for unrelated uses (GPG signing, git auth), so we can't rely on
+	// it to suppress the prompt here.
+	releaseTouchHint := func() {}
+	if privateKey == "" {
+		releaseTouchHint = progress.FromCtx(ctx).RequestYubiKeyTouch(touchReason)
+	}
 	conn, err := p.opener(ctx, address, privateKey)
 	releaseTouchHint()
 	if err != nil {
