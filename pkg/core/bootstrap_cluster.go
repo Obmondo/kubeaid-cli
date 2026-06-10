@@ -491,15 +491,13 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	if err := kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
 	}
-	// Calling this "Machines provisioned" was a lie — the gate is on
-	// Cluster.Status.Phase=Provisioned, which fires when HetznerCluster
-	// goes Ready (control-plane endpoint set). Workers can still be in
-	// ensure-provisioned or even CheckDisk-permanent-error at this
-	// point; WaitForAllMachinesRunning is the gate that waits for every
-	// Machine to be Running with a Node ref, and it runs later before
-	// clusterctl move. Label this substep for what the wait actually
-	// proves: the CAPI Cluster resource reached Provisioned.
-	bar.Substep("Main cluster CAPI Cluster Provisioned")
+	// Predicate inside WaitForMainClusterToBeProvisioned now requires
+	// Cluster Provisioned+Ready AND at least one CP Machine Running
+	// with a Node AND (when workers exist) at least one worker Machine
+	// Running with a Node. Once we're here, the API is reachable and
+	// a schedulable untainted node exists — enough for the CNI helm
+	// install + workload-cluster ArgoCD app sync that follow.
+	bar.Substep("Main cluster reachable (CP + worker Machine joined)")
 
 	// Save kubeconfig locally.
 	if err := kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient); err != nil {
