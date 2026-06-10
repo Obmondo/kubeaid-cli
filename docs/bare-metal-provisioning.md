@@ -87,6 +87,63 @@ runs against whatever is on it. That is harmless in practice, since
 `lsblk` reports the disks correctly either way and CAPH wipes and
 reinstalls anyway. The install itself is still pure waste.
 
+## Recovering from a `CheckDisk failed` permanent error
+
+CAPH runs a SMART pre-flight against every drive listed in
+`rootDeviceHints.raid.wwn` before installimage. If any drive reports any
+SMART warning — current OR historical — the host is marked
+`provisioningState: image-installing` with `errorType: permanent error`
+and CAPH stops reconciling it. The event looks like:
+
+```
+CheckDisk failed (permanent error): CheckDisk for [0x...] failed:
+  0x... (/dev/sda): Please note the following marginal Attributes:
+  0x... (/dev/sda): 190 Airflow_Temperature_Cel ... In_the_past 32
+```
+
+The `WHEN_FAILED` column is the key signal:
+
+- `FAILING_NOW`        — drive is failing right now. **Do not ignore.**
+  Open a Hetzner Robot ticket and have the disk swapped before
+  proceeding.
+- `In_the_past`        — drive once crossed the threshold and has since
+  recovered. Safe to ignore for a worker node carrying stateless
+  workloads; weigh more carefully for control-plane / etcd nodes since
+  they hold persistent state.
+- empty / `-`          — informational only, no threshold ever crossed.
+
+To unblock a host whose only warning is historical, set both
+annotations in a single call:
+
+```bash
+kubectl -n capi-cluster annotate hetznerbaremetalhost <serverID> \
+  capi.syself.com/ignore-check-disk=true \
+  capi.syself.com/permanent-error- \
+  --overwrite
+```
+
+- `ignore-check-disk=true` tells CAPH to skip the SMART gate on the
+  next reconcile.
+- `permanent-error-` (trailing `-` removes the annotation) clears the
+  "I gave up" sticky marker CAPH set after `errorCount` hit threshold.
+  Without removing this, CAPH won't reconcile the host at all and the
+  ignore-check-disk annotation goes unread.
+
+Within ~30 seconds the host should leave `permanent-error` and CAPH
+will re-attempt installimage.
+
+After the disk is replaced (Hetzner Robot disk swap), revert by
+removing the ignore annotation so future SMART regressions surface:
+
+```bash
+kubectl -n capi-cluster annotate hetznerbaremetalhost <serverID> \
+  capi.syself.com/ignore-check-disk- --overwrite
+```
+
+Nothing in `general.yaml` or kubeaid-cli's render pipeline changes
+either way — these annotations live entirely in the CAPH state, so
+a kubeaid-cli re-run won't clobber them.
+
 ## Possible improvement
 
 The throwaway install only exists to make an unreachable server SSH-able
