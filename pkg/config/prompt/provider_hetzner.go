@@ -138,21 +138,26 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 			Value(&haChoice),
 	)
 
-	// Cloud API token lives in its own group so it can be skipped
-	// for pure bare-metal — that mode doesn't talk to HCloud at all
-	// (no HCloud client, no NAT gateway, no LB). The group's
-	// HideFunc reads cfg.HetznerMode, which is set by the Mode
-	// selector in the group above and re-evaluated when the form
-	// advances to this group.
+	// Cloud API token is required for EVERY Hetzner mode, including
+	// pure bare-metal. CAPH's controller startup calls
+	// getAndValidateHCloudToken() before any of its 5 reconcilers
+	// (including HetznerBareMetalMachine) can take their first lock,
+	// so an empty token wedges the bare-metal bootstrap with
+	// `hcloud token cannot be an empty string` in CAPH's logs.
+	// kubeaid-cli's own vSwitch-to-HCloud-Network bridging at bootstrap
+	// also calls the HCloud API directly. validateHetznerConfig in
+	// pkg/config/parser/validate.go enforces this at parse time;
+	// asking for the token here keeps the prompt path consistent so
+	// fresh runs don't generate a secrets.yaml that fails validation
+	// at the very next step. Earlier revision hid this group for
+	// bare-metal mode and quietly bricked the bootstrap.
 	apiTokenGroup := huh.NewGroup(
 		huh.NewInput().
 			Title("Cloud API token:").
 			EchoMode(huh.EchoModePassword).
 			Value(&cfg.HetznerAPIToken).
 			Validate(nonEmpty),
-	).WithHideFunc(func() bool {
-		return cfg.HetznerMode == constants.HetznerModeBareMetal
-	})
+	)
 
 	err := huh.NewForm(
 		huh.NewGroup(
