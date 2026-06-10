@@ -150,6 +150,10 @@ func TestLoadExistingPromptedConfigHetznerBareMetalTopology(t *testing.T) {
 	want := completePromptedConfig(constants.CloudProviderHetzner)
 	want.HetznerMode = constants.HetznerModeBareMetal
 	want.HetznerSSHKeyName = "bm-key"
+	// CAPH's getAndValidateHCloudToken runs at controller startup for
+	// every reconciler — including bare-metal — so apiToken is required
+	// for pure-BM too. missingProviderPromptConfig must agree.
+	want.HetznerAPIToken = "bm-token"
 	want.HetznerRobotUser = "robot-user"
 	want.HetznerRobotPassword = "robot-pass"
 	want.HetznerCPReplicas = "3"

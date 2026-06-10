@@ -85,7 +85,9 @@ func missingHetznerCredentials(cfg *PromptedConfig) bool {
 	if cfg.HetznerMode == "" {
 		return true
 	}
-	if hetznerUsesHCloud(cfg.HetznerMode) && cfg.HetznerAPIToken == "" {
+	// API token is required for every mode (CAPH validates it on
+	// controller startup before bare-metal reconcilers can run).
+	if cfg.HetznerAPIToken == "" {
 		return true
 	}
 	if !cfg.UseSSHAgent && cfg.HetznerSSHKeyPath == "" {
