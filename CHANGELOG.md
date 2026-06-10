@@ -1,4 +1,73 @@
 - - -
+## v0.24.0 - 2026-06-10
+#### Features
+- (**bootstrap**) surface InfrastructureProvider conditions during sync - (489c28e) - Ashish Jaiswal
+- (**config**) move the interactive prompt to `config generate` - (3e4c039) - Ashish Jaiswal
+- (**hetzner**) drop HCloud API token requirement for pure bare-metal - (1de68d8) - Ashish Jaiswal
+- (**hetzner**) auto-create vSwitch for pure bare-metal mode - (791087f) - Ashish Jaiswal
+- (**netbird**) pause bootstrap until operator API-key Secret exists - (4316883) - Ashish Jaiswal
+- (**prompt**) implement interactive config resume and state management - (27f9aaf) - Shubham Gupta
+- (**prompt**) hetzner bare-metal UX polish + hybrid mode + secrets quoting - (25b4c50) - Ashish Jaiswal
+- (**prompt**) hetzner bare-metal hosts via add-loop with Robot validation - (929f931) - Ashish Jaiswal
+- (**storageplan**) render the approval layout as a bordered box - (fb3ed7d) - Ashish Jaiswal
+- (**storageplan**) compact per-group composition + ZFS sub-volume summary - (b2195ea) - Ashish Jaiswal
+- (**verify**) check Keycloak + NetBird endpoints before declaring bootstrap done - (082c073) - Ashish Jaiswal
+- add Obmondo support configuration and validation in prompts and tests - (2a8516c) - Shubham Gupta
+- enhance prompt configuration and validation logic also add comprehensive tests - (93cff46) - Shubham Gupta
+#### Bug Fixes
+- (**argo**) upsert the kubeaid-agent project role so re-runs are idempotent - (9849bda) - Ashish Jaiswal
+- (**argo**) wait only for child Apps the root sync actually created - (fa227e4) - Ashish Jaiswal
+- (**argocd-sync**) classify all codes.Unavailable as transient - (02acad0) - Ashish Jaiswal
+- (**argocd-sync**) retry Sync on transient port-forward failures - (15d23ef) - Ashish Jaiswal
+- (**capi**) drop customer-id suffix from InfrastructureProvider name - (8759a43) - Ashish Jaiswal
+- (**capi-cluster**) pin kubeaid-storagectl version to kubeaid-cli release - (709e2ab) - Ashish Jaiswal
+- (**ccm**) run hcloud CCM as a DaemonSet to dodge hostPort surge deadlock - (efbf6ce) - Ashish Jaiswal
+- (**config**) require hetzner.apiToken for every mode including bare-metal - (d7f7cd4) - Ashish Jaiswal
+- (**git**) prompt to retry when GPG commit signing fails mid-bootstrap - (67247c8) - Ashish Jaiswal
+- (**hetzner**) render controlPlane.endpoint.host for bare-metal clusters - (df7e8c4) - Ashish Jaiswal
+- (**hetzner**) always emit hcloud key in cloud-credentials, including bare-metal - (5e2a361) - Ashish Jaiswal
+- (**hetzner**) skip kubeaidStoragectl block for non-bare-metal clusters - (dcca23a) - Ashish Jaiswal
+- (**hetzner**) emit controlPlane.bareMetal.zfs.size to satisfy CAPH chart - (29fc46d) - Ashish Jaiswal
+- (**hetzner**) populate controlPlane.regions from Robot DCs on bare-metal - (119c94c) - Ashish Jaiswal
+- (**hetzner**) route storage-plan SSH through SSH_AUTH_SOCK - (ea15615) - Ashish Jaiswal
+- (**hetzner**) route HBMS reachability probe through SSH_AUTH_SOCK - (03846af) - Ashish Jaiswal
+- (**hetzner**) reuse SSH key registered under a different name - (87c483e) - Ashish Jaiswal
+- (**installimage**) default bare-metal image to Ubuntu 26.04 zstd - (632e3d5) - Ashish Jaiswal
+- (**k3d**) scope bootstrap cluster name to target cluster - (7a02a11) - Ashish Jaiswal
+- (**netbird**) override dashboard AUTH_SUPPORTED_SCOPES to match Keycloak scope - (1397500) - Ashish Jaiswal
+- (**netbird**) verify the bootstrap operator is on the right mesh - (96c9609) - Ashish Jaiswal
+- (**secrets**) drop trim markers on comment blocks in cloud-credentials templates - (a22c741) - Ashish Jaiswal
+- (**yubikey-prompt**) skip "Tap YubiKey" hint on file-backed SSH paths - (31ddff5) - Ashish Jaiswal
+#### Documentation
+- (**bare-metal**) document CheckDisk permanent-error recovery - (7d5ca5f) - Ashish Jaiswal
+- (**post-bootstrap**) rewrite break-glass section with concrete commands - (78b180b) - Ashish Jaiswal
+- (**todo**) capture findings from the netbird-mgmt-com bootstrap - (654af90) - Ashish Jaiswal
+- (**todo**) record storagectl dev-version detect + helm-values preflight - (48b968f) - Ashish Jaiswal
+- (**todo**) record the kubeaid-cli login mesh-check follow-up - (135e61b) - Ashish Jaiswal
+- add Puppet Server certificate generation guide via HTTP API - (a71deb9) - Shubham Gupta
+- rewrite bare-metal-provisioning to match the actual flow - (8fc2435) - Ashish Jaiswal
+- add rescue-first bare-metal provisioning design - (8ecfc8f) - Ashish Jaiswal
+#### Refactoring
+- (**capi**) drop per-customer namespace suffix from GetCapiClusterNamespace - (c4773bd) - Ashish Jaiswal
+- (**hetzner**) drop static zfs.size literals, persist on approval instead - (f2b26e1) - Ashish Jaiswal
+- change module name to github.com/Obmondo/kubeaid-cli/ - (8c1d671) - Shubham Gupta
+#### Miscellaneous Chores
+- (**bootstrap**) show per-substep progress through the bare-metal path - (e20a1b7) - Ashish Jaiswal
+- (**bootstrap**) hide OIDC issuer re-probe from the progress bar - (f2a59b1) - Ashish Jaiswal
+- (**config**) trim verbose struct docs leaking into sample configs - (cb1d676) - Ashish Jaiswal
+- (**hetzner**) pool SSH connections per host within prereq-infra - (2f38232) - Ashish Jaiswal
+- (**hetzner**) spell out "HBMS" in user-facing strings - (68981ee) - Ashish Jaiswal
+- (**hetzner**) surface YubiKey-touch prompt during HBMS reachability poll - (07e44de) - Ashish Jaiswal
+- (**hetzner**) bump HBMS OS-install wait from 12 to 20 minutes - (937c0b4) - Ashish Jaiswal
+- (**lint**) fix gofumpt, goconst, unparam findings - (da79bac) - Ashish Jaiswal
+- (**prompt**) drop the cluster-name prefix from the worker default - (91a8680) - Ashish Jaiswal
+- (**storageplan**) spell out the 2-disk requirement in the error - (b9ad412) - Ashish Jaiswal
+- (**storageplan**) log every lsblk row + dropped-disk reasons - (08db3b2) - Ashish Jaiswal
+- (**storageplan**) surface scanned-disk inventory on allocation failure - (16efd2e) - Ashish Jaiswal
+- (**storageplan**) collapse alike layouts in the per-group display - (c4330bd) - Ashish Jaiswal
+
+- - -
+
 ## v0.23.0 - 2026-05-18
 #### Features
 - (**argocd-apps**) render traefik + LE ClusterIssuer for managed Keycloak - (c886bcd) - Ashish Jaiswal
