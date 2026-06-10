@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
@@ -66,10 +67,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			}
 			storagePlans[i] = sp
 
-			host.WWNs = []string{}
-			for _, disk := range sp.OS {
-				host.WWNs = append(host.WWNs, disk.WWN)
-			}
+			host.WWNs = collectAndSortWWNs(sp.OS)
 		}
 
 		if !storageplan.AreStoragePlansAlike(storagePlans) {
@@ -106,10 +104,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			}
 			storagePlans[i] = sp
 
-			host.WWNs = []string{}
-			for _, disk := range sp.OS {
-				host.WWNs = append(host.WWNs, disk.WWN)
-			}
+			host.WWNs = collectAndSortWWNs(sp.OS)
 		}
 
 		if !storageplan.AreStoragePlansAlike(storagePlans) {
@@ -131,6 +126,29 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 		return fmt.Errorf("persisting approved ZFS pool size to general.yaml: %w", err)
 	}
 	return nil
+}
+
+// collectAndSortWWNs extracts each disk's WWN into a freshly-allocated
+// slice and returns it sorted lexicographically.
+//
+// Why sort: the source slice (sp.OS) is filled in the order the
+// allocator picked OS disks, which derives from lsblk's enumeration
+// order on the node. Linux re-enumerates PCIe / NVMe devices on
+// every boot, so the same two physical disks can come back as
+// (nvme0n1, nvme1n1) on one boot and (nvme1n1, nvme0n1) on the next.
+// Persisting WWNs in that volatile order made the rendered chart
+// values churn on every kubeaid-cli re-run — the operator saw a
+// noisy `- foo / + bar` diff against kubeaid-config that was a pure
+// reordering with no semantic change. CAPH reads the list as a set
+// (the WWNs are joined with "|" inside the RAID block), so sorting
+// here is free and gives byte-stable renders across runs.
+func collectAndSortWWNs(disks []*storageplan.Disk) []string {
+	out := make([]string, 0, len(disks))
+	for _, d := range disks {
+		out = append(out, d.WWN)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // persistApprovedZFSSize writes size into general.yaml at all three

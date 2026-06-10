@@ -15,6 +15,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 )
 
 // TestPersistApprovedZFSSize covers the post-approval write-back into
@@ -276,4 +277,67 @@ a:
 		// `a.b.c` is a scalar; walking past it must fail cleanly.
 		assert.Nil(t, findYAMLChild(docRoot, "a", "b", "c", "deeper"))
 	})
+}
+
+// TestCollectAndSortWWNs pins the byte-stable-output contract: the
+// helper must return WWNs in lexicographic order regardless of the
+// input slice's enumeration. Without that ordering, kubeaid-cli's
+// rendered values-capi-cluster.yaml churned on every re-run as
+// lsblk's PCIe enumeration order flipped between boots.
+func TestCollectAndSortWWNs(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []*storageplan.Disk
+		want []string
+	}{
+		{
+			name: "empty input yields empty (not nil — keep slice semantics)",
+			in:   nil,
+			want: []string{},
+		},
+		{
+			name: "preserves single-element input",
+			in:   []*storageplan.Disk{{WWN: "eui.002538b121b71e1e"}},
+			want: []string{"eui.002538b121b71e1e"},
+		},
+		{
+			name: "sorts two NVMe WWNs out of order",
+			in: []*storageplan.Disk{
+				{WWN: "eui.002538b341beb77c"}, // input arrives nvme1 first
+				{WWN: "eui.002538b121b71e1e"},
+			},
+			want: []string{
+				"eui.002538b121b71e1e",
+				"eui.002538b341beb77c",
+			},
+		},
+		{
+			name: "sorts SATA-style 0x-prefixed WWNs",
+			in: []*storageplan.Disk{
+				{WWN: "0x5000cca25ede270a"},
+				{WWN: "0x5000cca25eccbe9f"},
+			},
+			want: []string{
+				"0x5000cca25eccbe9f",
+				"0x5000cca25ede270a",
+			},
+		},
+		{
+			name: "stable when input is already sorted",
+			in: []*storageplan.Disk{
+				{WWN: "0x5000cca25eccbe9f"},
+				{WWN: "0x5000cca25ede270a"},
+			},
+			want: []string{
+				"0x5000cca25eccbe9f",
+				"0x5000cca25ede270a",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := collectAndSortWWNs(tc.in)
+			assert.Equal(t, tc.want, got)
+		})
+	}
 }
