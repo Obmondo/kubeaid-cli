@@ -562,15 +562,19 @@ func logInfrastructureProviderConditions(
 	}
 }
 
-// Returns the name of the InfrastructureProvider component.
+// getInfrastructureProviderName returns the name of the
+// InfrastructureProvider CR rendered by the kubeaid capi-cluster
+// chart. The chart hard-codes the name to the provider (e.g.
+// "hetzner") with no customer-id suffix — see
+// argocd-helm-charts/capi-cluster/templates/provider-{aws,azure,
+// hetzner}.yaml (`$name := "hetzner"`). The earlier Obmondo-mode
+// suffix here pointed kubeaid-cli at a CR that doesn't exist
+// ("hetzner-enableit"), wedging ArgoCD's SyncOperationResource and
+// the InfrastructureProvider condition watcher for the full sync
+// window with `not found` errors. Matches the namespace-suffix
+// drop in c4773bd / PR #563.
 func getInfrastructureProviderName() string {
-	infrastructureProviderName := globals.CloudProviderName
-
-	if config.ParsedGeneralConfig.Obmondo != nil {
-		infrastructureProviderName = infrastructureProviderName + "-" + config.ParsedGeneralConfig.Obmondo.CustomerID
-	}
-
-	return infrastructureProviderName
+	return globals.CloudProviderName
 }
 
 // printHelpTextForArgoCDDashboardAccess renders the post-bootstrap
