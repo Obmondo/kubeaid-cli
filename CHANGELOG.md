@@ -1,4 +1,13 @@
 - - -
+## v0.25.0 - 2026-06-10
+#### Features
+- (**wait**) overlay live HBMM status onto the bare-metal wait table - (93251cd) - Ashish Jaiswal
+#### Bug Fixes
+- (**storagectl**) pass two writers to CreateLogger to avoid panic - (1d74c0c) - Ashish Jaiswal
+- (**storageplan**) use VG0.Size (not RootVolumeSize) as the OS reserve - (8420a46) - Ashish Jaiswal
+
+- - -
+
 ## v0.24.0 - 2026-06-10
 #### Features
 - (**bootstrap**) surface InfrastructureProvider conditions during sync - (489c28e) - Ashish Jaiswal
