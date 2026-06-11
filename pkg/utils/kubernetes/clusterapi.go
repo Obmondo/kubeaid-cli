@@ -153,14 +153,32 @@ type capiStatusRow struct {
 // The stricter all-Machines-Running gate (every CP + every worker) runs
 // separately in WaitForAllMachinesRunning, just before clusterctl move.
 func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
-	return waitForCAPIStableState(ctx,
+	if err := waitForCAPIStableState(ctx,
 		"Waiting for main cluster (CP + worker Machine to join)",
 		"main cluster did not reach Provisioned with one CP + one worker Machine Running",
 		func(c context.Context) ([]capiStatusRow, bool, error) {
 			return summarizeCAPIStatus(c, managementClusterClient)
 		},
 		nil,
-	)
+	); err != nil {
+		return err
+	}
+
+	// Wait succeeded — at least one CP + one worker Machine has joined.
+	// Spawn a background goroutine that continues to log Machine state
+	// transitions as additional Machines come online during the downstream
+	// bootstrap steps. Operator tailing the log file sees continued progress
+	// (CP #2/#3 joining, additional workers reaching Ready) without us
+	// having to fight the progress bar for screen ownership — the wait-
+	// table got handed back to the bar's substep stream when the wait
+	// returned, and updating it concurrently from a goroutine would race
+	// against the bar's 100ms re-render.
+	//
+	// Cancellation: the goroutine returns when ctx is Done, which the
+	// parent bootstrap cancels on success or abort. No explicit cleanup
+	// hook needed.
+	go logMachineProgressInBackground(ctx, managementClusterClient)
+	return nil
 }
 
 // WaitForAllMachinesRunning blocks until every Machine in the
@@ -200,6 +218,123 @@ func WaitForAllMachinesRunning(ctx context.Context,
 			return renderMainClusterNodesTable(ctx, mainClusterClient)
 		},
 	)
+}
+
+// machineProgressPollInterval is how often the post-wait background
+// watcher polls Machine state. Coarser than capiWaitPollInterval (15s)
+// because we're no longer rendering a live table — we're just looking
+// for state transitions to log, and 30s smooths out the resync chatter
+// from CAPI's own controllers while still catching joins within ~one
+// poll cycle.
+const machineProgressPollInterval = 30 * time.Second
+
+// machineSnapshot is the minimal per-Machine view the background
+// watcher diffs against to detect transitions. Keyed by Machine.Name
+// in the calling map.
+type machineSnapshot struct {
+	phase string
+	ready bool
+}
+
+// snapshotMachines reduces a Machine list to a name-keyed map of the
+// fields the background watcher cares about (phase + v1beta2 Ready).
+// Pulled into a free function so the diff logic is testable in
+// isolation from the goroutine that drives it.
+func snapshotMachines(items []clusterAPIV1Beta1.Machine) map[string]machineSnapshot {
+	out := make(map[string]machineSnapshot, len(items))
+	for i := range items {
+		m := &items[i]
+		out[m.Name] = machineSnapshot{
+			phase: m.Status.Phase,
+			ready: isMachineV1Beta2Ready(m),
+		}
+	}
+	return out
+}
+
+// logMachineProgressInBackground polls Machines in the CAPI namespace
+// every machineProgressPollInterval and logs every transition
+// (new Machine observed, Phase changed, v1beta2 Ready flipped True).
+// Slog-only — no UI updates — so it runs safely alongside the active
+// progress bar without racing the spinner's re-render.
+//
+// Returns when ctx is Done. Intended caller is
+// WaitForMainClusterToBeProvisioned, which spawns this in a goroutine
+// right before it returns nil; the parent bootstrap ctx then bounds
+// the goroutine's lifetime to the rest of the run.
+//
+// List failures are logged at Warn but don't terminate the loop —
+// transient management-cluster API blips during downstream chart
+// installs are expected and recoverable. The watcher just resumes
+// on the next tick.
+func logMachineProgressInBackground(ctx context.Context, mgmtClient client.Client) {
+	var prev map[string]machineSnapshot
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(machineProgressPollInterval):
+		}
+
+		machines := &clusterAPIV1Beta1.MachineList{}
+		if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+			slog.WarnContext(ctx,
+				"Background Machine watcher: list failed, will retry on next tick",
+				slog.Any("error", err),
+			)
+			continue
+		}
+
+		current := snapshotMachines(machines.Items)
+		emitMachineDiff(ctx, prev, current)
+		prev = current
+	}
+}
+
+// emitMachineDiff compares the previous and current snapshots and
+// emits one slog line per interesting transition. Pure function;
+// extracted so the diff cases can be unit-tested without spinning up
+// a fake-client + goroutine harness.
+//
+// Three transition classes get logged:
+//
+//   - new Machine observed (no prior entry in prev). Captures the case
+//     where CP #2 / #3 or additional worker MachineDeployments add a
+//     Machine after the initial wait succeeded.
+//   - Phase changed (e.g. Provisioning → Running). Most common signal.
+//   - Ready flipped False/Unknown → True. Surfaces the moment a node
+//     becomes genuinely usable (etcd joined, kubelet+CNI up, etc.) —
+//     distinct from Phase=Running which only proves bootstrap finished.
+//
+// A Machine disappearing from current (deletion) is intentionally NOT
+// logged here — CAPI emits its own deletion events and re-logging them
+// from a passive watcher just adds noise.
+func emitMachineDiff(ctx context.Context, prev, current map[string]machineSnapshot) {
+	for name, cur := range current {
+		p, existed := prev[name]
+		switch {
+		case !existed:
+			slog.InfoContext(ctx,
+				"Background Machine watcher: new Machine observed",
+				slog.String("machine", name),
+				slog.String("phase", cur.phase),
+				slog.Bool("ready", cur.ready),
+			)
+		case p.phase != cur.phase:
+			slog.InfoContext(ctx,
+				"Background Machine watcher: Machine Phase transition",
+				slog.String("machine", name),
+				slog.String("from", p.phase),
+				slog.String("to", cur.phase),
+			)
+		case !p.ready && cur.ready:
+			slog.InfoContext(ctx,
+				"Background Machine watcher: Machine reached Ready",
+				slog.String("machine", name),
+			)
+		}
+	}
 }
 
 // waitForCAPIStableState is the shared poll loop behind
