@@ -231,6 +231,11 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 					Status: clusterAPIV1Beta1.MachineStatus{
 						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
 						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
 					},
 				},
 				&clusterAPIV1Beta1.Machine{
@@ -241,6 +246,11 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 					Status: clusterAPIV1Beta1.MachineStatus{
 						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
 						NodeRef: &coreV1.ObjectReference{Name: "worker-1-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
 					},
 				},
 			},
@@ -365,6 +375,11 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 						Conditions: clusterAPIV1Beta1.Conditions{
 							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
 						},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
 					},
 				},
 			},
@@ -469,7 +484,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			// Full happy path with workers — one CP Running, one worker
 			// Running, both with NodeRef. ready=true, kubeaid-cli can
 			// proceed to install Cilium on the workload cluster.
-			name: "ready — 1 CP + 1 worker Machine Running with NodeRef",
+			name: "ready — 1 CP + 1 worker Machine Running with NodeRef + v1beta2 Ready=True",
 			preExist: []runtime.Object{
 				&clusterAPIV1Beta1.Cluster{
 					ObjectMeta: metaV1.ObjectMeta{
@@ -494,6 +509,11 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 					Status: clusterAPIV1Beta1.MachineStatus{
 						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
 						NodeRef: &coreV1.ObjectReference{Name: "cp-1-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
 					},
 				},
 				&clusterAPIV1Beta1.Machine{
@@ -504,10 +524,132 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 					Status: clusterAPIV1Beta1.MachineStatus{
 						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
 						NodeRef: &coreV1.ObjectReference{Name: "worker-1-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
 					},
 				},
 			},
 			wantReady:        true,
+			wantRowCount:     3,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			// kbm-obmondo-com bug shape that drove this predicate
+			// tightening: CP Machine reached Phase=Running with NodeRef
+			// populated but its v1beta2 Ready aggregate stayed False
+			// because EtcdMemberHealthy never went True (etcd member
+			// failed to join). Downstream steps then tried to install
+			// ArgoCD against an API that was reachable in handshake
+			// terms but couldn't serve port-forward requests cleanly,
+			// surfacing as "Unauthorized" on the spdy upgrade. The
+			// predicate must NOT count a Phase=Running-but-Ready=False
+			// Machine.
+			name: "NOT ready — CP Machine Phase=Running with NodeRef but v1beta2 Ready=False (etcd unhealthy)",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-etcd-unhealthy",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-etcd-unhealthy-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{
+									Type:    "Ready",
+									Status:  metaV1.ConditionFalse,
+									Reason:  "EtcdMemberUnhealthy",
+									Message: "* EtcdMemberHealthy: Failed to connect to etcd: context deadline exceeded",
+								},
+							},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-1",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "worker-1-node"},
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue, Reason: "Ready"},
+							},
+						},
+					},
+				},
+			},
+			wantReady:        false,
+			wantRowCount:     3,
+			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+		},
+		{
+			// Defensive case for older CAPI releases / very early in the
+			// v1beta2 reconcile lifecycle where the status.v1beta2 block
+			// hasn't been populated yet. Conservative: an unknown signal
+			// counts as not-ready so we don't false-positively count a
+			// Machine whose CAPI status we haven't seen yet.
+			name: "NOT ready — CP + worker Phase=Running with NodeRef but no v1beta2 conditions populated",
+			preExist: []runtime.Object{
+				&clusterAPIV1Beta1.Cluster{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      testClusterName,
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.ClusterStatus{
+						Phase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
+						Conditions: clusterAPIV1Beta1.Conditions{
+							{Type: clusterAPIV1Beta1.ReadyCondition, Status: "True"},
+						},
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "cp-no-v1beta2",
+						Namespace: testCapiClusterNamespace,
+						Labels: map[string]string{
+							clusterAPIV1Beta1.MachineControlPlaneLabel: "",
+						},
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "cp-no-v1beta2-node"},
+						// V1Beta2 deliberately nil.
+					},
+				},
+				&clusterAPIV1Beta1.Machine{
+					ObjectMeta: metaV1.ObjectMeta{
+						Name:      "worker-no-v1beta2",
+						Namespace: testCapiClusterNamespace,
+					},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase:   string(clusterAPIV1Beta1.MachinePhaseRunning),
+						NodeRef: &coreV1.ObjectReference{Name: "worker-no-v1beta2-node"},
+					},
+				},
+			},
+			wantReady:        false,
 			wantRowCount:     3,
 			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
 		},
