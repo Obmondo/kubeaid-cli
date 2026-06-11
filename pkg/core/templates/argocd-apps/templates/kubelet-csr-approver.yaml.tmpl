@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    # Sync-order 5 lands the CSR approver before any app whose
+    # reconciliation depends on apiserver→kubelet streaming (port-
+    # forward, exec, logs — all of which fail with 401 when kubelet
+    # serves a stale cert). Without this, ArgoCD itself can struggle
+    # to expose the argocd-server UI until the next kubelet cert
+    # rotation cycle.
+    kubeaid.io/sync-order: "5"
+  name: kubelet-csr-approver
+  namespace: argocd
+spec:
+  destination:
+    namespace: kube-system
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  # Multi-source: chart from kubeaid repo + per-cluster values from
+  # kubeaid-config repo. The values file (values-kubelet-csr-approver.
+  # yaml) is generated imperatively by kubeaid-cli's
+  # Hetzner.WriteKubeletCSRApproverValuesFile during setup-cluster —
+  # NOT via a `.tmpl` in this directory — because it needs Robot API
+  # calls to resolve each ServerID to its public IP, which would
+  # break the offline-friendly template-render contract.
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/kubelet-csr-approver
+      targetRevision: {{ .KubeaidFork.Version }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-kubelet-csr-approver.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

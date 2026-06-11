@@ -175,6 +175,13 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
+		// For postfinance kubelet-csr-approver. Only the ArgoCD
+		// Application template is rendered here; the matching
+		// values-kubelet-csr-approver.yaml is generated imperatively
+		// by hetzner.WriteKubeletCSRApproverValuesFile during
+		// setup-cluster (needs Robot API per host).
+		"argocd-apps/templates/kubelet-csr-approver.yaml.tmpl",
+
 		// For Rook CEPH.
 		"argocd-apps/templates/rook-ceph.yaml.tmpl",
 		"argocd-apps/values-rook-ceph.yaml.tmpl",
