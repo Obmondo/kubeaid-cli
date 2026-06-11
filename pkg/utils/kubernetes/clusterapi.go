@@ -435,18 +435,21 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 		}
 		*total++
 
-		if m.Status.Phase != string(clusterAPIV1Beta1.MachinePhaseRunning) || m.Status.NodeRef == nil {
+		if m.Status.Phase != string(clusterAPIV1Beta1.MachinePhaseRunning) ||
+			m.Status.NodeRef == nil ||
+			!isMachineV1Beta2Ready(&m) {
 			continue
 		}
 		*running++
 	}
 
 	// Final predicate: Cluster reached Provisioned, AND at least one CP
-	// Machine is Running with a Node, AND (when worker Machines are
-	// expected — i.e. any non-CP Machine exists) at least one worker
-	// Machine is Running with a Node. The worker check is skipped when
-	// cpTotal>0 and workerTotal==0 so a single-CP cluster (no worker
-	// MachineDeployments declared) doesn't deadlock here.
+	// Machine is Running with a Node AND its v1beta2 Ready condition is
+	// True, AND (when worker Machines are expected — i.e. any non-CP
+	// Machine exists) at least one worker Machine satisfying the same
+	// three conditions. The worker check is skipped when cpTotal>0 and
+	// workerTotal==0 so a single-CP cluster (no worker MachineDeployments
+	// declared) doesn't deadlock here.
 	ready := clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0)
 
 	return rows, ready, firstErr
@@ -464,6 +467,35 @@ func isControlPlaneMachine(m *clusterAPIV1Beta1.Machine) bool {
 	}
 	_, ok := m.Labels[clusterAPIV1Beta1.MachineControlPlaneLabel]
 	return ok
+}
+
+// isMachineV1Beta2Ready reports whether the Machine's aggregate v1beta2
+// Ready condition is True. Necessary because Machine.status.phase flips
+// to Running as soon as BootstrapReady + InfrastructureReady + NodeRef
+// are all set — that says nothing about per-component health (etcd,
+// kubelet, API-server pod, scheduler pod, controller-manager pod). On a
+// real kbm-obmondo-com bootstrap, the first CP Machine reached
+// Phase=Running with NodeRef populated but etcd never finished joining,
+// surfacing as EtcdMemberHealthy=False. CAPI's v1beta2 Ready aggregate
+// correctly went False, but the previous predicate only checked Phase
+// and counted the Machine, letting the wait declare success and
+// downstream steps hit an unreachable API.
+//
+// Returns false when the v1beta2 condition list is absent (older CAPI
+// versions or a Machine very early in its v1beta2 reconcile lifecycle).
+// Conservative-by-default: an unknown signal counts as not-ready so
+// the predicate keeps waiting until CAPI explicitly publishes its
+// agreement.
+func isMachineV1Beta2Ready(m *clusterAPIV1Beta1.Machine) bool {
+	if m.Status.V1Beta2 == nil {
+		return false
+	}
+	for _, c := range m.Status.V1Beta2.Conditions {
+		if c.Type == "Ready" {
+			return c.Status == metaV1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // hbmmStatusMessages reads HetznerBareMetalMachine CRs in the capi-cluster
