@@ -444,6 +444,14 @@ var pickCluster = func(ctx context.Context, registryPath string) (string, string
 			registryPath)
 	}
 
+	// fellBack records that the NetBird reachability filter matched nothing
+	// and we're offering the whole registry instead. In that case the
+	// cluster picker must always prompt — never silently auto-select a sole
+	// entry — so the user consciously logs into a cluster we can't confirm
+	// is reachable right now, rather than a bare `login` (no args) auto-
+	// authenticating against the one klist entry behind their back.
+	fellBack := false
+
 	candidates := intersectClusters(refs, accessible)
 	if len(candidates) == 0 {
 		// Nothing is reachable over NetBird right now — commonly 0 peers
@@ -460,6 +468,7 @@ var pickCluster = func(ctx context.Context, registryPath string) (string, string
 			status.Peers.Connected, len(refs))
 
 		candidates = refs
+		fellBack = true
 	}
 
 	byCustomer := groupByCustomer(candidates)
@@ -469,7 +478,7 @@ var pickCluster = func(ctx context.Context, registryPath string) (string, string
 		return "", "", err
 	}
 
-	clusterName, err := pickClusterWithin(customerID, byCustomer[customerID])
+	clusterName, err := pickClusterWithin(customerID, byCustomer[customerID], fellBack)
 	if err != nil {
 		return "", "", err
 	}
@@ -523,9 +532,11 @@ var pickCustomer = func(byCustomer map[string][]klist.ClusterRef) (string, error
 }
 
 // pickClusterWithin prompts for a cluster inside the chosen customer.
-// With a single cluster it auto-selects.
-var pickClusterWithin = func(customer string, refs []klist.ClusterRef) (string, error) {
-	if len(refs) == 1 {
+// With a single cluster it auto-selects — unless forcePrompt is set (the
+// NetBird-empty fallback), where it always shows the picker so the user
+// consciously confirms the cluster instead of being auto-logged-in.
+var pickClusterWithin = func(customer string, refs []klist.ClusterRef, forcePrompt bool) (string, error) {
+	if !forcePrompt && len(refs) == 1 {
 		return refs[0].ClusterName, nil
 	}
 
