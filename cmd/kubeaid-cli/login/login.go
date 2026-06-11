@@ -438,12 +438,28 @@ var pickCluster = func(ctx context.Context, registryPath string) (string, string
 		return "", "", fmt.Errorf("listing klist clusters: %w", err)
 	}
 
+	if len(refs) == 0 {
+		return "", "", fmt.Errorf(
+			"klist registry %s contains no clusters — clone or update it first",
+			registryPath)
+	}
+
 	candidates := intersectClusters(refs, accessible)
 	if len(candidates) == 0 {
-		return "", "", fmt.Errorf(
-			"no clusters are both reachable on NetBird and present in the klist " +
-				"registry — check your NetBird group memberships and that the klist " +
-				"clone is up to date")
+		// Nothing is reachable over NetBird right now — commonly 0 peers
+		// connected, or this host isn't in a group with an access policy to
+		// the cluster peers. That's not a dead end: every klist entry is
+		// loadable by name regardless of live reachability, so offer the
+		// full registry instead of erroring out. The reachability filter is
+		// a convenience, not a gate. Print a user-facing notice (slog here
+		// is easy to miss) so it's clear why every cluster is being shown.
+		fmt.Fprintf(os.Stderr,
+			"No clusters reachable over NetBird (%d peer(s) connected). "+
+				"Showing all %d cluster(s) from the klist registry — pick one, "+
+				"or run `login <cluster>.<customer>` directly.\n",
+			status.Peers.Connected, len(refs))
+
+		candidates = refs
 	}
 
 	byCustomer := groupByCustomer(candidates)
