@@ -14,6 +14,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -49,6 +50,15 @@ type TemplateValues struct {
 
 	HetznerConfig      *config.HetznerConfig
 	HetznerCredentials *config.HetznerCredentials
+
+	// HetznerBareMetalHostPublicIPs maps each HetznerBareMetalHost
+	// ServerID to its Robot main IP. Populated at render time via
+	// Hetzner.GetHetznerBareMetalHostPublicIPs (Robot API call once
+	// per setup-cluster run). Empty for non-bare-metal Hetzner
+	// clusters and for non-Hetzner clouds. Consumed by
+	// values-kubelet-csr-approver.yaml.tmpl to widen the CSR
+	// allow-list with one /32 per node.
+	HetznerBareMetalHostPublicIPs map[string]string
 
 	BareMetalConfig *config.BareMetalConfig
 
@@ -226,6 +236,19 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 			operatorStoragectlVersionOverride(),
 			globals.KubeaidCLIVersion,
 		),
+	}
+
+	// Populate Hetzner bare-metal host public IPs via Robot API for the
+	// kubelet-csr-approver values template. Empty map for non-Hetzner
+	// or non-bare-metal setups (the values template guards on the map
+	// being non-empty before rendering its per-host /32 entries).
+	if globals.CloudProviderName == constants.CloudProviderHetzner {
+		if hetznerProvider, ok := globals.CloudProvider.(*hetzner.Hetzner); ok {
+			publicIPs, err := hetznerProvider.GetHetznerBareMetalHostPublicIPs(ctx)
+			assert.AssertErrNil(ctx, err,
+				"Failed fetching Hetzner bare-metal host public IPs from Robot API")
+			templateValues.HetznerBareMetalHostPublicIPs = publicIPs
+		}
 	}
 
 	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.
