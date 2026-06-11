@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -117,15 +118,19 @@ func Load(registryPath, clusterName, customerID string) (*ClusterConfig, error) 
 		}
 	}
 
-	// Load required cluster config.
-	clusterPath := filepath.Join(clusterDir, clusterName+".yaml")
+	// Resolve the cluster file. Identity is the in-YAML `name:` field, so a
+	// cluster can be renamed (e.g. to track its NetBird peer FQDN, which is
+	// what the interactive picker intersects against) without renaming the
+	// file on disk. Falls back to <clusterName>.yaml for registries that
+	// don't set `name:`, and so a malformed target file still resolves here
+	// and surfaces its parse error below rather than a confusing not-found.
+	clusterPath, err := resolveClusterPath(clusterDir, clusterName)
+	if err != nil {
+		return nil, err
+	}
 
 	clusterData, err := os.ReadFile(clusterPath)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("%w: %s", ErrClusterNotFound, clusterPath)
-		}
-
 		return nil, fmt.Errorf("reading cluster config %q: %w", clusterPath, err)
 	}
 
@@ -139,6 +144,69 @@ func Load(registryPath, clusterName, customerID string) (*ClusterConfig, error) 
 	merged := merge(customer, cluster)
 
 	return merged, nil
+}
+
+// resolveClusterPath returns the path to the cluster file in clusterDir
+// identified by clusterName. It matches on each file's in-YAML `name:`
+// field first, then falls back to <clusterName>.yaml. Returns a wrapped
+// ErrClusterNotFound when neither resolves. Non-cluster files (`_*.yaml`,
+// non-YAML) and files that fail the name probe are skipped during the
+// primary match; a malformed <clusterName>.yaml still resolves via the
+// filename fallback so the caller surfaces its parse error.
+func resolveClusterPath(clusterDir, clusterName string) (string, error) {
+	byFilename := filepath.Join(clusterDir, clusterName+".yaml")
+
+	entries, err := os.ReadDir(clusterDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("%w: %s", ErrClusterNotFound, byFilename)
+		}
+
+		return "", fmt.Errorf("reading cluster directory %q: %w", clusterDir, err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".yaml") || strings.HasPrefix(name, "_") {
+			continue
+		}
+
+		path := filepath.Join(clusterDir, name)
+		if clusterNameOrFallback(path, "") == clusterName {
+			return path, nil
+		}
+	}
+
+	if _, statErr := os.Stat(byFilename); statErr == nil {
+		return byFilename, nil
+	}
+
+	return "", fmt.Errorf("%w: %s", ErrClusterNotFound, byFilename)
+}
+
+// clusterNameOrFallback returns the cluster's `name:` field read from the
+// YAML at path, or fallback when the file can't be read, fails to parse, or
+// omits `name:`. Used both to resolve a requested cluster by its in-YAML
+// identity and to label ClusterRefs in ListClusters.
+func clusterNameOrFallback(path, fallback string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+
+	var probe struct {
+		Name string `yaml:"name"`
+	}
+
+	if err := yaml.Unmarshal(data, &probe); err != nil || probe.Name == "" {
+		return fallback
+	}
+
+	return probe.Name
 }
 
 // merge applies customer defaults as the base and overlays non-zero cluster

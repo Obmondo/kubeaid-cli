@@ -592,9 +592,11 @@ func TestPickCustomer_AutoSelectsSingleCustomer(t *testing.T) {
 }
 
 func TestPickClusterWithin_AutoSelectsSingleCluster(t *testing.T) {
-	// Same auto-select shortcut for the within-customer step.
+	// Same auto-select shortcut for the within-customer step — but only when
+	// not forced to prompt (the NetBird-reachable path). We exercise the
+	// non-stubbed path; if huh tried to prompt, the test would hang.
 	got, err := pickClusterWithin("acme",
-		[]klist.ClusterRef{{Customer: "acme", ClusterName: "prod"}})
+		[]klist.ClusterRef{{Customer: "acme", ClusterName: "prod"}}, false)
 	require.NoError(t, err)
 	assert.Equal(t, "prod", got)
 }
