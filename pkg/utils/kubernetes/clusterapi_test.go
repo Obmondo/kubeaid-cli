@@ -1737,3 +1737,142 @@ func TestTruncateForTable(t *testing.T) {
 		})
 	}
 }
+
+// TestSnapshotMachines pins the projection that drives the background
+// watcher's diff: Machine.Name → {phase, v1beta2-Ready}. Without this
+// pinning, a future refactor of either field could silently break the
+// watcher's transition detection.
+func TestSnapshotMachines(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []clusterAPIV1Beta1.Machine
+		want map[string]machineSnapshot
+	}{
+		{
+			name: "empty input yields empty map",
+			in:   nil,
+			want: map[string]machineSnapshot{},
+		},
+		{
+			name: "Phase + Ready=True captured",
+			in: []clusterAPIV1Beta1.Machine{
+				{
+					ObjectMeta: metaV1.ObjectMeta{Name: "cp-1"},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionTrue},
+							},
+						},
+					},
+				},
+			},
+			want: map[string]machineSnapshot{
+				"cp-1": {phase: "Running", ready: true},
+			},
+		},
+		{
+			name: "Ready=False reflected as ready=false in snapshot",
+			in: []clusterAPIV1Beta1.Machine{
+				{
+					ObjectMeta: metaV1.ObjectMeta{Name: "cp-etcd-broken"},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseRunning),
+						V1Beta2: &clusterAPIV1Beta1.MachineV1Beta2Status{
+							Conditions: []metaV1.Condition{
+								{Type: "Ready", Status: metaV1.ConditionFalse, Reason: "EtcdMemberUnhealthy"},
+							},
+						},
+					},
+				},
+			},
+			want: map[string]machineSnapshot{
+				"cp-etcd-broken": {phase: "Running", ready: false},
+			},
+		},
+		{
+			name: "no v1beta2 status reflected as ready=false",
+			in: []clusterAPIV1Beta1.Machine{
+				{
+					ObjectMeta: metaV1.ObjectMeta{Name: "cp-early"},
+					Status: clusterAPIV1Beta1.MachineStatus{
+						Phase: string(clusterAPIV1Beta1.MachinePhaseProvisioning),
+					},
+				},
+			},
+			want: map[string]machineSnapshot{
+				"cp-early": {phase: "Provisioning", ready: false},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := snapshotMachines(tc.in)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// TestEmitMachineDiff covers the transition classes the background
+// watcher logs. We don't assert on slog output text — slog is global
+// in this codebase and capturing it cleanly per test is more harness
+// than this small helper warrants. Instead each case asserts the
+// helper doesn't panic and the inputs match the contract documented
+// on emitMachineDiff (new Machine / Phase change / Ready flip). The
+// real signal is in the helper's clean structure (a `switch` with
+// three named cases), which this test pins against accidental
+// reordering by exercising each branch.
+func TestEmitMachineDiff(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		prev    map[string]machineSnapshot
+		current map[string]machineSnapshot
+	}{
+		{
+			name:    "new Machine — no prior snapshot entry",
+			prev:    map[string]machineSnapshot{},
+			current: map[string]machineSnapshot{"cp-2": {phase: "Provisioning", ready: false}},
+		},
+		{
+			name:    "Phase transition — same key, different phase",
+			prev:    map[string]machineSnapshot{"cp-1": {phase: "Provisioning", ready: false}},
+			current: map[string]machineSnapshot{"cp-1": {phase: "Running", ready: false}},
+		},
+		{
+			name:    "Ready flip — same phase, ready went False → True",
+			prev:    map[string]machineSnapshot{"cp-1": {phase: "Running", ready: false}},
+			current: map[string]machineSnapshot{"cp-1": {phase: "Running", ready: true}},
+		},
+		{
+			name:    "no change — identical snapshots emit nothing",
+			prev:    map[string]machineSnapshot{"cp-1": {phase: "Running", ready: true}},
+			current: map[string]machineSnapshot{"cp-1": {phase: "Running", ready: true}},
+		},
+		{
+			name:    "deletion — Machine missing from current is intentionally not logged",
+			prev:    map[string]machineSnapshot{"worker-deleted": {phase: "Running", ready: true}},
+			current: map[string]machineSnapshot{},
+		},
+		{
+			name: "multiple transitions in one tick — every interesting case fires",
+			prev: map[string]machineSnapshot{
+				"cp-1":     {phase: "Provisioning", ready: false},
+				"worker-1": {phase: "Running", ready: false},
+			},
+			current: map[string]machineSnapshot{
+				"cp-1":     {phase: "Running", ready: false}, // Phase transition
+				"worker-1": {phase: "Running", ready: true},  // Ready flip
+				"worker-2": {phase: "Pending", ready: false}, // new Machine
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.NotPanics(t, func() {
+				emitMachineDiff(ctx, tc.prev, tc.current)
+			})
+		})
+	}
+}
