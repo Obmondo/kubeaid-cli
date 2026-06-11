@@ -58,6 +58,57 @@ Mgmt and the cluster's kube-api.
 Skip this step if the realm doesn't have an `api` scope or if the
 workload doesn't need NetBird-side audience claims.
 
+## Required for RBAC: the `groups` client scope
+
+kube-apiserver reads the `groups` JWT claim to resolve a user's RBAC
+groups (kubeaid renders `claimMappings.groups.claim: groups`). The
+client only emits that claim if a `groups` client scope with a **Group
+Membership** mapper is assigned to it. Without it, `kubelogin` is
+rejected at the authorize step with `invalid_scope: ... groups ...`,
+and even if it weren't, tokens would carry no `groups` claim, so
+group-based RBAC silently grants nothing.
+
+1. If the realm has no `groups` client scope yet, create one:
+   **Client scopes → Create**: name `groups`, type **Default**. Add a
+   **Group Membership** mapper — token claim name `groups`, **Full group
+   path: Off** (so claims are `admins`, not `/admins`), include in ID +
+   access token.
+2. Assign it to the client: **Clients → kubernetes-&lt;cluster&gt; →
+   Client scopes → Add client scope → `groups` → Add (Default)**.
+
+## Required: users must have a verified email
+
+kubeaid renders `claimMappings.username.claim: email`. Kubernetes'
+OIDC authenticator special-cases the `email` claim: it **rejects any
+token whose `email_verified` claim is not `true`** with
+`oidc: email not verified` (surfaces to the user as a 401). So every
+user who logs into the cluster must have their email marked verified in
+Keycloak: **Users → &lt;user&gt; → Email verified: On → Save** (or have
+the realm/IdP set it on creation).
+
+This is a deliberate security posture — an unverified email is not a
+trustworthy identity. If your IdP can't guarantee verified emails and
+you'd rather not enforce it, the apiserver-side alternative is to render
+the username as a CEL expression (`username.expression: "claims.email"`,
+which skips the `email_verified` check) instead of the `claim` shorthand
+— but that weakens the guarantee and is not the default.
+
+## RBAC: bind groups, not users
+
+Once a user authenticates, they have **no permissions** until something
+grants them — otherwise every call is `403 Forbidden`. Bind a Keycloak
+**group** (not individual users) to a ClusterRole, so onboarding a user
+is just adding them to the group in Keycloak — no per-user `kubectl`:
+
+```bash
+kubectl create clusterrolebinding <cluster>-oidc-admins \
+  --clusterrole=cluster-admin --group=<keycloak-group>
+```
+
+For shared clusters, ship these group→role bindings as manifests in the
+kubeaid-config repo so ArgoCD applies them declaratively, rather than
+running `kubectl` by hand per cluster.
+
 ## What `kubeaid-cli bootstrap` checks
 
 Before provisioning infrastructure, `kubeaid-cli` probes the realm's
