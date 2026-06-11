@@ -275,3 +275,60 @@ pre-flight surfaces the failure as a clean field-level error from
 kubeaid-cli with the offending path, same shape as the parser's
 existing `validate` errors. Defer until we hit the next case from a
 different field; the regions one is fixed at source.
+
+### Apply OIDC apiserver auth to already-bootstrapped Hetzner clusters
+
+`controlPlane.apiServer.{extraArgs,extraVolumes}` were never wired for
+Hetzner: `values-capi-cluster.yaml.tmpl` only emitted the `apiServer`
+block under the AWS branch, and the hetzner `KubeadmControlPlane.yaml`
+only consumed `.files`. So every Hetzner cluster with
+`cluster.apiServer.oidc` set still came up with **no
+`--authentication-config`** on kube-apiserver — OIDC logins 401 at the
+apiserver (token valid, no authenticator). Audit logging was dropped
+the same way. Fixed in:
+  - kubeaid: `feat/hetzner-apiserver-extraargs-volumes` (chart consumes
+    extraArgs map→list + extraVolumes; schema allows `controlPlane.apiServer`).
+  - kubeaid-cli: `feat/hetzner-apiserver-oidc-values` (emit the block in
+    the Hetzner branch).
+
+The fix only helps **fresh** bootstraps. Existing bare-metal clusters
+(e.g. `kbm-obmondo-com`) won't pick it up without a re-render that
+changes the KubeadmControlPlane spec — which triggers a CP machine
+rollout, i.e. re-provisioning the physical hosts. Until someone is ready
+for that, the live-cluster fix is manual, per CP node:
+
+```bash
+cat > /etc/kubernetes/pki/auth-config.yaml <<'EOF'
+apiVersion: apiserver.config.k8s.io/v1
+kind: AuthenticationConfiguration
+jwt:
+- issuer:
+    url: https://keycloak.vpn.acme.com/auth/realms/acme
+    audiences: [kubernetes-<cluster>]
+  claimMappings:
+    username: { claim: email, prefix: "" }
+    groups:   { claim: groups, prefix: "" }
+EOF
+chmod 0600 /etc/kubernetes/pki/auth-config.yaml
+# /etc/kubernetes/pki is already mounted into the apiserver static pod,
+# so only the flag is needed (canonical chart path is
+# /etc/kubernetes/auth-config.yaml + a dedicated extraVolume mount):
+sed -i '/^    - kube-apiserver$/a\    - --authentication-config=/etc/kubernetes/pki/auth-config.yaml' \
+  /etc/kubernetes/manifests/kube-apiserver.yaml
+```
+
+Decide whether to (a) document this as the supported "retrofit OIDC onto
+a running Hetzner cluster" runbook, or (b) provide a `kubeaid-cli`
+subcommand that pushes the auth-config + flag to each CP over SSH
+(non-disruptive), instead of forcing a CP rollout.
+
+### Verify the Keycloak reconciler attaches the `groups` client scope
+
+Bringing OIDC up on `kbm-obmondo-com` also required manually adding the
+`groups` client scope (+ a Group Membership mapper) to the per-cluster
+`kubernetes-<cluster>` Keycloak client, and adding the user to a group —
+otherwise kubelogin's `--oidc-extra-scope=groups` was rejected with
+`invalid_scope`, and tokens carried no `groups` claim. Confirm whether
+`pkg/keycloak/`'s reconciler creates the client with the `groups` scope
++ mapper assigned as a Default client scope. If not, every cluster hits
+the same manual step on first OIDC login — wire it into the reconciler.
