@@ -160,10 +160,15 @@ func ListClusters(registryPath string) ([]ClusterRef, error) {
 				continue
 			}
 
+			yamlPath := filepath.Join(customerDir, name)
+
 			refs = append(refs, ClusterRef{
-				Customer:    customer,
-				ClusterName: strings.TrimSuffix(name, ".yaml"),
-				YAMLPath:    filepath.Join(customerDir, name),
+				Customer: customer,
+				// Identity is the in-YAML `name:` field (so it can track the
+				// cluster's NetBird peer FQDN), falling back to the filename
+				// stem when `name:` is absent or the file can't be parsed.
+				ClusterName: clusterNameOrFallback(yamlPath, strings.TrimSuffix(name, ".yaml")),
+				YAMLPath:    yamlPath,
 			})
 		}
 	}

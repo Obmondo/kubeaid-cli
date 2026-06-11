@@ -157,6 +157,38 @@ func TestLoad_MalformedClusterYAML(t *testing.T) {
 	assert.Contains(t, err.Error(), "parsing cluster config")
 }
 
+func TestLoad_ResolvesByYAMLName(t *testing.T) {
+	t.Parallel()
+
+	reg := makeRegistry(t)
+	// File is named oldfile.yaml, but the cluster's identity is its `name:`
+	// field (prod) — e.g. kept in sync with its NetBird peer FQDN
+	// prod.netbird.acme.com while the file keeps a legacy name.
+	writeFile(t, reg, "clusters/acme/oldfile.yaml", `
+name: prod
+server: https://prod.netbird.acme.com:6443
+caBundle: |
+  -----BEGIN CERTIFICATE-----
+  MIID...
+  -----END CERTIFICATE-----
+oidc:
+  issuerUrl: https://keycloak.acme.com/realms/acme
+  clientId: kubernetes-prod
+`)
+
+	// Resolves by the in-YAML name, not the filename.
+	cfg, err := klist.Load(reg, "prod", "acme")
+	require.NoError(t, err)
+	assert.Equal(t, "prod", cfg.Name)
+	assert.Equal(t, "https://prod.netbird.acme.com:6443", cfg.Server)
+
+	// The filename still resolves the same file (backward compatible for
+	// registries that never set `name:` or whose name equals the stem).
+	byFilename, err := klist.Load(reg, "oldfile", "acme")
+	require.NoError(t, err)
+	assert.Equal(t, "prod", byFilename.Name)
+}
+
 func TestValidate(t *testing.T) {
 	t.Parallel()
 

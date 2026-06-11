@@ -158,6 +158,27 @@ func TestListClusters(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, refs)
 	})
+
+	t.Run("labels clusters by their in-YAML name, falling back to the filename", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		mkdir(t, dir, "clusters/acme")
+		// File named oldfile.yaml, but identity is the `name:` field (prod).
+		write(t, filepath.Join(dir, "clusters/acme/oldfile.yaml"), "name: prod")
+		// No `name:` field → falls back to the filename stem (legacy).
+		write(t, filepath.Join(dir, "clusters/acme/legacy.yaml"), "server: https://legacy:6443")
+
+		refs, err := ListClusters(dir)
+		require.NoError(t, err)
+
+		// Sorted by (customer, clusterName): legacy < prod.
+		want := []ClusterRef{
+			{Customer: "acme", ClusterName: "legacy", YAMLPath: filepath.Join(dir, "clusters/acme/legacy.yaml")},
+			{Customer: "acme", ClusterName: "prod", YAMLPath: filepath.Join(dir, "clusters/acme/oldfile.yaml")},
+		}
+		assert.Equal(t, want, refs)
+	})
 }
 
 // --------------------------------------------------------------------------
