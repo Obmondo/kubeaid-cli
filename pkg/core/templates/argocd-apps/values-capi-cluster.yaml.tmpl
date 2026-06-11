@@ -127,6 +127,20 @@ hetzner:
   controlPlane:
     regions: {{- .HetznerConfig.ControlPlane.Regions | toIndentYAML 2 | nindent 6 }}
 
+    {{- /* Operator kube-apiserver customization, hydrated by the parser
+         into ClusterConfig.APIServer from the typed cluster.apiServer
+         block: the OIDC AuthenticationConfiguration (file + --authentication-
+         config flag + host-path mount) and audit logging. The hetzner chart
+         maps extraArgs (a map, converted to CAPI v1beta2's {name,value} list),
+         extraVolumes, and files onto the KubeadmControlPlane. Without emitting
+         this block the rendered AuthenticationConfiguration never reaches the
+         apiserver and OIDC logins 401. The AWS branch emits the equivalent;
+         this is the Hetzner parity. */ -}}
+    apiServer:
+      extraArgs: {{- .ClusterConfig.APIServer.ExtraArgs | toYaml | nindent 8 }}
+      extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYaml | nindent 8 }}
+      files: {{- .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
+
     {{- /* Bare-metal control-plane endpoint — sourced from
          cloud.hetzner.controlPlane.bareMetal.endpoint.host
          (typically a Robot failover IP managed by
