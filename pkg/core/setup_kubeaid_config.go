@@ -21,7 +21,6 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -135,20 +134,6 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 
 		// Create / update Secret files.
 		createOrUpdateSealedSecretFiles(ctx, templateValues, clusterDir)
-
-		// Generate the per-cluster values for kubelet-csr-approver
-		// (bare-metal Hetzner only). Hits the Robot API to resolve
-		// each ServerID's main IP and writes
-		// argocd-apps/values-kubelet-csr-approver.yaml with one /32
-		// per host plus the vSwitch CIDR. Safe no-op for non-Hetzner
-		// or non-bare-metal clusters.
-		if globals.CloudProviderName == constants.CloudProviderHetzner {
-			if hetznerProvider, ok := globals.CloudProvider.(*hetzner.Hetzner); ok {
-				err := hetznerProvider.WriteKubeletCSRApproverValuesFile(ctx, clusterDir)
-				assert.AssertErrNil(ctx, err,
-					"Failed writing kubelet-csr-approver values file")
-			}
-		}
 	}
 	bar.Substep("Rendered kubeaid-config files")
 

@@ -18,13 +18,6 @@ spec:
     namespace: kube-system
     server: https://kubernetes.default.svc
   project: kubeaid
-  # Multi-source: chart from kubeaid repo + per-cluster values from
-  # kubeaid-config repo. The values file (values-kubelet-csr-approver.
-  # yaml) is generated imperatively by kubeaid-cli's
-  # Hetzner.WriteKubeletCSRApproverValuesFile during setup-cluster —
-  # NOT via a `.tmpl` in this directory — because it needs Robot API
-  # calls to resolve each ServerID to its public IP, which would
-  # break the offline-friendly template-render contract.
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/kubelet-csr-approver

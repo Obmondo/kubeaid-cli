@@ -175,12 +175,12 @@ var (
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 
-		// For postfinance kubelet-csr-approver. Only the ArgoCD
-		// Application template is rendered here; the matching
-		// values-kubelet-csr-approver.yaml is generated imperatively
-		// by hetzner.WriteKubeletCSRApproverValuesFile during
-		// setup-cluster (needs Robot API per host).
+		// For postfinance kubelet-csr-approver. The values template
+		// reads TemplateValues.HetznerBareMetalHostPublicIPs, which
+		// getTemplateValues populates via a one-shot Robot API call
+		// for every bare-metal Hetzner host's main IP.
 		"argocd-apps/templates/kubelet-csr-approver.yaml.tmpl",
+		"argocd-apps/values-kubelet-csr-approver.yaml.tmpl",
 
 		// For Rook CEPH.
 		"argocd-apps/templates/rook-ceph.yaml.tmpl",
