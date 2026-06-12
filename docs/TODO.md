@@ -332,3 +332,122 @@ otherwise kubelogin's `--oidc-extra-scope=groups` was rejected with
 `pkg/keycloak/`'s reconciler creates the client with the `groups` scope
 + mapper assigned as a Default client scope. If not, every cluster hits
 the same manual step on first OIDC login — wire it into the reconciler.
+### Apply Hetzner Robot stateless firewall on bare-metal nodes
+
+Bare-metal nodes need a public v4 attached during bootstrap so cloud-
+init can `apt-get update / install` (cloud-init pulls cloud-init +
+apparmor in the post-install script, then containerd + runc + kubeadm
+in preKubeadm). The original design intent was private-IP-only via
+NetBird, but stripping the public IP outright breaks the egress those
+APT pulls need.
+
+Mitigation: keep the public IP attached but apply Hetzner Robot's
+per-server stateless firewall to block all ingress + all egress
+*except* DNS (53/udp + 53/tcp) and the return-traffic high-port range
+that stateless rules need to allow explicitly. Outbound APT mirror
+traffic stays open during the install window, then the firewall is
+locked down once the node is up on NetBird and direct internet egress
+isn't needed.
+
+Implementation shape (mirrors `CreateHetznerBareMetalSSHKey`):
+
+- New method on the Hetzner client: `EnsureRobotFirewall(serverID,
+  rules)` that PUTs `/firewall/<serverID>` with the templated rules.
+  Idempotent — Robot returns the current config; only re-PUT if it
+  differs.
+- Called from `ProvisionPrerequisiteInfrastructure` after the
+  SSH-reachable wait passes, before `GenerateStoragePlans` runs.
+- Rules template lives in `pkg/cloud/hetzner/firewall.go` (or chart
+  values if operators need to tweak per-cluster). Default ruleset:
+  outbound 53/udp+tcp to anywhere, inbound established (high ports
+  32768+) for return traffic, deny rest. Override hook for operators
+  who need to expose additional ports (e.g. failover-IP-fronted
+  apiserver before NetBird takes over).
+- Timing of the lock-down: open during cloud-init, tightened once
+  NetBird agent is up on the node. Easiest UX: apply the strict rules
+  from kubeaid-cli only after the workload-cluster ArgoCD apps have
+  synced and NetBird peer is registered. Pre-NetBird the rules stay
+  open for egress to the world.
+
+Open questions before implementation:
+
+- Apply pre-NetBird or post-NetBird? Pre is safer (smaller exposed
+  window) but breaks the APT install if rules are too strict; post is
+  simpler but leaves the node with full public egress for the install
+  window.
+- Per-server vs per-cluster API call shape: Robot's firewall API is
+  per-server. Looping over each host is fine for the kbm fleet size,
+  but rate limits start mattering on bigger clusters. Worth
+  benchmarking before committing.
+- What about the failover IP / control-plane endpoint? The Robot
+  firewall rules apply to the server's main IP; the failover IP gets
+  delivered to whichever server currently holds it, and its inbound
+  traffic is subject to the receiving server's firewall. Rules must
+  allow inbound 6443 from the operator's egress IPs (or accept that
+  the operator reaches the API via NetBird only).
+
+Filed by request — keep public IP attached during bootstrap, tighten
+afterwards via Hetzner Robot firewall, default-deny except DNS.
+
+Concrete ingress / egress contract (operator-confirmed):
+
+  Public IP — INBOUND (default deny, explicit allow per port):
+    - 6443/tcp  → DENY. kube-apiserver MUST NOT be reachable via the
+                  public IP. Operators, kubectl, CI runners, GitOps
+                  controllers, etc. all reach the API through the
+                  NetBird mesh. (Failover-IP-fronted apiserver covered
+                  in the existing question above — same rule, just
+                  applied to the holder's main IP.)
+    - 22/tcp    → DENY. SSH reachable only via NetBird; the operator
+                  hops onto the mesh first and then SSHes against the
+                  node's NetBird-assigned IP. Eliminates the public
+                  attack surface on credentials.
+    - 80/tcp,   → ALLOW selectively. Traefik runs in a dual-Ingress
+      443/tcp     shape: one IngressClass for customer-facing routes
+                  (`web`/`websecure` accept public traffic) and a
+                  second for internal-only routes
+                  (`netbird-web`/`netbird-websecure` only listen on
+                  the node's NetBird interface). The Robot firewall
+                  allows 80+443 unconditionally on the public IP —
+                  Traefik itself decides per-Ingress whether to
+                  answer, via the IngressClass + the
+                  `traefik.ingress.kubernetes.io/router.entrypoints`
+                  annotation. So the firewall rule is broad; the
+                  per-route policy lives in the Ingress objects.
+    - ICMP echo → ALLOW (operational ping for monitoring / debugging).
+    - established/related return traffic → ALLOW (stateless: explicit
+      allow on the high-port range 32768-65535).
+
+  Public IP — OUTBOUND (default allow, with a tightening lever):
+    - During bootstrap window (cloud-init's apt-get + wget chain):
+      full egress allow. Tightening earlier breaks the install.
+    - After bootstrap completes (NetBird agent up + workload-cluster
+      ArgoCD synced): tighten to:
+        - 53/tcp + 53/udp → ALLOW (DNS)
+        - 80/tcp + 443/tcp → ALLOW (apt mirrors, container registries,
+          GitHub releases for kubeaid-storagectl-on-OS-upgrade, etc.)
+        - All else → DENY.
+      Egress lock-down timing handled by the same kubeaid-cli phase
+      that flips the inbound deny — see open question above on
+      pre-NetBird vs post-NetBird application.
+
+NetBird-side exposure (no Robot firewall involvement):
+  - 6443/tcp via the node's NetBird IP → operator's kubectl / CI.
+  - 22/tcp via the node's NetBird IP → operator's SSH.
+  - Internal-only Ingress (`netbird-web` / `netbird-websecure`) →
+    admin endpoints, ArgoCD UI, Keycloak admin console, kube-prom
+    Grafana, etc. These never touch the public Traefik entrypoint
+    because the Ingress is bound to the internal IngressClass.
+
+Implementation knobs in `EnsureRobotFirewall`:
+  - Default ruleset above is the baked-in template.
+  - Override hook for clusters that need a port exposed publicly
+    (e.g. a customer self-hosting needs 25/tcp for SMTP, or 5432/tcp
+    for a Postgres they want internet-reachable). Override lives in
+    general.yaml under `cloud.hetzner.bareMetal.firewall.allowPublic`
+    as a list of `{port, protocol}` items appended to the ALLOW
+    rules.
+  - Operator can opt out entirely via
+    `cloud.hetzner.bareMetal.firewall.enabled: false` — for clusters
+    where the operator's running a separate L3 firewall appliance
+    upstream.
