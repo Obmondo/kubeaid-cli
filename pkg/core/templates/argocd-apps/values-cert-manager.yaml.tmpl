@@ -9,15 +9,25 @@ issuer:
   production: true
   secret: letsencrypt-prod-account-key
   preferredChain: ""
-  {{- if .ACMEDNS01 }}
-  {{- /* DNS-01 — the default whenever cluster.acmeDNS01 is set, and
-       the only challenge that works for the split-horizon mesh
-       pattern: NetBird-exposed services carry real public DNS names
-       that never resolve publicly, so Let's Encrypt can't fetch an
-       HTTP-01 challenge from them. Ownership is proven with a TXT
-       record on the public zone instead; the token Secret is sealed
-       by sealed-secrets/cert-manager/cloudflare-api-token.yaml. */}}
   solvers:
+  {{- /* HTTP-01 over the traefik ingress class is the catch-all,
+       always rendered: it certifies any publicly-reachable hostname
+       not claimed by a more specific solver. cert-manager prefers the
+       most specific matching solver, so when the DNS-01 solver below
+       is present its dnsZones names use DNS-01 and everything else
+       falls through to here. */}}
+    - type: http
+      http01:
+        ingress:
+          ingressClassName: traefik
+  {{- if .ACMEDNS01 }}
+  {{- /* DNS-01 for the split-horizon mesh pattern: NetBird-exposed
+       services carry real public DNS names that never resolve
+       publicly, so Let's Encrypt can't fetch an HTTP-01 challenge from
+       them. Ownership is proven with a TXT record on the public zone
+       instead; the token Secret is sealed by
+       sealed-secrets/cert-manager/cloudflare-api-token.yaml. The
+       dnsZones selector routes only those names to this solver. */}}
     - type: dns
       cloudProvider: {{ .ACMEDNS01.Provider }}
       issuerEmail: {{ .ACMEEmail }}
@@ -27,14 +37,5 @@ issuer:
       {{- with .ACMEDNS01.DNSZones }}
       dnsZones: {{- . | toYAML | nindent 8 }}
       {{- end }}
-  {{- else }}
-  {{- /* HTTP-01 via the traefik ingress class — only viable when the
-       hostnames being certified are publicly reachable on :80. Mesh-
-       only clusters should set cluster.acmeDNS01 instead. */}}
-  solvers:
-    - type: http
-      http01:
-        ingress:
-          ingressClassName: traefik
   {{- end }}
 {{- end }}
