@@ -88,6 +88,7 @@ kubeaid-cli [command] [flags]
 | `cluster recover <provider>` | Recover a cluster |
 | `cluster test` | Run tests against a cluster |
 | `cluster delete` | Delete a provisioned cluster |
+| `login [<cluster>.<customer>]` | Pick a cluster you can reach over NetBird and write its kubeconfig — see [`docs/login.md`](docs/login.md) |
 | `version` | Print version, commit, and build date |
 
 ### Global flags
@@ -117,6 +118,26 @@ KubeAid CLI uses two YAML config files:
 - **`secrets.yaml`** — cloud credentials, tokens, and other sensitive values.
 
 See [`docs/config-reference.md`](docs/config-reference.md) for the full configuration reference.
+
+## Documentation
+
+Day-to-day operator guides:
+
+- [`docs/login.md`](docs/login.md) — log into clusters with `kubeaid-cli login` (klist registry, NetBird picker, kubelogin OIDC)
+- [`docs/post-bootstrap.md`](docs/post-bootstrap.md) — what to do right after a cluster comes up
+- [`docs/add-bare-metal-worker.md`](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (and the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
+
+Identity and SSO:
+
+- [`docs/keycloak-bootstrap.md`](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
+- [`docs/workload-cluster-keycloak.md`](docs/workload-cluster-keycloak.md) — per-workload-cluster OIDC client, groups scope, and RBAC prerequisites
+
+Architecture and background:
+
+- [`docs/architecture.md`](docs/architecture.md) — how the CLI is put together
+- [`docs/netbird-vpn-architecture.md`](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
+- [`docs/hetzner-hcloud-vpn-cluster.md`](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
+- [`docs/bare-metal-provisioning.md`](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
 
 ## Development
 
