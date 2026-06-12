@@ -163,6 +163,12 @@ authenticated; token cached
 $ kubectl get nodes
 ```
 
+Before opening the browser, login pre-flights the chosen issuer's
+`.well-known/openid-configuration` — a wrong `oidc.issuerUrl` (typo, missing
+`/auth` base path, realm-name casing) fails fast here, naming the realm's
+canonical issuer when the document loads, instead of surfacing cryptically
+mid-flow.
+
 If the browser step fails, the kubeconfig is already on disk — any
 `kubectl` command retries kubelogin, or re-run with
 `--no-authenticate` to skip OIDC entirely.
@@ -176,6 +182,8 @@ If the browser step fails, the kubeconfig is already on disk — any
 | `issuer is not listening on that address` | Keycloak down, or wrong port in `issuerUrl` |
 | `issuer reachable but did not respond in time` | slow network / mesh path |
 | `TLS error reaching issuer` | Keycloak cert not trusted by your system store |
+| `issuer returned HTTP 404 …` | the `oidc.issuerUrl` path is wrong — check the `/auth` base path and the realm name's casing |
+| `issuer mismatch — … canonical issuer is X` | `oidc.issuerUrl` resolves but the realm declares a different issuer; set it to the canonical value shown |
 | `oauth2: invalid_client` | the `kubernetes-<cluster>` client doesn't exist in the realm yet — create it ([guide](./workload-cluster-keycloak.md)) |
 | `invalid_scope: … groups …` | the realm/client is missing the `groups` client scope |
 | `oidc: email not verified` (as a 401 from kubectl) | the user's email isn't marked verified in Keycloak |
