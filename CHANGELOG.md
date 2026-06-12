@@ -1,4 +1,38 @@
 - - -
+## v0.26.0 - 2026-06-12
+#### Features
+- (**hetzner**) generate per-cluster kubelet-csr-approver values from Robot API - (163fb79) - Ashish Jaiswal
+- (**klist**) resolve cluster identity by in-YAML name, not filename - (627b35f) - Ashish Jaiswal
+- (**login**) fall back to the full klist registry when NetBird is empty - (7457929) - Ashish Jaiswal
+- (**netbird-operator**) wire the Mgmt API token + managementURL end to end - (0db865b) - Ashish Jaiswal
+- (**storagectl**) allow pinning version from general.yaml - (1bc5d7b) - Ashish Jaiswal
+- (**wait**) log Machine progress in the background after wait succeeds - (92faee1) - Ashish Jaiswal
+#### Bug Fixes
+- (**capi-cluster**) stop apiServer fusing onto the last Hetzner region - (88d3809) - Ashish Jaiswal
+- (**capi-cluster**) emit controlPlane.apiServer for Hetzner, not just AWS - (92d5b53) - Ashish Jaiswal
+- (**cli**) re-register the login subcommand on the root command - (fac94cb) - Ashish Jaiswal
+- (**login**) always prompt in the NetBird-empty fallback, never auto-login - (60af774) - Ashish Jaiswal
+- (**prompt**) rewrite NetBird setup-key guidance with dialog field values - (82de8e0) - Ashish Jaiswal
+- (**prompt**) require Cloud API token for every Hetzner mode - (5d348cb) - Ashish Jaiswal
+- (**secrets**) emit the hcloud key for bare-metal clusters too - (fa2ae0e) - Ashish Jaiswal
+- (**ux**) rename "Main cluster Machines provisioned" to reflect what's checked - (3989bd6) - Ashish Jaiswal
+- (**wait**) require v1beta2 Ready=True on counted CP/worker Machines - (8d84e72) - Ashish Jaiswal
+- (**wait**) require 1 CP + 1 worker Machine Running before declaring main cluster ready - (c8fd186) - Ashish Jaiswal
+- (**wait-table**) truncate long Status messages so the table grid survives - (a3558a2) - Ashish Jaiswal
+- (**wwns**) sort HetznerBareMetalHost.WWNs for byte-stable renders - (a22cb0e) - Ashish Jaiswal
+#### Documentation
+- (**keycloak**) document groups scope, verified-email, and group RBAC - (c27ce8c) - Ashish Jaiswal
+- (**todo**) OIDC-on-Hetzner retrofit + Keycloak groups-scope check - (285e23b) - Ashish Jaiswal
+- drop the release-pin caveat from the add-worker runbooks - (49a3a9e) - Ashish Jaiswal
+- how to add a bare-metal worker (kubeaid-cli flow + manual flow) - (67a857d) - Ashish Jaiswal
+#### Refactoring
+- (**audit-logging**) align audit paths with upstream kubeadm layout - (58d3296) - Ashish Jaiswal
+- (**csr-approver**) switch values file to standard tmpl pattern - (c03896b) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**hetzner-robot**) bump ArgoCD sync-order to 5 - (134074b) - Ashish Jaiswal
+
+- - -
+
 ## v0.25.0 - 2026-06-10
 #### Features
 - (**wait**) overlay live HBMM status onto the bare-metal wait table - (93251cd) - Ashish Jaiswal
