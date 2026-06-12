@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  {{- /* Name / namespace / key must match the dns01 solver's
+       cloudProviderSecretRef rendered in values-cert-manager.yaml.tmpl —
+       the ClusterIssuer reads the Cloudflare API token from exactly
+       this Secret. */}}
+  name: cloudflare-api-token
+  namespace: cert-manager
+  labels:
+    kubeaid.io/managed-by: kubeaid
+stringData:
+  api-token: {{ .CloudflareAPIToken | quote }}

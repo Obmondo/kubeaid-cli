@@ -150,6 +150,16 @@ type (
 		// optional otherwise. Used as Issuer.spec.acme.email.
 		ACMEEmail string `yaml:"acmeEmail" validate:"omitempty,email"`
 
+		// ACMEDNS01 switches the rendered ClusterIssuer's solver from
+		// the HTTP-01 default to DNS-01. Required for the split-horizon
+		// mesh pattern: NetBird-exposed services use real public DNS
+		// names (e.g. argocd.staging.acme.com) that only resolve inside
+		// the mesh — Let's Encrypt can never reach them over HTTP, but
+		// proves ownership via a TXT record on the public zone instead.
+		// Requires cluster.acmeEmail plus the provider credential in
+		// secrets.yaml (acme.cloudflareApiToken).
+		ACMEDNS01 *ACMEDNS01Config `yaml:"acmeDNS01"`
+
 		// Configuration options for the Kubernetes API server.
 		APIServer APIServerConfig `yaml:"apiServer"`
 
@@ -190,6 +200,19 @@ type (
 
 		// ArgoCD specific details.
 		ArgoCD ArgoCDConfig `yaml:"argoCD" validate:"required"`
+	}
+
+	// ACMEDNS01Config selects and scopes the ClusterIssuer's DNS-01
+	// solver. Only Cloudflare is wired today (the chart's solver list
+	// also knows route53; extend Provider's oneof when kubeaid-cli
+	// grows the matching credential plumbing).
+	ACMEDNS01Config struct {
+		Provider string `yaml:"provider" default:"cloudflare" validate:"oneof=cloudflare"`
+
+		// DNSZones limits which zones this solver answers challenges
+		// for (cert-manager's selector.dnsZones). Empty matches every
+		// DNS-01 order — fine when this is the only solver.
+		DNSZones []string `yaml:"dnsZones"`
 	}
 
 	ArgoCDConfig struct {

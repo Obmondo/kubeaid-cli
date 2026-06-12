@@ -172,6 +172,13 @@ type TemplateValues struct {
 	// awaitNetBirdOperatorToken instead.
 	NetBirdAPIKey string
 
+	// CloudflareAPIToken is secrets.yaml's acme.cloudflareApiToken,
+	// sealed into the cert-manager/cloudflare-api-token Secret the
+	// DNS-01 ClusterIssuer's solver references. Only consumed when
+	// cluster.acmeDNS01 is set (parser validation requires the token
+	// by then).
+	CloudflareAPIToken string
+
 	// KubeaidStoragectlVersion is the pinned kubeaid-storagectl release
 	// tag rendered into global.kubeaidStoragectl.version in the
 	// capi-cluster Helm values. Empty for dev/local builds so the chart
@@ -252,6 +259,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		NetBirdManagementURL: netbirdManagementURL(),
 		NetBirdAPIKey:        netbirdAPIKey(),
+
+		CloudflareAPIToken: cloudflareAPIToken(),
 
 		KubeaidStoragectlVersion: storagectlVersion(
 			operatorStoragectlVersionOverride(),
@@ -685,6 +694,24 @@ func netbirdAPIKey() string {
 	return creds.APIKey
 }
 
+// acmeDNS01Enabled reports whether the cluster's ClusterIssuer uses a
+// DNS-01 solver — the cluster.acmeDNS01 block is the single switch
+// (parser validation guarantees acmeEmail + the provider token exist
+// alongside it).
+func acmeDNS01Enabled() bool {
+	return config.ParsedGeneralConfig.Cluster.ACMEDNS01 != nil
+}
+
+// cloudflareAPIToken returns secrets.yaml's acme.cloudflareApiToken,
+// nil-safe — the acme block only exists on clusters using DNS-01.
+func cloudflareAPIToken() string {
+	creds := config.ParsedSecretsConfig.ACME
+	if creds == nil {
+		return ""
+	}
+	return creds.CloudflareAPIToken
+}
+
 // vpnClusterEnabled reports whether kubeaid-cli should render the
 // VPN-cluster-wide infrastructure: cnpg (for NetBird's Postgres),
 // traefik (for NetBird's Ingress), the netbird /
@@ -1017,6 +1044,15 @@ func getEmbeddedSecretTemplateNames() []string {
 	if netBirdOperatorEnabled() && netbirdAPIKey() != "" {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorAPIKeySecretTemplateName,
+		)
+	}
+
+	// Cloudflare API token for the DNS-01 ClusterIssuer — gated on the
+	// cluster.acmeDNS01 block (parser validation already guarantees the
+	// token exists alongside it).
+	if acmeDNS01Enabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.CertManagerCloudflareAPITokenSecretTemplateName,
 		)
 	}
 

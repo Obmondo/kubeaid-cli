@@ -11,6 +11,19 @@ type (
 		Obmondo  *ObmondoCredentials  `yaml:"obmondo"`
 		Keycloak *KeycloakCredentials `yaml:"keycloak"`
 		NetBird  *NetBirdCredentials  `yaml:"netbird"`
+		ACME     *ACMECredentials     `yaml:"acme"`
+	}
+
+	// ACMECredentials carries the DNS-provider secrets the cert-manager
+	// ClusterIssuer's DNS-01 solver authenticates with. Only needed when
+	// cluster.acmeDNS01 is set.
+	ACMECredentials struct {
+		// CloudflareAPIToken is a Cloudflare API token with Zone:Read +
+		// DNS:Edit on the zones the solver manages (the TXT challenge
+		// records). Sealed into the cert-manager/cloudflare-api-token
+		// Secret the ClusterIssuer references.
+		//nolint:gosec // This struct intentionally models a user-provided API token.
+		CloudflareAPIToken string `yaml:"cloudflareApiToken"`
 	}
 
 	// KeycloakCredentials carries Keycloak-related secrets — admin

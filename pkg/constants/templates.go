@@ -256,6 +256,13 @@ var NetBirdOperatorTemplateNames = []string{
 	"argocd-apps/values-netbird-operator.yaml.tmpl",
 }
 
+// CertManagerCloudflareAPITokenSecretTemplateName seals secrets.yaml's
+// acme.cloudflareApiToken into the cert-manager/cloudflare-api-token
+// Secret the DNS-01 ClusterIssuer's solver references. Only registered
+// when cluster.acmeDNS01 is set (parser validation guarantees the
+// token is present by then).
+const CertManagerCloudflareAPITokenSecretTemplateName = "sealed-secrets/cert-manager/cloudflare-api-token.yaml.tmpl"
+
 // NetBirdOperatorAPIKeySecretTemplateName seals secrets.yaml's
 // netbird.apiKey (a Mgmt service-user access token) into the
 // netbird/netbird-mgmt-api-key Secret the operator Deployment's

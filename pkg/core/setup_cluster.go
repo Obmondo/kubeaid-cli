@@ -252,6 +252,15 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", constants.NamespaceNetBird))
 	}
 
+	// Same ordering for the DNS-01 issuer's Cloudflare token: its
+	// SealedSecret targets the cert-manager namespace, which the
+	// cert-manager app only creates AFTER the secrets app has synced.
+	if acmeDNS01Enabled() {
+		err := kubernetes.CreateNamespace(ctx, constants.NamespaceCertManager, args.ClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed creating namespace",
+			slog.String("namespace", constants.NamespaceCertManager))
+	}
+
 	// Sync the Root, Secrets and CertManager ArgoCD Apps one by one.
 	//
 	// Order matters: root is the app-of-apps and just creates the child

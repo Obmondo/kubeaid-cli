@@ -106,12 +106,40 @@ func validateConfigFields(
 		func() error { return validateAdditionalUsers(generalConfig.Cluster.AdditionalUsers) },
 		func() error { return validateKnownHostsEntries(ctx, generalConfig.Git.KnownHosts) },
 		func() error { return validateObmondoMonitoring(generalConfig.Obmondo, secretsConfig.Obmondo, stat) },
+		func() error { return validateACMEDNS01(generalConfig.Cluster, secretsConfig.ACME) },
 	}
 
 	for _, validator := range validators {
 		if err := validator(); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validateACMEDNS01 enforces the cross-field requirements of the
+// DNS-01 ClusterIssuer: the block needs an ACME account email to
+// register with, and the Cloudflare API token the solver authenticates
+// with (sealed into cert-manager/cloudflare-api-token). Validated at
+// parse time so a half-configured issuer fails here instead of as a
+// CertificateRequest stuck Pending on the cluster. Provider values are
+// constrained by the struct's oneof tag.
+func validateACMEDNS01(cluster config.ClusterConfig, acmeCreds *config.ACMECredentials) error {
+	if cluster.ACMEDNS01 == nil {
+		return nil
+	}
+
+	if cluster.ACMEEmail == "" {
+		return errors.New(
+			"cluster.acmeEmail is required when cluster.acmeDNS01 is set — it registers the Let's Encrypt account the DNS-01 issuer uses",
+		)
+	}
+
+	if acmeCreds == nil || acmeCreds.CloudflareAPIToken == "" {
+		return errors.New(
+			"secrets.yaml: acme.cloudflareApiToken is required when cluster.acmeDNS01 is set — the DNS-01 solver creates TXT challenge records with it (needs Zone:Read + DNS:Edit on the solved zones)",
+		)
 	}
 
 	return nil
