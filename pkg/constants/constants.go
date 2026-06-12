@@ -92,7 +92,12 @@ const (
 	// without the customer issuing them an account in their own
 	// Keycloak. One-way: customer's Keycloak is unaware of
 	// Obmondo's, no IdP federation.
-	ObmondoKeycloakIssuerURL = "https://keycloak.obmondo.com/realms/obmondo"
+	//
+	// Note the "/auth" base path and the "Obmondo" realm casing: this is
+	// the realm's canonical issuer (its discovery document's "issuer"
+	// field), and kube-apiserver matches the token's "iss" against it
+	// byte-for-byte — a mismatch is a 401, not a warning.
+	ObmondoKeycloakIssuerURL = "https://keycloak.obmondo.com/auth/realms/Obmondo"
 )
 
 // Cloud providers.
