@@ -102,12 +102,8 @@ Identical to the CLI flow — see
 node Ready with InternalIP, CSR approved, pod `/etc/resolv.conf` pointing
 at `10.96.0.10`, and `kubectl logs` working against a pod on the node.
 
-## Caveats
+## Caveat
 
-- **Release pin**: the node boots from the chart revision the
-  `capi-cluster` Application tracks. That release must include the worker
-  KubeletConfiguration fields (`clusterDNS`, `rotateCertificates`, …) or
-  the node comes up with broken in-cluster DNS for its pods.
-- **Drift**: until the host is in `general.yaml`, every kubeaid-cli
-  re-render is a loaded gun pointed at this node (step 3). Do the mirror
-  edit in the same change, not "later".
+Until the host is in `general.yaml`, every kubeaid-cli re-render is a
+loaded gun pointed at this node (step 3). Do the mirror edit in the same
+change, not "later".

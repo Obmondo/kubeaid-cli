@@ -110,12 +110,3 @@ kubectl run dnstest --rm -it --restart=Never \
 # The streaming path works (exercises the serving cert):
 kubectl logs -n kube-system --tail=1 <any-pod-on-the-new-node>
 ```
-
-## Caveat: pin a kubeaid release that carries the worker fixes
-
-The node boots with whatever chart revision the cluster's `capi-cluster`
-Application tracks. Make sure that release includes the worker
-KubeletConfiguration fields (`clusterDNS`, `rotateCertificates`, …) —
-older releases rendered workers without them, which silently breaks
-in-cluster DNS for every pod on the node (and needs a manual kubelet
-retrofit to undo).
