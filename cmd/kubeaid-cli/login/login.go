@@ -204,6 +204,20 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Pre-flight the chosen issuer's discovery endpoint. A wrong issuerUrl
+	// (typo, missing /auth, realm casing) fails here with a clear message and
+	// the realm's canonical issuer, instead of surfacing as a cryptic error
+	// part-way through kubelogin's browser flow. The kubeconfig is already on
+	// disk, so a transient blip is recoverable by re-running.
+	if err := probeIssuerDiscovery(ctx, issuer.IssuerURL); err != nil {
+		fmt.Fprintln(os.Stderr)
+		fmt.Fprintf(os.Stderr,
+			"The kubeconfig is on disk; fix oidc.issuerUrl and rerun, or rerun with --%s to skip OIDC.\n\n",
+			flagNoAuthenticate)
+
+		return err
+	}
+
 	kubeloginPath, err := lookupKubelogin()
 	if err != nil {
 		return err
