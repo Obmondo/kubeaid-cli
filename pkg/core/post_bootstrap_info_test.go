@@ -107,6 +107,60 @@ func TestKeycloakPasswordLine_InlineWhenLiveReadSucceeded(t *testing.T) {
 	}
 }
 
+// TestCertManagerNextSteps_NoIssuer verifies the hint fires whenever
+// no ACME issuer was rendered (acmeEmail unset), independent of mesh
+// status, and names every field the operator must set to enable TLS.
+func TestCertManagerNextSteps_NoIssuer(t *testing.T) {
+	for _, mesh := range []bool{false, true} {
+		title, lines, ok := certManagerNextSteps("", false, mesh)
+		if !ok {
+			t.Fatalf("expected a hint when acmeEmail is unset (mesh=%v)", mesh)
+		}
+		body := strings.Join(lines, "\n")
+		for _, want := range []string{"acmeEmail", "acmeDNS01", "cloudflareApiToken"} {
+			if !strings.Contains(body, want) {
+				t.Errorf("no-issuer hint (mesh=%v) missing %q\ntitle: %s\n%s", mesh, want, title, body)
+			}
+		}
+	}
+}
+
+// TestCertManagerNextSteps_MeshHTTP01 verifies the DNS-01 nudge fires
+// for a mesh cluster left on an HTTP-01 issuer (acmeEmail set, DNS-01
+// unset, mesh) and points the operator at cluster.acmeDNS01 — the
+// exact trap where mesh-only hostnames never pass HTTP-01 validation.
+func TestCertManagerNextSteps_MeshHTTP01(t *testing.T) {
+	title, lines, ok := certManagerNextSteps("ops@acme.com", false, true)
+	if !ok {
+		t.Fatal("expected a DNS-01 nudge for an HTTP-01 issuer on a mesh cluster")
+	}
+	body := strings.Join(lines, "\n")
+	if !strings.Contains(body, "acmeDNS01") {
+		t.Errorf("mesh/HTTP-01 hint should point at acmeDNS01\ntitle: %s\n%s", title, body)
+	}
+}
+
+// TestCertManagerNextSteps_NoHint verifies the adequate-issuer states
+// stay quiet: DNS-01 already configured, and HTTP-01 on a cluster
+// whose names are publicly reachable (non-mesh).
+func TestCertManagerNextSteps_NoHint(t *testing.T) {
+	cases := []struct {
+		name     string
+		dns01Set bool
+		mesh     bool
+	}{
+		{"dns01 already set", true, true},
+		{"http01 on non-mesh cluster", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, ok := certManagerNextSteps("ops@acme.com", tc.dns01Set, tc.mesh); ok {
+				t.Errorf("expected no hint for %s", tc.name)
+			}
+		})
+	}
+}
+
 // TestKeycloakPasswordLine_FallbackKubectlCommand verifies the
 // fallback path: when the live read failed (empty string), the
 // panel shows the single-line kubectl command — must remain a

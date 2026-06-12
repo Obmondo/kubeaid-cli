@@ -296,6 +296,13 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// so the "Bootstrap complete in …" header never lies about a
 	// run that didn't actually complete.
 	printPostBootstrapNextSteps(keycloakAdminPassword, time.Since(bootstrapStarted))
+
+	// Independent of the Keycloak/NetBird panel above (which prints
+	// only for managed-Keycloak VPN clusters): nudge the operator when
+	// cert-manager can't yet issue the cluster's TLS certs — no ACME
+	// issuer configured, or an HTTP-01 issuer on a mesh cluster whose
+	// hostnames Let's Encrypt can't reach. No-op when adequately set.
+	printCertManagerNextSteps()
 }
 
 // readKeycloakAdminPasswordForPanel reads the Keycloak admin password
