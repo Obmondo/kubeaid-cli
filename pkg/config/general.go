@@ -320,16 +320,25 @@ type (
 		Realm string `yaml:"realm"`
 	}
 
-	// NetBirdConfig declares the NetBird Management instance this
-	// VPN cluster hosts. Used to render the redirect URI and
-	// audience claim for the netbird-client / netbird-backend OIDC
-	// clients in Keycloak, and (when this VPN cluster also hosts
-	// Coturn / Relay) to compute the public STUN / TURN endpoints
-	// kubeaid-cli writes into the netbird Secret.
+	// NetBirdConfig describes this cluster's relationship to the NetBird
+	// mesh. It is valid for both cluster.type=vpn (which hosts NetBird
+	// Mgmt) and cluster.type=workload (which only joins the mesh):
+	// dns/stun/turn are meaningful only on the VPN host, while dnsZone
+	// applies to any cluster on the mesh. cluster.type is the gate.
 	NetBirdConfig struct {
-		// DNS is the public hostname NetBird Management is
-		// reachable at, e.g. "netbird.vpn.acme.com". Required.
-		DNS string `yaml:"dns" validate:"required"`
+		// DNS is the public hostname NetBird Management is reachable at,
+		// e.g. "netbird.vpn.acme.com". Required only for cluster.type=vpn
+		// (enforced in parser/keycloak.go); unused on workload clusters.
+		DNS string `yaml:"dns" validate:"omitempty,fqdn"`
+
+		// DNSZone is the mesh DNS domain peers resolve under — NetBird
+		// Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to
+		// "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
+		// Drives NetBird Mgmt's --dns-domain on VPN clusters, and the
+		// apiserver cert SAN "kubernetes.<dnsZone>" on every cluster — so
+		// clients can reach kube-apiserver under a mesh name without an
+		// x509 mismatch.
+		DNSZone string `yaml:"dnsZone" validate:"omitempty,fqdn|hostname_rfc1123"`
 
 		// StunDNS is the public hostname Coturn answers STUN queries
 		// on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives
@@ -657,6 +666,14 @@ type (
 		// Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)
 		// the CAPH chart constrains control-plane placement to. At least one is required.
 		Regions []string `yaml:"regions" validate:"required,min=1,dive,notblank"`
+
+		// ExtraCertSANs are additional DNS names added to the apiserver's
+		// TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,
+		// hybrid). Use for mesh-internal hostnames clients reach the
+		// apiserver under; without them kubectl via that name fails with an
+		// x509 mismatch. The kubernetes.<netbird-dns-zone> default is added
+		// automatically; list only extras here.
+		ExtraCertSANs []string `yaml:"extraCertSANs,omitempty" validate:"omitempty,dive,fqdn|hostname_rfc1123"`
 	}
 
 	HCloudControlPlane struct {

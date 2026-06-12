@@ -24,10 +24,23 @@ import (
 // base — operators using a non-conventional naming get the same
 // hostname for all three services unless they override.
 //
-// No-op when the netbird block is absent or DNS is empty.
+// The mesh DNS zone defaults to "<cluster.name>.local" for any cluster that
+// carries a netbird block (vpn host or workload joiner), independent of DNS.
+// The stun/turn/user derivation is VPN-host-only (needs the Mgmt DNS).
+//
+// No-op when the netbird block is absent.
 func hydrateNetBirdDefaults() {
 	cfg := config.ParsedGeneralConfig.Cluster.NetBird
-	if cfg == nil || cfg.DNS == "" {
+	if cfg == nil {
+		return
+	}
+
+	if cfg.DNSZone == "" {
+		cfg.DNSZone = DefaultNetBirdDNSZone(config.ParsedGeneralConfig.Cluster.Name)
+	}
+
+	// stun/turn/user are derived from the Mgmt DNS — only the VPN host sets it.
+	if cfg.DNS == "" {
 		return
 	}
 
@@ -44,4 +57,13 @@ func hydrateNetBirdDefaults() {
 	if cfg.TurnUser == "" {
 		cfg.TurnUser = "netbird"
 	}
+}
+
+// DefaultNetBirdDNSZone is the mesh DNS domain a cluster falls back to when
+// cluster.netbird.dnsZone is empty: "<cluster-name>.local". Exported so the
+// template layer can compute the same default for clusters with no
+// cluster.netbird block at all (the apiserver SAN kubernetes.<zone> is added
+// regardless of whether the operator declared a netbird block).
+func DefaultNetBirdDNSZone(clusterName string) string {
+	return clusterName + ".local"
 }
