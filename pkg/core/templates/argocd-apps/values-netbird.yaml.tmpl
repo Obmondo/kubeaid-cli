@@ -134,7 +134,7 @@ netbird:
         - --log-level=debug
         - --disable-anonymous-metrics=false
         - --single-account-mode-domain={{ .ClusterConfig.NetBird.DNS }}
-        - --dns-domain=netbird.selfhosted
+        - --dns-domain={{ .ClusterConfig.NetBird.DNSZone }}
 
     ingressGrpc:
       enabled: true
