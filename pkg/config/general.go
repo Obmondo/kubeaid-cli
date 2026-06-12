@@ -709,15 +709,6 @@ type (
 		// the public is removed and clients reach the private IP
 		// through the mesh.
 		Endpoint string `yaml:"endpoint" validate:"required,fqdn"`
-
-		// ExtraCertSANs are additional DNS names included in the
-		// apiserver's TLS cert SAN list, alongside Endpoint. Use
-		// this for mesh-internal hostnames clients also use to
-		// reach the apiserver — e.g. a NetBird-assigned name like
-		// "netbird.k8s-api" that resolves through NetBird DNS to
-		// the LB private IP. Without these, kubectl via the mesh
-		// hostname fails with an x509 cert-name mismatch.
-		ExtraCertSANs []string `yaml:"extraCertSANs,omitempty" validate:"omitempty,dive,fqdn|hostname_rfc1123"`
 	}
 
 	// Details about node-groups in Hetzner.

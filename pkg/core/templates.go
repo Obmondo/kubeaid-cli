@@ -436,10 +436,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 // hetznerControlPlaneCertSANs builds the apiserver cert SAN list for a Hetzner
 // cluster: always kubernetes.<netbird-dns-zone> (so clients can reach
 // kube-apiserver under a mesh name without an x509 mismatch), plus any
-// operator-supplied controlPlane.extraCertSANs and legacy hcloud LoadBalancer
-// extraCertSANs. The zone is cluster.netbird.dnsZone — already defaulted to
-// <cluster-name>.local by the parser when a netbird block is present — or
-// <cluster-name>.local when the cluster declares no netbird block at all.
+// operator-supplied controlPlane.extraCertSANs. The zone is
+// cluster.netbird.dnsZone — already defaulted to <cluster-name>.local by the
+// parser when a netbird block is present — or <cluster-name>.local when the
+// cluster declares no netbird block at all.
 func hetznerControlPlaneCertSANs(hetznerConfig *config.HetznerConfig) []string {
 	cluster := config.ParsedGeneralConfig.Cluster
 
@@ -450,10 +450,6 @@ func hetznerControlPlaneCertSANs(hetznerConfig *config.HetznerConfig) []string {
 
 	sans := []string{"kubernetes." + zone}
 	sans = append(sans, hetznerConfig.ControlPlane.ExtraCertSANs...)
-
-	if hetznerConfig.ControlPlane.HCloud != nil {
-		sans = append(sans, hetznerConfig.ControlPlane.HCloud.LoadBalancer.ExtraCertSANs...)
-	}
 
 	return sans
 }

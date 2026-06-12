@@ -45,20 +45,16 @@ func TestHetznerControlPlaneCertSANs(t *testing.T) {
 			want: []string{"kubernetes.kbm.local", "a.acme.com", "b.acme.com"},
 		},
 		{
-			name:        "hcloud LoadBalancer extraCertSANs also appended",
+			name:        "hcloud cluster: controlPlane.extraCertSANs applied (same field, all modes)",
 			clusterName: "vpn",
 			netbird:     &config.NetBirdConfig{DNSZone: "vpn.local"},
 			hetzner: &config.HetznerConfig{
 				ControlPlane: config.HetznerControlPlane{
 					ExtraCertSANs: []string{"a.acme.com"},
-					HCloud: &config.HCloudControlPlane{
-						LoadBalancer: config.HCloudControlPlaneLoadBalancer{
-							ExtraCertSANs: []string{"lb.acme.com"},
-						},
-					},
+					HCloud:        &config.HCloudControlPlane{},
 				},
 			},
-			want: []string{"kubernetes.vpn.local", "a.acme.com", "lb.acme.com"},
+			want: []string{"kubernetes.vpn.local", "a.acme.com"},
 		},
 	}
 
