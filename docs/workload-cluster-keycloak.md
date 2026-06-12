@@ -109,6 +109,56 @@ For shared clusters, ship these group→role bindings as manifests in the
 kubeaid-config repo so ArgoCD applies them declaratively, rather than
 running `kubectl` by hand per cluster.
 
+## Obmondo SRE access (`obmondo.monitoring: true`)
+
+When a cluster sets `obmondo.monitoring: true`, kubeaid renders a **second**
+`jwt:` issuer into the apiserver's AuthenticationConfiguration: Obmondo's
+central Keycloak. This lets Obmondo SREs `kubectl` into the cluster with their
+Obmondo identity, without the customer issuing them an account in the customer
+realm. It's one-way — the customer's Keycloak never learns about Obmondo's,
+and the entry is independent of `cluster.keycloak` (a cluster can trust the
+Obmondo issuer with no customer issuer at all).
+
+The client is created the same way as the customer one above, but **in
+Obmondo's Keycloak**, with two differences that each surface as a bare `401
+Unauthorized` from kubectl if you get them wrong:
+
+- **Issuer URL** — kube-apiserver trusts
+  `https://keycloak.obmondo.com/auth/realms/Obmondo`
+  (`constants.ObmondoKeycloakIssuerURL`). Mind the `/auth` base path and the
+  `Obmondo` realm casing: the token's `iss` is matched against it
+  byte-for-byte.
+- **Client ID = the cluster name**, *not* `kubernetes-<cluster>`. The Obmondo
+  `jwt:` entry trusts `audiences: [<cluster.name>]`, so the client must be
+  named exactly `cluster.name` (e.g. a cluster named `staging` → client
+  `staging`) for the token's `aud` to match.
+
+Everything else mirrors the customer client: OpenID Connect, **Client
+authentication: Off** (public PKCE), **Standard flow** only, redirect URIs
+`http://localhost:8000` + `http://localhost:18000`, the `groups` client scope,
+and verified emails — the same `groups`-claim and `email_verified` rules from
+the sections above apply in Obmondo's realm too. SRE users still need an RBAC
+binding (bind an Obmondo group to a ClusterRole).
+
+On the client side, add it to the cluster's klist entry as a second issuer so
+`kubeaid-cli login` offers it:
+
+```yaml
+oidc:
+  - name: customer
+    issuerUrl: https://keycloak.vpn.acme.com/realms/acme
+    clientId: kubernetes-staging
+  - name: obmondo-sre
+    issuerUrl: https://keycloak.obmondo.com/auth/realms/Obmondo
+    clientId: staging          # = cluster.name, NOT kubernetes-staging
+```
+
+`login` then prompts which issuer to use (or pass `--issuer obmondo-sre`).
+Clusters bootstrapped before the issuer URL was corrected
+(`…/realms/obmondo` → `…/auth/realms/Obmondo`) still carry the old value in
+their live `auth-config.yaml` — re-render + sync, or fix `issuer.url` in place
+on every control-plane node, so it matches the token's `iss`.
+
 ## What `kubeaid-cli bootstrap` checks
 
 Before provisioning infrastructure, `kubeaid-cli` probes the realm's
