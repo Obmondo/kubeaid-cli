@@ -5,6 +5,7 @@ package parser
 
 import (
 	_ "embed"
+	"path"
 
 	v1 "k8s.io/api/core/v1"
 
@@ -19,9 +20,9 @@ var (
 		"audit-log-maxbackup": "1",
 		"audit-log-maxsize":   "100",
 
-		constants.KubeAPIServerFlagAuditPolicyFile: "/srv/kubernetes/audit.yaml",
+		constants.KubeAPIServerFlagAuditPolicyFile: "/etc/kubernetes/audit-policy.yaml",
 
-		constants.KubeAPIServerFlagAuditLogPath: "/var/log/kube-apiserver-audit.logs",
+		constants.KubeAPIServerFlagAuditLogPath: "/var/log/kubernetes/audit/audit.log",
 	}
 
 	//go:embed audit-policy.yaml
@@ -75,15 +76,22 @@ func hydrateWithAuditLoggingOptions() {
 		PathType:  v1.HostPathFileOrCreate,
 	})
 
-	// If using the log backend, make sure that the log backend file is mounted to the Kube API
-	// server pod.
-	logBackendHostPath, ok := kubeAPIServerDefaultExtraArgsForAuditLogging[constants.KubeAPIServerFlagAuditLogPath]
-	if ok {
+	// Mount the audit-log directory (not just the file) into the apiserver
+	// static pod. With rotation enabled (audit-log-maxbackup), kube-apiserver
+	// writes the active log plus rotated backups side by side, so the whole
+	// directory must be host-backed for them to persist. Derive it from the
+	// effective audit-log-path so an operator override moves the mount with
+	// it, and skip the mount when audit goes to stdout ("-") or the value is
+	// otherwise not an absolute file path.
+	auditLogPath := config.ParsedGeneralConfig.Cluster.APIServer.ExtraArgs[constants.KubeAPIServerFlagAuditLogPath]
+	if path.IsAbs(auditLogPath) {
+		auditLogDir := path.Dir(auditLogPath)
 		ensureHostPathGetsMounted(config.HostPathMountConfig{
-			Name:      "log-backend",
-			HostPath:  logBackendHostPath,
-			MountPath: logBackendHostPath,
-			PathType:  v1.HostPathFileOrCreate,
+			Name:      "audit-log",
+			HostPath:  auditLogDir,
+			MountPath: auditLogDir,
+			ReadOnly:  false,
+			PathType:  v1.HostPathDirectoryOrCreate,
 		})
 	}
 }
