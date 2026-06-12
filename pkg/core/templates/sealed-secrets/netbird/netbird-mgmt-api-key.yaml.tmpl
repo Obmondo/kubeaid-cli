@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  {{- /* Name / namespace / key must match the netbird-operator
+       chart's default netbirdAPI.keyFromSecret ref AND the constants
+       in pkg/core/await_netbird_operator_token.go — the await step
+       polls for exactly this Secret before letting bootstrap proceed
+       past the operator install. */}}
+  name: netbird-mgmt-api-key
+  namespace: netbird
+  labels:
+    kubeaid.io/managed-by: kubeaid
+stringData:
+  NB_API_KEY: {{ .NetBirdAPIKey | quote }}

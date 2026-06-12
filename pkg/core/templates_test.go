@@ -479,3 +479,49 @@ func TestExpectedNetBirdHost(t *testing.T) {
 		})
 	}
 }
+
+func TestNetbirdManagementURL(t *testing.T) {
+	cases := []struct {
+		name     string
+		netbird  *config.NetBirdConfig
+		keycloak *config.KeycloakConfig
+		want     string
+	}{
+		{
+			name:     "vpn cluster: cluster.netbird.dns is authoritative",
+			netbird:  &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"},
+			keycloak: &config.KeycloakConfig{DNS: "keycloak.other.acme.com"},
+			want:     "https://netbird.vpn.acme.com",
+		},
+		{
+			name:     "workload: derived from the keycloak DNS convention",
+			netbird:  nil,
+			keycloak: &config.KeycloakConfig{DNS: "keycloak.vpn.acme.com"},
+			want:     "https://netbird.vpn.acme.com",
+		},
+		{
+			// The operator binary would fall back to NetBird Cloud; better
+			// to render nothing and let the await instructions cover it.
+			name:     "workload, off-convention keycloak DNS: empty (no guess)",
+			netbird:  nil,
+			keycloak: &config.KeycloakConfig{DNS: "auth.acme.com"},
+			want:     "",
+		},
+		{
+			name:     "no keycloak block: empty",
+			netbird:  nil,
+			keycloak: nil,
+			want:     "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
+				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
+
+				assert.Equal(t, tc.want, netbirdManagementURL())
+			})
+		})
+	}
+}

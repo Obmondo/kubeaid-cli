@@ -1,12 +1,20 @@
 {{- /*
 NetBird Kubernetes Operator values overlay.
 
-Empty on purpose. The operator deploys with chart defaults; concrete
-NetBird wiring (managementURL, API key, NBSetupKey / NBPolicy CRs) is
-the operator's responsibility post-bootstrap — same shape as the
-deployed vpn-obmondo cluster. The post-prompt notice points the
-operator at the two manual steps (setup key + group ACLs).
+managementURL points the operator at the parent NetBird Mgmt —
+cluster.netbird.dns on VPN clusters (they host Mgmt themselves), the
+netbird.<base> Keycloak-DNS convention on workload clusters. Omitting
+it is NOT harmless: the operator binary falls back to NetBird Cloud
+(api.netbird.io), so when the URL can't be derived this file renders
+empty and the operator must be wired manually.
 
-If/when kubeaid-cli auto-mints API keys via NetBird Mgmt, this file
-will start carrying managementURL + netbirdAPI.keyFromSecret.
+The Mgmt API token deliberately does NOT flow through values — it's
+sealed into the netbird/netbird-mgmt-api-key Secret (from secrets.yaml's
+netbird.apiKey), which the chart's default netbirdAPI.keyFromSecret
+already references. awaitNetBirdOperatorToken gates bootstrap on that
+Secret existing.
 */ -}}
+{{- if .NetBirdManagementURL }}
+netbird-operator:
+  managementURL: {{ .NetBirdManagementURL | quote }}
+{{- end }}

@@ -154,6 +154,24 @@ type TemplateValues struct {
 	// subsequent runs so the SealedSecret in git stays correct.
 	NetBirdPostgresDSN string
 
+	// NetBirdManagementURL is the NetBird Mgmt endpoint the
+	// netbird-operator targets — without it the operator binary
+	// defaults to NetBird Cloud (api.netbird.io), which is never
+	// right for kubeaid clusters. cluster.netbird.dns on VPN
+	// clusters (they host Mgmt themselves); derived via the
+	// netbird.<base> Keycloak-DNS convention on workload clusters.
+	// Empty when underivable — the values overlay then omits
+	// managementURL and the operator must be wired manually.
+	NetBirdManagementURL string
+
+	// NetBirdAPIKey is secrets.yaml's netbird.apiKey (a Mgmt
+	// service-user access token), sealed into the
+	// netbird/netbird-mgmt-api-key Secret the operator reads.
+	// Empty when the operator hasn't minted one yet — the matching
+	// SealedSecret template is skipped and bootstrap pauses at
+	// awaitNetBirdOperatorToken instead.
+	NetBirdAPIKey string
+
 	// KubeaidStoragectlVersion is the pinned kubeaid-storagectl release
 	// tag rendered into global.kubeaidStoragectl.version in the
 	// capi-cluster Helm values. Empty for dev/local builds so the chart
@@ -231,6 +249,9 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		ObmondoCredentials: config.ParsedSecretsConfig.Obmondo,
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
+
+		NetBirdManagementURL: netbirdManagementURL(),
+		NetBirdAPIKey:        netbirdAPIKey(),
 
 		KubeaidStoragectlVersion: storagectlVersion(
 			operatorStoragectlVersionOverride(),
@@ -610,15 +631,58 @@ func managedKeycloakEnabled() bool {
 //     Mgmt, not the operator. Fixed by including VPN clusters in
 //     this gate directly.
 //
-// Values overlay (values-netbird-operator.yaml.tmpl) is empty for
-// both — the connection details (managementURL, API token Secret
-// ref) come later. See docs/TODO.md.
+// The values overlay (values-netbird-operator.yaml.tmpl) renders
+// managementURL when derivable (see netbirdManagementURL); the Mgmt
+// API token flows via the netbird-mgmt-api-key SealedSecret when
+// secrets.yaml carries netbird.apiKey, with awaitNetBirdOperatorToken
+// as the interactive fallback.
 func netBirdOperatorEnabled() bool {
 	cluster := config.ParsedGeneralConfig.Cluster
 	if cluster.Type == constants.ClusterTypeVPN {
 		return true
 	}
 	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
+}
+
+// netbirdManagementURL returns the NetBird Mgmt endpoint the
+// netbird-operator should target, or "" when it can't be derived
+// (the values overlay then omits managementURL — NOT harmless: the
+// operator binary falls back to NetBird Cloud, so the await step's
+// instructions cover wiring it manually).
+//
+//   - VPN clusters host Mgmt themselves: cluster.netbird.dns is
+//     authoritative.
+//   - Workload clusters derive netbird.<base> from the Keycloak DNS
+//     convention — the same rule expectedNetBirdHost encodes for the
+//     post-prompt guidance.
+func netbirdManagementURL() string {
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
+		return "https://" + cluster.NetBird.DNS
+	}
+
+	if cluster.Keycloak == nil {
+		return ""
+	}
+
+	host := expectedNetBirdHost(cluster.Keycloak.DNS)
+	if host == "" {
+		return ""
+	}
+
+	return "https://" + host
+}
+
+// netbirdAPIKey returns secrets.yaml's netbird.apiKey, nil-safe —
+// the netbird block is optional and absent on most workload-cluster
+// secrets files until the operator wiring step.
+func netbirdAPIKey() string {
+	creds := config.ParsedSecretsConfig.NetBird
+	if creds == nil {
+		return ""
+	}
+	return creds.APIKey
 }
 
 // vpnClusterEnabled reports whether kubeaid-cli should render the
@@ -941,6 +1005,18 @@ func getEmbeddedSecretTemplateNames() []string {
 	if managedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedSecretTemplateNames...,
+		)
+	}
+
+	// netbird-operator Mgmt API token — only when the operator app is
+	// rendered AND the operator has minted a service-user token into
+	// secrets.yaml. When absent, awaitNetBirdOperatorToken pauses
+	// bootstrap with create-it-manually instructions instead of
+	// sealing an empty value (which would let the operator pod
+	// schedule and then fail at runtime).
+	if netBirdOperatorEnabled() && netbirdAPIKey() != "" {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.NetBirdOperatorAPIKeySecretTemplateName,
 		)
 	}
 

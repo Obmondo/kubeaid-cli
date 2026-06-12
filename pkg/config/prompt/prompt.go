@@ -559,10 +559,19 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 // behind the NetBird mesh). No-op for VPN clusters and for workload
 // clusters that opted out of Keycloak — both flows are self-contained.
 //
-// Manual on purpose (decision: operator generates the setup key in
-// the parent NetBird's UI and pastes it into secrets.yaml; kubeaid-cli
-// never speaks to the NetBird Mgmt API). Same applies to NetBird group
-// ACLs — operator owns the parent NetBird's NBPolicy / group config.
+// Manual on purpose (decision: the operator mints the service-user
+// access token in the parent NetBird's dashboard and pastes it into
+// secrets.yaml; kubeaid-cli never speaks to the NetBird Mgmt API with
+// admin powers of its own). The token is what the netbird-operator
+// authenticates to the Mgmt API with — it mints setup keys for
+// routing peers itself, so no manual setup key is involved. Same
+// manual-ownership applies to NetBird group ACLs.
+//
+// An earlier revision of this notice asked for a *setup key* pasted
+// under netbird.setupKey — a field that never existed and a
+// credential type that can't call the Mgmt API. If the token is left
+// blank, bootstrap pauses at awaitNetBirdOperatorToken with the same
+// instructions instead.
 func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.EnableOIDC {
 		return
@@ -585,22 +594,22 @@ func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 	fmt.Fprintln(os.Stderr, "  Two manual steps before `kubeaid-cli bootstrap`:")
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "  1. Generate a NetBird setup key for this cluster's nodes:")
-	fmt.Fprintf(os.Stderr, "       %s  →  Settings  →  Setup Keys  →  Create Setup Key\n", netbirdURL)
-	fmt.Fprintln(os.Stderr, "     In the dialog set:")
-	fmt.Fprintf(os.Stderr, "       Name:                  %s\n", cfg.ClusterName)
-	fmt.Fprintln(os.Stderr, "       Make this key reusable: ON   (every node enrolls with this same key)")
-	fmt.Fprintln(os.Stderr, "       Usage limit:            blank (or set to expected node count + headroom)")
-	fmt.Fprintln(os.Stderr, "       Ephemeral Peers:        OFF  (cluster nodes are long-lived)")
-	fmt.Fprintln(os.Stderr, "       Allow Extra DNS Labels: OFF")
-	fmt.Fprintf(os.Stderr, "       Auto-assigned groups:   %s   (the group the ACL in step 2 targets)\n", clusterGroup)
-	fmt.Fprintln(os.Stderr, "     Paste the generated value into secrets.yaml under:")
+	fmt.Fprintln(os.Stderr, "  1. Create a NetBird service user + access token for the netbird-operator")
+	fmt.Fprintln(os.Stderr, "     (the operator calls the Mgmt API to wire this cluster into the mesh —")
+	fmt.Fprintln(os.Stderr, "     it mints setup keys for its routing peers itself):")
+	fmt.Fprintf(os.Stderr, "       %s  →  Team  →  Service Users  →  + Create Service User\n", netbirdURL)
+	fmt.Fprintln(os.Stderr, "         Name:  k8s-operator")
+	fmt.Fprintln(os.Stderr, "         Role:  Admin")
+	fmt.Fprintln(os.Stderr, "       From the new user's row  →  ⋮  →  Tokens  →  + Generate Token")
+	fmt.Fprintf(os.Stderr, "         Name:        kubeaid-%s\n", cfg.ClusterName)
+	fmt.Fprintln(os.Stderr, "         Expiration:  the longest the UI offers (token shows only once)")
+	fmt.Fprintln(os.Stderr, "     Paste the generated token into secrets.yaml under:")
 	fmt.Fprintln(os.Stderr, "       netbird:")
-	fmt.Fprintln(os.Stderr, "         setupKey: <paste here>")
+	fmt.Fprintln(os.Stderr, "         apiKey: <paste here>")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "  2. Configure NetBird group ACLs so your laptop can reach the new cluster:")
-	fmt.Fprintf(os.Stderr, "       In %s, ensure a NBPolicy lets your laptop's group reach\n", netbirdURL)
-	fmt.Fprintf(os.Stderr, "       the cluster peer (typically the group %q) on TCP 6443.\n", clusterGroup)
+	fmt.Fprintf(os.Stderr, "       In %s, ensure a policy lets your laptop's group reach\n", netbirdURL)
+	fmt.Fprintf(os.Stderr, "       the cluster's routing peers (typically the group %q) on TCP 6443.\n", clusterGroup)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 }
