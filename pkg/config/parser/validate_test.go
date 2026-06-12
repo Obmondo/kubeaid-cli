@@ -1146,3 +1146,55 @@ const validSSHPublicKey = "ssh-ed25519 " +
 func statOK(string) (os.FileInfo, error) {
 	return nil, nil
 }
+
+func TestValidateACMEDNS01(t *testing.T) {
+	dns01 := &config.ACMEDNS01Config{Provider: "cloudflare", DNSZones: []string{"acme.com"}}
+	token := &config.ACMECredentials{CloudflareAPIToken: "cf-token"}
+
+	tests := []struct {
+		name       string
+		cluster    config.ClusterConfig
+		acmeCreds  *config.ACMECredentials
+		wantErrSub string
+	}{
+		{
+			name:    "block absent: no-op regardless of credentials",
+			cluster: config.ClusterConfig{},
+		},
+		{
+			name:       "dns01 without acmeEmail: rejected",
+			cluster:    config.ClusterConfig{ACMEDNS01: dns01},
+			acmeCreds:  token,
+			wantErrSub: "cluster.acmeEmail is required",
+		},
+		{
+			name:       "dns01 without the acme secrets block: rejected",
+			cluster:    config.ClusterConfig{ACMEEmail: "ops@acme.com", ACMEDNS01: dns01},
+			acmeCreds:  nil,
+			wantErrSub: "acme.cloudflareApiToken is required",
+		},
+		{
+			name:       "dns01 with empty token: rejected",
+			cluster:    config.ClusterConfig{ACMEEmail: "ops@acme.com", ACMEDNS01: dns01},
+			acmeCreds:  &config.ACMECredentials{},
+			wantErrSub: "acme.cloudflareApiToken is required",
+		},
+		{
+			name:      "fully configured: accepted",
+			cluster:   config.ClusterConfig{ACMEEmail: "ops@acme.com", ACMEDNS01: dns01},
+			acmeCreds: token,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateACMEDNS01(tc.cluster, tc.acmeCreds)
+			if tc.wantErrSub != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

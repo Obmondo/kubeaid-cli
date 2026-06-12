@@ -288,6 +288,7 @@ const (
 	NamespaceNetBird       = "netbird"
 	NamespaceTraefik       = "traefik"
 	NamespaceKubeSystem    = "kube-system"
+	NamespaceCertManager   = "cert-manager"
 
 	// SecretNameCloudCredentials is the Secret the HCloud Cloud
 	// Controller Manager, HCloud CSI driver, and Cluster Autoscaler
