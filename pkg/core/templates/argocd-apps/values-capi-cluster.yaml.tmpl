@@ -146,6 +146,17 @@ hetzner:
       extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYAML | nindent 8 }}
       files: {{- .ClusterConfig.APIServer.Files | toYAML | nindent 8 }}
 
+    {{- /* Apiserver cert SANs — kubernetes.<netbird-dns-zone> by default plus
+         any operator controlPlane.extraCertSANs, on every Hetzner mode. The
+         chart merges these with endpoint.host into kubeadm's apiServer.certSANs
+         so clients reach kube-apiserver under a mesh name without an x509
+         mismatch. Always non-empty (it carries the kubernetes.<zone> default).
+         Close this comment plainly — no trailing trim — so extraCertSANs keeps
+         its own line. */}}
+    {{- if .ControlPlaneExtraCertSANs }}
+    extraCertSANs: {{- .ControlPlaneExtraCertSANs | toYAML | nindent 6 }}
+    {{- end }}
+
     {{- /* Bare-metal control-plane endpoint — sourced from
          cloud.hetzner.controlPlane.bareMetal.endpoint.host
          (typically a Robot failover IP managed by
@@ -186,9 +197,6 @@ hetzner:
     {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
-    {{- if .ControlPlaneExtraCertSANs }}
-    extraCertSANs: {{- .ControlPlaneExtraCertSANs | toYaml | nindent 6 }}
-    {{- end }}
     loadBalancer:
       privateIP: {{ .ControlPlaneLBPrivateIP }}
       {{- if .ControlPlaneLBBootstrapPublicIP }}

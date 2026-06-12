@@ -405,13 +405,17 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned()):
 			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
 			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
-			templateValues.ControlPlaneExtraCertSANs = hetznerConfig.ControlPlane.HCloud.LoadBalancer.ExtraCertSANs
 			if globals.ControlPlaneHostname != "" {
 				templateValues.ControlPlaneEndpoint = globals.ControlPlaneHostname
 				break
 			}
 			templateValues.ControlPlaneEndpoint = globals.ControlPlaneLBPrivateIP
 		}
+
+		// Apiserver cert SANs for every Hetzner mode: kubernetes.<netbird-dns-zone>
+		// by default, plus operator controlPlane.extraCertSANs and any legacy
+		// hcloud LoadBalancer extras.
+		templateValues.ControlPlaneExtraCertSANs = hetznerControlPlaneCertSANs(hetznerConfig)
 
 	// Bare Metal cluster; the user specifies it.
 	case constants.CloudProviderBareMetal:
@@ -427,6 +431,27 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	}
 
 	return templateValues
+}
+
+// hetznerControlPlaneCertSANs builds the apiserver cert SAN list for a Hetzner
+// cluster: always kubernetes.<netbird-dns-zone> (so clients can reach
+// kube-apiserver under a mesh name without an x509 mismatch), plus any
+// operator-supplied controlPlane.extraCertSANs. The zone is
+// cluster.netbird.dnsZone — already defaulted to <cluster-name>.local by the
+// parser when a netbird block is present — or <cluster-name>.local when the
+// cluster declares no netbird block at all.
+func hetznerControlPlaneCertSANs(hetznerConfig *config.HetznerConfig) []string {
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	zone := cluster.Name + ".local"
+	if nb := cluster.NetBird; nb != nil && nb.DNSZone != "" {
+		zone = nb.DNSZone
+	}
+
+	sans := []string{"kubernetes." + zone}
+	sans = append(sans, hetznerConfig.ControlPlane.ExtraCertSANs...)
+
+	return sans
 }
 
 func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config.HetznerConfig {

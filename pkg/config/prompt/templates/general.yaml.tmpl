@@ -51,10 +51,11 @@ cluster:
     realm: {{ .KeycloakRealm }}
 {{- end }}
 {{- end }}
-{{- if eq .ClusterType "vpn" }}
   netbird:
+    {{- if eq .ClusterType "vpn" }}
     dns: {{ .NetBirdDNS }}
-{{- end }}
+    {{- end }}
+    dnsZone: {{ .NetBirdDNSZone }}
   argoCD:
     deployKeys:
 {{- if .KubeaidIsSSH }}

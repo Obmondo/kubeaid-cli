@@ -14,6 +14,7 @@ type promptState struct {
 	ProviderCredentials bool `yaml:"providerCredentials"`
 	GitSSH              bool `yaml:"gitSSH"`
 	ObmondoSupport      bool `yaml:"obmondoSupport"`
+	NetBirdDNSZone      bool `yaml:"netbirdDNSZone"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {

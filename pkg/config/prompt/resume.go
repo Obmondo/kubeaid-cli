@@ -208,6 +208,7 @@ func applyGeneralConfigToPromptedConfig(general *config.GeneralConfig, cfg *Prom
 
 	if general.Cluster.NetBird != nil {
 		cfg.NetBirdDNS = firstNonEmpty(general.Cluster.NetBird.DNS, cfg.NetBirdDNS)
+		cfg.NetBirdDNSZone = firstNonEmpty(general.Cluster.NetBird.DNSZone, cfg.NetBirdDNSZone)
 	}
 
 	cfg.KubeaidConfigDeployKeyPath = firstNonEmpty(
@@ -382,6 +383,7 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		ProviderCredentials: !missingProviderPromptConfig(cfg),
 		GitSSH:              !missingGitSSH(cfg),
 		ObmondoSupport:      !missingObmondoSupportConfig(cfg),
+		NetBirdDNSZone:      cfg.NetBirdDNSZone != "",
 	}
 }
 
