@@ -4,10 +4,12 @@
 // Package klist reads and merges cluster registry YAML files from a local
 // klist clone. The layout is:
 //
-//	clusters/<customerid>/_customer.yaml   (optional, shared OIDC defaults)
+//	clusters/<customerid>/_customer.yaml   (optional, shared OIDC issuers)
 //	clusters/<customerid>/<clustername>.yaml (required, per-cluster config)
 //
-// The cluster file always wins on field conflict during a shallow merge.
+// A cluster lists every OIDC issuer its kube-apiserver trusts. Customer-level
+// issuers from _customer.yaml are prepended to each cluster's own issuer list;
+// the cluster file wins on every other (scalar) field.
 package klist
 
 import (
@@ -26,79 +28,128 @@ import (
 // "did you mean …" list of available clusters.
 var ErrClusterNotFound = errors.New("cluster file not found in klist registry")
 
-// OIDCConfig holds OIDC settings for a cluster. Fields may be populated from
-// _customer.yaml (defaults) or the cluster YAML (per-cluster overrides), with
-// the cluster YAML winning on conflict.
-type OIDCConfig struct {
-	// IssuerURL is the Keycloak realm URL used by kube-apiserver.
+// OIDCIssuer is one OpenID Connect issuer a cluster's kube-apiserver trusts.
+// A cluster lists every issuer a user may authenticate through; `login`
+// prompts the user to choose when there is more than one (typically the
+// customer's own Keycloak and Obmondo's central SRE Keycloak).
+type OIDCIssuer struct {
+	// Name labels the issuer in the interactive picker and selects it via
+	// `login --issuer <name>`. Required and unique when a cluster lists more
+	// than one issuer; optional for a single-issuer cluster.
+	Name string `yaml:"name"`
+	// IssuerURL is the Keycloak realm URL kube-apiserver validates JWTs against.
 	IssuerURL string `yaml:"issuerUrl"`
-	// ClientID is the Keycloak client ID for this specific cluster.
+	// ClientID is the OIDC client whose tokens kube-apiserver accepts (the
+	// token's `aud`). Per-issuer — the customer and Obmondo entries differ.
 	ClientID string `yaml:"clientId"`
 	// GroupsClaim is the JWT claim kube-apiserver reads for RBAC groups.
-	// Defaults to "groups" when absent in both customer and cluster YAML.
+	// Defaults to "groups" when omitted.
 	GroupsClaim string `yaml:"groupsClaim"`
 	// UsernameClaim is the JWT claim kube-apiserver maps to the user identity.
-	// Defaults to "email" when absent in both customer and cluster YAML.
+	// Defaults to "email" when omitted.
 	UsernameClaim string `yaml:"usernameClaim"`
 }
 
 // CustomerDefaults holds optional per-customer defaults from _customer.yaml.
+// Its OIDC issuers (if any) are shared across all of the customer's clusters
+// and are prepended to each cluster's own issuer list during merge.
 type CustomerDefaults struct {
-	Customer    string     `yaml:"customer"`
-	DisplayName string     `yaml:"displayName"`
-	OIDC        OIDCConfig `yaml:"oidc"`
+	Customer    string       `yaml:"customer"`
+	DisplayName string       `yaml:"displayName"`
+	OIDC        []OIDCIssuer `yaml:"oidc"`
 }
 
-// ClusterConfig holds the merged per-cluster configuration. Required fields
-// (Name, Server, CABundle, OIDC.IssuerURL, OIDC.ClientID) must be non-empty
-// after merging; Validate enforces this.
+// ClusterConfig holds the merged per-cluster configuration. After merging,
+// OIDC holds every issuer the cluster trusts (customer-level issuers first,
+// then the cluster's own); Validate enforces the required fields.
 type ClusterConfig struct {
-	Name          string     `yaml:"name"`
-	Server        string     `yaml:"server"`
-	CABundle      string     `yaml:"caBundle"`
-	OIDC          OIDCConfig `yaml:"oidc"`
-	AllowedGroups []string   `yaml:"allowedGroups"`
+	Name          string       `yaml:"name"`
+	Server        string       `yaml:"server"`
+	CABundle      string       `yaml:"caBundle"`
+	OIDC          []OIDCIssuer `yaml:"oidc"`
+	AllowedGroups []string     `yaml:"allowedGroups"`
 }
 
-// Validate returns an error listing every required field that is empty after
-// merging. The error message names the missing fields so the user knows
-// exactly what to add.
+// Validate returns an error listing every required field that is empty or
+// invalid after merging. The message names each problem so the user knows
+// exactly what to fix. It enforces the top-level fields, that at least one
+// OIDC issuer is present, that each issuer carries an issuerUrl and clientId,
+// and — when the cluster lists more than one issuer — that every issuer has a
+// unique name (the picker needs a stable label to select on).
 func (c *ClusterConfig) Validate() error {
-	var missing []string
+	var problems []string
 
 	if c.Name == "" {
-		missing = append(missing, "name")
+		problems = append(problems, "name")
 	}
 
 	if c.Server == "" {
-		missing = append(missing, "server")
+		problems = append(problems, "server")
 	}
 
 	if c.CABundle == "" {
-		missing = append(missing, "caBundle")
+		problems = append(problems, "caBundle")
 	}
 
-	if c.OIDC.IssuerURL == "" {
-		missing = append(missing, "oidc.issuerUrl")
+	if len(c.OIDC) == 0 {
+		problems = append(problems, "oidc (at least one issuer required)")
 	}
 
-	if c.OIDC.ClientID == "" {
-		missing = append(missing, "oidc.clientId")
-	}
+	problems = append(problems, validateIssuers(c.OIDC)...)
 
-	if len(missing) > 0 {
-		return fmt.Errorf("cluster config missing required fields: %v", missing)
+	if len(problems) > 0 {
+		return fmt.Errorf("cluster config missing/invalid fields: %v", problems)
 	}
 
 	return nil
 }
 
+// validateIssuers checks that each issuer has the required fields and — when a
+// cluster lists more than one — that names are present and unique, so `login`
+// can label and select issuers unambiguously. Returns the list of problems
+// (empty when every issuer is valid).
+func validateIssuers(issuers []OIDCIssuer) []string {
+	var problems []string
+
+	requireNames := len(issuers) > 1
+	seen := make(map[string]bool, len(issuers))
+
+	for i, issuer := range issuers {
+		if issuer.IssuerURL == "" {
+			problems = append(problems, fmt.Sprintf("oidc[%d].issuerUrl", i))
+		}
+
+		if issuer.ClientID == "" {
+			problems = append(problems, fmt.Sprintf("oidc[%d].clientId", i))
+		}
+
+		if !requireNames {
+			continue
+		}
+
+		if issuer.Name == "" {
+			problems = append(problems, fmt.Sprintf("oidc[%d].name (required when a cluster has multiple issuers)", i))
+
+			continue
+		}
+
+		if seen[issuer.Name] {
+			problems = append(problems, fmt.Sprintf("oidc[%d].name %q (duplicate)", i, issuer.Name))
+		}
+
+		seen[issuer.Name] = true
+	}
+
+	return problems
+}
+
 // Load reads the optional _customer.yaml and the required
 // <clustername>.yaml from registryPath/clusters/<customerid>/, then returns a
-// shallow-merged ClusterConfig with per-cluster values winning on conflict.
+// merged ClusterConfig: customer-level OIDC issuers are prepended to the
+// cluster's own, and the cluster file wins on every scalar field.
 //
-// GroupsClaim defaults to "groups" and UsernameClaim to "email" when both
-// customer and cluster YAMLs omit them.
+// Each issuer's GroupsClaim defaults to "groups" and UsernameClaim to "email"
+// when omitted.
 func Load(registryPath, clusterName, customerID string) (*ClusterConfig, error) {
 	clusterDir := filepath.Join(registryPath, "clusters", customerID)
 
@@ -209,32 +260,31 @@ func clusterNameOrFallback(path, fallback string) string {
 	return probe.Name
 }
 
-// merge applies customer defaults as the base and overlays non-zero cluster
-// fields on top. Cluster values always win.
+// merge builds the effective cluster config: customer-level issuers are
+// prepended to the cluster's own (so a complete issuer shared by all of a
+// customer's clusters can live once in _customer.yaml), and each issuer's
+// optional claim fields fall back to the built-in defaults. The cluster file
+// wins on every scalar field — those are copied verbatim from cluster.
 func merge(customer CustomerDefaults, cluster ClusterConfig) *ClusterConfig {
 	out := cluster
 
-	// OIDC: fill from customer when cluster leaves the field empty.
-	if out.OIDC.IssuerURL == "" {
-		out.OIDC.IssuerURL = customer.OIDC.IssuerURL
+	// Customer issuers first, then the cluster's own. A fresh slice avoids
+	// mutating either input's backing array.
+	issuers := make([]OIDCIssuer, 0, len(customer.OIDC)+len(cluster.OIDC))
+	issuers = append(issuers, customer.OIDC...)
+	issuers = append(issuers, cluster.OIDC...)
+
+	for i := range issuers {
+		if issuers[i].GroupsClaim == "" {
+			issuers[i].GroupsClaim = "groups"
+		}
+
+		if issuers[i].UsernameClaim == "" {
+			issuers[i].UsernameClaim = "email"
+		}
 	}
 
-	if out.OIDC.GroupsClaim == "" {
-		out.OIDC.GroupsClaim = customer.OIDC.GroupsClaim
-	}
-
-	if out.OIDC.UsernameClaim == "" {
-		out.OIDC.UsernameClaim = customer.OIDC.UsernameClaim
-	}
-
-	// Apply built-in defaults for optional OIDC claims.
-	if out.OIDC.GroupsClaim == "" {
-		out.OIDC.GroupsClaim = "groups"
-	}
-
-	if out.OIDC.UsernameClaim == "" {
-		out.OIDC.UsernameClaim = "email"
-	}
+	out.OIDC = issuers
 
 	return &out
 }

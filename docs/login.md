@@ -54,6 +54,7 @@ prompts — it never silently auto-authenticates against a sole entry.
 | `--kubeconfig` | `KUBECONFIG` | `~/.kube/config` | kubeconfig to merge into |
 | `--cert` | `KUBEAID_CERT` | *(unset)* | puppet cert PEM for non-interactive mode |
 | `--no-authenticate` | — | `false` | write the kubeconfig, skip the kubelogin OIDC step |
+| `--issuer` | — | *(unset)* | for a cluster with multiple issuers, pick one by `name` without the prompt; in `--cert`/CI mode with >1 issuer and no flag, the first-listed issuer is used |
 
 ## The klist registry
 
@@ -85,11 +86,15 @@ caBundle: |
   -----BEGIN CERTIFICATE-----
   …the cluster CA, PEM…
   -----END CERTIFICATE-----
-oidc:
-  issuerUrl: https://keycloak.vpn.acme.com/realms/acme
-  clientId: kubernetes-staging
-  # groupsClaim:   defaults to "groups"
-  # usernameClaim: defaults to "email"
+oidc:                             # a list — one entry per issuer the apiserver trusts
+  - name: customer                # picker label; required + unique when >1, optional for a lone issuer
+    issuerUrl: https://keycloak.vpn.acme.com/realms/acme
+    clientId: kubernetes-staging
+    # groupsClaim:   defaults to "groups"
+    # usernameClaim: defaults to "email"
+  - name: sre                     # a second issuer the same cluster also trusts
+    issuerUrl: https://keycloak.acme.com/auth/realms/Ops
+    clientId: staging
 ```
 
 Semantics worth knowing:
@@ -97,11 +102,17 @@ Semantics worth knowing:
 - **Identity is the in-YAML `name:` field**, falling back to the
   filename stem. This lets a cluster be renamed to track its NetBird
   peer FQDN without renaming files.
-- `_customer.yaml` supplies shared `oidc` defaults; the cluster file
-  **wins on every conflict** (shallow merge).
-- After merging, `name`, `server`, `caBundle`, `oidc.issuerUrl` and
-  `oidc.clientId` must be non-empty — validation names exactly what's
-  missing.
+- **`oidc` is a list of issuers.** `_customer.yaml` issuers (if any) are
+  **prepended** to the cluster's own — a shared issuer lives once at the
+  customer level. There is no per-field merge of a single issuer anymore;
+  each entry is self-contained.
+- **Choosing an issuer.** With one issuer, login uses it silently. With
+  more than one, login prompts you to pick (interactive); `--issuer <name>`
+  selects without prompting; `--cert`/CI uses the first-listed issuer.
+- After merging, the cluster needs `name`, `server`, `caBundle`, and at
+  least one issuer; each issuer needs `issuerUrl` + `clientId`, plus a
+  unique `name` when there is more than one — validation names exactly
+  what's missing.
 - A typo'd `login bogus.acme` errors with the full list of clusters
   that *do* exist in the registry.
 
@@ -128,10 +139,12 @@ users:
           - --oidc-extra-scope=groups
 ```
 
-The same argv drives the immediate cache-warming run, so the two paths
-cannot drift. Tokens land in kubelogin's cache
-(`~/.kube/cache/oidc-login/`); subsequent `kubectl` calls reuse them
-until expiry. The file is written atomically with mode `0600`.
+The exec args carry the **issuer you selected**; re-running login and
+choosing a different issuer overwrites the context (kubelogin caches tokens
+per issuer+client, so both still coexist on disk). The same argv drives the
+immediate cache-warming run, so the two paths cannot drift. Tokens land in
+kubelogin's cache (`~/.kube/cache/oidc-login/`); subsequent `kubectl` calls
+reuse them until expiry. The file is written atomically with mode `0600`.
 
 One caveat: the kubeconfig is re-marshalled through a minimal model of
 the four standard sections — exotic top-level fields some tools add
@@ -166,8 +179,8 @@ If the browser step fails, the kubeconfig is already on disk — any
 | `oauth2: invalid_client` | the `kubernetes-<cluster>` client doesn't exist in the realm yet — create it ([guide](./workload-cluster-keycloak.md)) |
 | `invalid_scope: … groups …` | the realm/client is missing the `groups` client scope |
 | `oidc: email not verified` (as a 401 from kubectl) | the user's email isn't marked verified in Keycloak |
-| authenticated but every kubectl call is `403 Forbidden` | no RBAC binding for your group — bind it (`--group=<keycloak-group>`) |
-| `Unauthorized` from kubectl with a fresh token | kube-apiserver isn't trusting the issuer — check the cluster's `apiServer.oidc` config |
+| authenticated but every kubectl call is `403 Forbidden` | authN works — you just lack RBAC. Bind your user (`kind: User`, name = your `email` claim) or a token group to a (Cluster)Role |
+| `Unauthorized` from kubectl with a *valid* token | the apiserver has no `jwt:` entry matching this token. Decode the token (`iss`, `aud`) and compare to the cluster's AuthenticationConfiguration: an entry's `issuer.url` must equal `iss` **exactly** (watch the `/auth` base path and realm casing) and its `audiences` must include `aud`. On a multi-CP control plane, fix the file on **every** CP — intermittent 401 = one CP still wrong |
 | stale/confusing token state | `rm -rf ~/.kube/cache/oidc-login/` and re-run login |
 | `netbird daemon is "Disconnected"` | `netbird up` first (interactive mode only) |
 

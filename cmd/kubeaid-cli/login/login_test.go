@@ -137,14 +137,15 @@ func TestUpsertCluster_IntoEmptyKubeconfig(t *testing.T) {
 		Name:     "demo01",
 		Server:   "https://k8s-demo01.netbird:6443",
 		CABundle: "FAKE-CA-CERT",
-		OIDC: klist.OIDCConfig{
+		OIDC: []klist.OIDCIssuer{{
 			IssuerURL: "https://keycloak.example.com/realms/clusters",
 			ClientID:  "kubernetes-demo01",
-		},
+		}},
 	}
+	issuer := cfg.OIDC[0]
 
 	kc := &kubeconfig{APIVersion: "v1", Kind: "Config"}
-	upsertCluster(kc, cfg, "", "demo01", "samplec5t9")
+	upsertCluster(kc, cfg, issuer, "", "demo01", "samplec5t9")
 
 	contextName := "demo01.samplec5t9"
 
@@ -172,7 +173,7 @@ func TestUpsertCluster_IntoEmptyKubeconfig(t *testing.T) {
 	exec := kc.Users[0].User.Exec
 	assert.Equal(t, "client.authentication.k8s.io/v1beta1", exec.APIVersion)
 	assert.Equal(t, "kubelogin", exec.Command)
-	assert.Equal(t, kubeloginArgs(cfg), exec.Args)
+	assert.Equal(t, kubeloginArgs(issuer), exec.Args)
 
 	// Round-trip through YAML to verify no client cert / key fields slip in.
 	out, err := yaml.Marshal(kc)
@@ -205,10 +206,10 @@ func TestUpsertCluster_PreservesOtherEntries(t *testing.T) {
 	cfg := &klist.ClusterConfig{
 		Server:   "https://k8s-staging.netbird:6443",
 		CABundle: "CA",
-		OIDC:     klist.OIDCConfig{IssuerURL: "https://kc.example/realms", ClientID: "k8s"},
+		OIDC:     []klist.OIDCIssuer{{IssuerURL: "https://kc.example/realms", ClientID: "k8s"}},
 	}
 
-	upsertCluster(kc, cfg, "", "staging", "acme")
+	upsertCluster(kc, cfg, cfg.OIDC[0], "", "staging", "acme")
 
 	// Existing entry survives.
 	require.Len(t, kc.Clusters, 2)
@@ -232,23 +233,23 @@ func TestUpsertCluster_ReplacesExistingSameName(t *testing.T) {
 	first := &klist.ClusterConfig{
 		Server:   "https://old.example:6443",
 		CABundle: "OLD-CA",
-		OIDC:     klist.OIDCConfig{IssuerURL: "https://old.example/realms", ClientID: "old"},
+		OIDC:     []klist.OIDCIssuer{{IssuerURL: "https://old.example/realms", ClientID: "old"}},
 	}
-	upsertCluster(kc, first, "", "staging", "acme")
+	upsertCluster(kc, first, first.OIDC[0], "", "staging", "acme")
 	require.Len(t, kc.Clusters, 1)
 
 	second := &klist.ClusterConfig{
 		Server:   "https://new.example:6443",
 		CABundle: "NEW-CA",
-		OIDC:     klist.OIDCConfig{IssuerURL: "https://new.example/realms", ClientID: "new"},
+		OIDC:     []klist.OIDCIssuer{{IssuerURL: "https://new.example/realms", ClientID: "new"}},
 	}
-	upsertCluster(kc, second, "", "staging", "acme")
+	upsertCluster(kc, second, second.OIDC[0], "", "staging", "acme")
 
 	require.Len(t, kc.Clusters, 1)
 	require.Len(t, kc.Contexts, 1)
 	require.Len(t, kc.Users, 1)
 	assert.Equal(t, "https://new.example:6443", kc.Clusters[0].Cluster.Server)
-	assert.Equal(t, kubeloginArgs(second), kc.Users[0].User.Exec.Args)
+	assert.Equal(t, kubeloginArgs(second.OIDC[0]), kc.Users[0].User.Exec.Args)
 }
 
 func TestUpsertCluster_AppliesContextPrefix(t *testing.T) {
@@ -258,10 +259,10 @@ func TestUpsertCluster_AppliesContextPrefix(t *testing.T) {
 	cfg := &klist.ClusterConfig{
 		Server:   "https://k8s-staging.netbird:6443",
 		CABundle: "CA",
-		OIDC:     klist.OIDCConfig{IssuerURL: "https://kc.example/realms", ClientID: "k8s"},
+		OIDC:     []klist.OIDCIssuer{{IssuerURL: "https://kc.example/realms", ClientID: "k8s"}},
 	}
 
-	upsertCluster(kc, cfg, "kubeaid-", "staging", "acme")
+	upsertCluster(kc, cfg, cfg.OIDC[0], "kubeaid-", "staging", "acme")
 
 	const want = "kubeaid-staging.acme"
 
@@ -394,11 +395,9 @@ func TestWriteKubeconfig(t *testing.T) {
 func TestKubeloginArgs(t *testing.T) {
 	t.Parallel()
 
-	cfg := &klist.ClusterConfig{
-		OIDC: klist.OIDCConfig{
-			IssuerURL: "https://keycloak.example.com/realms/clusters",
-			ClientID:  "kubernetes-demo01",
-		},
+	issuer := klist.OIDCIssuer{
+		IssuerURL: "https://keycloak.example.com/realms/clusters",
+		ClientID:  "kubernetes-demo01",
 	}
 
 	want := []string{
@@ -409,7 +408,70 @@ func TestKubeloginArgs(t *testing.T) {
 		"--oidc-extra-scope=groups",
 	}
 
-	assert.Equal(t, want, kubeloginArgs(cfg))
+	assert.Equal(t, want, kubeloginArgs(issuer))
+}
+
+// --------------------------------------------------------------------------
+// selectIssuer
+// --------------------------------------------------------------------------
+
+func TestSelectIssuer(t *testing.T) {
+	// Subtests mutate the package-level promptIssuer stub, so they run
+	// sequentially (no t.Parallel).
+	customer := klist.OIDCIssuer{Name: "customer", IssuerURL: "https://kc.acme.com/realms/acme", ClientID: "kubernetes-prod"}
+	obmondo := klist.OIDCIssuer{Name: "obmondo-sre", IssuerURL: "https://kc.obmondo-host.example/realms/obmondo", ClientID: "prod"}
+
+	stubPrompt := func(t *testing.T, fn func([]klist.OIDCIssuer) (klist.OIDCIssuer, error)) {
+		t.Helper()
+		old := promptIssuer
+		promptIssuer = fn
+		t.Cleanup(func() { promptIssuer = old })
+	}
+
+	t.Run("single issuer returns it without prompting", func(t *testing.T) {
+		stubPrompt(t, func([]klist.OIDCIssuer) (klist.OIDCIssuer, error) {
+			t.Fatal("promptIssuer must not be called for a single issuer")
+			return klist.OIDCIssuer{}, nil
+		})
+
+		got, err := selectIssuer([]klist.OIDCIssuer{customer}, "", true)
+		require.NoError(t, err)
+		assert.Equal(t, customer, got)
+	})
+
+	t.Run("--issuer selects by name", func(t *testing.T) {
+		got, err := selectIssuer([]klist.OIDCIssuer{customer, obmondo}, "obmondo-sre", true)
+		require.NoError(t, err)
+		assert.Equal(t, obmondo, got)
+	})
+
+	t.Run("--issuer with unknown name errors and lists valid names", func(t *testing.T) {
+		_, err := selectIssuer([]klist.OIDCIssuer{customer, obmondo}, "nope", true)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "customer")
+		assert.Contains(t, err.Error(), "obmondo-sre")
+	})
+
+	t.Run("multiple issuers, non-interactive, defaults to first", func(t *testing.T) {
+		stubPrompt(t, func([]klist.OIDCIssuer) (klist.OIDCIssuer, error) {
+			t.Fatal("promptIssuer must not be called in non-interactive mode")
+			return klist.OIDCIssuer{}, nil
+		})
+
+		got, err := selectIssuer([]klist.OIDCIssuer{customer, obmondo}, "", false)
+		require.NoError(t, err)
+		assert.Equal(t, customer, got)
+	})
+
+	t.Run("multiple issuers, interactive, prompts", func(t *testing.T) {
+		stubPrompt(t, func(issuers []klist.OIDCIssuer) (klist.OIDCIssuer, error) {
+			return issuers[1], nil // simulate the user choosing the second
+		})
+
+		got, err := selectIssuer([]klist.OIDCIssuer{customer, obmondo}, "", true)
+		require.NoError(t, err)
+		assert.Equal(t, obmondo, got)
+	})
 }
 
 // --------------------------------------------------------------------------

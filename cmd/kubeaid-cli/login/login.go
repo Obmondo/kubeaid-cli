@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -41,6 +42,7 @@ const (
 	flagRegistry       = "registry"
 	flagKubeconfig     = "kubeconfig"
 	flagNoAuthenticate = "no-authenticate"
+	flagIssuer         = "issuer"
 
 	envCert       = "KUBEAID_CERT"
 	envRegistry   = "KUBEAID_REGISTRY"
@@ -62,6 +64,7 @@ var flags struct {
 	registry       string
 	kubeconfig     string
 	noAuthenticate bool
+	issuer         string
 }
 
 // LoginCmd is the cobra command for `kubeaid-cli login`.
@@ -114,6 +117,11 @@ func init() {
 		fmt.Sprintf("kubeconfig output path (env: %s, default: %s)", envKubeconfig, defaultKubeconfig))
 	LoginCmd.Flags().BoolVar(&flags.noAuthenticate, flagNoAuthenticate, false,
 		"skip the kubelogin OIDC step and only write the kubeconfig")
+	LoginCmd.Flags().StringVar(&flags.issuer, flagIssuer, "",
+		"name of the OIDC issuer to authenticate through, for clusters that "+
+			"trust more than one (e.g. \"customer\" or \"obmondo-sre\"). When "+
+			"omitted, login prompts interactively, or uses the first listed "+
+			"issuer in non-interactive --cert mode")
 }
 
 func runLogin(cmd *cobra.Command, args []string) error {
@@ -155,6 +163,19 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Choose which issuer to authenticate through (a cluster may trust more
+	// than one). Interactive in every mode except --cert, where we can't
+	// prompt and fall back to the first issuer.
+	issuer, err := selectIssuer(cfg.OIDC, flags.issuer, certPath == "")
+	if err != nil {
+		return err
+	}
+
+	slog.InfoContext(ctx, "selected OIDC issuer",
+		slog.String("name", issuer.Name),
+		slog.String("issuerURL", issuer.IssuerURL),
+	)
+
 	existing, err := loadKubeconfig(kubeconfigPath)
 	if err != nil {
 		return fmt.Errorf("reading existing kubeconfig at %s: %w", kubeconfigPath, err)
@@ -165,7 +186,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	upsertCluster(existing, cfg, contextPrefix, clusterName, customerID)
+	upsertCluster(existing, cfg, issuer, contextPrefix, clusterName, customerID)
 
 	kubeconfigBytes, err := yaml.Marshal(existing)
 	if err != nil {
@@ -192,7 +213,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		slog.String("path", kubeloginPath),
 	)
 
-	if err := runKubelogin(ctx, kubeloginPath, kubeloginArgs(cfg)); err != nil {
+	if err := runKubelogin(ctx, kubeloginPath, kubeloginArgs(issuer)); err != nil {
 		// kubelogin printed its verbose error to stderr already (we
 		// teed it through). The slog ERROR line below this prose will
 		// be the categorised message classifyKubeloginErr produced.
@@ -211,18 +232,110 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// kubeloginArgs returns the argv that drives kubelogin. The same list is
-// embedded in the kubeconfig exec block (so kubectl invokes kubelogin with
-// the same flags later) and used by runLogin to warm the token cache up
-// front, so the two paths cannot drift.
-func kubeloginArgs(cfg *klist.ClusterConfig) []string {
+// kubeloginArgs returns the argv that drives kubelogin for the chosen issuer.
+// The same list is embedded in the kubeconfig exec block (so kubectl invokes
+// kubelogin with the same flags later) and used by runLogin to warm the token
+// cache up front, so the two paths cannot drift.
+func kubeloginArgs(issuer klist.OIDCIssuer) []string {
 	return []string{
 		"get-token",
-		"--oidc-issuer-url=" + cfg.OIDC.IssuerURL,
-		"--oidc-client-id=" + cfg.OIDC.ClientID,
+		"--oidc-issuer-url=" + issuer.IssuerURL,
+		"--oidc-client-id=" + issuer.ClientID,
 		"--oidc-extra-scope=email",
 		"--oidc-extra-scope=groups",
 	}
+}
+
+// selectIssuer decides which OIDC issuer to authenticate through. A cluster
+// may trust more than one (e.g. the customer's Keycloak and Obmondo's central
+// SRE Keycloak); login bakes exactly one into the kubeconfig.
+//
+//   - an explicit --issuer name wins (error, listing valid names, on miss);
+//   - a single-issuer cluster uses that issuer without prompting;
+//   - otherwise interactive callers are prompted, and non-interactive ones
+//     (--cert / CI) fall back to the first issuer the cluster lists.
+func selectIssuer(issuers []klist.OIDCIssuer, issuerName string, interactive bool) (klist.OIDCIssuer, error) {
+	if len(issuers) == 0 {
+		// Validate already guarantees at least one issuer; guard anyway so a
+		// caller that skips Validate gets a clear error, not an index panic.
+		return klist.OIDCIssuer{}, errors.New("cluster has no OIDC issuers configured")
+	}
+
+	if issuerName != "" {
+		for _, issuer := range issuers {
+			if issuer.Name == issuerName {
+				return issuer, nil
+			}
+		}
+
+		return klist.OIDCIssuer{}, fmt.Errorf(
+			"--%s %q not found; this cluster's issuers are: %s",
+			flagIssuer, issuerName, strings.Join(issuerNames(issuers), ", "))
+	}
+
+	if len(issuers) == 1 {
+		return issuers[0], nil
+	}
+
+	if !interactive {
+		// Non-interactive (--cert / CI): deterministic. Pass --issuer to pick
+		// another; the cluster file should list the primary issuer first.
+		return issuers[0], nil
+	}
+
+	return promptIssuer(issuers)
+}
+
+// promptIssuer shows the interactive issuer picker. Defined as a variable so
+// tests can stub it — the real implementation drives a huh.Select that would
+// otherwise block on a TTY.
+var promptIssuer = func(issuers []klist.OIDCIssuer) (klist.OIDCIssuer, error) {
+	options := make([]huh.Option[int], 0, len(issuers))
+	for i, issuer := range issuers {
+		label := fmt.Sprintf("%s (%s)", issuer.Name, issuerHost(issuer.IssuerURL))
+		options = append(options, huh.NewOption(label, i))
+	}
+
+	var picked int
+	if err := huh.NewSelect[int]().
+		Title("Pick an OIDC issuer").
+		Description("This cluster trusts more than one identity provider").
+		Options(options...).
+		Value(&picked).
+		Run(); err != nil {
+		return klist.OIDCIssuer{}, fmt.Errorf("issuer picker: %w", err)
+	}
+
+	return issuers[picked], nil
+}
+
+// issuerNames lists the issuers' names for an error/usage message, labelling an
+// unnamed issuer "(unnamed)". Validate requires names when there is more than
+// one issuer, so this is mostly for completeness.
+func issuerNames(issuers []klist.OIDCIssuer) []string {
+	names := make([]string, 0, len(issuers))
+	for _, issuer := range issuers {
+		if issuer.Name == "" {
+			names = append(names, "(unnamed)")
+
+			continue
+		}
+
+		names = append(names, issuer.Name)
+	}
+
+	return names
+}
+
+// issuerHost returns the host of an issuer URL for a compact picker label,
+// falling back to the full URL when it can't be parsed.
+func issuerHost(issuerURL string) string {
+	u, err := url.Parse(issuerURL)
+	if err != nil || u.Host == "" {
+		return issuerURL
+	}
+
+	return u.Host
 }
 
 // lookupKubelogin verifies that the kubelogin binary is available on PATH.
@@ -737,7 +850,7 @@ func loadContextPrefix(registryPath string) (string, error) {
 	return g.ContextPrefix, nil
 }
 
-func upsertCluster(kc *kubeconfig, cfg *klist.ClusterConfig, contextPrefix, clusterName, customerID string) {
+func upsertCluster(kc *kubeconfig, cfg *klist.ClusterConfig, issuer klist.OIDCIssuer, contextPrefix, clusterName, customerID string) {
 	contextName := contextPrefix + clusterName + "." + customerID
 	caData := base64.StdEncoding.EncodeToString([]byte(cfg.CABundle))
 
@@ -763,7 +876,7 @@ func upsertCluster(kc *kubeconfig, cfg *klist.ClusterConfig, contextPrefix, clus
 			Exec: execConfig{
 				APIVersion: "client.authentication.k8s.io/v1beta1",
 				Command:    kubeloginBinary,
-				Args:       kubeloginArgs(cfg),
+				Args:       kubeloginArgs(issuer),
 			},
 		},
 	})
