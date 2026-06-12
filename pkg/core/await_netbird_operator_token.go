@@ -42,18 +42,23 @@ const (
 // SSH-jumping through the NAT gateway. Better to discover-and-fix
 // before lockdown.
 //
-// No-op when the cluster doesn't host the netbird-operator (non-VPN
-// clusters, or workload clusters without a managed Keycloak parent
-// VPN).
+// No-op when the cluster doesn't host the netbird-operator at all
+// (workload clusters without a keycloak block). Runs on BOTH cluster
+// shapes that deploy the operator — VPN clusters (Mgmt is local) and
+// workload clusters (Mgmt is the parent VPN's) — the kbm-obmondo-com
+// bootstrap proved the workload shape hits the exact same
+// CreateContainerConfigError + webhook outage when the Secret is
+// missing.
+//
+// When secrets.yaml carries netbird.apiKey, the sealed
+// netbird-mgmt-api-key Secret lands via the secrets app sync and the
+// existence check below passes without pausing — this await is the
+// interactive fallback, not the primary path.
 func awaitNetBirdOperatorToken(
 	ctx context.Context,
 	clusterClient client.Client,
 ) error {
-	if !vpnClusterEnabled() || !netBirdOperatorEnabled() {
-		return nil
-	}
-	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.NetBird == nil {
+	if !netBirdOperatorEnabled() {
 		return nil
 	}
 
@@ -70,9 +75,29 @@ func awaitNetBirdOperatorToken(
 		return nil
 	}
 
-	printNetBirdOperatorInstructions(cluster.NetBird.DNS)
+	printNetBirdOperatorInstructions(netbirdDashboardHost())
 
 	return waitForNetBirdOperatorSecret(ctx, clusterClient)
+}
+
+// netbirdDashboardHost returns the NetBird dashboard hostname for the
+// instructions panel: cluster.netbird.dns on VPN clusters, the
+// netbird.<base> Keycloak-DNS convention on workload clusters, and a
+// placeholder when neither derives.
+func netbirdDashboardHost() string {
+	cluster := config.ParsedGeneralConfig.Cluster
+
+	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
+		return cluster.NetBird.DNS
+	}
+
+	if cluster.Keycloak != nil {
+		if host := expectedNetBirdHost(cluster.Keycloak.DNS); host != "" {
+			return host
+		}
+	}
+
+	return "<your-netbird-mgmt-dns>"
 }
 
 // netBirdOperatorSecretExists returns true when the Secret is present
@@ -148,11 +173,9 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 
 	lines := []string{
 		"",
-		"  The netbird-operator runs on this VPN cluster and needs a NetBird",
-		"  API token (PAT) to start. Without it the operator pod stays in",
-		"  CreateContainerConfigError, and its admission webhook blocks every",
-		"  Pod create cluster-wide. Easier to fix now — before kubeaid-cli",
-		"  disables the control-plane LB public interface.",
+		"  The netbird-operator on this cluster needs a NetBird API token",
+		"  (service-user PAT) to start. Without it the operator pod stays in",
+		"  CreateContainerConfigError and can't serve its admission webhook.",
 		"",
 		"  Steps in the NetBird Dashboard:",
 		"",
@@ -165,7 +188,13 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 		"          Expiration:  pick the longest available (rotation note below)",
 		"          Copy the token (shown only once).",
 		"",
-		"  Then on this machine:",
+		"  Then EITHER (preferred — persists in git, survives re-creation):",
+		"",
+		"    Add it to secrets.yaml and re-run kubeaid-cli:",
+		"      netbird:",
+		"        apiKey: <paste-token-here>",
+		"",
+		"  OR create the Secret directly (one-off, this cluster only):",
 		"",
 		"    kubectl -n " + netBirdOperatorSecretNamespace +
 			" create secret generic " + netBirdOperatorSecretName + " \\",

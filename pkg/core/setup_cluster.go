@@ -240,6 +240,18 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 			slog.String("namespace", kubernetes.GetCapiClusterNamespace()))
 	}
 
+	// Pre-create the netbird namespace when the netbird-operator is
+	// rendered: the netbird-mgmt-api-key SealedSecret lands there via
+	// the secrets app, which syncs BEFORE the netbird-operator app
+	// would create its own namespace — without this, the secrets sync
+	// fails on the missing namespace. Same rationale as capi-cluster
+	// above.
+	if netBirdOperatorEnabled() {
+		err := kubernetes.CreateNamespace(ctx, constants.NamespaceNetBird, args.ClusterClient)
+		assert.AssertErrNil(ctx, err, "Failed creating namespace",
+			slog.String("namespace", constants.NamespaceNetBird))
+	}
+
 	// Sync the Root, Secrets and CertManager ArgoCD Apps one by one.
 	//
 	// Order matters: root is the app-of-apps and just creates the child

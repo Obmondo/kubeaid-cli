@@ -243,16 +243,27 @@ var NetBirdNonSecretTemplateNames = []string{
 
 // NetBird Kubernetes Operator. Rendered on workload clusters that
 // opted into Keycloak login (cluster.type=workload AND
-// cluster.keycloak set) so the cluster has the operator + CRDs
-// available for operator-applied NBSetupKey / NBPolicy resources.
-// Values overlay is intentionally empty — wiring (managementURL, API
-// key) is the operator's responsibility post-bootstrap. Sync-order
-// 10 — early, so the CRDs land before any operator-applied NB*
-// resource.
+// cluster.keycloak set) and on VPN clusters, so the cluster has the
+// operator + CRDs available for operator-applied NetworkRouter /
+// NetworkResource / NBPolicy resources. The values overlay renders
+// managementURL (cluster.netbird.dns on VPN clusters; the
+// netbird.<base> Keycloak-DNS convention on workload clusters); the
+// Mgmt API token comes from the paired SealedSecret below.
+// Sync-order 10 — early, so the CRDs land before any
+// operator-applied resource.
 var NetBirdOperatorTemplateNames = []string{
 	"argocd-apps/templates/netbird-operator.yaml.tmpl",
 	"argocd-apps/values-netbird-operator.yaml.tmpl",
 }
+
+// NetBirdOperatorAPIKeySecretTemplateName seals secrets.yaml's
+// netbird.apiKey (a Mgmt service-user access token) into the
+// netbird/netbird-mgmt-api-key Secret the operator Deployment's
+// NB_API_KEY env reads (the chart's default secret ref). Only
+// registered when the operator is rendered AND the key is present —
+// when absent, bootstrap pauses at awaitNetBirdOperatorToken with
+// create-it-manually instructions instead.
+const NetBirdOperatorAPIKeySecretTemplateName = "sealed-secrets/netbird/netbird-mgmt-api-key.yaml.tmpl"
 
 // Managed-Keycloak template names. Included only when
 // cluster.type=vpn AND cluster.keycloak.mode=managed — kubeaid-cli
