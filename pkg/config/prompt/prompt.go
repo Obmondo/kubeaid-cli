@@ -75,6 +75,11 @@ type PromptedConfig struct {
 	NetBirdDNS string
 	ACMEEmail  string
 
+	// NetBirdDNSZone is the mesh DNS domain (NetBird --dns-domain), collected
+	// for both cluster types (vpn host + workload joiner). Defaults to
+	// "<cluster>.local"; written to cluster.netbird.dnsZone.
+	NetBirdDNSZone string
+
 	// NetBirdBackendClientSecret is collected only when KeycloakMode
 	// is "external" — kubeaid-cli has no way to mint or look up the
 	// netbird-backend client secret in the operator's external
@@ -438,6 +443,10 @@ func (s *promptSession) runPromptSteps() error {
 		return err
 	}
 
+	if err := s.collectNetBirdDNSZoneIfNeeded(); err != nil {
+		return err
+	}
+
 	prompter := prompterForProvider(s.cfg.CloudProvider)
 	if err := s.collectProviderCredentialsIfNeeded(prompter); err != nil {
 		return err
@@ -471,6 +480,27 @@ func (s *promptSession) collectClusterAuthIfNeeded() error {
 		return s.collectVPNConfigIfNeeded()
 	}
 	return s.collectWorkloadKeycloakIfNeeded()
+}
+
+// collectNetBirdDNSZoneIfNeeded asks for the mesh DNS zone (NetBird
+// --dns-domain) for every cluster type — vpn host and workload joiner alike —
+// since the apiserver cert gets a kubernetes.<zone> SAN from it. Defaults to
+// "<cluster>.local", pre-filled so the user can accept or override.
+func (s *promptSession) collectNetBirdDNSZoneIfNeeded() error {
+	if s.state.NetBirdDNSZone && s.cfg.NetBirdDNSZone != "" {
+		return nil
+	}
+
+	if s.cfg.NetBirdDNSZone == "" {
+		s.cfg.NetBirdDNSZone = s.cfg.ClusterName + ".local"
+	}
+
+	if err := runNetBirdDNSZoneForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting NetBird mesh DNS zone: %w", err)
+	}
+	s.state.NetBirdDNSZone = true
+
+	return nil
 }
 
 func (s *promptSession) collectVPNConfigIfNeeded() error {
@@ -774,6 +804,21 @@ func runVPNEndpointsForm(cfg *PromptedConfig) error {
 				Value(&cfg.ACMEEmail).
 				Validate(nonEmpty),
 		).Title("VPN — endpoints").Description("Step 2b/4"),
+	).Run()
+}
+
+// runNetBirdDNSZoneForm asks for the mesh DNS zone, shown for every cluster
+// type. cfg.NetBirdDNSZone is pre-filled with the "<cluster>.local" default so
+// the input shows it; the user accepts or overrides.
+func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("NetBird mesh DNS zone (e.g. " + cfg.ClusterName + ".local):").
+				Description("Mesh domain peers resolve under; the apiserver cert gets a kubernetes.<zone> SAN.").
+				Value(&cfg.NetBirdDNSZone).
+				Validate(nonEmpty),
+		).Title("NetBird — mesh DNS zone"),
 	).Run()
 }
 
