@@ -35,10 +35,13 @@ import (
 // write here. Mirrors the pattern used for keycloak-admin on managed
 // VPN clusters.
 //
-// No-op for non-Hetzner clusters. The HCloud API token is required
-// for any mode that talks to HCloud (hcloud, hybrid) — pure
-// bare-metal skips it entirely since ccm-hetzner is the only CCM
-// deployed and it reads Robot creds, not the hcloud key.
+// No-op for non-Hetzner clusters. The hcloud key is written in every
+// Hetzner mode, bare-metal included: the ccm-hetzner wrapper maps the
+// upstream chart's HCLOUD_TOKEN env onto cloud-credentials/hcloud
+// without optional:true, so a CCM pod scheduled against a secret
+// missing the key fails with CreateContainerConfigError. Must stay in
+// sync with the SealedSecret template at
+// sealed-secrets/kube-system/cloud-credentials.yaml.tmpl.
 func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Client) error {
 	hetznerSecrets := config.ParsedSecretsConfig.Hetzner
 	hetznerCfg := config.ParsedGeneralConfig.Cloud.Hetzner
@@ -48,15 +51,15 @@ func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Cli
 
 	stringData := map[string]string{}
 
-	if config.UsingHCloud() {
-		if hetznerSecrets.APIToken == "" {
-			return fmt.Errorf(
-				"secrets.yaml: hetzner.apiToken is empty — required for cloud.hetzner.mode=%q so the HCloud CCM can start",
-				hetznerCfg.Mode,
-			)
-		}
-		stringData["hcloud"] = hetznerSecrets.APIToken
+	// Parser validation enforces a non-empty apiToken for every Hetzner
+	// mode; this guard catches callers that skipped parsing.
+	if hetznerSecrets.APIToken == "" {
+		return fmt.Errorf(
+			"secrets.yaml: hetzner.apiToken is empty — required for cloud.hetzner.mode=%q so the CCM can start",
+			hetznerCfg.Mode,
+		)
 	}
+	stringData["hcloud"] = hetznerSecrets.APIToken
 
 	// HCloud Network name — required when the CCM is configured to
 	// manage LBs on a private network (values-ccm-hcloud.yaml.tmpl
