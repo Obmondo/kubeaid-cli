@@ -135,11 +135,16 @@ hetzner:
          extraVolumes, and files onto the KubeadmControlPlane. Without emitting
          this block the rendered AuthenticationConfiguration never reaches the
          apiserver and OIDC logins 401. The AWS branch emits the equivalent;
-         this is the Hetzner parity. */ -}}
+         this is the Hetzner parity.
+
+         Close this comment plainly — do NOT add a trailing
+         whitespace-trim marker. The trim would eat the newline after the
+         regions list and weld apiServer onto the last entry, rendering a
+         broken "- hel1apiServer:". */}}
     apiServer:
-      extraArgs: {{- .ClusterConfig.APIServer.ExtraArgs | toYaml | nindent 8 }}
-      extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYaml | nindent 8 }}
-      files: {{- .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
+      extraArgs: {{- .ClusterConfig.APIServer.ExtraArgs | toYAML | nindent 8 }}
+      extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYAML | nindent 8 }}
+      files: {{- .ClusterConfig.APIServer.Files | toYAML | nindent 8 }}
 
     {{- /* Bare-metal control-plane endpoint — sourced from
          cloud.hetzner.controlPlane.bareMetal.endpoint.host
