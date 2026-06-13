@@ -406,6 +406,7 @@ func TestKubeloginArgs(t *testing.T) {
 		"--oidc-client-id=kubernetes-demo01",
 		"--oidc-extra-scope=email",
 		"--oidc-extra-scope=groups",
+		"--oidc-extra-scope=offline_access",
 	}
 
 	assert.Equal(t, want, kubeloginArgs(issuer))
