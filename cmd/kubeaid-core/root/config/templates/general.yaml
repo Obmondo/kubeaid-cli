@@ -309,7 +309,9 @@ cloud:
         hcloudServersSubnetCIDR:
     # Hetzner bare-metal specific details.
     bareMetal:
-      wipeDisks: false
+      # wipeDisks secure-erases every disk before installimage on (re)provision,
+      # clearing stale Ceph/bluestore so a fresh bootstrap isn't blocked by a prior cluster.
+      wipeDisks: true
       installImage:
         imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
         vg0:
