@@ -33,6 +33,14 @@ the host first.
 upgrades reuse this path; `cluster_upgrade.go` just points `installImage`
 at a new image.
 
+> **⚠️ `wipeDisks` and OS upgrades — data loss.** Because OS upgrades reuse the
+> installimage path above, a re-image with `wipeDisks: true` secure-erases *every*
+> disk on each node — including the Ceph OSD partitions and the ZFS node-local pool.
+> So `wipeDisks` defaults to **false**. Set it `true` only for an initial install on
+> recycled disks (to clear stale Ceph/bluestore that would otherwise deadlock OSD
+> provisioning), and **set it back to `false` before any OS upgrade** — otherwise the
+> upgrade re-image wipes all data on every node.
+
 ## Storage (ZFS / Ceph)
 
 The ZFS and Ceph layout is not part of `installImage`. It happens on the
