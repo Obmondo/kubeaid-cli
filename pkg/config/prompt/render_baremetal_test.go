@@ -107,6 +107,13 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "vlanID: 4002")
 	assert.Contains(t, general, `subnetCIDRBlock: "10.0.1.0/24"`)
 
+	// Robot firewall hook block rendered with its defaults (enabled, empty
+	// allowSshFrom + allowPublic) so prompt-generated configs document the
+	// public-IP lockdown knobs; see docs/hetzner-bare-metal-network-surface.md.
+	assert.Contains(t, general, "firewall:")
+	assert.Contains(t, general, "allowSshFrom: []")
+	assert.Contains(t, general, "allowPublic: []")
+
 	// Bare-metal node group.
 	assert.Contains(t, general, "name: workers")
 	assert.Contains(t, general, `serverID: "1234570"`)

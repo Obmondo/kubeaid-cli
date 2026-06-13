@@ -6,6 +6,8 @@ package hetzner
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -90,15 +92,58 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	// Construct Hetzner Robot HTTP client, if we're using Hetzner Bare Metal.
 	if config.UsingHetznerBareMetal() {
 		robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
-
-		hetznerClient.robotClient = resty.New().
-			SetBaseURL(constants.HetznerRobotWebServiceAPI).
-			SetBasicAuth(robotWebServiceUserCredentials.User, robotWebServiceUserCredentials.Password).
-			SetHeader("Content-Type", "application/x-www-form-urlencoded").
-			SetHeader("Accept", "application/json")
+		hetznerClient.robotClient = newRobotRestyClient(
+			robotWebServiceUserCredentials.User,
+			robotWebServiceUserCredentials.Password,
+		)
 	}
 
 	return hetznerClient
+}
+
+// newRobotRestyClient builds the resty client for the Hetzner Robot web service:
+// basic auth plus the form-urlencoded request / JSON response headers the Robot
+// API expects.
+func newRobotRestyClient(robotUser, robotPassword string) *resty.Client {
+	// Reaching the Robot web service is flaky from some networks: its IPv6
+	// endpoint frequently times out (Go's dual-stack dialer picks it and stalls),
+	// and even IPv4 connects intermittently drop. So pin to IPv4 (robot-ws always
+	// has an A record), cap the connect so a stuck dial fails fast, and retry
+	// transient failures with backoff. 4xx (incl. 401) are NOT retried — auth will
+	// not fix itself, and retrying failed auth can trip Hetzner's lockout.
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = func(ctx context.Context, _, address string) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).
+			DialContext(ctx, "tcp4", address)
+	}
+
+	return resty.New().
+		SetBaseURL(constants.HetznerRobotWebServiceAPI).
+		SetBasicAuth(robotUser, robotPassword).
+		SetHeader("Content-Type", "application/x-www-form-urlencoded").
+		SetHeader("Accept", "application/json").
+		SetTransport(transport).
+		SetTimeout(20 * time.Second).
+		SetRetryCount(4).
+		SetRetryWaitTime(2 * time.Second).
+		SetRetryMaxWaitTime(15 * time.Second).
+		AddRetryCondition(func(response *resty.Response, err error) bool {
+			return err != nil ||
+				response.StatusCode() == http.StatusTooManyRequests ||
+				response.StatusCode() >= http.StatusInternalServerError
+		})
+}
+
+// NewRobotFirewallClient builds a Hetzner client wired only for Hetzner Robot
+// firewall operations (EnsureRobotFirewall, with BareMetalIngressRuleset /
+// DefaultBareMetalIngressRuleset). It needs nothing but Robot web-service
+// credentials — no parsed cluster config, no management or workload cluster — so
+// one-off tooling can reconcile a node's public-IP firewall directly against the
+// Robot API. The same primitive backs the eventual in-CLI wiring.
+func NewRobotFirewallClient(robotUser, robotPassword string) *Hetzner {
+	return &Hetzner{
+		robotClient: newRobotRestyClient(robotUser, robotPassword),
+	}
 }
 
 func (*Hetzner) SetupDisasterRecovery(_ context.Context) error {

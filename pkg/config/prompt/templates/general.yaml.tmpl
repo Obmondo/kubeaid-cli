@@ -147,6 +147,15 @@ cloud:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
         subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
+      # Robot stateless firewall on each node's public IP. apiserver (6443) is
+      # always denied publicly (reach it via the NetBird operator); allowSshFrom
+      # restricts SSH (empty = from all, IPv4/CIDR only); allowPublic adds extra
+      # public ports on the control-plane ingress IP. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        enabled: true
+        allowSshFrom: []
+        allowPublic: []
     controlPlane:
       hcloud:
         machineType: {{ .HetznerCPMachineType }}
@@ -184,6 +193,15 @@ cloud:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
         subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
+      # Robot stateless firewall on each node's public IP. apiserver (6443) is
+      # always denied publicly (reach it via the NetBird operator); allowSshFrom
+      # restricts SSH (empty = from all, IPv4/CIDR only); allowPublic adds extra
+      # public ports on the control-plane ingress IP. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        enabled: true
+        allowSshFrom: []
+        allowPublic: []
     controlPlane:
       bareMetal:
         endpoint:
