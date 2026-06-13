@@ -250,6 +250,13 @@ func runLogin(cmd *cobra.Command, args []string) error {
 // The same list is embedded in the kubeconfig exec block (so kubectl invokes
 // kubelogin with the same flags later) and used by runLogin to warm the token
 // cache up front, so the two paths cannot drift.
+//
+// offline_access requests a durable refresh token so kubelogin refreshes the
+// id-token silently when it expires, instead of re-launching the browser flow on
+// every kubectl once the short-lived id-token lapses. Keycloak assigns the
+// offline_access client scope by default; if a realm has removed it from the
+// client, the auth request fails with invalid_scope and the scope must be
+// re-added there.
 func kubeloginArgs(issuer klist.OIDCIssuer) []string {
 	return []string{
 		"get-token",
@@ -257,6 +264,7 @@ func kubeloginArgs(issuer klist.OIDCIssuer) []string {
 		"--oidc-client-id=" + issuer.ClientID,
 		"--oidc-extra-scope=email",
 		"--oidc-extra-scope=groups",
+		"--oidc-extra-scope=offline_access",
 	}
 }
 
