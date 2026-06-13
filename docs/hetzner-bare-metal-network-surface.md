@@ -9,6 +9,46 @@ Status: design captured here; implementation tracked in
 on bare-metal nodes". `EnsureRobotFirewall` is not yet wired into the
 prereq-infra phase.
 
+## Why the Robot firewall, not a Cilium host network policy
+
+The public surface could also be locked down with a Cilium host network
+policy (`--enable-host-firewall` + a `CiliumClusterwideNetworkPolicy`
+selecting the host) — which would be GitOps-managed and cloud-agnostic. We
+use the Hetzner Robot firewall instead. The trade-off, for this specific
+goal (deny public `22`/`6443`, keep `80`/`443`, operator access via NetBird
+only):
+
+| | Hetzner Robot firewall | Cilium host netpol |
+|---|---|---|
+| GitOps | ✗ imperative (kubeaid-cli GET-diff-POST — declarative in code, not ArgoCD-reconciled) | ✓ declarative, ArgoCD, self-healing |
+| Cloud-agnostic | ✗ bare-metal Robot API only (HCloud nodes need a separate firewall) | ✓ one policy on every node (bare-metal + HCloud + any cloud) |
+| Scoping safety | ✓ touches only the public IP — the vSwitch fabric (etcd/kubelet/pods) and the NetBird interface are physically untouched | ⚠ sees all host traffic; a wrong host policy has cluster-wide blast radius |
+| Always-on | ✓ holds during boot and even if Cilium is down | ✗ enforces only while Cilium is up → SSH exposed in the boot / cilium-restart window |
+| State | stateless (needs the explicit `32768-65535` return-traffic allow) | ✓ stateful (conntrack) |
+
+The deciding factor is the NetBird interaction. NetBird peer traffic arrives
+over the WireGuard overlay with overlay-CIDR source IPs, which Cilium
+classifies as `world` (not cluster identity). A naive `ingressDeny` of
+`world → host:22/6443` would therefore also drop the NetBird path we are
+trying to keep open — the Cilium policy would need an explicit allow for the
+NetBird CIDR, correctly ordered ahead of the deny, plus correct host-traffic
+allow-listing, or it locks the node out cluster-wide. The Robot firewall
+sidesteps this entirely: the public IP and the NetBird interface are
+physically separate paths, so a public-IP rule cannot affect NetBird or
+vSwitch traffic.
+
+So for bare-metal public-IP lockdown the Robot firewall is the safer
+primary — purpose-built to filter the public NIC, unable to break
+cluster-internal or NetBird traffic, and enforced at the infrastructure edge
+even before Cilium is up. The GitOps loss is contained: `EnsureRobotFirewall`
+reconciles idempotently (GET, diff, POST); it is just driven by kubeaid-cli
+rather than ArgoCD.
+
+A Cilium host policy is the better choice when a single GitOps-managed policy
+across hybrid HCloud + bare-metal clusters matters more than the boot-window
+perimeter. The two are complementary: a thin always-on Robot edge plus Cilium
+for richer in-cluster / L7 policy is a reasonable defense-in-depth target.
+
 ## Traffic split: vSwitch (private) vs public IP
 
 ### Stays on vSwitch — never touches the public IP
