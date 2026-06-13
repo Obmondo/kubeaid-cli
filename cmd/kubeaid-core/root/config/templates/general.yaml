@@ -309,9 +309,13 @@ cloud:
         hcloudServersSubnetCIDR:
     # Hetzner bare-metal specific details.
     bareMetal:
-      # wipeDisks secure-erases every disk before installimage on (re)provision,
-      # clearing stale Ceph/bluestore so a fresh bootstrap isn't blocked by a prior cluster.
-      wipeDisks: true
+      # wipeDisks secure-erases EVERY disk before installimage, via the
+      # capi.syself.com/wipe-disk annotation CAPH sets on the HetznerBareMetalHost.
+      # Default false. Set true ONLY for an initial install on recycled disks — it clears
+      # stale Ceph/bluestore that would otherwise deadlock OSD provisioning — then set it
+      # back to false BEFORE any OS upgrade: a re-image with wipeDisks=true secure-erases
+      # all disks (Ceph OSDs + ZFS node-local pool) => DATA LOSS.
+      wipeDisks: false
       installImage:
         imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
         vg0:
