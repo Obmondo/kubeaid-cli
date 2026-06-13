@@ -434,21 +434,18 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 }
 
 // hetznerControlPlaneCertSANs builds the apiserver cert SAN list for a Hetzner
-// cluster: always kubernetes.<netbird-dns-zone> (so clients can reach
-// kube-apiserver under a mesh name without an x509 mismatch), plus any
-// operator-supplied controlPlane.extraCertSANs. The zone is
-// cluster.netbird.dnsZone — already defaulted to <cluster-name>.local by the
-// parser when a netbird block is present — or <cluster-name>.local when the
-// cluster declares no netbird block at all.
+// cluster: kubernetes.<dnsZone> when cluster.netbird.dnsZone is set (so clients
+// can reach kube-apiserver under a mesh name without an x509 mismatch), plus
+// any operator-supplied controlPlane.extraCertSANs. The zone is
+// operator-supplied (via the prompt), never auto-derived — so a cluster with no
+// netbird block / no dnsZone simply gets no kubernetes.<zone> SAN.
 func hetznerControlPlaneCertSANs(hetznerConfig *config.HetznerConfig) []string {
-	cluster := config.ParsedGeneralConfig.Cluster
+	var sans []string
 
-	zone := cluster.Name + ".local"
-	if nb := cluster.NetBird; nb != nil && nb.DNSZone != "" {
-		zone = nb.DNSZone
+	if nb := config.ParsedGeneralConfig.Cluster.NetBird; nb != nil && nb.DNSZone != "" {
+		sans = append(sans, "kubernetes."+nb.DNSZone)
 	}
 
-	sans := []string{"kubernetes." + zone}
 	sans = append(sans, hetznerConfig.ControlPlane.ExtraCertSANs...)
 
 	return sans

@@ -66,3 +66,18 @@ reaching the apiserver under a NetBird-mesh hostname hits an x509 name mismatch
   apiserver` regen; documented separately in the SAN troubleshooting).
 - Aligning klist's client-side `clusterPeerSuffix` with per-cluster `.local`
   zones (client-side; follow-up).
+
+## Revision (post-merge)
+
+The `<cluster-name>.local` **computed default was dropped**. The DNS zone is
+now **operator-supplied only**, collected via the prompt as a **required**
+field with no pre-filled value (each NetBird mesh has its own zone; kubeaid-cli
+shouldn't invent one). Consequences:
+
+- `parser/netbird.go` no longer defaults `dnsZone` (the `DefaultNetBirdDNSZone`
+  helper is removed); `hydrateNetBirdDefaults` is back to stun/turn only.
+- `templates.go` adds `kubernetes.<dnsZone>` **only when `cluster.netbird.dnsZone`
+  is set** — a cluster with no netbird block / no zone gets no `kubernetes.<zone>`
+  SAN (just its operator `controlPlane.extraCertSANs`, if any).
+- The prompt asks the zone (required, example `mesh.acme.com`) for both cluster
+  types.
