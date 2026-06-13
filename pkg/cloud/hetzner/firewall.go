@@ -10,6 +10,9 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // FirewallRule models a single rule in a Hetzner Robot stateless firewall.
@@ -50,69 +53,139 @@ type robotFirewallResponse struct {
 	} `json:"firewall"`
 }
 
-// DefaultBareMetalIngressRuleset returns the operator-confirmed inbound ruleset
-// for kubeaid bare-metal nodes (see docs/hetzner-bare-metal-network-surface.md,
-// "Public IP — INBOUND" table). Evaluated top-to-bottom; unmatched traffic is
-// dropped by the firewall's implicit default-deny.
+// ControlPlaneIngressRuleset returns the inbound ruleset for a bare-metal
+// control-plane node — the nodes that hold the failover IP, which is the
+// cluster's single public ingress. See docs/hetzner-bare-metal-network-surface.md.
+// Evaluated top-to-bottom, first match wins; anything unmatched is dropped by the
+// firewall's implicit default-deny:
 //
-// Rules:
-//   - DENY 22/tcp   — SSH only via NetBird mesh
-//   - DENY 6443/tcp — kube-apiserver only via NetBird mesh
-//   - ALLOW 80/tcp  — Traefik public-web IngressClass
-//   - ALLOW 443/tcp — Traefik public-websecure IngressClass
-//   - ALLOW ICMP    — operational ping
-//   - ALLOW 32768-65535/any — stateless return traffic; empty Protocol means any
-//     protocol so UDP replies (DNS, NTP, NodePort UDP) are not silently dropped
-func DefaultBareMetalIngressRuleset() FirewallRuleset {
-	return FirewallRuleset{
-		Status: "active",
-		Rules: []FirewallRule{
-			{
-				Name:      "deny-ssh",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "22",
-				Action:    "discard",
-			},
-			{
-				Name:      "deny-kube-apiserver",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "6443",
-				Action:    "discard",
-			},
-			{
-				Name:      "allow-http",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "80",
-				Action:    "accept",
-			},
-			{
-				Name:      "allow-https",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "443",
-				Action:    "accept",
-			},
-			{
-				Name:      "allow-icmp",
-				IPVersion: "ipv4",
-				Protocol:  "icmp",
-				Action:    "accept",
-			},
-			{
-				Name:      "allow-return-traffic",
-				IPVersion: "ipv4",
-				// Protocol is intentionally empty (omitempty omits it from the POST body),
-				// which Robot interprets as "any protocol". This is required so that UDP
-				// reply packets (DNS, NTP, NodePort UDP) are not silently dropped — a
-				// TCP-only rule would cover only TCP return traffic.
-				DstPort: "32768-65535",
-				Action:  "accept",
-			},
-		},
+//   - SSH 22/tcp     — from allowSSHFrom, else from all (see sshIngressRules)
+//   - DENY 6443/tcp  — kube-apiserver reached over the NetBird operator only
+//   - ALLOW 80/443   — Traefik public ingress, scoped to failoverIP
+//   - ALLOW allowPublic — extra public service ports (e.g. 5432/tcp), scoped to failoverIP
+//   - ALLOW ICMP, ALLOW 32768-65535 return traffic
+//
+// The public service ports (80/443 + allowPublic) are scoped to the failover IP
+// because that is where public ingress lands — Traefik and any allowPublic
+// service point at it — so a control-plane node's own main IP exposes nothing
+// public but SSH. An empty failoverIP leaves them unscoped (any destination).
+func ControlPlaneIngressRuleset(allowSSHFrom []string, allowPublic []config.FirewallPort, failoverIP string) FirewallRuleset {
+	failoverCIDR := ""
+	if failoverIP != "" {
+		failoverCIDR = normaliseToCIDR(failoverIP)
 	}
+
+	rules := sshIngressRules(allowSSHFrom)
+	rules = append(rules,
+		FirewallRule{Name: "deny-kube-apiserver", IPVersion: "ipv4", Protocol: "tcp", DstPort: "6443", Action: "discard"},
+		FirewallRule{Name: "allow-http", IPVersion: "ipv4", Protocol: "tcp", DstPort: "80", DstIP: failoverCIDR, Action: "accept"},
+		FirewallRule{Name: "allow-https", IPVersion: "ipv4", Protocol: "tcp", DstPort: "443", DstIP: failoverCIDR, Action: "accept"},
+	)
+	for _, port := range allowPublic {
+		rule := allowPublicRule(port)
+		rule.DstIP = failoverCIDR
+		rules = append(rules, rule)
+	}
+	rules = append(rules, icmpRule(), returnTrafficRule())
+
+	return FirewallRuleset{Status: "active", Rules: rules}
+}
+
+// WorkerIngressRuleset returns the inbound ruleset for a bare-metal worker node.
+// Workers serve no public traffic — it all enters via the control-plane failover
+// IP — so the only public inbound is admin SSH (allowSSHFrom, else all) plus ICMP
+// and stateless return traffic. Everything else (80/443, 6443, AllowPublic) is
+// dropped by the firewall's implicit default-deny.
+func WorkerIngressRuleset(allowSSHFrom []string) FirewallRuleset {
+	rules := sshIngressRules(allowSSHFrom)
+	rules = append(rules, icmpRule(), returnTrafficRule())
+
+	return FirewallRuleset{Status: "active", Rules: rules}
+}
+
+// sshIngressRules returns the inbound SSH (22/tcp) rules. With allowSSHFrom empty
+// (the default), SSH is allowed from anywhere — the safe default, since the nodes
+// are not NetBird peers and have no fallback access path. With allowSSHFrom set,
+// SSH is allowed only from those sources (a bare IP is treated as /32) and denied
+// for everyone else; the deny is placed after the allows so first-match-wins lets
+// the allow-listed sources through.
+func sshIngressRules(allowSSHFrom []string) []FirewallRule {
+	if len(allowSSHFrom) == 0 {
+		return []FirewallRule{{
+			Name:      "allow-ssh",
+			IPVersion: "ipv4",
+			Protocol:  "tcp",
+			DstPort:   "22",
+			Action:    "accept",
+		}}
+	}
+
+	rules := make([]FirewallRule, 0, len(allowSSHFrom)+1)
+	for i, source := range allowSSHFrom {
+		rules = append(rules, FirewallRule{
+			Name:      fmt.Sprintf("allow-ssh-%d", i),
+			IPVersion: "ipv4",
+			Protocol:  "tcp",
+			DstPort:   "22",
+			SrcIP:     normaliseToCIDR(source),
+			Action:    "accept",
+		})
+	}
+	return append(rules, FirewallRule{
+		Name:      "deny-ssh",
+		IPVersion: "ipv4",
+		Protocol:  "tcp",
+		DstPort:   "22",
+		Action:    "discard",
+	})
+}
+
+// normaliseToCIDR turns a bare IPv4 address into a /32 CIDR; an address that
+// already carries a prefix is returned unchanged. Robot's src_ip field expects
+// CIDR notation.
+func normaliseToCIDR(source string) string {
+	if strings.Contains(source, "/") {
+		return source
+	}
+	return source + "/32"
+}
+
+// allowPublicRule builds an ACCEPT rule for one operator-supplied AllowPublic
+// port. Protocol "" means "any" to Robot; it is labelled in the rule name so the
+// name stays unique when the same port is opened for both tcp and udp.
+func allowPublicRule(port config.FirewallPort) FirewallRule {
+	protocolLabel := port.Protocol
+	if protocolLabel == "" {
+		protocolLabel = "any"
+	}
+	return FirewallRule{
+		Name:      fmt.Sprintf("allow-%s-%s", port.Port, protocolLabel),
+		IPVersion: "ipv4",
+		Protocol:  port.Protocol, // "" => any (omitted from the POST body)
+		DstPort:   port.Port,
+		Action:    "accept",
+	}
+}
+
+// icmpRule allows inbound ICMP (operational ping) on every ruleset.
+func icmpRule() FirewallRule {
+	return FirewallRule{Name: "allow-icmp", IPVersion: "ipv4", Protocol: "icmp", Action: "accept"}
+}
+
+// returnTrafficRule allows stateless return traffic on the high port range. Its
+// Protocol is intentionally empty (omitempty drops it from the POST body), which
+// Robot reads as "any protocol", so UDP replies (DNS, NTP, NodePort UDP) are not
+// silently dropped — a TCP-only rule would cover only TCP return traffic.
+func returnTrafficRule() FirewallRule {
+	return FirewallRule{Name: "allow-return-traffic", IPVersion: "ipv4", DstPort: "32768-65535", Action: "accept"}
+}
+
+// FirewallEnabled reports whether kubeaid-cli should manage the Robot firewall
+// for the given bare-metal firewall config. Defaults to true; an explicit
+// firewall.enabled:false opts out (e.g. a separate upstream L3 firewall fronts
+// the cluster).
+func FirewallEnabled(firewall config.FirewallConfig) bool {
+	return firewall.Enabled == nil || *firewall.Enabled
 }
 
 // firewallRulesetEqual reports whether two FirewallRulesets are semantically

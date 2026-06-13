@@ -11,94 +11,134 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestDefaultBareMetalIngressRuleset pins the exact shape of the default
-// inbound ruleset. Any future refactor that silently drops the 6443 DENY
-// or changes rule order will be caught here.
-func TestDefaultBareMetalIngressRuleset(t *testing.T) {
+var (
+	icmpRuleWant          = FirewallRule{Name: "allow-icmp", IPVersion: "ipv4", Protocol: "icmp", Action: "accept"}
+	returnTrafficRuleWant = FirewallRule{Name: "allow-return-traffic", IPVersion: "ipv4", DstPort: "32768-65535", Action: "accept"}
+	denyAPIServerWant     = FirewallRule{Name: "deny-kube-apiserver", IPVersion: "ipv4", Protocol: "tcp", DstPort: "6443", Action: "discard"}
+	allowHTTPWant         = FirewallRule{Name: "allow-http", IPVersion: "ipv4", Protocol: "tcp", DstPort: "80", Action: "accept"}
+	allowHTTPSWant        = FirewallRule{Name: "allow-https", IPVersion: "ipv4", Protocol: "tcp", DstPort: "443", Action: "accept"}
+)
+
+// TestControlPlaneIngressRuleset pins the control-plane ruleset: SSH (open by
+// default, restricted when allowSSHFrom is set), 6443 always denied, 80/443
+// always open, allowPublic appended, then ICMP + return traffic.
+func TestControlPlaneIngressRuleset(t *testing.T) {
 	t.Parallel()
 
-	ruleset := DefaultBareMetalIngressRuleset()
-
-	assert.Equal(t, "active", ruleset.Status)
-	require.Len(t, ruleset.Rules, 6, "expected exactly 6 inbound rules")
-
 	tests := []struct {
-		idx      int
-		wantRule FirewallRule
+		name         string
+		allowSSHFrom []string
+		allowPublic  []config.FirewallPort
+		failoverIP   string
+		want         []FirewallRule
 	}{
 		{
-			idx: 0,
-			wantRule: FirewallRule{
-				Name:      "deny-ssh",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "22",
-				Action:    "discard",
+			name: "no failover IP: 80/443 unscoped (any dst), SSH open, 6443 denied",
+			want: []FirewallRule{
+				{Name: "allow-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "accept"},
+				denyAPIServerWant, allowHTTPWant, allowHTTPSWant, icmpRuleWant, returnTrafficRuleWant,
 			},
 		},
 		{
-			idx: 1,
-			wantRule: FirewallRule{
-				Name:      "deny-kube-apiserver",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "6443",
-				Action:    "discard",
-			},
-		},
-		{
-			idx: 2,
-			wantRule: FirewallRule{
-				Name:      "allow-http",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "80",
-				Action:    "accept",
-			},
-		},
-		{
-			idx: 3,
-			wantRule: FirewallRule{
-				Name:      "allow-https",
-				IPVersion: "ipv4",
-				Protocol:  "tcp",
-				DstPort:   "443",
-				Action:    "accept",
-			},
-		},
-		{
-			idx: 4,
-			wantRule: FirewallRule{
-				Name:      "allow-icmp",
-				IPVersion: "ipv4",
-				Protocol:  "icmp",
-				Action:    "accept",
-			},
-		},
-		{
-			idx: 5,
-			wantRule: FirewallRule{
-				Name:      "allow-return-traffic",
-				IPVersion: "ipv4",
-				// Protocol is empty: Robot omits it from the POST body, meaning
-				// "any protocol". UDP replies (DNS, NTP, NodePort UDP) must not
-				// be dropped alongside TCP return traffic.
-				DstPort: "32768-65535",
-				Action:  "accept",
+			name:         "failover IP scopes 80/443 + allowPublic to it; allowSSHFrom restricts SSH",
+			allowSSHFrom: []string{"203.0.113.4", "198.51.100.0/24"},
+			allowPublic:  []config.FirewallPort{{Port: "5432", Protocol: "tcp"}},
+			failoverIP:   "192.0.2.1",
+			want: []FirewallRule{
+				{Name: "allow-ssh-0", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", SrcIP: "203.0.113.4/32", Action: "accept"},
+				{Name: "allow-ssh-1", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", SrcIP: "198.51.100.0/24", Action: "accept"},
+				{Name: "deny-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "discard"},
+				denyAPIServerWant,
+				{Name: "allow-http", IPVersion: "ipv4", Protocol: "tcp", DstPort: "80", DstIP: "192.0.2.1/32", Action: "accept"},
+				{Name: "allow-https", IPVersion: "ipv4", Protocol: "tcp", DstPort: "443", DstIP: "192.0.2.1/32", Action: "accept"},
+				{Name: "allow-5432-tcp", IPVersion: "ipv4", Protocol: "tcp", DstPort: "5432", DstIP: "192.0.2.1/32", Action: "accept"},
+				icmpRuleWant, returnTrafficRuleWant,
 			},
 		},
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.wantRule.Name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tc.wantRule, ruleset.Rules[tc.idx])
+			ruleset := ControlPlaneIngressRuleset(tc.allowSSHFrom, tc.allowPublic, tc.failoverIP)
+			assert.Equal(t, "active", ruleset.Status)
+			assert.Equal(t, tc.want, ruleset.Rules)
 		})
 	}
+}
+
+// TestWorkerIngressRuleset pins the worker ruleset: SSH (open by default,
+// restricted when allowSSHFrom is set) plus ICMP and return traffic — and
+// nothing else (no 80/443, no 6443, no allowPublic).
+func TestWorkerIngressRuleset(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		allowSSHFrom []string
+		want         []FirewallRule
+	}{
+		{
+			name: "defaults: SSH open, nothing else public",
+			want: []FirewallRule{
+				{Name: "allow-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "accept"},
+				icmpRuleWant, returnTrafficRuleWant,
+			},
+		},
+		{
+			name:         "allowSSHFrom restricts SSH",
+			allowSSHFrom: []string{"203.0.113.4"},
+			want: []FirewallRule{
+				{Name: "allow-ssh-0", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", SrcIP: "203.0.113.4/32", Action: "accept"},
+				{Name: "deny-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "discard"},
+				icmpRuleWant, returnTrafficRuleWant,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ruleset := WorkerIngressRuleset(tc.allowSSHFrom)
+			assert.Equal(t, "active", ruleset.Status)
+			assert.Equal(t, tc.want, ruleset.Rules)
+
+			// Workers must never expose 80/443 or the apiserver.
+			for _, rule := range ruleset.Rules {
+				assert.NotContains(t, []string{"80", "443", "6443"}, rule.DstPort,
+					"worker ruleset must not open port %s", rule.DstPort)
+			}
+		})
+	}
+}
+
+// TestSSHIngressRules verifies the SSH allow-list logic: empty -> allow from all
+// (single rule, no deny); set -> one allow per source (bare IP normalised to /32,
+// CIDR kept) followed by a blanket deny so first-match-wins lets the listed
+// sources through.
+func TestSSHIngressRules(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty allows SSH from all", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, []FirewallRule{
+			{Name: "allow-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "accept"},
+		}, sshIngressRules(nil))
+	})
+
+	t.Run("set restricts to sources then denies the rest", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, []FirewallRule{
+			{Name: "allow-ssh-0", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", SrcIP: "203.0.113.4/32", Action: "accept"},
+			{Name: "allow-ssh-1", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", SrcIP: "198.51.100.0/24", Action: "accept"},
+			{Name: "deny-ssh", IPVersion: "ipv4", Protocol: "tcp", DstPort: "22", Action: "discard"},
+		}, sshIngressRules([]string{"203.0.113.4", "198.51.100.0/24"}))
+	})
 }
 
 // TestFirewallRulesetEqual verifies the nil-vs-empty-slice normalisation in
@@ -227,7 +267,7 @@ func TestEnsureRobotFirewall(t *testing.T) {
 	t.Parallel()
 
 	const serverIP = "203.0.113.10"
-	desiredRuleset := DefaultBareMetalIngressRuleset()
+	desiredRuleset := ControlPlaneIngressRuleset(nil, nil, "")
 
 	// A minimal ruleset that differs from the default so the diff check triggers a POST.
 	differentRuleset := FirewallRuleset{
@@ -254,10 +294,10 @@ func TestEnsureRobotFirewall(t *testing.T) {
 
 				case r.Method == http.MethodPost && r.URL.Path == "/firewall/"+serverIP:
 					require.NoError(t, r.ParseForm())
-					// Verify the first deny rule is present in bracket notation.
-					assert.Equal(t, "discard", r.PostFormValue("rules[input][0][action]"))
+					// Rule 0 is SSH (allowed from all by default) — accept on port 22.
+					assert.Equal(t, "accept", r.PostFormValue("rules[input][0][action]"))
 					assert.Equal(t, "22", r.PostFormValue("rules[input][0][dst_port]"))
-					// Verify the 6443 DENY is present.
+					// Rule 1 is the apiserver DENY (6443).
 					assert.Equal(t, "discard", r.PostFormValue("rules[input][1][action]"))
 					assert.Equal(t, "6443", r.PostFormValue("rules[input][1][dst_port]"))
 					// Verify the status field.
@@ -388,4 +428,42 @@ func TestEnsureRobotFirewall_FormDataEncoding(t *testing.T) {
 	// Required fields must always be present.
 	assert.Equal(t, "accept", capturedForm.Get("rules[input][0][action]"))
 	assert.Equal(t, "ipv4", capturedForm.Get("rules[input][0][ip_version]"))
+}
+
+// TestFirewallEnabled verifies the nil-pointer default: an unset enabled means
+// the firewall is managed (true), while an explicit false opts out.
+func TestFirewallEnabled(t *testing.T) {
+	t.Parallel()
+
+	enabledTrue := true
+	enabledFalse := false
+
+	tests := []struct {
+		name     string
+		firewall config.FirewallConfig
+		want     bool
+	}{
+		{
+			name:     "unset (nil) defaults to enabled",
+			firewall: config.FirewallConfig{Enabled: nil},
+			want:     true,
+		},
+		{
+			name:     "explicit true is enabled",
+			firewall: config.FirewallConfig{Enabled: &enabledTrue},
+			want:     true,
+		},
+		{
+			name:     "explicit false opts out",
+			firewall: config.FirewallConfig{Enabled: &enabledFalse},
+			want:     false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, FirewallEnabled(tc.firewall))
+		})
+	}
 }

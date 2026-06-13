@@ -16,5 +16,6 @@ temp/
 robot_id_rsa*
 
 testcmd
+tools/applyfirewall/applyfirewall
 
 coverage.out

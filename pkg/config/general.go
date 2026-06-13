@@ -631,6 +631,10 @@ type (
 		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
 		InstallImage InstallImageConfig `yaml:"installImage"`
 
+		// Firewall tunes the Hetzner Robot stateless firewall applied to each
+		// bare-metal node's public IP. See docs/hetzner-bare-metal-network-surface.md.
+		Firewall FirewallConfig `yaml:"firewall"`
+
 		// ZFS specific configuration.
 		// Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
 		// logs and pod ephemeral volumes from that ZFS pool, as required.
@@ -657,6 +661,46 @@ type (
 		Name   string `yaml:"name"   validate:"notblank"`
 
 		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
+	}
+
+	// FirewallConfig tunes the Hetzner Robot stateless firewall locked onto each
+	// bare-metal node's public IP. Control-plane nodes (which hold the failover
+	// IP — the cluster's single public ingress) get SSH + 80/443 + AllowPublic;
+	// worker nodes expose nothing public beyond SSH. The kube-apiserver (6443) is
+	// always denied on the public IP — reach it over the NetBird operator. The
+	// rulesets live in pkg/cloud/hetzner. See
+	// docs/hetzner-bare-metal-network-surface.md.
+	FirewallConfig struct {
+		// Enabled gates whether kubeaid-cli manages the Robot firewall at all.
+		// Defaults to true; set false to opt out — e.g. a separate upstream L3
+		// firewall appliance already fronts the cluster. A pointer so an explicit
+		// "enabled: false" is distinguishable from unset and honoured.
+		Enabled *bool `yaml:"enabled"`
+
+		// AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to
+		// these sources. Empty (the default) allows SSH from anywhere — the safe
+		// default, since the nodes are not NetBird peers and so have no fallback
+		// access path. Each entry is an IPv4 address or CIDR (e.g. "203.0.113.4"
+		// or "203.0.113.0/24"); a bare address is treated as /32.
+		AllowSSHFrom []string `yaml:"allowSshFrom" validate:"omitempty,dive,ipv4|cidrv4"`
+
+		// AllowPublic lists extra inbound ports to ACCEPT on the public ingress IP
+		// (the failover IP held by the control-plane nodes), alongside 80/443 — for
+		// a port a workload must expose publicly (e.g. 25/tcp SMTP, 993/tcp IMAPS,
+		// 5432/tcp a customer-reachable Postgres). Worker nodes expose no public
+		// service ports, so these apply to the control-plane ruleset only. The SSH
+		// and apiserver rules are evaluated first, so AllowPublic cannot re-open
+		// SSH or the kube-apiserver.
+		AllowPublic []FirewallPort `yaml:"allowPublic" validate:"omitempty,dive"`
+	}
+
+	// FirewallPort is one {port, protocol} entry in FirewallConfig.AllowPublic.
+	FirewallPort struct {
+		// Port is a single port ("25") or an inclusive range ("30000-32767").
+		Port string `yaml:"port" validate:"notblank"`
+
+		// Protocol is "tcp", "udp", or omitted for any protocol.
+		Protocol string `yaml:"protocol" validate:"omitempty,oneof=tcp udp"`
 	}
 
 	HetznerControlPlane struct {

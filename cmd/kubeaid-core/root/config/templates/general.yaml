@@ -338,6 +338,30 @@ cloud:
         vlanID:
         name:
         subnetCIDRBlock:
+      # firewall locks down each bare-metal node's PUBLIC IP via the Hetzner Robot
+      # stateless firewall. The kube-apiserver (6443) is always denied publicly —
+      # reach it over the NetBird operator. Control-plane nodes (which hold the
+      # failover IP, the cluster's single public ingress) also allow 80/443 + any
+      # allowPublic ports; worker nodes expose nothing public but SSH. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        # enabled: false opts out entirely — e.g. a separate upstream L3 firewall
+        # appliance already fronts the cluster. Defaults to true.
+        enabled: true
+        # allowSshFrom restricts inbound SSH (22) to these sources on every node.
+        # Empty (the default) allows SSH from anywhere. Each entry is an IPv4
+        # address or CIDR (a bare address is treated as /32); hostnames are not
+        # accepted.
+        allowSshFrom: []
+        #  - 203.0.113.4
+        #  - 198.51.100.0/24
+        # allowPublic appends extra inbound ACCEPT rules on the public ingress IP
+        # (the control-plane failover IP), alongside 80/443 — for a port a workload
+        # must expose publicly (e.g. 25/tcp SMTP, 993/tcp IMAPS, 5432/tcp Postgres).
+        # Each item is {port, protocol}; protocol is tcp, udp, or omitted for any.
+        allowPublic: []
+        #  - port: "25"
+        #    protocol: tcp
     # Control-plane specific details.
     controlPlane:
       hcloud:

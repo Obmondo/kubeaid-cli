@@ -78,13 +78,32 @@ anything in this table.
 
 ### Public IP — INBOUND (default deny)
 
+Control-plane and worker nodes get different rulesets, because public ingress
+enters only through the control-plane failover IP.
+
+**Control-plane nodes** (hold the failover IP — the cluster's single public ingress):
+
 | Port / Protocol | Rule | Why |
 |-----------------|------|-----|
-| `6443/tcp` | **DENY** | kube-apiserver reached via NetBird mesh only |
-| `22/tcp` | **DENY** | SSH reached via NetBird mesh only |
-| `80/tcp`, `443/tcp` | ALLOW | Traefik dual-IngressClass decides per-route (public `web` / `websecure` vs internal `netbird-web` / `netbird-websecure`) |
-| ICMP echo | ALLOW | operational ping for monitoring / debugging |
-| return traffic (high ports 32768–65535) | ALLOW | stateless firewall needs explicit allow for established replies |
+| `22/tcp` | ALLOW from `allowSshFrom`, else from all | SSH — the hosts are not NetBird peers, so there is no mesh path to host SSH; restrict by source IP instead. Empty `allowSshFrom` = open |
+| `6443/tcp` | **DENY** | kube-apiserver reached over the NetBird operator (which exposes the Service onto the mesh), never publicly |
+| `80/tcp`, `443/tcp` | ALLOW to the **failover IP** | Traefik public ingress — `dst_ip`-scoped to the failover IP, so a CP node's own main IP serves nothing public but SSH |
+| `allowPublic` ports | ALLOW to the **failover IP** | extra public services (e.g. `5432/tcp`), same `dst_ip` scoping |
+| ICMP echo | ALLOW | operational ping |
+| return traffic (32768–65535) | ALLOW | stateless firewall needs an explicit allow for replies |
+
+**Worker nodes** (serve no public traffic — it all enters via the failover IP):
+
+| Port / Protocol | Rule | Why |
+|-----------------|------|-----|
+| `22/tcp` | ALLOW from `allowSshFrom`, else from all | admin SSH only |
+| ICMP echo | ALLOW | operational ping |
+| return traffic (32768–65535) | ALLOW | replies to node-initiated egress |
+| everything else | **DENY** (implicit) | no public service surface on workers |
+
+To put a service on its own public IP instead of the failover IP, order an
+additional Hetzner IP and announce it via MetalLB L2 on a node; that node then
+needs the matching port opened.
 
 ### Public IP — OUTBOUND
 
@@ -93,33 +112,40 @@ anything in this table.
 | **Bootstrap window** (cloud-init's apt / wget chain) | full allow | tightening earlier breaks the install |
 | **Post-bootstrap** (NetBird agent up + workload-cluster ArgoCD synced) | allow `53/tcp+udp`, `80/tcp`, `443/tcp`; deny rest | DNS, apt mirrors, container registries, GitHub releases for `kubeaid-storagectl-on-OS-upgrade`, etc. |
 
-### NetBird-side exposure (no Robot firewall involvement)
+### NetBird-side exposure (via the NetBird operator, not host peers)
 
-| Service | NetBird-only access |
-|---------|---------------------|
-| kube-apiserver | `6443/tcp` via node's NetBird IP |
-| SSH | `22/tcp` via node's NetBird IP |
+The bare-metal hosts are **not** NetBird peers — only the NetBird Kubernetes
+operator runs, exposing in-cluster **Services** onto the mesh. So:
+
+| Service | NetBird access |
+|---------|----------------|
+| kube-apiserver | the operator exposes the `kubernetes` Service on the mesh (covered by the `kubernetes.<netbird-dns-zone>` cert-SAN) |
 | Admin UIs (ArgoCD, Keycloak admin, Grafana) | bound to the `netbird-web` / `netbird-websecure` IngressClass |
+| SSH | **not** on the mesh — there is no host peer; restrict public `22/tcp` via `allowSshFrom`, or reach nodes through a bastion on the vSwitch |
 
-## Open design decision: `controlPlaneEndpoint`
+## `controlPlaneEndpoint` — resolved
 
-Blocking inbound `:6443` on the public IP **requires** picking one path.
-This decision gates implementation of `EnsureRobotFirewall` —
-specifically what the inbound rule for `:6443` looks like.
+`6443` on the public IP is **denied**. Operators reach the apiserver over the
+NetBird operator, which exposes the in-cluster `kubernetes` Service onto the mesh
+(the `kubernetes.<netbird-dns-zone>` cert-SAN covers the name). The failover IP
+keeps serving public `80/443` (Traefik); it simply no longer fronts a public
+apiserver. Internal kubelet → apiserver traffic is unaffected — it rides the
+vSwitch, which the public firewall never touches.
 
-| Option | What changes | Trade-off |
-|--------|--------------|-----------|
-| **A. vSwitch-routable endpoint** | `controlPlaneEndpoint` → master's `10.0.1.1` (or a VRRP IP on the vSwitch); operators reach API via NetBird only | Clean. Requires kubeaid-cli + operator's `kubectl` to be on the NetBird mesh — no fallback |
-| **B. Source-IP allow-list on public `:6443`** | Keep failover-IP-fronted `:6443` publicly reachable; allow only operator NetBird egress + kubeaid-cli's host IP | Quicker to implement. Leaves a (small) public attack surface; allow-list needs maintenance as operator IPs change |
+## Override hooks (in `general.yaml`)
 
-## Override hooks (planned, in `general.yaml`)
+These live under `cloud.hetzner.bareMetal.firewall`. The config surface and the
+ruleset logic are implemented — `config.FirewallConfig` (parsed + validated),
+`hetzner.ControlPlaneIngressRuleset` / `hetzner.WorkerIngressRuleset` (the
+per-role builders), and `hetzner.FirewallEnabled` (the opt-out check). The
+`tools/applyfirewall` command applies them against the Robot API directly; the
+in-CLI provisioning-phase wiring is the remaining follow-up.
 
-`EnsureRobotFirewall` will read these from `cloud.hetzner.bareMetal.firewall`:
-
-| Key | Purpose |
-|-----|---------|
-| `firewall.allowPublic` | list of `{port, protocol}` items appended to the inbound ALLOW rules (e.g. `25/tcp` for SMTP, `5432/tcp` for a customer-exposed Postgres) |
-| `firewall.enabled: false` | opt out entirely (cluster runs an upstream L3 firewall appliance) |
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `firewall.enabled` | `true` | set `false` to opt out entirely (cluster runs an upstream L3 firewall appliance) |
+| `firewall.allowSshFrom` | `[]` | restrict inbound SSH (`22`) to these sources on every node; empty = allow from all. Each entry is an IPv4 address or CIDR (bare address ⇒ `/32`); hostnames are not accepted |
+| `firewall.allowPublic` | `[]` | `{port, protocol}` items opened on the public ingress IP (control-plane failover IP) alongside `80/443` (e.g. `25/tcp` SMTP, `5432/tcp` Postgres). Control-plane only — workers expose no public ports. `6443` is always denied, so this cannot re-open the apiserver |
 
 ## Why this matters
 
