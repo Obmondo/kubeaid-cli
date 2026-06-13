@@ -13,55 +13,52 @@ import (
 
 func TestHetznerControlPlaneCertSANs(t *testing.T) {
 	tests := []struct {
-		name        string
-		clusterName string
-		netbird     *config.NetBirdConfig
-		hetzner     *config.HetznerConfig
-		want        []string
+		name    string
+		netbird *config.NetBirdConfig
+		hetzner *config.HetznerConfig
+		want    []string
 	}{
 		{
-			name:        "no netbird block: kubernetes.<name>.local default",
-			clusterName: "kbm-obmondo-com",
-			netbird:     nil,
-			hetzner:     &config.HetznerConfig{},
-			want:        []string{"kubernetes.kbm-obmondo-com.local"},
+			name:    "no netbird block, no extras: empty",
+			netbird: nil,
+			hetzner: &config.HetznerConfig{},
+			want:    nil,
 		},
 		{
-			name:        "netbird dnsZone used verbatim",
-			clusterName: "staging",
-			netbird:     &config.NetBirdConfig{DNSZone: "staging.mesh.internal"},
-			hetzner:     &config.HetznerConfig{},
-			want:        []string{"kubernetes.staging.mesh.internal"},
-		},
-		{
-			name:        "controlPlane.extraCertSANs appended (any mode)",
-			clusterName: "kbm",
-			netbird:     nil,
+			name:    "no netbird block: only operator extraCertSANs, no kubernetes.<zone>",
+			netbird: nil,
 			hetzner: &config.HetznerConfig{
-				ControlPlane: config.HetznerControlPlane{
-					ExtraCertSANs: []string{"a.acme.com", "b.acme.com"},
-				},
+				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com"}},
 			},
-			want: []string{"kubernetes.kbm.local", "a.acme.com", "b.acme.com"},
+			want: []string{"a.acme.com"},
 		},
 		{
-			name:        "hcloud cluster: controlPlane.extraCertSANs applied (same field, all modes)",
-			clusterName: "vpn",
-			netbird:     &config.NetBirdConfig{DNSZone: "vpn.local"},
+			name:    "empty dnsZone (block present): still no kubernetes.<zone>",
+			netbird: &config.NetBirdConfig{},
 			hetzner: &config.HetznerConfig{
-				ControlPlane: config.HetznerControlPlane{
-					ExtraCertSANs: []string{"a.acme.com"},
-					HCloud:        &config.HCloudControlPlane{},
-				},
+				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com"}},
 			},
-			want: []string{"kubernetes.vpn.local", "a.acme.com"},
+			want: []string{"a.acme.com"},
+		},
+		{
+			name:    "dnsZone set: kubernetes.<zone> first",
+			netbird: &config.NetBirdConfig{DNSZone: "mesh.acme.com"},
+			hetzner: &config.HetznerConfig{},
+			want:    []string{"kubernetes.mesh.acme.com"},
+		},
+		{
+			name:    "dnsZone + operator extraCertSANs",
+			netbird: &config.NetBirdConfig{DNSZone: "mesh.acme.com"},
+			hetzner: &config.HetznerConfig{
+				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com", "b.acme.com"}},
+			},
+			want: []string{"kubernetes.mesh.acme.com", "a.acme.com", "b.acme.com"},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			withFreshGeneralConfig(t, func() {
-				config.ParsedGeneralConfig.Cluster.Name = tc.clusterName
 				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
 
 				assert.Equal(t, tc.want, hetznerControlPlaneCertSANs(tc.hetzner))
