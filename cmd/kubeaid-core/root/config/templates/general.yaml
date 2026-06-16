@@ -64,6 +64,20 @@ cluster:
   # keycloakx and netbird-mgmt Ingresses both need TLS certs);
   # optional otherwise. Used as Issuer.spec.acme.email.
   acmeEmail:
+  # ACMEDNS01 switches cert-manager's ClusterIssuer from the default
+  # HTTP-01 solver to a DNS-01 solver. Needed for wildcard certs and
+  # for hostnames HTTP-01 can't reach over the public internet (e.g.
+  # NetBird mesh FQDNs). Optional — leave unset for HTTP-01. When set,
+  # cluster.acmeEmail and secrets.yaml acme.cloudflareApiToken both
+  # become required. Uncomment and fill to enable:
+  # acmeDNS01:
+  #   # Provider is the DNS provider whose API the solver creates the
+  #   # TXT challenge records through. Only "cloudflare" is supported.
+  #   provider: cloudflare
+  #   # DNSZones restricts the DNS-01 solver to these zones; the
+  #   # HTTP-01 solver still handles every other host. Optional.
+  #   dnsZones:
+  #     - acme.com
   # Configuration options for the Kubernetes API server.
   apiServer:
     extraArgs: {}
