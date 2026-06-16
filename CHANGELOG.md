@@ -1,4 +1,38 @@
 - - -
+## v0.27.0 - 2026-06-16
+#### Features
+- (**cert-manager**) post-bootstrap hint when no usable issuer is configured - (bdb16f1) - Ashish Jaiswal
+- (**cert-manager**) DNS-01 ClusterIssuer for mesh-exposed services - (a41319a) - Ashish Jaiswal
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**config**) remove teleportAgent and teleport-kube-agent rendering - (265b91e) - Ashish Jaiswal
+- (**config**) netbird.dnsZone field with <cluster-name>.local default - (a20a3b2) - Ashish Jaiswal
+- (**firewall**) bare-metal Robot firewall — config, per-role rulesets, apply tool - (3e788f5) - Ashish Jaiswal
+- (**hetzner**) add Robot stateless firewall client (MVP, not yet wired) - (ae84c3e) - Ashish Jaiswal
+- (**login**) pre-flight the chosen OIDC issuer's discovery endpoint - (c7ec359) - Ashish Jaiswal
+- (**login**) choose the OIDC issuer when a cluster trusts more than one - (8adbefa) - Ashish Jaiswal
+- (**prompt**) ask the NetBird mesh DNS zone for every cluster type - (f4ffaa5) - Ashish Jaiswal
+- (**templates**) default apiserver cert SAN kubernetes.<netbird-dns-zone> - (b3c48e1) - Ashish Jaiswal
+#### Bug Fixes
+- (**baremetal**) default wipeDisks to false to avoid OS-upgrade data loss - (d95ac73) - Ashish Jaiswal
+- (**baremetal**) default wipeDisks to true - (5ddc851) - Ashish Jaiswal
+- (**cert-manager**) always render the HTTP-01 catch-all solver - (8a4ba16) - Ashish Jaiswal
+- (**constants**) correct the Obmondo SRE Keycloak issuer URL - (e00cecc) - Ashish Jaiswal
+- (**login**) request offline_access so kubelogin refreshes silently - (86b3443) - Ashish Jaiswal
+#### Documentation
+- (**config**) surface acmeDNS01 + acme.cloudflareApiToken in scaffolds - (b2b5ef4) - Ashish Jaiswal
+- (**firewall**) explain Robot firewall vs Cilium host netpol choice - (1a7e877) - Ashish Jaiswal
+- (**keycloak**) document Obmondo SRE access setup - (fcb5ae0) - Ashish Jaiswal
+- (**readme**) list the login command and index the operator docs - (05b5a5d) - Ashish Jaiswal
+- (**spec**) netbird mesh DNS zone + apiserver cert SANs - (79a00e9) - Ashish Jaiswal
+- (**todo**) pin concrete port rules for Hetzner Robot firewall - (3b90adc) - Ashish Jaiswal
+- (**todo**) file Hetzner Robot stateless-firewall lock-down for bare-metal - (5115a7e) - Ashish Jaiswal
+- how to use kubeaid-cli login - (2010d32) - Ashish Jaiswal
+- add Hetzner bare-metal network surface reference - (8f4bae6) - Ashish Jaiswal
+#### Refactoring
+- (**certsans**) netbird DNS zone is operator-supplied, no <cluster>.local default - (c2c0e3d) - Ashish Jaiswal
+- (**certsans**) drop the redundant hcloud loadBalancer.extraCertSANs - (d3bfd89) - Ashish Jaiswal
+
+- - -
+
 ## v0.26.0 - 2026-06-12
 #### Features
 - (**hetzner**) generate per-cluster kubelet-csr-approver values from Robot API - (163fb79) - Ashish Jaiswal

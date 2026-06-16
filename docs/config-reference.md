@@ -1,5 +1,7 @@
 # Configuration Reference
 - [AADApplication](#aadapplication)
+- [ACMECredentials](#acmecredentials)
+- [ACMEDNS01Config](#acmedns01config)
 - [AMIConfig](#amiconfig)
 - [APIServerConfig](#apiserverconfig)
 - [AWSAutoScalableNodeGroup](#awsautoscalablenodegroup)
@@ -24,6 +26,8 @@
 - [DeployKeysConfig](#deploykeysconfig)
 - [DisasterRecoveryConfig](#disasterrecoveryconfig)
 - [FileConfig](#fileconfig)
+- [FirewallConfig](#firewallconfig)
+- [FirewallPort](#firewallport)
 - [ForksConfig](#forksconfig)
 - [GeneralConfig](#generalconfig)
 - [GitConfig](#gitconfig)
@@ -58,7 +62,6 @@
 - [NodeGroup](#nodegroup)
 - [OIDCConfig](#oidcconfig)
 - [ObmondoConfig](#obmondoconfig)
-- [ObmondoCredentials](#obmondocredentials)
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
@@ -75,6 +78,28 @@
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | principalID | `string` |  |  |
+
+## ACMECredentials
+
+<p>ACMECredentials carries the DNS-provider secrets the cert-manager
+ClusterIssuer's DNS-01 solver authenticates with. Only needed when
+cluster.acmeDNS01 is set.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| cloudflareApiToken | `string` |  | CloudflareAPIToken is a Cloudflare API token with Zone:Read +<br>DNS:Edit on the zones the solver manages (the TXT challenge<br>records). Sealed into the cert-manager/cloudflare-api-token<br>Secret the ClusterIssuer references.<br> |
+
+## ACMEDNS01Config
+
+<p>ACMEDNS01Config selects and scopes the ClusterIssuer's DNS-01
+solver. Only Cloudflare is wired today (the chart's solver list
+also knows route53; extend Provider's oneof when kubeaid-cli
+grows the matching credential plumbing).</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| provider | `string` | cloudflare |  |
+| dnsZones | []`string` |  | DNSZones limits which zones this solver answers challenges<br>for (cert-manager's selector.dnsZones). Empty matches every<br>DNS-01 order — fine when this is the only solver.<br> |
 
 ## AMIConfig
 
@@ -112,11 +137,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -315,6 +340,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | k8sVersion | `string` |  | Kubernetes version (>= 1.30.0).<br> |
 | enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
 | acmeEmail | `string` |  | ACMEEmail is the contact email used to register with the ACME<br>CA (Let's Encrypt) when cert-manager's ClusterIssuer is<br>rendered. Required when cluster.keycloak.mode=managed (the<br>keycloakx and netbird-mgmt Ingresses both need TLS certs);<br>optional otherwise. Used as Issuer.spec.acme.email.<br> |
+| acmeDNS01 | [`ACMEDNS01Config`](#acmedns01config) |  | ACMEDNS01 switches the rendered ClusterIssuer's solver from<br>the HTTP-01 default to DNS-01. Required for the split-horizon<br>mesh pattern: NetBird-exposed services use real public DNS<br>names (e.g. argocd.staging.acme.com) that only resolve inside<br>the mesh — Let's Encrypt can never reach them over HTTP, but<br>proves ownership via a TXT record on the public zone instead.<br>Requires cluster.acmeEmail plus the provider credential in<br>secrets.yaml (acme.cloudflareApiToken).<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
 | keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster<br>authenticates against. Semantics depend on cluster.type:<br><br>  - cluster.type=vpn (required block):<br>      mode=managed  → kubeaid-cli installs Keycloak on<br>                      this cluster.<br>      mode=external → operator runs Keycloak elsewhere.<br><br>  - cluster.type=workload (optional block):<br>      mode=external only → the cluster's kube-apiserver<br>                           trusts this Keycloak for OIDC.<br>                           kubeaid-cli derives<br>                           apiServer.oidc.{issuerUrl,<br>                           clientId} from this block;<br>                           explicit apiServer.oidc still<br>                           wins. Workload clusters never<br>                           host Keycloak — mode=managed is<br>                           rejected.<br><br>Omitting the block on a workload cluster boots it without<br>OIDC; users authenticate with admin.conf (the workload<br>bootstrap prints a warning).<br> |
 | netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
@@ -347,6 +373,31 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | path | `string` |  |  |
 | content | `string` |  |  |
+
+## FirewallConfig
+
+<p>FirewallConfig tunes the Hetzner Robot stateless firewall locked onto each
+bare-metal node's public IP. Control-plane nodes (which hold the failover
+IP — the cluster's single public ingress) get SSH + 80/443 + AllowPublic;
+worker nodes expose nothing public beyond SSH. The kube-apiserver (6443) is
+always denied on the public IP — reach it over the NetBird operator. The
+rulesets live in pkg/cloud/hetzner. See
+docs/hetzner-bare-metal-network-surface.md.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  | Enabled gates whether kubeaid-cli manages the Robot firewall at all.<br>Defaults to true; set false to opt out — e.g. a separate upstream L3<br>firewall appliance already fronts the cluster. A pointer so an explicit<br>"enabled: false" is distinguishable from unset and honoured.<br> |
+| allowSshFrom | []`string` |  | AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to<br>these sources. Empty (the default) allows SSH from anywhere — the safe<br>default, since the nodes are not NetBird peers and so have no fallback<br>access path. Each entry is an IPv4 address or CIDR (e.g. "203.0.113.4"<br>or "203.0.113.0/24"); a bare address is treated as /32.<br> |
+| allowPublic | [][`FirewallPort`](#firewallport) |  | AllowPublic lists extra inbound ports to ACCEPT on the public ingress IP<br>(the failover IP held by the control-plane nodes), alongside 80/443 — for<br>a port a workload must expose publicly (e.g. 25/tcp SMTP, 993/tcp IMAPS,<br>5432/tcp a customer-reachable Postgres). Worker nodes expose no public<br>service ports, so these apply to the control-plane ruleset only. The SSH<br>and apiserver rules are evaluated first, so AllowPublic cannot re-open<br>SSH or the kube-apiserver.<br> |
+
+## FirewallPort
+
+<p>FirewallPort is one {port, protocol} entry in FirewallConfig.AllowPublic.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| port | `string` |  | Port is a single port ("25") or an inclusive range ("30000-32767").<br> |
+| protocol | `string` |  | Protocol is "tcp", "udp", or omitted for any protocol.<br> |
 
 ## ForksConfig
 
@@ -393,11 +444,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -428,7 +479,6 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | enabled | `bool` |  |  |
 | region | `string` |  |  |
 | endpoint | `string` |  | Endpoint is the FQDN clients use to reach kube-apiserver<br>(CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,<br>kubeconfig server URL). Required. DNS resolution is the<br>operator's responsibility — the LB has both public and<br>private interfaces during bootstrap; once NetBird is up<br>the public is removed and clients reach the private IP<br>through the mesh.<br> |
-| extraCertSANs,omitempty | []`string` |  | ExtraCertSANs are additional DNS names included in the<br>apiserver's TLS cert SAN list, alongside Endpoint. Use<br>this for mesh-internal hostnames clients also use to<br>reach the apiserver — e.g. a NetBird-assigned name like<br>"netbird.k8s-api" that resolves through NetBird DNS to<br>the LB private IP. Without these, kubectl via the mesh<br>hostname fails with an x509 cert-name mismatch.<br> |
 
 ## HCloudVPNClusterConfig
 
@@ -446,6 +496,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | wipeDisks | `bool` | false |  |
 | installImage | [`InstallImageConfig`](#installimageconfig) |  |  |
+| firewall | [`FirewallConfig`](#firewallconfig) |  | Firewall tunes the Hetzner Robot stateless firewall applied to each<br>bare-metal node's public IP. See docs/hetzner-bare-metal-network-surface.md.<br> |
 | zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration.<br>Every node runs a ZFS pool, named primary. We carve out storage for container images, pod<br>logs and pod ephemeral volumes from that ZFS pool, as required.<br>The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.<br> |
 | vSwitch | [`VSwitchConfig`](#vswitchconfig) |  | Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with<br>the Hetzner Network.<br> |
 
@@ -512,6 +563,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | hcloud | [`HCloudControlPlane`](#hcloudcontrolplane) |  |  |
 | bareMetal | [`HetznerBareMetalControlPlane`](#hetznerbaremetalcontrolplane) |  |  |
 | regions | []`string` |  | Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)<br>the CAPH chart constrains control-plane placement to. At least one is required.<br> |
+| extraCertSANs,omitempty | []`string` |  | ExtraCertSANs are additional DNS names added to the apiserver's<br>TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,<br>hybrid). Use for mesh-internal hostnames clients reach the<br>apiserver under; without them kubectl via that name fails with an<br>x509 mismatch. The kubernetes.<netbird-dns-zone> default is added<br>automatically; list only extras here.<br> |
 
 ## HetznerCredentials
 
@@ -657,16 +709,16 @@ See GeneralConfig.KubeaidStoragectl for when to set it.</p>
 
 ## NetBirdConfig
 
-<p>NetBirdConfig declares the NetBird Management instance this
-VPN cluster hosts. Used to render the redirect URI and
-audience claim for the netbird-client / netbird-backend OIDC
-clients in Keycloak, and (when this VPN cluster also hosts
-Coturn / Relay) to compute the public STUN / TURN endpoints
-kubeaid-cli writes into the netbird Secret.</p>
+<p>NetBirdConfig describes this cluster's relationship to the NetBird
+mesh. It is valid for both cluster.type=vpn (which hosts NetBird
+Mgmt) and cluster.type=workload (which only joins the mesh):
+dns/stun/turn are meaningful only on the VPN host, while dnsZone
+applies to any cluster on the mesh. cluster.type is the gate.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| dns | `string` |  | DNS is the public hostname NetBird Management is<br>reachable at, e.g. "netbird.vpn.acme.com". Required.<br> |
+| dns | `string` |  | DNS is the public hostname NetBird Management is reachable at,<br>e.g. "netbird.vpn.acme.com". Required only for cluster.type=vpn<br>(enforced in parser/keycloak.go); unused on workload clusters.<br> |
+| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Drives NetBird Mgmt's --dns-domain on VPN clusters, and the<br>apiserver cert SAN "kubernetes.<dnsZone>" on every cluster — so<br>clients can reach kube-apiserver under a mesh name without an<br>x509 mismatch.<br> |
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
@@ -755,9 +807,9 @@ provision infrastructure.</p>
 | aws | [`AWSCredentials`](#awscredentials) |  |  |
 | azure | [`AzureCredentials`](#azurecredentials) |  |  |
 | hetzner | [`HetznerCredentials`](#hetznercredentials) |  |  |
-| obmondo | [`ObmondoCredentials`](#obmondocredentials) |  |  |
 | keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
 | netbird | [`NetBirdCredentials`](#netbirdcredentials) |  |  |
+| acme | [`ACMECredentials`](#acmecredentials) |  |  |
 
 ## UserConfig
 
