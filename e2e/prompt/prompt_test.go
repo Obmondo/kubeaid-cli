@@ -155,7 +155,6 @@ func TestLocal_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "monitoring: true")
 	assert.Contains(t, general, "certPath: "+certPath)
 	assert.Contains(t, general, "keyPath: "+keyPath)
-	assert.Contains(t, general, "teleportAgent: false")
 
 	// K8s version should be auto-detected.
 	var generalMap map[string]any

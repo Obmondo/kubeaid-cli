@@ -228,7 +228,6 @@ func applyGeneralConfigToPromptedConfig(general *config.GeneralConfig, cfg *Prom
 		obmondo.Monitoring = general.Obmondo.Monitoring
 		obmondo.CertPath = firstNonEmpty(general.Obmondo.CertPath, obmondo.CertPath)
 		obmondo.KeyPath = firstNonEmpty(general.Obmondo.KeyPath, obmondo.KeyPath)
-		obmondo.TeleportAgent = general.Obmondo.TeleportAgent
 	}
 
 	applyCloudConfigToPromptedConfig(&general.Cloud, cfg)

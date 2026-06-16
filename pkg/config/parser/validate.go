@@ -105,7 +105,7 @@ func validateConfigFields(
 		},
 		func() error { return validateAdditionalUsers(generalConfig.Cluster.AdditionalUsers) },
 		func() error { return validateKnownHostsEntries(ctx, generalConfig.Git.KnownHosts) },
-		func() error { return validateObmondoMonitoring(generalConfig.Obmondo, secretsConfig.Obmondo, stat) },
+		func() error { return validateObmondoMonitoring(generalConfig.Obmondo, stat) },
 		func() error { return validateACMEDNS01(generalConfig.Cluster, secretsConfig.ACME) },
 	}
 
@@ -288,7 +288,6 @@ func validateAdditionalUsers(additionalUsers []config.UserConfig) error {
 
 func validateObmondoMonitoring(
 	obmondo *config.ObmondoConfig,
-	obmondoCredentials *config.ObmondoCredentials,
 	stat statFunc,
 ) error {
 	if obmondo == nil || !obmondo.Monitoring {
@@ -311,13 +310,6 @@ func validateObmondoMonitoring(
 	}
 	if _, err := stat(obmondo.KeyPath); err != nil {
 		return fmt.Errorf("obmondo.keyPath does not exist: %w", err)
-	}
-
-	teleportEnabled := obmondo.TeleportAgent != nil && *obmondo.TeleportAgent
-	if teleportEnabled && (obmondoCredentials == nil || obmondoCredentials.TeleportAuthToken == "") {
-		return errors.New(
-			"obmondo.teleportAgent is true but secrets.obmondo.teleportAuthToken is empty",
-		)
 	}
 
 	return nil
