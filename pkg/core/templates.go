@@ -104,7 +104,6 @@ type TemplateValues struct {
 	*config.DisasterRecoveryConfig
 
 	*config.ObmondoConfig
-	*config.ObmondoCredentials
 
 	// Subject CN of the Obmondo-issued mTLS cert (ObmondoConfig.CertPath),
 	// populated when Obmondo.Monitoring is true. Used in
@@ -252,8 +251,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
 
-		ObmondoConfig:      config.ParsedGeneralConfig.Obmondo,
-		ObmondoCredentials: config.ParsedSecretsConfig.Obmondo,
+		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
 
@@ -601,21 +599,12 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
-	// Obmondo customer: include the KubeAid Agent (and optionally
-	// teleport-kube-agent) ArgoCD Application templates when monitoring is
-	// requested. Teleport defaults on; operators can set
-	// obmondo.teleportAgent: false to skip it (e.g. test envs without a join
-	// token, or clusters waiting on the Netbird-backed gateway replacement).
+	// Obmondo customer: include the KubeAid Agent ArgoCD Application
+	// templates when monitoring is requested.
 	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KubeAidAgentNonSecretTemplateNames...,
 		)
-
-		if teleportAgentEnabled() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.TeleportKubeAgentNonSecretTemplateNames...,
-			)
-		}
 	}
 
 	return embeddedTemplateNames
@@ -966,18 +955,6 @@ func hetznerControlPlaneLBPreProvisioned() bool {
 	return cluster.Type == constants.ClusterTypeVPN || h.HCloudVPNCluster != nil
 }
 
-// teleportAgentEnabled reports whether the teleport-kube-agent ArgoCD App
-// should be rendered. Only meaningful when obmondo.monitoring is true; nil
-// (unset) counts as enabled so existing configs keep their current behavior.
-// Nil-safe — returns false when Obmondo isn't configured at all.
-func teleportAgentEnabled() bool {
-	obmondo := config.ParsedGeneralConfig.Obmondo
-	if obmondo == nil {
-		return false
-	}
-	return obmondo.TeleportAgent == nil || *obmondo.TeleportAgent
-}
-
 // Returns the list of embedded Secret template names based on the underlying cloud provider.
 func getEmbeddedSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
@@ -1030,14 +1007,6 @@ func getEmbeddedSecretTemplateNames() []string {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.AlertmanagerMainSecretTemplateName,
 		)
-
-		// teleport-kube-agent join-token. Paired with
-		// TeleportKubeAgentNonSecretTemplateNames — toggled together.
-		if teleportAgentEnabled() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.TeleportKubeAgentSecretTemplateNames...,
-			)
-		}
 	}
 
 	// VPN cluster (any Keycloak mode): netbird + netbird-turn-credentials

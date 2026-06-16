@@ -210,7 +210,6 @@ func TestRenderObmondoSupportConfig(t *testing.T) {
 	assert.Contains(t, general, "monitoring: true")
 	assert.Contains(t, general, "certPath: /etc/obmondo/client.crt")
 	assert.Contains(t, general, "keyPath: /etc/obmondo/client.key")
-	assert.Contains(t, general, "teleportAgent: false")
 	assert.NotContains(t, general, "customerID:")
 
 	secretsBody, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
@@ -218,5 +217,4 @@ func TestRenderObmondoSupportConfig(t *testing.T) {
 
 	parsed := &config.SecretsConfig{}
 	require.NoError(t, yaml.Unmarshal(secretsBody, parsed))
-	assert.Nil(t, parsed.Obmondo)
 }
