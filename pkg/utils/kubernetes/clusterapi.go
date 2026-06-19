@@ -469,6 +469,8 @@ func waitForCAPIStableState(ctx context.Context,
 // MachineList fails (or vice-versa), callers still see whatever
 // snapshot we have. The error is reported to the caller so it can
 // log; the wait loop treats it as transient and renders what it has.
+//
+//nolint:gocognit
 func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
 	var firstErr error
 
@@ -671,8 +673,12 @@ func hbmmStatusMessages(ctx context.Context, mgmtClient client.Client) (map[stri
 // to the generic Machine-derived status (or no override at all when the
 // Machine itself is Running).
 func hbmmLiveMessage(hbmm *caphV1Beta1.HetznerBareMetalMachine) string {
-	if hbmm.Status.FailureMessage != nil && *hbmm.Status.FailureMessage != "" {
-		return firstNonEmptyLine(*hbmm.Status.FailureMessage)
+	// FailureMessage is the v1beta1 terminal-failure field, still canonical while
+	// CAPH serves its v1beta1 API. SA1019 here is the CAPI-wide v1beta1->v1beta2
+	// status-migration deprecation, not a CAPH removal, so we keep reading it.
+	//nolint:staticcheck // SA1019: v1beta1 FailureMessage retained until CAPH drops v1beta1.
+	if failureMessage := hbmm.Status.FailureMessage; failureMessage != nil && *failureMessage != "" {
+		return firstNonEmptyLine(*failureMessage)
 	}
 	for _, c := range hbmm.Status.Conditions {
 		if c.Type != clusterAPIV1Beta1.ReadyCondition {

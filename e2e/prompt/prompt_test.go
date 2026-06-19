@@ -38,6 +38,10 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
+	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
+	c.expectString("NetBird mesh DNS zone")
+	c.sendLine("mesh.example.com")
+
 	// Step 3 — Bare-metal has no credential form (sets defaults programmatically).
 
 	// Step 4 — Git/SSH form: deploy key + config URL in one group,
@@ -66,6 +70,7 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "name: e2e-baremetal")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "enableAuditLogging: false")
+	assert.Contains(t, general, "dnsZone: mesh.example.com")
 
 	// Git / forks.
 	assert.Contains(t, general, "sshUsername: git")
@@ -111,6 +116,10 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
+	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
+	c.expectString("NetBird mesh DNS zone")
+	c.sendLine("mesh.example.com")
+
 	// Step 3 — Local has no credential form.
 
 	// Step 4 — Git/SSH.
@@ -142,6 +151,7 @@ func TestLocal_PromptFlow(t *testing.T) {
 	// Cluster basics.
 	assert.Contains(t, general, "name: e2e-local")
 	assert.Contains(t, general, "type: workload")
+	assert.Contains(t, general, "dnsZone: mesh.example.com")
 
 	// Local provider specific details.
 	assert.Contains(t, general, "local: {}")
@@ -184,6 +194,10 @@ func TestAWS_PromptFlow(t *testing.T) {
 	// Step 2 — OIDC: decline (default No).
 	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
+
+	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
+	c.expectString("NetBird mesh DNS zone")
+	c.sendLine("mesh.example.com")
 
 	// Step 3 — AWS credentials form.
 	// HOME is set to a scratch dir in newConsole so ~/.aws is empty.
@@ -232,6 +246,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "name: e2e-aws")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "enableAuditLogging: false")
+	assert.Contains(t, general, "dnsZone: mesh.example.com")
 
 	// Git / forks.
 	assert.Contains(t, general, "sshUsername: git")
@@ -287,6 +302,10 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
+	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
+	c.expectString("NetBird mesh DNS zone")
+	c.sendLine("mesh.example.com")
+
 	// Step 3 — Azure credentials (all in one group + HA confirm).
 	c.expectString("Tenant ID:")
 	c.sendLine("tenant-123")
@@ -328,6 +347,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "name: e2eazure")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "enableAuditLogging: false")
+	assert.Contains(t, general, "dnsZone: mesh.example.com")
 
 	// Git / forks.
 	assert.Contains(t, general, "sshUsername: git")
@@ -382,6 +402,10 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.expectString("Authenticate kubectl users via Keycloak")
 	c.acceptDefault()
 
+	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
+	c.expectString("NetBird mesh DNS zone")
+	c.sendLine("mesh.example.com")
+
 	// Step 3 — Hetzner credentials form: mode + token + SSH key + HA.
 	c.expectString("Mode:")
 	c.acceptDefault()
@@ -420,6 +444,7 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "name: e2e-hetzner")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "enableAuditLogging: false")
+	assert.Contains(t, general, "dnsZone: mesh.example.com")
 
 	// Git / forks.
 	assert.Contains(t, general, "sshUsername: git")
