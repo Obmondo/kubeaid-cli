@@ -276,7 +276,6 @@ var HCloudARMLocations = []string{
 	HCloudLocationHel1,
 	HCloudLocationFsn1,
 	HCloudLocationNbg1,
-	HCloudLocationAsh,
 }
 
 const (
