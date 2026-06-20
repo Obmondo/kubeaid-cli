@@ -101,12 +101,11 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 }
 
 // findOrCreateNATGatewayServer returns the existing HCloud server
-// named serverName if it exists, otherwise creates a fresh cax11
-// (ARM) server attached to networkID with a public v4. ARM stock
-// is uneven across HCloud datacenters and Hetzner returns
-// resource_unavailable when the chosen DC is briefly out — try
-// each location in constants.HCloudARMLocations in turn before
-// giving up.
+// named serverName if it exists, otherwise creates a fresh cx23
+// (x86 Intel/AMD, cost-optimized) server attached to networkID
+// with a public v4. cx23 is a limited-availability type so stock
+// can be uneven per datacenter; try each location in
+// constants.HCloudNATGatewayLocations in turn before giving up.
 func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName string, networkID int) (*hcloud.Server, error) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
@@ -133,7 +132,7 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 
 	opts := hcloud.ServerCreateOpts{
 		Name:       serverName,
-		ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCAX11},
+		ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCX23},
 		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
 		SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
 		Networks:   []*hcloud.Network{{ID: networkID}},
@@ -148,7 +147,7 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 	}
 
 	var lastErr error
-	for _, location := range constants.HCloudARMLocations {
+	for _, location := range constants.HCloudNATGatewayLocations {
 		opts.Location = &hcloud.Location{Name: location}
 
 		result, response, err := h.serverClient.Create(ctx, opts)
@@ -198,8 +197,8 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 		}
 	}
 
-	return nil, fmt.Errorf("creating NAT gateway server %q: all %d ARM-capable HCloud locations returned resource_unavailable; last error: %w",
-		serverName, len(constants.HCloudARMLocations), lastErr)
+	return nil, fmt.Errorf("creating NAT gateway server %q: all %d NAT-gateway locations returned resource_unavailable for cx23; last error: %w",
+		serverName, len(constants.HCloudNATGatewayLocations), lastErr)
 }
 
 // isHCloudResourceUnavailable reports whether err is a Hetzner API
