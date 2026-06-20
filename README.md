@@ -88,7 +88,6 @@ kubeaid-cli [command] [flags]
 | `cluster recover <provider>` | Recover a cluster |
 | `cluster test` | Run tests against a cluster |
 | `cluster delete` | Delete a provisioned cluster |
-| `login [<cluster>.<customer>]` | Pick a cluster you can reach over NetBird and write its kubeconfig — see [`docs/login.md`](docs/login.md) |
 | `version` | Print version, commit, and build date |
 
 ### Global flags
@@ -123,7 +122,6 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 Day-to-day operator guides:
 
-- [`docs/login.md`](docs/login.md) — log into clusters with `kubeaid-cli login` (klist registry, NetBird picker, kubelogin OIDC)
 - [`docs/post-bootstrap.md`](docs/post-bootstrap.md) — what to do right after a cluster comes up
 - [`docs/add-bare-metal-worker.md`](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (and the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
 
