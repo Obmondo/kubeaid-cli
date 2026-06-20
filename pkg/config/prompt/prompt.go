@@ -483,9 +483,9 @@ func (s *promptSession) collectClusterAuthIfNeeded() error {
 }
 
 // collectNetBirdDNSZoneIfNeeded asks for the mesh DNS zone (NetBird
-// --dns-domain) for every cluster type — vpn host and workload joiner alike —
-// since the apiserver cert gets a kubernetes.<zone> SAN from it. The zone is
-// operator-supplied and required; there is no default (each mesh has its own).
+// --dns-domain) for every cluster type — vpn host and workload joiner alike.
+// The zone is used to create the DNS zone on NetBird and drives --dns-domain;
+// it is operator-supplied and required.
 func (s *promptSession) collectNetBirdDNSZoneIfNeeded() error {
 	if s.state.NetBirdDNSZone && s.cfg.NetBirdDNSZone != "" {
 		return nil
@@ -803,15 +803,15 @@ func runVPNEndpointsForm(cfg *PromptedConfig) error {
 	).Run()
 }
 
-// runNetBirdDNSZoneForm asks for the mesh DNS zone, shown for every cluster
-// type. cfg.NetBirdDNSZone is pre-filled with the "<cluster>.local" default so
-// the input shows it; the user accepts or overrides.
+// runNetBirdDNSZoneForm asks for the mesh DNS zone (NetBird --dns-domain),
+// shown for every cluster type. cfg.NetBirdDNSZone is pre-filled with the
+// "<cluster>.local" default so the input shows it; the user accepts or overrides.
 func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("NetBird mesh DNS zone (e.g. mesh.acme.com):").
-				Description("The domain your NetBird mesh resolves peers under (NetBird --dns-domain). The apiserver cert gets a kubernetes.<zone> SAN. Required.").
+				Description("The domain your NetBird mesh resolves peers under (NetBird --dns-domain). Used to create the DNS zone on NetBird. Required.").
 				Value(&cfg.NetBirdDNSZone).
 				Validate(nonEmpty),
 		).Title("NetBird — mesh DNS zone"),

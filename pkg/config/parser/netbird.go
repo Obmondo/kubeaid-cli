@@ -24,9 +24,8 @@ import (
 // base — operators using a non-conventional naming get the same
 // hostname for all three services unless they override.
 //
-// cluster.netbird.dnsZone (the mesh --dns-domain / apiserver SAN source) is
-// NOT defaulted here — it is operator-supplied via the prompt; absence means
-// no kubernetes.<zone> SAN is added.
+// cluster.netbird.dnsZone (the mesh --dns-domain) is NOT defaulted here — it
+// is operator-supplied via the prompt.
 //
 // No-op when the netbird block is absent or DNS is empty.
 func hydrateNetBirdDefaults() {

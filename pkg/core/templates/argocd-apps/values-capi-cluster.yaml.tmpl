@@ -146,13 +146,12 @@ hetzner:
       extraVolumes: {{- .ClusterConfig.APIServer.ExtraVolumes | toYAML | nindent 8 }}
       files: {{- .ClusterConfig.APIServer.Files | toYAML | nindent 8 }}
 
-    {{- /* Apiserver cert SANs — kubernetes.<netbird-dns-zone> by default plus
-         any operator controlPlane.extraCertSANs, on every Hetzner mode. The
-         chart merges these with endpoint.host into kubeadm's apiServer.certSANs
-         so clients reach kube-apiserver under a mesh name without an x509
-         mismatch. Always non-empty (it carries the kubernetes.<zone> default).
-         Close this comment plainly — no trailing trim — so extraCertSANs keeps
-         its own line. */}}
+    {{- /* Apiserver cert SANs — operator-supplied controlPlane.extraCertSANs,
+         on every Hetzner mode. The chart merges these with endpoint.host into
+         kubeadm's apiServer.certSANs. The mesh-name SAN (kubernetes.<dnsZone>)
+         is intentionally omitted: the NetBird kube-apiserver proxy makes it
+         unnecessary. Close this comment plainly — no trailing trim — so
+         extraCertSANs keeps its own line. */}}
     {{- if .ControlPlaneExtraCertSANs }}
     extraCertSANs: {{- .ControlPlaneExtraCertSANs | toYAML | nindent 6 }}
     {{- end }}
@@ -179,12 +178,10 @@ hetzner:
            - endpoint.host    : kubeadm controlPlaneEndpoint,
                                 kubeconfig server, HetznerCluster
                                 spec.controlPlaneEndpoint.host.
-           - extraCertSANs    : merged with endpoint.host into
-                                kubeadm's apiServer.certSANs so
-                                clients hitting mesh-side hostnames
-                                (e.g. NetBird-form names) don't
-                                trip x509 cert-name mismatches.
-                                Consumed by KubeadmControlPlane.yaml.
+           - extraCertSANs    : operator-supplied extras merged with
+                                endpoint.host into kubeadm's
+                                apiServer.certSANs. Consumed by
+                                KubeadmControlPlane.yaml.
            - loadBalancer.privateIP / bootstrapPublicIP : runtime
                                 info kubeaid-cli surfaces about the
                                 pre-created LB. Currently informational

@@ -334,10 +334,8 @@ type (
 		// DNSZone is the mesh DNS domain peers resolve under — NetBird
 		// Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to
 		// "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
-		// Drives NetBird Mgmt's --dns-domain on VPN clusters, and the
-		// apiserver cert SAN "kubernetes.<dnsZone>" on every cluster — so
-		// clients can reach kube-apiserver under a mesh name without an
-		// x509 mismatch.
+		// Used to create the DNS zone on NetBird and to drive --dns-domain on
+		// VPN clusters.
 		DNSZone string `yaml:"dnsZone" validate:"omitempty,fqdn|hostname_rfc1123"`
 
 		// StunDNS is the public hostname Coturn answers STUN queries
@@ -707,10 +705,9 @@ type (
 
 		// ExtraCertSANs are additional DNS names added to the apiserver's
 		// TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,
-		// hybrid). Use for mesh-internal hostnames clients reach the
-		// apiserver under; without them kubectl via that name fails with an
-		// x509 mismatch. The kubernetes.<netbird-dns-zone> default is added
-		// automatically; list only extras here.
+		// hybrid). The chart merges these with endpoint.host into kubeadm's
+		// apiServer.certSANs. Use for any additional hostnames clients reach
+		// the apiserver under.
 		ExtraCertSANs []string `yaml:"extraCertSANs,omitempty" validate:"omitempty,dive,fqdn|hostname_rfc1123"`
 	}
 
