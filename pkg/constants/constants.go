@@ -236,7 +236,7 @@ const (
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 	HetznerVSwitchGatewayIP  = "10.0.1.0"
 
-	HCloudServerTypeCAX11 = "cax11"
+	HCloudServerTypeCX23 = "cx23"
 
 	HCloudServerImageUbuntu2404 = "ubuntu-24.04"
 
@@ -267,12 +267,12 @@ const (
 	HBMSOSInstallationMaxWaitTime = 20 * time.Minute
 )
 
-// HCloudARMLocations lists HCloud datacenters that stock ARM
-// (cax-series) servers, in the order kubeaid-cli should try when
-// placing the NAT gateway. Hetzner's ARM stock fluctuates per
-// datacenter; placement returns resource_unavailable when the
-// chosen DC is briefly out — fall through to the next.
-var HCloudARMLocations = []string{
+// HCloudNATGatewayLocations is the ordered list of HCloud locations
+// kubeaid-cli tries when placing the NAT gateway server. cx23 is a
+// cost-optimized / limited-availability type (Intel/AMD x86), so
+// stock can be uneven per datacenter; fall through to the next
+// location when Hetzner returns resource_unavailable.
+var HCloudNATGatewayLocations = []string{
 	HCloudLocationHel1,
 	HCloudLocationFsn1,
 	HCloudLocationNbg1,
