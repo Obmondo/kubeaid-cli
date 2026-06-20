@@ -1,4 +1,14 @@
 - - -
+## v0.28.0 - 2026-06-20
+#### Features
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**cli**) remove login command and klist registry - (8242cd9) - Ashish Jaiswal
+#### Bug Fixes
+- (**hetzner**) drop ash from ARM NAT-gateway location list - (9141a67) - Ashish Jaiswal
+#### Refactoring
+- (**hetzner**) drop auto kubernetes.<dnsZone> apiserver cert SAN - (c4158a3) - Ashish Jaiswal
+
+- - -
+
 ## v0.27.0 - 2026-06-16
 #### Features
 - (**cert-manager**) post-bootstrap hint when no usable issuer is configured - (bdb16f1) - Ashish Jaiswal

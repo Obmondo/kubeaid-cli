@@ -137,11 +137,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -205,11 +205,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -563,7 +563,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | hcloud | [`HCloudControlPlane`](#hcloudcontrolplane) |  |  |
 | bareMetal | [`HetznerBareMetalControlPlane`](#hetznerbaremetalcontrolplane) |  |  |
 | regions | []`string` |  | Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)<br>the CAPH chart constrains control-plane placement to. At least one is required.<br> |
-| extraCertSANs,omitempty | []`string` |  | ExtraCertSANs are additional DNS names added to the apiserver's<br>TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,<br>hybrid). Use for mesh-internal hostnames clients reach the<br>apiserver under; without them kubectl via that name fails with an<br>x509 mismatch. The kubernetes.<netbird-dns-zone> default is added<br>automatically; list only extras here.<br> |
+| extraCertSANs,omitempty | []`string` |  | ExtraCertSANs are additional DNS names added to the apiserver's<br>TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,<br>hybrid). The chart merges these with endpoint.host into kubeadm's<br>apiServer.certSANs. Use for any additional hostnames clients reach<br>the apiserver under.<br> |
 
 ## HetznerCredentials
 
@@ -718,7 +718,7 @@ applies to any cluster on the mesh. cluster.type is the gate.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | dns | `string` |  | DNS is the public hostname NetBird Management is reachable at,<br>e.g. "netbird.vpn.acme.com". Required only for cluster.type=vpn<br>(enforced in parser/keycloak.go); unused on workload clusters.<br> |
-| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Drives NetBird Mgmt's --dns-domain on VPN clusters, and the<br>apiserver cert SAN "kubernetes.<dnsZone>" on every cluster — so<br>clients can reach kube-apiserver under a mesh name without an<br>x509 mismatch.<br> |
+| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Used to create the DNS zone on NetBird and to drive --dns-domain on<br>VPN clusters.<br> |
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
