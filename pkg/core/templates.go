@@ -93,10 +93,10 @@ type TemplateValues struct {
 	ControlPlaneLBPrivateIP         string
 	ControlPlaneLBBootstrapPublicIP string
 
-	// ControlPlaneExtraCertSANs are extra DNS names rendered into
-	// the chart's values so kubeadm includes them in the apiserver
-	// TLS cert SAN list (alongside the primary endpoint). Used for
-	// mesh-side hostnames like a NetBird-form name.
+	// ControlPlaneExtraCertSANs are operator-supplied extra DNS names rendered
+	// into the chart's values so kubeadm includes them in the apiserver TLS
+	// cert SAN list alongside the primary endpoint.host. Sourced from
+	// controlPlane.extraCertSANs in general.yaml.
 	ControlPlaneExtraCertSANs []string
 
 	ExtraKnownHosts []string
@@ -410,9 +410,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 			templateValues.ControlPlaneEndpoint = globals.ControlPlaneLBPrivateIP
 		}
 
-		// Apiserver cert SANs for every Hetzner mode: kubernetes.<netbird-dns-zone>
-		// by default, plus operator controlPlane.extraCertSANs and any legacy
-		// hcloud LoadBalancer extras.
+		// Apiserver cert SANs for every Hetzner mode: operator-supplied
+		// controlPlane.extraCertSANs (the chart merges these with endpoint.host).
 		templateValues.ControlPlaneExtraCertSANs = hetznerControlPlaneCertSANs(hetznerConfig)
 
 	// Bare Metal cluster; the user specifies it.
@@ -431,22 +430,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	return templateValues
 }
 
-// hetznerControlPlaneCertSANs builds the apiserver cert SAN list for a Hetzner
-// cluster: kubernetes.<dnsZone> when cluster.netbird.dnsZone is set (so clients
-// can reach kube-apiserver under a mesh name without an x509 mismatch), plus
-// any operator-supplied controlPlane.extraCertSANs. The zone is
-// operator-supplied (via the prompt), never auto-derived — so a cluster with no
-// netbird block / no dnsZone simply gets no kubernetes.<zone> SAN.
+// hetznerControlPlaneCertSANs returns the operator-supplied extraCertSANs for
+// a Hetzner cluster's apiserver cert. The chart merges these with endpoint.host
+// into kubeadm's apiServer.certSANs. The mesh-name SAN (kubernetes.<dnsZone>)
+// is intentionally NOT added: the NetBird kube-apiserver proxy makes it
+// unnecessary.
 func hetznerControlPlaneCertSANs(hetznerConfig *config.HetznerConfig) []string {
-	var sans []string
-
-	if nb := config.ParsedGeneralConfig.Cluster.NetBird; nb != nil && nb.DNSZone != "" {
-		sans = append(sans, "kubernetes."+nb.DNSZone)
-	}
-
-	sans = append(sans, hetznerConfig.ControlPlane.ExtraCertSANs...)
-
-	return sans
+	return hetznerConfig.ControlPlane.ExtraCertSANs
 }
 
 func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config.HetznerConfig {

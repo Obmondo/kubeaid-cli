@@ -25,7 +25,7 @@ func TestHetznerControlPlaneCertSANs(t *testing.T) {
 			want:    nil,
 		},
 		{
-			name:    "no netbird block: only operator extraCertSANs, no kubernetes.<zone>",
+			name:    "no netbird block: only operator extraCertSANs",
 			netbird: nil,
 			hetzner: &config.HetznerConfig{
 				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com"}},
@@ -33,7 +33,7 @@ func TestHetznerControlPlaneCertSANs(t *testing.T) {
 			want: []string{"a.acme.com"},
 		},
 		{
-			name:    "empty dnsZone (block present): still no kubernetes.<zone>",
+			name:    "empty dnsZone (block present): only operator extraCertSANs",
 			netbird: &config.NetBirdConfig{},
 			hetzner: &config.HetznerConfig{
 				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com"}},
@@ -41,18 +41,22 @@ func TestHetznerControlPlaneCertSANs(t *testing.T) {
 			want: []string{"a.acme.com"},
 		},
 		{
-			name:    "dnsZone set: kubernetes.<zone> first",
+			// dnsZone is retained for NetBird --dns-domain but must NOT produce a
+			// kubernetes.<zone> cert SAN — the NetBird kube-apiserver proxy makes
+			// that SAN unnecessary.
+			name:    "dnsZone set, no extraCertSANs: result is empty (no mesh SAN)",
 			netbird: &config.NetBirdConfig{DNSZone: "mesh.acme.com"},
 			hetzner: &config.HetznerConfig{},
-			want:    []string{"kubernetes.mesh.acme.com"},
+			want:    nil,
 		},
 		{
-			name:    "dnsZone + operator extraCertSANs",
+			// dnsZone must NOT appear in the SAN list; operator extraCertSANs pass through.
+			name:    "dnsZone + operator extraCertSANs: only extraCertSANs returned",
 			netbird: &config.NetBirdConfig{DNSZone: "mesh.acme.com"},
 			hetzner: &config.HetznerConfig{
 				ControlPlane: config.HetznerControlPlane{ExtraCertSANs: []string{"a.acme.com", "b.acme.com"}},
 			},
-			want: []string{"kubernetes.mesh.acme.com", "a.acme.com", "b.acme.com"},
+			want: []string{"a.acme.com", "b.acme.com"},
 		},
 	}
 
