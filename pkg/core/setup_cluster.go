@@ -696,8 +696,13 @@ func managementClusterRootChildResources() []*argoCDV1Alpha1.SyncOperationResour
 		constants.ArgoCDAppSealedSecrets,
 		"secrets",
 		"cert-manager",
-		"cluster-api-operator",
-		constants.ArgoCDAppCapiCluster,
+	}
+
+	// The local provider provisions no CAPI cluster, so
+	// getEmbeddedNonSecretTemplateNames omits the cluster-api-operator and
+	// capi-cluster Apps — root never declares them, so don't wait on them.
+	if globals.CloudProviderName != constants.CloudProviderLocal {
+		mgmtApps = append(mgmtApps, "cluster-api-operator", constants.ArgoCDAppCapiCluster)
 	}
 	resources := make([]*argoCDV1Alpha1.SyncOperationResource, 0, len(mgmtApps))
 	for _, name := range mgmtApps {
