@@ -101,7 +101,7 @@ func (c endpointCheck) runWithRetry(ctx context.Context, client *http.Client) er
 	const interval = 10 * time.Second
 
 	var last error
-	for i := 0; i < maxAttempts; i++ {
+	for i := range maxAttempts {
 		if err := ctx.Err(); err != nil {
 			return err
 		}

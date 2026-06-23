@@ -556,7 +556,7 @@ func logInfrastructureProviderConditions(
 			continue
 		}
 
-		var allReady = true
+		allReady := true
 		for _, raw := range conditions {
 			cond, ok := raw.(map[string]interface{})
 			if !ok {

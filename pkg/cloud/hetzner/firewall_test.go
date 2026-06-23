@@ -11,9 +11,10 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 var (
@@ -293,6 +294,7 @@ func TestEnsureRobotFirewall(t *testing.T) {
 					_, _ = fmt.Fprint(w, robotFirewallJSON(t, serverIP, differentRuleset.Status, differentRuleset.Rules))
 
 				case r.Method == http.MethodPost && r.URL.Path == "/firewall/"+serverIP:
+					r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 					require.NoError(t, r.ParseForm())
 					// Rule 0 is SSH (allowed from all by default) — accept on port 22.
 					assert.Equal(t, "accept", r.PostFormValue("rules[input][0][action]"))
@@ -404,6 +406,7 @@ func TestEnsureRobotFirewall_FormDataEncoding(t *testing.T) {
 			_, _ = fmt.Fprint(w, robotFirewallJSON(t, serverIP, "disabled", sparseRuleset.Rules))
 
 		case r.Method == http.MethodPost && r.URL.Path == "/firewall/"+serverIP:
+			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 			require.NoError(t, r.ParseForm())
 			capturedForm = r.Form
 			w.WriteHeader(http.StatusOK)

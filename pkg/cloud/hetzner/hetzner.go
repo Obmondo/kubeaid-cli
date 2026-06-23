@@ -111,7 +111,11 @@ func newRobotRestyClient(robotUser, robotPassword string) *resty.Client {
 	// has an A record), cap the connect so a stuck dial fails fast, and retry
 	// transient failures with backoff. 4xx (incl. 401) are NOT retried — auth will
 	// not fix itself, and retrying failed auth can trip Hetzner's lockout.
-	transport := http.DefaultTransport.(*http.Transport).Clone()
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		defaultTransport = &http.Transport{}
+	}
+	transport := defaultTransport.Clone()
 	transport.DialContext = func(ctx context.Context, _, address string) (net.Conn, error) {
 		return (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).
 			DialContext(ctx, "tcp4", address)

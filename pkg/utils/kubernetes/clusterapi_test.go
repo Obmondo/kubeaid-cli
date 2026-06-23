@@ -204,6 +204,7 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 			// Cluster CR being Provisioned alone isn't enough since
 			// it can fire 10+ min before kubeadm-init finishes.
 			name: "returns nil when cluster is provisioned and CP + worker Machine are Running",
+			//nolint:dupl
 			preExist: []runtime.Object{
 				&clusterAPIV1Beta1.Cluster{
 					ObjectMeta: metaV1.ObjectMeta{
@@ -485,6 +486,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			// Running, both with NodeRef. ready=true, kubeaid-cli can
 			// proceed to install Cilium on the workload cluster.
 			name: "ready — 1 CP + 1 worker Machine Running with NodeRef + v1beta2 Ready=True",
+			//nolint:dupl // explicit, self-contained CAPI fixture; the shape overlap with the wait happy-path case is intentional.
 			preExist: []runtime.Object{
 				&clusterAPIV1Beta1.Cluster{
 					ObjectMeta: metaV1.ObjectMeta{
