@@ -1,12 +1,18 @@
 ---
-{{- if .ControlPlaneEndpoint }}
+{{- if or .ControlPlaneEndpoint .HetznerBareMetalFirewallEnabled }}
 cilium:
+  {{- if .ControlPlaneEndpoint }}
   kubeProxyReplacement: "true"
   k8sServiceHost: {{ .ControlPlaneEndpoint }}
   k8sServicePort: 6443
+  {{- end }}
 
+  {{- if .HetznerBareMetalFirewallEnabled }}
+  # Enable the eBPF host-endpoint datapath so CiliumClusterwideNetworkPolicy
+  # rules on the host endpoint are enforced. Paired with hostNetworkPolicy below.
   hostFirewall:
     enabled: true
+  {{- end }}
 
   {{- /*
     (1) HCloud instances always have the eth0 network interface.
@@ -29,5 +35,21 @@ cilium:
   {{- if .HetznerConfig }}
   extraArgs:
     - "--devices=eth+,enp+,eno+"
+  {{- end }}
+{{- end }}
+{{- if and .HetznerBareMetalFirewallEnabled .HetznerConfig .HetznerConfig.BareMetal }}
+hostNetworkPolicy:
+  enabled: false
+  {{- with .HetznerConfig.BareMetal.Firewall.AllowSSHFrom }}
+  allowSshFrom:
+    {{- range . }}
+    - {{ . }}
+    {{- end }}
+  {{- end }}
+  {{- if .HetznerBareMetalHostPublicIPs }}
+  apiserverSourceCIDRs:
+    {{- range .HetznerBareMetalHostPublicIPs }}
+    - {{ . }}/32
+    {{- end }}
   {{- end }}
 {{- end }}

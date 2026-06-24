@@ -577,7 +577,7 @@ func TestValidateHetznerConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			withParsedConfig(t, tc.general, tc.secrets)
 
-			err := validateHetznerConfig()
+			err := validateHetznerConfig(context.Background())
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrSub)

@@ -185,6 +185,12 @@ type TemplateValues struct {
 	// for release builds so each bare-metal node downloads the storagectl
 	// binary that matches the kubeaid-cli release that bootstrapped it.
 	KubeaidStoragectlVersion string
+
+	// HetznerBareMetalFirewallEnabled is true when the cluster is a Hetzner
+	// bare-metal deployment and firewall.enabled is not explicitly false.
+	// Computed at render time so the cilium values template can gate the
+	// hostNetworkPolicy block without dereferencing the *bool inline.
+	HetznerBareMetalFirewallEnabled bool
 }
 
 // operatorStoragectlVersionOverride returns the operator-set value of
@@ -264,6 +270,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 			operatorStoragectlVersionOverride(),
 			globals.KubeaidCLIVersion,
 		),
+
+		HetznerBareMetalFirewallEnabled: hetznerBareMetalFirewallEnabled(),
 	}
 
 	// Populate Hetzner bare-metal host public IPs via Robot API for the
@@ -906,6 +914,22 @@ func shouldValidateOIDCNow() bool {
 		return false
 	}
 	return true
+}
+
+// hetznerBareMetalFirewallEnabled reports whether the Cilium host-firewall
+// hostNetworkPolicy block should be rendered in the cilium values overlay.
+// True when all of:
+//   - cloud provider is Hetzner bare-metal (HetznerConfig.BareMetal non-nil)
+//   - firewall.enabled is nil (default true) or explicitly true
+//
+// Nil-safe: returns false for any non-Hetzner-bare-metal configuration.
+func hetznerBareMetalFirewallEnabled() bool {
+	h := config.ParsedGeneralConfig.Cloud.Hetzner
+	if h == nil || h.BareMetal == nil {
+		return false
+	}
+	enabled := h.BareMetal.Firewall.Enabled
+	return enabled == nil || *enabled
 }
 
 // hcloudControlPlaneEndpointSet reports whether kubeaid-cli should

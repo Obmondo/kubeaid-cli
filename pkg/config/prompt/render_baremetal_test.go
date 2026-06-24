@@ -107,9 +107,12 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "vlanID: 4002")
 	assert.Contains(t, general, `subnetCIDRBlock: "10.0.1.0/24"`)
 
-	// Robot firewall hook block rendered with its defaults (enabled, empty
+	// Cilium host-firewall block rendered with its defaults (enabled, empty
 	// allowSshFrom + allowPublic) so prompt-generated configs document the
-	// public-IP lockdown knobs; see docs/hetzner-bare-metal-network-surface.md.
+	// public-NIC lockdown knobs; see docs/hetzner-bare-metal-network-surface.md.
+	// Note: allowPublic is not rendered into the CCNP (publicPorts is fixed
+	// in the chart) — the field is preserved for operators to migrate to the
+	// chart overlay; kubeaid-cli warns at parse time if it is non-empty.
 	assert.Contains(t, general, "firewall:")
 	assert.Contains(t, general, "allowSshFrom: []")
 	assert.Contains(t, general, "allowPublic: []")

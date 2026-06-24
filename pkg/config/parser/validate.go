@@ -71,7 +71,7 @@ func validateConfigs(ctx context.Context) error {
 	case constants.CloudProviderAzure:
 		return validateAzureConfig()
 	case constants.CloudProviderHetzner:
-		return validateHetznerConfig()
+		return validateHetznerConfig(ctx)
 	case constants.CloudProviderBareMetal:
 		return validateBareMetalConfig(ctx)
 	case constants.CloudProviderLocal:
@@ -395,7 +395,7 @@ func validateAzureConfig() error {
 	return nil
 }
 
-func validateHetznerConfig() error {
+func validateHetznerConfig(ctx context.Context) error {
 	if config.ParsedSecretsConfig.Hetzner == nil {
 		return errors.New("hetzner credentials not provided")
 	}
@@ -431,6 +431,15 @@ func validateHetznerConfig() error {
 	if config.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
 			return err
+		}
+		// AllowPublic is parsed and validated but not rendered into the Cilium
+		// CiliumClusterwideNetworkPolicy (publicPorts is fixed at [80,443,6443]
+		// in the chart values). Warn so operators don't silently misconfigure.
+		bm := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal
+		if bm != nil && len(bm.Firewall.AllowPublic) > 0 {
+			slog.WarnContext(ctx, "firewall.allowPublic is set but not rendered into the Cilium host-firewall policy; add the ports to hostNetworkPolicy.publicPorts in the cilium chart values overlay instead",
+				slog.Int("count", len(bm.Firewall.AllowPublic)),
+			)
 		}
 	}
 	return nil
