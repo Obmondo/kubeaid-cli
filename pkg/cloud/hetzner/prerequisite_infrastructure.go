@@ -93,7 +93,6 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
 			return fmt.Errorf("creating NAT gateway: %w", err)
 		}
-		bar.Substep("Created NAT Gateway")
 
 		// Pre-create the control-plane LB. The DNS-wait it triggers is
 		// the longest blocking step in this phase (operator-driven —

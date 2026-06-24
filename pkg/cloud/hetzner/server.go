@@ -60,8 +60,15 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 		return err
 	}
 
+	// Server is created and network route is in place — surface the ✓ now,
+	// before the SSH/YubiKey phase, so the operator sees server creation
+	// confirmed separately from the configure step.
+	progress.FromCtx(ctx).Substep("Created NAT Gateway")
+
+	releaseConfiguring := progress.FromCtx(ctx).InProgress("Configuring NAT Gateway")
 	connection := waitForNATGatewaySSH(ctx, server, hetznerConfig.SSHKeyPair.PrivateKey)
 	defer connection.Close()
+	defer releaseConfiguring()
 
 	cidr := hetznerConfig.HCloud.HetznerNetwork.CIDR
 	if _, _, err := net.ParseCIDR(cidr); err != nil {
