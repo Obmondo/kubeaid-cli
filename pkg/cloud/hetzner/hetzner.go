@@ -138,18 +138,6 @@ func newRobotRestyClient(robotUser, robotPassword string) *resty.Client {
 		})
 }
 
-// NewRobotFirewallClient builds a Hetzner client wired only for Hetzner Robot
-// firewall operations (EnsureRobotFirewall, with BareMetalIngressRuleset /
-// DefaultBareMetalIngressRuleset). It needs nothing but Robot web-service
-// credentials — no parsed cluster config, no management or workload cluster — so
-// one-off tooling can reconcile a node's public-IP firewall directly against the
-// Robot API. The same primitive backs the eventual in-CLI wiring.
-func NewRobotFirewallClient(robotUser, robotPassword string) *Hetzner {
-	return &Hetzner{
-		robotClient: newRobotRestyClient(robotUser, robotPassword),
-	}
-}
-
 func (*Hetzner) SetupDisasterRecovery(_ context.Context) error {
 	return fmt.Errorf("setup disaster recovery is not implemented for Hetzner")
 }

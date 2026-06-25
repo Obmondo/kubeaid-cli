@@ -23,7 +23,9 @@ func newTestHetznerWithRobotServer(handler http.Handler) (*Hetzner, *httptest.Se
 		SetBaseURL(server.URL).
 		SetHeader("Content-Type", "application/x-www-form-urlencoded").
 		SetHeader("Accept", "application/json")
-	return &Hetzner{robotClient: robotClient}, server
+	return &Hetzner{
+		robotClient: robotClient,
+	}, server
 }
 
 func TestActivateHRobotLinuxInstallation(t *testing.T) {

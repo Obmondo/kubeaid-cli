@@ -623,8 +623,10 @@ type (
 		WipeDisks    bool               `yaml:"wipeDisks"    default:"false"`
 		InstallImage InstallImageConfig `yaml:"installImage"`
 
-		// Firewall tunes the Hetzner Robot stateless firewall applied to each
-		// bare-metal node's public IP. See docs/hetzner-bare-metal-network-surface.md.
+		// Firewall configures the Cilium host-firewall policy (CiliumClusterwideNetworkPolicy)
+		// that locks down each bare-metal node's public NIC. Enabled controls whether
+		// kubeaid-cli renders the policy at all; AllowSSHFrom feeds the per-CIDR SSH ingress
+		// rule. See docs/hetzner-bare-metal-network-surface.md.
 		Firewall FirewallConfig `yaml:"firewall"`
 
 		// ZFS specific configuration.
@@ -655,34 +657,34 @@ type (
 		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
 	}
 
-	// FirewallConfig tunes the Hetzner Robot stateless firewall locked onto each
-	// bare-metal node's public IP. Control-plane nodes (which hold the failover
-	// IP — the cluster's single public ingress) get SSH + 80/443 + AllowPublic;
-	// worker nodes expose nothing public beyond SSH. The kube-apiserver (6443) is
-	// always denied on the public IP — reach it over the NetBird operator. The
-	// rulesets live in pkg/cloud/hetzner. See
-	// docs/hetzner-bare-metal-network-surface.md.
+	// FirewallConfig drives the Cilium host-firewall policy rendered by kubeaid-cli
+	// for Hetzner bare-metal clusters. The resulting CiliumClusterwideNetworkPolicy
+	// selects every node and locks down the public NIC via eBPF host-endpoint rules.
+	// See docs/hetzner-bare-metal-network-surface.md.
 	FirewallConfig struct {
-		// Enabled gates whether kubeaid-cli manages the Robot firewall at all.
-		// Defaults to true; set false to opt out — e.g. a separate upstream L3
-		// firewall appliance already fronts the cluster. A pointer so an explicit
-		// "enabled: false" is distinguishable from unset and honoured.
+		// Enabled gates whether kubeaid-cli renders the Cilium host-firewall
+		// CiliumClusterwideNetworkPolicy at all. Defaults to true; set false to
+		// opt out — e.g. a separate upstream L3 firewall appliance already fronts
+		// the cluster. A pointer so an explicit "enabled: false" is distinguishable
+		// from unset and honoured.
 		Enabled *bool `yaml:"enabled"`
 
 		// AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to
-		// these sources. Empty (the default) allows SSH from anywhere — the safe
-		// default, since the nodes are not NetBird peers and so have no fallback
-		// access path. Each entry is an IPv4 address or CIDR (e.g. "203.0.113.4"
-		// or "203.0.113.0/24"); a bare address is treated as /32.
+		// these sources. Rendered as a fromCIDR rule in the CCNP. Empty (the
+		// default) allows SSH from anywhere — matching the bare-metal posture where
+		// nodes are not NetBird peers and have no mesh fallback path. Each entry is
+		// an IPv4 address or CIDR (e.g. "203.0.113.4" or "203.0.113.0/24"); a bare
+		// address is treated as /32.
 		AllowSSHFrom []string `yaml:"allowSshFrom" validate:"omitempty,dive,ipv4|cidrv4"`
 
-		// AllowPublic lists extra inbound ports to ACCEPT on the public ingress IP
-		// (the failover IP held by the control-plane nodes), alongside 80/443 — for
-		// a port a workload must expose publicly (e.g. 25/tcp SMTP, 993/tcp IMAPS,
-		// 5432/tcp a customer-reachable Postgres). Worker nodes expose no public
-		// service ports, so these apply to the control-plane ruleset only. The SSH
-		// and apiserver rules are evaluated first, so AllowPublic cannot re-open
-		// SSH or the kube-apiserver.
+		// AllowPublic is a legacy field from the (removed) Hetzner Robot firewall.
+		// It is parsed and validated but NOT rendered into the Cilium host-firewall
+		// policy — parser.validateHetznerConfig only logs a warning when it is set.
+		// The policy's world-facing ports come from hostNetworkPolicy.publicPorts
+		// (chart default [80, 443]); 6443 is never world-public — it is a separate
+		// rule restricted to hostNetworkPolicy.apiserverSourceCIDRs (the node IPs).
+		// To open extra ports to the world, add them to hostNetworkPolicy.publicPorts
+		// in the cilium chart values overlay, not here.
 		AllowPublic []FirewallPort `yaml:"allowPublic" validate:"omitempty,dive"`
 	}
 

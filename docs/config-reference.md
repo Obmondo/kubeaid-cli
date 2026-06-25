@@ -205,11 +205,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -376,19 +376,16 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 
 ## FirewallConfig
 
-<p>FirewallConfig tunes the Hetzner Robot stateless firewall locked onto each
-bare-metal node's public IP. Control-plane nodes (which hold the failover
-IP — the cluster's single public ingress) get SSH + 80/443 + AllowPublic;
-worker nodes expose nothing public beyond SSH. The kube-apiserver (6443) is
-always denied on the public IP — reach it over the NetBird operator. The
-rulesets live in pkg/cloud/hetzner. See
-docs/hetzner-bare-metal-network-surface.md.</p>
+<p>FirewallConfig drives the Cilium host-firewall policy rendered by kubeaid-cli
+for Hetzner bare-metal clusters. The resulting CiliumClusterwideNetworkPolicy
+selects every node and locks down the public NIC via eBPF host-endpoint rules.
+See docs/hetzner-bare-metal-network-surface.md.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| enabled | `bool` |  | Enabled gates whether kubeaid-cli manages the Robot firewall at all.<br>Defaults to true; set false to opt out — e.g. a separate upstream L3<br>firewall appliance already fronts the cluster. A pointer so an explicit<br>"enabled: false" is distinguishable from unset and honoured.<br> |
-| allowSshFrom | []`string` |  | AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to<br>these sources. Empty (the default) allows SSH from anywhere — the safe<br>default, since the nodes are not NetBird peers and so have no fallback<br>access path. Each entry is an IPv4 address or CIDR (e.g. "203.0.113.4"<br>or "203.0.113.0/24"); a bare address is treated as /32.<br> |
-| allowPublic | [][`FirewallPort`](#firewallport) |  | AllowPublic lists extra inbound ports to ACCEPT on the public ingress IP<br>(the failover IP held by the control-plane nodes), alongside 80/443 — for<br>a port a workload must expose publicly (e.g. 25/tcp SMTP, 993/tcp IMAPS,<br>5432/tcp a customer-reachable Postgres). Worker nodes expose no public<br>service ports, so these apply to the control-plane ruleset only. The SSH<br>and apiserver rules are evaluated first, so AllowPublic cannot re-open<br>SSH or the kube-apiserver.<br> |
+| enabled | `bool` |  | Enabled gates whether kubeaid-cli renders the Cilium host-firewall<br>CiliumClusterwideNetworkPolicy at all. Defaults to true; set false to<br>opt out — e.g. a separate upstream L3 firewall appliance already fronts<br>the cluster. A pointer so an explicit "enabled: false" is distinguishable<br>from unset and honoured.<br> |
+| allowSshFrom | []`string` |  | AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to<br>these sources. Rendered as a fromCIDR rule in the CCNP. Empty (the<br>default) allows SSH from anywhere — matching the bare-metal posture where<br>nodes are not NetBird peers and have no mesh fallback path. Each entry is<br>an IPv4 address or CIDR (e.g. "203.0.113.4" or "203.0.113.0/24"); a bare<br>address is treated as /32.<br> |
+| allowPublic | [][`FirewallPort`](#firewallport) |  | AllowPublic lists extra public service ports beyond the chart default<br>(80/443/6443). This field is not currently rendered into the Cilium<br>CiliumClusterwideNetworkPolicy — publicPorts is fixed at [80, 443, 6443]<br>in the chart values overlay. To expose additional ports publicly, add them<br>directly to hostNetworkPolicy.publicPorts in the kubeaid-config values<br>overlay for the cilium chart.<br> |
 
 ## FirewallPort
 
@@ -444,11 +441,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -496,7 +493,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | wipeDisks | `bool` | false |  |
 | installImage | [`InstallImageConfig`](#installimageconfig) |  |  |
-| firewall | [`FirewallConfig`](#firewallconfig) |  | Firewall tunes the Hetzner Robot stateless firewall applied to each<br>bare-metal node's public IP. See docs/hetzner-bare-metal-network-surface.md.<br> |
+| firewall | [`FirewallConfig`](#firewallconfig) |  | Firewall configures the Cilium host-firewall policy (CiliumClusterwideNetworkPolicy)<br>that locks down each bare-metal node's public NIC. Enabled controls whether<br>kubeaid-cli renders the policy at all; AllowSSHFrom feeds the per-CIDR SSH ingress<br>rule. See docs/hetzner-bare-metal-network-surface.md.<br> |
 | zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration.<br>Every node runs a ZFS pool, named primary. We carve out storage for container images, pod<br>logs and pod ephemeral volumes from that ZFS pool, as required.<br>The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.<br> |
 | vSwitch | [`VSwitchConfig`](#vswitchconfig) |  | Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with<br>the Hetzner Network.<br> |
 

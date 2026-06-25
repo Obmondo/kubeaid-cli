@@ -147,10 +147,12 @@ cloud:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
         subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
-      # Robot stateless firewall on each node's public IP. apiserver (6443) is
-      # always denied publicly (reach it via the NetBird operator); allowSshFrom
-      # restricts SSH (empty = from all, IPv4/CIDR only); allowPublic adds extra
-      # public ports on the control-plane ingress IP. See
+      # Cilium host firewall (CiliumClusterwideNetworkPolicy) on each node's
+      # public NIC. enabled gates whether the policy is rendered; allowSshFrom
+      # restricts SSH (empty = from anywhere, IPv4/CIDR only). 80/443 are
+      # world-public; 6443 is reachable only from the node public IPs, not the
+      # world. allowPublic is a legacy no-op (ignored, warns if set) — set extra
+      # world ports via the cilium chart's hostNetworkPolicy.publicPorts. See
       # docs/hetzner-bare-metal-network-surface.md.
       firewall:
         enabled: true
@@ -193,10 +195,12 @@ cloud:
         name: {{ .HetznerVSwitchName }}
         vlanID: {{ .HetznerVSwitchVLANID }}
         subnetCIDRBlock: "{{ .HetznerVSwitchSubnetCIDR }}"
-      # Robot stateless firewall on each node's public IP. apiserver (6443) is
-      # always denied publicly (reach it via the NetBird operator); allowSshFrom
-      # restricts SSH (empty = from all, IPv4/CIDR only); allowPublic adds extra
-      # public ports on the control-plane ingress IP. See
+      # Cilium host firewall (CiliumClusterwideNetworkPolicy) on each node's
+      # public NIC. enabled gates whether the policy is rendered; allowSshFrom
+      # restricts SSH (empty = from anywhere, IPv4/CIDR only). 80/443 are
+      # world-public; 6443 is reachable only from the node public IPs, not the
+      # world. allowPublic is a legacy no-op (ignored, warns if set) — set extra
+      # world ports via the cilium chart's hostNetworkPolicy.publicPorts. See
       # docs/hetzner-bare-metal-network-surface.md.
       firewall:
         enabled: true
