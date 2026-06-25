@@ -238,6 +238,60 @@ func helmUpgradeWithFactory(ctx context.Context, factory HelmActionFactory, args
 	return nil
 }
 
+// HelmRenderArgs are the inputs to HelmRenderManifest.
+type HelmRenderArgs struct {
+	// ChartPath is the local filesystem path to the Helm chart directory.
+	ChartPath string
+	// ReleaseName is used as the Helm release name during the dry-run render.
+	ReleaseName string
+	// Namespace is the target namespace for the rendered manifests.
+	Namespace string
+	// Values provides file-based values (e.g. values-cilium.yaml). May be nil.
+	Values *values.Options
+}
+
+// HelmRenderManifest renders a Helm chart to a raw multi-document YAML string
+// without touching the cluster. It uses DryRun=true + ClientOnly=true so no
+// kubeconfig or network access is required.
+func HelmRenderManifest(ctx context.Context, args *HelmRenderArgs) (string, error) {
+	cfg := new(action.Configuration)
+	// ClientOnly renders need no REST client; silence the internal logger.
+	cfg.Log = func(string, ...interface{}) {}
+
+	act := action.NewInstall(cfg)
+	act.DryRun = true
+	act.ClientOnly = true
+	act.ReleaseName = args.ReleaseName
+	act.Namespace = args.Namespace
+	act.IncludeCRDs = true
+
+	valuesMap := make(map[string]interface{})
+	if args.Values != nil {
+		p := getter.All(cli.New())
+		var err error
+		valuesMap, err = args.Values.MergeValues(p)
+		if err != nil {
+			return "", fmt.Errorf("merging helm values: %w", err)
+		}
+	}
+
+	chrt, err := loader.Load(args.ChartPath)
+	if err != nil {
+		return "", fmt.Errorf("loading helm chart %q: %w", args.ChartPath, err)
+	}
+
+	rel, err := act.Run(chrt, valuesMap)
+	if err != nil {
+		return "", fmt.Errorf("rendering helm chart %q: %w", args.ChartPath, err)
+	}
+
+	slog.InfoContext(ctx, "Helm chart rendered (dry-run)",
+		slog.String("chart", args.ChartPath),
+		slog.String("release", args.ReleaseName),
+	)
+	return rel.Manifest, nil
+}
+
 // findExistingHelmRelease looks whether a Helm release with the given name exists.
 // If yes, returns it.
 func findExistingHelmRelease(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) *release.Release {

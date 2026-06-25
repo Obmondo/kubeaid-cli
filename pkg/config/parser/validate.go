@@ -433,11 +433,17 @@ func validateHetznerConfig(ctx context.Context) error {
 			return err
 		}
 		// AllowPublic is parsed and validated but not rendered into the Cilium
-		// CiliumClusterwideNetworkPolicy (publicPorts is fixed at [80,443,6443]
-		// in the chart values). Warn so operators don't silently misconfigure.
+		// host-firewall policy — its world-facing ports come from
+		// hostNetworkPolicy.publicPorts (default [80, 443]). Warn so operators
+		// don't silently misconfigure.
 		bm := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal
 		if bm != nil && len(bm.Firewall.AllowPublic) > 0 {
-			slog.WarnContext(ctx, "firewall.allowPublic is set but not rendered into the Cilium host-firewall policy; add the ports to hostNetworkPolicy.publicPorts in the cilium chart values overlay instead",
+			slog.WarnContext(
+				ctx,
+				"firewall.allowPublic is set but not rendered into the Cilium "+
+					"host-firewall policy; add the ports to "+
+					"hostNetworkPolicy.publicPorts in the cilium chart values "+
+					"overlay instead",
 				slog.Int("count", len(bm.Firewall.AllowPublic)),
 			)
 		}

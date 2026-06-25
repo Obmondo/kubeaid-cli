@@ -291,6 +291,13 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
 
+	// Host-firewall lockdown is the LAST cluster-touching step — it locks the
+	// apiserver to node IPs, so it must run after every CLI→cluster operation
+	// above (ArgoCD sync, backups, secret reads) AND after bar.Finish(), since
+	// its confirm prompt + PR output would otherwise corrupt the live progress
+	// bar. Self-gates to Hetzner bare-metal post-pivot; the operator can decline.
+	lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+
 	// Elapsed time only renders on the success path — a Ctrl+C or
 	// assert.AssertErrNil bail-out short-circuits before this call,
 	// so the "Bootstrap complete in …" header never lies about a

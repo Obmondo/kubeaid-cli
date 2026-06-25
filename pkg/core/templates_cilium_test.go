@@ -159,7 +159,7 @@ func TestCiliumValuesTemplateHostNetworkPolicy(t *testing.T) {
 			name: "non-bare-metal (HetznerConfig nil, flag false): no hostNetworkPolicy block",
 			tmplValues: TemplateValues{
 				HetznerBareMetalFirewallEnabled: false,
-				HetznerConfig:                  nil,
+				HetznerConfig:                   nil,
 			},
 			wantNotContains: []string{"hostNetworkPolicy:"},
 		},
@@ -172,7 +172,7 @@ func TestCiliumValuesTemplateHostNetworkPolicy(t *testing.T) {
 			name: "flag true but HetznerConfig nil: no hostNetworkPolicy block (nil-safe guard)",
 			tmplValues: TemplateValues{
 				HetznerBareMetalFirewallEnabled: true,
-				HetznerConfig:                  nil,
+				HetznerConfig:                   nil,
 			},
 			wantNotContains: []string{"hostNetworkPolicy:"},
 		},
