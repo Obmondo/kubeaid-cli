@@ -11,7 +11,7 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.6.1
 	github.com/Azure/azure-workload-identity v1.5.1
 	github.com/Nerzal/gocloak/v13 v13.9.0
-	github.com/argoproj/argo-cd/v2 v2.14.20
+	github.com/argoproj/argo-cd/v2 v2.14.21
 	github.com/argoproj/gitops-engine v0.7.1-0.20250521000818-c08b0a72c1f1
 	github.com/aws/aws-sdk-go-v2 v1.41.5
 	github.com/aws/aws-sdk-go-v2/config v1.31.12
