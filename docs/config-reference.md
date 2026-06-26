@@ -137,11 +137,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -205,11 +205,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -385,7 +385,7 @@ See docs/hetzner-bare-metal-network-surface.md.</p>
 |-------|------|---------|-------------|
 | enabled | `bool` |  | Enabled gates whether kubeaid-cli renders the Cilium host-firewall<br>CiliumClusterwideNetworkPolicy at all. Defaults to true; set false to<br>opt out — e.g. a separate upstream L3 firewall appliance already fronts<br>the cluster. A pointer so an explicit "enabled: false" is distinguishable<br>from unset and honoured.<br> |
 | allowSshFrom | []`string` |  | AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to<br>these sources. Rendered as a fromCIDR rule in the CCNP. Empty (the<br>default) allows SSH from anywhere — matching the bare-metal posture where<br>nodes are not NetBird peers and have no mesh fallback path. Each entry is<br>an IPv4 address or CIDR (e.g. "203.0.113.4" or "203.0.113.0/24"); a bare<br>address is treated as /32.<br> |
-| allowPublic | [][`FirewallPort`](#firewallport) |  | AllowPublic lists extra public service ports beyond the chart default<br>(80/443/6443). This field is not currently rendered into the Cilium<br>CiliumClusterwideNetworkPolicy — publicPorts is fixed at [80, 443, 6443]<br>in the chart values overlay. To expose additional ports publicly, add them<br>directly to hostNetworkPolicy.publicPorts in the kubeaid-config values<br>overlay for the cilium chart.<br> |
+| allowPublic | [][`FirewallPort`](#firewallport) |  | AllowPublic is a legacy field from the (removed) Hetzner Robot firewall.<br>It is parsed and validated but NOT rendered into the Cilium host-firewall<br>policy — parser.validateHetznerConfig only logs a warning when it is set.<br>The policy's world-facing ports come from hostNetworkPolicy.publicPorts<br>(chart default [80, 443]); 6443 is never world-public — it is a separate<br>rule restricted to hostNetworkPolicy.apiserverSourceCIDRs (the node IPs).<br>To open extra ports to the world, add them to hostNetworkPolicy.publicPorts<br>in the cilium chart values overlay, not here.<br> |
 
 ## FirewallPort
 
@@ -441,11 +441,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 

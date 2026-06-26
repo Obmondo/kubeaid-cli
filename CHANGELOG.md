@@ -1,4 +1,19 @@
 - - -
+## v0.29.0 - 2026-06-26
+#### Features
+- (**cilium**) render the host-firewall policy for bare-metal nodes - (624e767) - Ashish Jaiswal
+- (**cluster**) apply the Cilium host firewall at the end of bootstrap - (75823b2) - Ashish Jaiswal
+#### Bug Fixes
+- (**hetzner**) show "Created NAT Gateway" before the YubiKey SSH prompt - (83f785d) - Ashish Jaiswal
+- (**hetzner**) provision NAT gateway as x86 cx23 instead of ARM cax11 - (bb1f987) - Ashish Jaiswal
+- (**local**) don't wait on CAPI apps the local provider never renders - (70d442d) - asgerthomsen123, *Claude Opus 4.8 (1M context)*
+#### Refactoring
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**firewall**) remove the Hetzner Robot firewall - (551bd29) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**lint**) clear pre-existing golangci-lint findings - (e1b18d9) - Shubham Gupta
+
+- - -
+
 ## v0.28.0 - 2026-06-20
 #### Features
 - <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**cli**) remove login command and klist registry - (8242cd9) - Ashish Jaiswal

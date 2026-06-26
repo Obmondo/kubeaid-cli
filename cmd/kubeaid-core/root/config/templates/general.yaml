@@ -354,12 +354,14 @@ cloud:
         # an IPv4 address or CIDR (e.g. "203.0.113.4" or "203.0.113.0/24"); a bare
         # address is treated as /32.
         allowSshFrom:
-        # AllowPublic lists extra public service ports beyond the chart default
-        # (80/443/6443). This field is not currently rendered into the Cilium
-        # CiliumClusterwideNetworkPolicy — publicPorts is fixed at [80, 443, 6443]
-        # in the chart values overlay. To expose additional ports publicly, add them
-        # directly to hostNetworkPolicy.publicPorts in the kubeaid-config values
-        # overlay for the cilium chart.
+        # AllowPublic is a legacy field from the (removed) Hetzner Robot firewall.
+        # It is parsed and validated but NOT rendered into the Cilium host-firewall
+        # policy — parser.validateHetznerConfig only logs a warning when it is set.
+        # The policy's world-facing ports come from hostNetworkPolicy.publicPorts
+        # (chart default [80, 443]); 6443 is never world-public — it is a separate
+        # rule restricted to hostNetworkPolicy.apiserverSourceCIDRs (the node IPs).
+        # To open extra ports to the world, add them to hostNetworkPolicy.publicPorts
+        # in the cilium chart values overlay, not here.
         allowPublic:
       # ZFS specific configuration.
       # Every node runs a ZFS pool, named primary. We carve out storage for container images, pod
