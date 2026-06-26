@@ -16,7 +16,6 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -122,14 +121,11 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 		}
 	}
 
-	_, subnetCIDR, err := net.ParseCIDR(constants.HetznerVSwitchSubnetCIDR)
+	vSwitchSubnetCIDR := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.VSwitch.SubnetCIDRBlock
+
+	gatewayIP, subnetCIDR, err := net.ParseCIDR(vSwitchSubnetCIDR)
 	if err != nil {
 		return fmt.Errorf("parsing VSwitch Subnet CIDR: %w", err)
-	}
-
-	gatewayIP := net.ParseIP(constants.HetznerVSwitchGatewayIP)
-	if gatewayIP == nil {
-		return fmt.Errorf("parsing VSwitch Gateway IP %q", constants.HetznerVSwitchGatewayIP)
 	}
 
 	_, _, err = h.hcloudClient.Network.AddSubnet(ctx, network, hcloud.NetworkAddSubnetOpts{

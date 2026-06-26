@@ -740,12 +740,13 @@ type (
 
 		// Endpoint is the FQDN clients use to reach kube-apiserver
 		// (CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,
-		// kubeconfig server URL). Required. DNS resolution is the
-		// operator's responsibility — the LB has both public and
-		// private interfaces during bootstrap; once NetBird is up
-		// the public is removed and clients reach the private IP
-		// through the mesh.
-		Endpoint string `yaml:"endpoint" validate:"required,fqdn"`
+		// kubeconfig server URL). Optional: when omitted, the LB
+		// private IP is used as the control-plane endpoint directly
+		// (no public interface, no DNS wait). When set, the LB gets
+		// a public interface during bootstrap and kubeaid-cli waits
+		// for the operator's DNS A-record to land before continuing.
+		// DNS resolution is the operator's responsibility.
+		Endpoint string `yaml:"endpoint" validate:"omitempty,fqdn"`
 	}
 
 	// Details about node-groups in Hetzner.
