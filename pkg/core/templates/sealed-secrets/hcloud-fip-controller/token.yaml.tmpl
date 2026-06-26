@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  {{- /* Name + namespace must match the hcloud-fip-controller app's
+       destination namespace and the values overlay's existingSecretName.
+       The chart pulls credentials via envFrom.secretRef, so this Secret
+       carries ONLY the HCLOUD_API_TOKEN key (any extra key would leak in
+       as an env var). The token is the same HCloud Cloud-API token every
+       Hetzner mode already requires (secrets.yaml hetzner.apiToken). */}}
+  name: hcloud-fip-controller-token
+  namespace: kube-system
+  labels:
+    kubeaid.io/managed-by: kubeaid
+stringData:
+  HCLOUD_API_TOKEN: {{ .HetznerCredentials.APIToken | quote }}

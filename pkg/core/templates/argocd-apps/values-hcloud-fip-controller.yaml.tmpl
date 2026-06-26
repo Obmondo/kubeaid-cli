@@ -1,0 +1,16 @@
+{{- /*
+hcloud-fip-controller values overlay. Renders only on a multi-CP HCloud
+VPN cluster, where kubeaid-cli provisioned a Coturn Floating IP: the
+controller keeps that Floating IP attached to the active control-plane
+node so NetBird Coturn (host-network STUN/TURN) stays reachable at a
+stable public IP across CP failures. existingSecretName points at the
+sealed HCLOUD_API_TOKEN Secret (sealed-secrets/hcloud-fip-controller).
+*/ -}}
+{{- if .CoturnFloatingIPs }}
+hcloud-fip-controller:
+  floatingIPs:
+    {{- range .CoturnFloatingIPs }}
+    - {{ . }}
+    {{- end }}
+  existingSecretName: hcloud-fip-controller-token
+{{- end }}

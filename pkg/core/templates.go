@@ -598,6 +598,15 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
+	// hcloud-fip-controller — multi-CP HCloud VPN cluster only (a Coturn
+	// Floating IP was provisioned). Keeps that Floating IP on the active
+	// control-plane node so host-network Coturn survives CP failover.
+	if config.CoturnFloatingIPEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.HCloudFIPControllerTemplateNames...,
+		)
+	}
+
 	// Managed Keycloak only: kubeaid-cli installs the keycloakx
 	// chart on this cluster and runs the gocloak realm reconciler
 	// post-sync. External-mode VPN clusters skip this — the
@@ -1060,6 +1069,14 @@ func getEmbeddedSecretTemplateNames() []string {
 	if netBirdOperatorEnabled() && netbirdAPIKey() != "" {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorAPIKeySecretTemplateName,
+		)
+	}
+
+	// hcloud-fip-controller token — the HCLOUD_API_TOKEN Secret the
+	// controller reads via envFrom. Only when the controller is rendered.
+	if config.CoturnFloatingIPEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.HCloudFIPControllerTokenSecretTemplateName,
 		)
 	}
 

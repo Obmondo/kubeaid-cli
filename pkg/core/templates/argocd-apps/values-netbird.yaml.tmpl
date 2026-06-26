@@ -231,8 +231,22 @@ netbird:
               pathType: ImplementationSpecific
 
 coturn:
+  {{- if .CoturnFloatingIPs }}
+  # Multi-CP VPN HA: run Coturn as a host-network DaemonSet so a Coturn
+  # pod is present on whichever control-plane node currently holds the
+  # Floating IP (hcloud-fip-controller moves it across nodes on failover),
+  # and advertise that Floating IP as the relay's external address.
+  deployment:
+    type: DaemonSet
+    hostNetwork: true
+    dnsPolicy: ClusterFirstWithHostNet
+  {{- end }}
   coturn:
     realm: "{{ .ClusterConfig.NetBird.TurnDNS }}"
+    {{- if .CoturnFloatingIPs }}
+    extraTurnserverConfiguration: |
+      external-ip={{ index .CoturnFloatingIPs 0 }}
+    {{- end }}
     auth:
       existingSecret: netbird
       secretKeys:
