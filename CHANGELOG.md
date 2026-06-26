@@ -1,4 +1,12 @@
 - - -
+## v0.29.1 - 2026-06-26
+#### Features
+- (**hcloud**) verify stun/turn DNS resolves to the Coturn Floating IP - (ad2d6fc) - Ashish Jaiswal
+- (**hcloud**) deploy hcloud-fip-controller + run Coturn as a host-network DaemonSet - (34e7933) - Ashish Jaiswal
+- (**hcloud**) provision a Coturn Floating IP for multi-CP VPN clusters - (bb5e12b) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.0 - 2026-06-26
 #### Features
 - (**cilium**) render the host-firewall policy for bare-metal nodes - (624e767) - Ashish Jaiswal
