@@ -31,6 +31,13 @@ var (
 	ControlPlaneHostname            string
 	ControlPlaneLBBootstrapPublicIP string
 
+	// CoturnFloatingIPs holds the HCloud Floating IP(s) kubeaid-cli
+	// provisions for NetBird Coturn (STUN/TURN) HA on a multi-CP HCloud
+	// VPN cluster. Set during prerequisite-infra (CreateCoturnFloatingIP)
+	// and rendered into the capi-cluster chart's controlPlane.hcloud
+	// .floatingIPs so each CP binds it via netplan. Empty otherwise.
+	CoturnFloatingIPs []string
+
 	ArgoCDApplicationClientCloser io.Closer
 	ArgoCDApplicationClient       application.ApplicationServiceClient
 

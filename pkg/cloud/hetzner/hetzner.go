@@ -52,6 +52,12 @@ type loadBalancerClient interface {
 	AddLabelSelectorTarget(ctx context.Context, loadBalancer *hcloud.LoadBalancer, opts hcloud.LoadBalancerAddLabelSelectorTargetOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
+type floatingIPClient interface {
+	GetByName(ctx context.Context, name string) (*hcloud.FloatingIP, *hcloud.Response, error)
+	Create(ctx context.Context, opts hcloud.FloatingIPCreateOpts) (hcloud.FloatingIPCreateResult, *hcloud.Response, error)
+	ChangeProtection(ctx context.Context, floatingIP *hcloud.FloatingIP, opts hcloud.FloatingIPChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
+}
+
 type Hetzner struct {
 	hcloudClient *hcloud.Client
 	robotClient  *resty.Client
@@ -60,6 +66,7 @@ type Hetzner struct {
 	networkClient      networkClient
 	serverClient       serverClient
 	loadBalancerClient loadBalancerClient
+	floatingIPClient   floatingIPClient
 
 	// sshPool caches SSH connections per bare-metal host for the
 	// lifetime of a prereq-infra phase. See pkg/cloud/hetzner/ssh_pool.go
@@ -87,6 +94,7 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 		hetznerClient.networkClient = &hcloudClient.Network
 		hetznerClient.serverClient = &hcloudClient.Server
 		hetznerClient.loadBalancerClient = &hcloudClient.LoadBalancer
+		hetznerClient.floatingIPClient = &hcloudClient.FloatingIP
 	}
 
 	// Construct Hetzner Robot HTTP client, if we're using Hetzner Bare Metal.

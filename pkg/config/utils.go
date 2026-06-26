@@ -68,6 +68,27 @@ func ControlPlaneInHCloud() bool {
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
+// CoturnFloatingIPEnabled reports whether kubeaid-cli should provision an
+// HCloud Floating IP for NetBird Coturn (STUN/TURN) HA — and, with it,
+// the hcloud-fip-controller app, the Coturn DaemonSet overlay, and the
+// per-CP netplan binding. True only for a multi-control-plane HCloud VPN
+// cluster: a VPN cluster runs Coturn, and with more than one CP the
+// active Coturn can land on any node, so its public IP must float. A
+// single-CP VPN cluster has no failover (Coturn stays on its one node),
+// and a non-VPN cluster runs no Coturn at all.
+func CoturnFloatingIPEnabled() bool {
+	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
+		return false
+	}
+	if !UsingHCloud() {
+		return false
+	}
+	if ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud == nil {
+		return false
+	}
+	return ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.Replicas > 1
+}
+
 // Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
 	if ParsedGeneralConfig.Cloud.Hetzner == nil {

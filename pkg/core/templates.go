@@ -93,6 +93,12 @@ type TemplateValues struct {
 	ControlPlaneLBPrivateIP         string
 	ControlPlaneLBBootstrapPublicIP string
 
+	// CoturnFloatingIPs are the HCloud Floating IP(s) provisioned for
+	// NetBird Coturn (STUN/TURN) HA on a multi-CP HCloud VPN cluster,
+	// rendered into the capi-cluster chart's controlPlane.hcloud.floatingIPs
+	// so each control-plane node binds them via netplan. Empty otherwise.
+	CoturnFloatingIPs []string
+
 	// ControlPlaneExtraCertSANs are operator-supplied extra DNS names rendered
 	// into the chart's values so kubeadm includes them in the apiserver TLS
 	// cert SAN list alongside the primary endpoint.host. Sourced from
@@ -411,6 +417,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned()):
 			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
 			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
+
+			// Coturn Floating IP(s) provisioned in prerequisite-infra for
+			// a multi-CP VPN cluster; the chart binds them on each CP via
+			// netplan. Empty for every other cluster.
+			templateValues.CoturnFloatingIPs = globals.CoturnFloatingIPs
 			if globals.ControlPlaneHostname != "" {
 				templateValues.ControlPlaneEndpoint = globals.ControlPlaneHostname
 				break
