@@ -272,6 +272,24 @@ const CertManagerCloudflareAPITokenSecretTemplateName = "sealed-secrets/cert-man
 // create-it-manually instructions instead.
 const NetBirdOperatorAPIKeySecretTemplateName = "sealed-secrets/netbird/netbird-mgmt-api-key.yaml.tmpl"
 
+// HCloud Floating IP controller (cbeneke/hcloud-fip-controller).
+// Rendered only on a multi-CP HCloud VPN cluster, where kubeaid-cli
+// provisions a Coturn Floating IP: the controller keeps that IP attached
+// to the active control-plane node so NetBird Coturn (host-network
+// STUN/TURN) survives CP failures at a stable public IP. The values
+// overlay carries floatingIPs + existingSecretName; the token comes from
+// the paired Secret below. Sync-order 10 — cloud-infra, like CCM/CSI.
+var HCloudFIPControllerTemplateNames = []string{
+	"argocd-apps/templates/hcloud-fip-controller.yaml.tmpl",
+	"argocd-apps/values-hcloud-fip-controller.yaml.tmpl",
+}
+
+// HCloudFIPControllerTokenSecretTemplateName seals secrets.yaml's
+// hetzner.apiToken into the kube-system/hcloud-fip-controller-token
+// Secret the controller reads via envFrom.secretRef (key HCLOUD_API_TOKEN).
+// Only registered when the controller app is rendered.
+const HCloudFIPControllerTokenSecretTemplateName = "sealed-secrets/hcloud-fip-controller/token.yaml.tmpl"
+
 // Managed-Keycloak template names. Included only when
 // cluster.type=vpn AND cluster.keycloak.mode=managed — kubeaid-cli
 // installs Keycloak via the keycloakx Helm chart on this cluster.

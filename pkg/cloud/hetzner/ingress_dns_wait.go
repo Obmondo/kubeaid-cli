@@ -15,6 +15,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
@@ -45,22 +46,27 @@ const (
 // No-op when no FQDNs are configured (workload clusters, or VPN
 // clusters with no Keycloak/NetBird DNS set).
 func WaitForIngressLBDNS(ctx context.Context, clusterClient client.Client) error {
-	fqdns := ingressLBFQDNs()
-	if len(fqdns) == 0 {
-		return nil
+	if fqdns := ingressLBFQDNs(); len(fqdns) > 0 {
+		bar := progress.FromCtx(ctx)
+		bar.Substep("Waiting for Traefik LB to be assigned a public IP")
+		lbIP, err := waitForTraefikLBIP(ctx, clusterClient)
+		if err != nil {
+			return fmt.Errorf("waiting for Traefik LB public IP: %w", err)
+		}
+		slog.InfoContext(ctx, "Discovered Traefik LB public IP",
+			slog.String("ip", lbIP),
+		)
+		if err := WaitForDNSResolution(ctx, fqdns, lbIP); err != nil {
+			return err
+		}
 	}
 
-	bar := progress.FromCtx(ctx)
-	bar.Substep("Waiting for Traefik LB to be assigned a public IP")
-	lbIP, err := waitForTraefikLBIP(ctx, clusterClient)
-	if err != nil {
-		return fmt.Errorf("waiting for Traefik LB public IP: %w", err)
-	}
-	slog.InfoContext(ctx, "Discovered Traefik LB public IP",
-		slog.String("ip", lbIP),
-	)
-
-	return WaitForDNSResolution(ctx, fqdns, lbIP)
+	// On a multi-CP VPN cluster the host-network Coturn answers on the
+	// Floating IP, not the HTTP ingress LB — so stun/turn point there
+	// instead. Gate bootstrap on the operator having re-pointed those
+	// records, so a forgotten DNS change surfaces here rather than as
+	// silently broken STUN/TURN later.
+	return waitForCoturnFloatingIPDNS(ctx)
 }
 
 // ingressLBFQDNs returns the FQDNs that should resolve to the
@@ -73,18 +79,59 @@ func ingressLBFQDNs() []string {
 	if cluster.Keycloak != nil && cluster.Keycloak.DNS != "" {
 		fqdns = append(fqdns, cluster.Keycloak.DNS)
 	}
-	if cluster.NetBird != nil {
-		if cluster.NetBird.DNS != "" {
-			fqdns = append(fqdns, cluster.NetBird.DNS)
-		}
-		if cluster.NetBird.StunDNS != "" {
-			fqdns = append(fqdns, cluster.NetBird.StunDNS)
-		}
-		if cluster.NetBird.TurnDNS != "" {
-			fqdns = append(fqdns, cluster.NetBird.TurnDNS)
-		}
+	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
+		fqdns = append(fqdns, cluster.NetBird.DNS)
+	}
+	// stun/turn front on the Traefik LB only when there is no Coturn
+	// Floating IP; with one they resolve to that IP instead (see
+	// coturnFloatingIPFQDNs / waitForCoturnFloatingIPDNS), since
+	// host-network Coturn answers on the Floating IP, not the HTTP LB.
+	if !config.CoturnFloatingIPEnabled() {
+		fqdns = append(fqdns, netbirdStunTurnFQDNs()...)
 	}
 	return fqdns
+}
+
+// coturnFloatingIPFQDNs returns the NetBird stun/turn FQDNs that, on a
+// cluster with a Coturn Floating IP, must resolve to that Floating IP
+// rather than the Traefik LB — or nil when there is no Floating IP.
+func coturnFloatingIPFQDNs() []string {
+	if !config.CoturnFloatingIPEnabled() {
+		return nil
+	}
+	return netbirdStunTurnFQDNs()
+}
+
+// netbirdStunTurnFQDNs returns the configured NetBird stun/turn FQDNs
+// (whichever are set). Depending on CoturnFloatingIPEnabled they front on
+// either the Traefik LB (ingressLBFQDNs) or the Coturn Floating IP
+// (coturnFloatingIPFQDNs).
+func netbirdStunTurnFQDNs() []string {
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.NetBird == nil {
+		return nil
+	}
+	var fqdns []string
+	if cluster.NetBird.StunDNS != "" {
+		fqdns = append(fqdns, cluster.NetBird.StunDNS)
+	}
+	if cluster.NetBird.TurnDNS != "" {
+		fqdns = append(fqdns, cluster.NetBird.TurnDNS)
+	}
+	return fqdns
+}
+
+// waitForCoturnFloatingIPDNS gates bootstrap until stun.dns / turn.dns
+// resolve to the Coturn Floating IP. No-op on any cluster without one.
+func waitForCoturnFloatingIPDNS(ctx context.Context) error {
+	fqdns := coturnFloatingIPFQDNs()
+	if len(fqdns) == 0 || len(globals.CoturnFloatingIPs) == 0 {
+		return nil
+	}
+	progress.FromCtx(ctx).Substep(
+		"Waiting for stun/turn DNS to point at the Coturn Floating IP",
+	)
+	return WaitForDNSResolution(ctx, fqdns, globals.CoturnFloatingIPs[0])
 }
 
 // waitForTraefikLBIP polls the traefik namespace for a Service of

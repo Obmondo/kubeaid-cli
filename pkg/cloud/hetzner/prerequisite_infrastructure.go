@@ -113,6 +113,25 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 				return err
 			}
 		}
+
+		// Provision the NetBird Coturn Floating IP on a multi-CP VPN
+		// cluster: with more than one control-plane node the active
+		// Coturn (host-network STUN/TURN) can land on any of them, so
+		// its public IP must float. hcloud-fip-controller reassigns it
+		// across nodes and the capi-cluster chart binds it on each CP
+		// via netplan; here we only allocate the (unassigned) IP and
+		// stash it so it threads into the CAPI cluster values.
+		if config.CoturnFloatingIPEnabled() {
+			floatingIP, err := h.CreateCoturnFloatingIP(ctx,
+				config.ParsedGeneralConfig.Cluster.Name,
+				hetznerConfig.ControlPlane.Regions[0],
+			)
+			if err != nil {
+				return fmt.Errorf("creating Coturn Floating IP: %w", err)
+			}
+			globals.CoturnFloatingIPs = []string{floatingIP}
+			bar.Substep("Created NetBird Coturn Floating IP")
+		}
 	}
 
 	if config.UsingHetznerBareMetal() {

@@ -224,6 +224,12 @@ hetzner:
     hcloud:
       machineType: {{ .HetznerConfig.ControlPlane.HCloud.MachineType }}
       replicas: {{ .HetznerConfig.ControlPlane.HCloud.Replicas }}
+      {{- if .CoturnFloatingIPs }}
+      floatingIPs:
+        {{- range .CoturnFloatingIPs }}
+        - {{ . }}
+        {{- end }}
+      {{- end }}
       loadBalancer:
         {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
         enabled: false
