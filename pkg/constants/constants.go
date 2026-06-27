@@ -133,6 +133,16 @@ const (
 
 const CEPHNodeMinSize = 50 // GB.
 
+// RookCephMinNodes is the minimum number of Hetzner bare-metal worker nodes
+// required before kubeaid-cli deploys Rook Ceph. The shipped CephCluster needs
+// 3 distinct hosts to be healthy: mon.count is 3 (one per host, with
+// allowMultiplePerNode false) and the block pool uses replicated.size 3 with
+// failureDomain host and requireSafeReplicaSize true. Below this, the mons
+// never reach quorum and PGs stay undersized, so Rook Ceph would only ever sit
+// unhealthy — we skip it entirely. Control-plane nodes don't count (Ceph can't
+// schedule onto their taint); see config.HetznerBareMetalWorkerNodeCount.
+const RookCephMinNodes = 3
+
 // Output paths.
 var (
 	OutputsDirectory = "outputs"

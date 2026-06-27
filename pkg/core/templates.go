@@ -533,6 +533,21 @@ func getEmbeddedNonSecretTemplateNames() []string {
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
 
+			// Rook Ceph is rendered only when the cluster has enough bare-metal
+			// worker nodes to form a healthy CephCluster (see config.RookCephEnabled).
+			//
+			// NOTE: if a cluster that already runs Ceph is later re-bootstrapped
+			// below the threshold, the rook-ceph App drops out of the rendered set
+			// and becomes orphaned from the root App. kubeaid-cli never prunes it
+			// automatically (no automated / prune sync policy), but an operator who
+			// then deletes it must pass --cascade=false to avoid destroying live
+			// Ceph data.
+			if config.RookCephEnabled() {
+				embeddedTemplateNames = append(embeddedTemplateNames,
+					constants.RookCephTemplateNames...,
+				)
+			}
+
 			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
 			// to a healthy master node, in a failover scenario.

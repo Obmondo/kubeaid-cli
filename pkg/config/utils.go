@@ -108,3 +108,39 @@ func ControlPlaneInHetznerBareMetal() bool {
 	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return mode == constants.HetznerModeBareMetal
 }
+
+// HetznerBareMetalWorkerNodeCount returns how many Hetzner bare-metal *worker*
+// hosts the cluster has, summed across every bare-metal node-group.
+//
+// Control-plane hosts are deliberately excluded. The Rook Ceph values
+// (values-rook-ceph.yaml.tmpl) place every Ceph daemon with a bare-metal
+// nodeAffinity but no tolerations, so Ceph cannot schedule onto control-plane
+// nodes — they carry the default node-role.kubernetes.io/control-plane:NoSchedule
+// taint. Only worker nodes can host mons / OSDs, so only they count towards
+// whether a healthy CephCluster can form.
+func HetznerBareMetalWorkerNodeCount() int {
+	hetzner := ParsedGeneralConfig.Cloud.Hetzner
+	if hetzner == nil {
+		return 0
+	}
+
+	count := 0
+	for _, nodeGroup := range hetzner.NodeGroups.BareMetal {
+		if nodeGroup == nil {
+			continue
+		}
+		count += len(nodeGroup.BareMetalHosts)
+	}
+	return count
+}
+
+// RookCephEnabled reports whether kubeaid-cli should deploy Rook Ceph: only on
+// Hetzner bare-metal, and only once there are at least
+// constants.RookCephMinNodes bare-metal worker nodes able to host it. The
+// shipped CephCluster can't become healthy on fewer hosts (see
+// constants.RookCephMinNodes), so below the threshold we skip rendering and
+// syncing it entirely rather than leave a permanently-unhealthy cluster.
+func RookCephEnabled() bool {
+	return UsingHetznerBareMetal() &&
+		(HetznerBareMetalWorkerNodeCount() >= constants.RookCephMinNodes)
+}
