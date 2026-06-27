@@ -158,6 +158,14 @@ const (
 	TransportTypeNVMe = "nvme"
 )
 
+// partitionTableTypeGPT is the partition table type assumed for a disk that
+// lsblk reports without one (an empty PTTYPE) — i.e. a brand-new, never-
+// partitioned data disk. GPT is mandatory anyway for the >2 TiB disks these
+// servers ship with (an MBR / "dos" table tops out at 2 TiB), and the
+// executor template lays down the GPT label before partitioning such a disk.
+// The "dos" counterpart lives only in that template's partition-4 branch.
+const partitionTableTypeGPT = "gpt"
+
 func (l *LSBLKOutputRow) GetDiskType() string {
 	if l.RotationalDevice {
 		return constants.DiskTypeHDD
@@ -256,15 +264,23 @@ func getDisks(
 
 	disks := make([]*storageplan.Disk, len(lsblkOutput.BlockDevices))
 	for i, row := range lsblkOutput.BlockDevices {
-		if len(row.PartitionTableType) == 0 {
-			return nil, fmt.Errorf("empty partition table type for disk %q", row.Name)
+		// A brand-new data disk has no partition table yet, so lsblk reports
+		// an empty PTTYPE. That's the normal state of a disk we're about to
+		// provision for ZFS / CEPH, so default it to GPT instead of failing
+		// the whole plan. GPT is also the only valid choice on these servers:
+		// the disks are routinely larger than 2 TiB, which an MBR ("dos")
+		// table cannot address. The executor template creates the GPT label
+		// on such a disk before partitioning it.
+		partitionTableType := row.PartitionTableType
+		if len(partitionTableType) == 0 {
+			partitionTableType = partitionTableTypeGPT
 		}
 
 		disks[i] = &storageplan.Disk{
 			Name:               row.Name,
 			WWN:                row.WWN,
 			Type:               row.GetDiskType(),
-			PartitionTableType: row.PartitionTableType,
+			PartitionTableType: partitionTableType,
 
 			// 2G is kept aside for the boot and EFI partitions.
 			Size: (row.Size / (1024 * 1024 * 1024)) - 2,

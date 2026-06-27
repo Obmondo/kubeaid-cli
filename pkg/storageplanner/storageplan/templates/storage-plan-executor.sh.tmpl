@@ -6,6 +6,23 @@ apt install zfsutils-linux -y
 # Create necessary partitions.
 {{- range $i, $disk := .StoragePlan.Disks }}
 
+  # A brand-new data disk arrives with no partition table. Lay down a GPT
+  # label before partitioning it — GPT is required for the >2 TiB disks these
+  # servers ship with, and without an explicit label sfdisk would default to
+  # MBR. Guarding on the live PTTYPE keeps this surgical: an OS disk (already
+  # GPT) and any re-run of an already-provisioned disk keep their table — and
+  # the ZFS pool — untouched.
+  #
+  # PTTYPE is read into a variable on its own line, NOT inline in the `if`:
+  # `set -e` does not abort on a command that fails inside an `if` condition,
+  # so a transient lsblk failure there (empty output) would fall through to
+  # relabelling a disk that is not actually blank. As a plain assignment it
+  # aborts the script instead.
+  pttype="$(lsblk -dn -o PTTYPE /dev/{{ $disk.Name }})"
+  if [ -z "$pttype" ]; then
+    echo 'label: gpt' | sfdisk /dev/{{ $disk.Name }} --force --no-reread
+  fi
+
   {{- if eq $disk.Allocations.OS 0 }}
   echo ",1K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
   echo ",1K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
