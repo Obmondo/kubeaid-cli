@@ -78,5 +78,5 @@ else
   # Enable weekly ZPool trimming for the ZPool.
   # So unused storage space will be reclaimed back, into the ZFS pool.
   # REFER : https://openzfs.github.io/openzfs-docs/man/master/8/zpool-trim.8.html.
-  systemctl enable zfs-trim-weekly@rpool.timer --now
+  systemctl enable zfs-trim-weekly@primary.timer --now
 fi
