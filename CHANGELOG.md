@@ -1,4 +1,16 @@
 - - -
+## v0.29.2 - 2026-06-29
+#### Features
+- (**rook-ceph**) only deploy on Hetzner bare-metal with >= 3 worker nodes - (eaca546) - Ashish Jaiswal
+- (**storagectl**) make `plan` a read-only dry run - (6371dc3) - Ashish Jaiswal
+#### Bug Fixes
+- (**storageplanner**) trim the 'primary' ZFS pool, not 'rpool' - (ec637f9) - Ashish Jaiswal
+- (**storageplanner**) provision blank disks instead of aborting the plan - (d85c64a) - Ashish Jaiswal
+#### Documentation
+- (**readme**) fix build command from `make build-cli` to `make build` - (d1ba5d8) - shubham singh mahar, *Claude Opus 4.8*
+
+- - -
+
 ## v0.29.1 - 2026-06-26
 #### Features
 - (**hcloud**) verify stun/turn DNS resolves to the Coturn Floating IP - (ad2d6fc) - Ashish Jaiswal
