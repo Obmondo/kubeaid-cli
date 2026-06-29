@@ -181,8 +181,15 @@ var (
 		// for every bare-metal Hetzner host's main IP.
 		"argocd-apps/templates/kubelet-csr-approver.yaml.tmpl",
 		"argocd-apps/values-kubelet-csr-approver.yaml.tmpl",
+	}
 
-		// For Rook CEPH.
+	// RookCephTemplateNames are the Rook Ceph ArgoCD App + values templates.
+	// They're rendered only when Rook Ceph is enabled — Hetzner bare-metal with
+	// at least constants.RookCephMinNodes nodes (see config.RookCephEnabled) —
+	// and are kept separate from HetznerBareMetalSpecificNonSecretTemplateNames
+	// so the node-count gate applies to Rook Ceph alone, not the other
+	// bare-metal essentials (CCM, kubelet-csr-approver).
+	RookCephTemplateNames = []string{
 		"argocd-apps/templates/rook-ceph.yaml.tmpl",
 		"argocd-apps/values-rook-ceph.yaml.tmpl",
 	}

@@ -4,29 +4,22 @@
 package plan
 
 import (
-	"log/slog"
-
 	"github.com/spf13/cobra"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 )
 
 var ExecuteCommand = &cobra.Command{
 	Use: "execute",
 
-	Run: func(cmd *cobra.Command, args []string) {
+	// execute applies the storage plan: it scans and prints the plan (the same
+	// read-only dry run as bare `plan`), then partitions the disks accordingly.
+	Run: func(cmd *cobra.Command, _ []string) {
 		ctx := cmd.Context()
 
 		commandExecutor := commandexecutor.NewLocalCommandExecutor(false)
 
-		storagePlan, err := storageplanner.GenerateStoragePlan(ctx, "", commandExecutor, osSize, zfsPoolSize)
-		assert.AssertErrNil(ctx, err, "Failed generating storage-plan")
-
-		slog.InfoContext(ctx, "Generated storage-plan : ")
-		storagePlan.PrettyPrint()
-
+		storagePlan := generateAndPrintStoragePlan(ctx, commandExecutor)
 		storagePlan.Execute(ctx, commandExecutor)
 	},
 }

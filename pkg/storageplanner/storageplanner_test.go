@@ -168,3 +168,61 @@ func TestGenerateStoragePlan_UnknownDiskTypeFiltered(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, plan.Disks, 2)
 }
+
+func TestGenerateStoragePlan_BlankDataDisksDefaultToGPT(t *testing.T) {
+	// Mirrors a real bare-metal node: sda/sdb carry the OS (GPT-labelled),
+	// while freshly-attached data disks sdc/sdd have no partition table, so
+	// lsblk reports an empty PTTYPE. The planner must keep such disks and
+	// default them to GPT rather than aborting the whole plan.
+	//
+	// REGRESSION: previously failed with
+	//   "empty partition table type for disk \"sdc\"",
+	// which made both `plan` and `plan execute` produce no plan at all on any
+	// server with even one unpartitioned disk.
+	sdc, sdd := hdd("sdc", 500), hdd("sdd", 500)
+	sdc.PartitionTableType, sdd.PartitionTableType = "", ""
+
+	mock := newMock("1000\n", []LSBLKOutputRow{
+		hdd("sda", 500), hdd("sdb", 500), sdc, sdd,
+	})
+
+	plan, err := GenerateStoragePlan(context.Background(), "srv-blank", mock, 80, 220)
+	require.NoError(t, err)
+
+	// No disk carries an empty table type, and the two blank disks were
+	// defaulted to GPT (so the executor template's GPT branch is taken).
+	blanks := map[string]bool{"sdc": false, "sdd": false}
+	for _, disk := range plan.Disks {
+		assert.NotEmpty(t, disk.PartitionTableType,
+			"disk %s still has an empty partition table type", disk.Name)
+		if _, ok := blanks[disk.Name]; ok {
+			assert.Equal(t, partitionTableTypeGPT, disk.PartitionTableType)
+			blanks[disk.Name] = true
+		}
+	}
+	assert.True(t, blanks["sdc"], "blank disk sdc should be present in the plan")
+	assert.True(t, blanks["sdd"], "blank disk sdd should be present in the plan")
+}
+
+func TestGenerateStoragePlan_AllDisksBlank(t *testing.T) {
+	// A brand-new server the provisioner has never touched: every disk is
+	// unpartitioned, so lsblk reports an empty PTTYPE for all of them. The
+	// plan must still succeed (OS + ZFS allocation both need 2 disks) with
+	// every disk defaulted to GPT — not just the non-OS data disks.
+	devices := make([]LSBLKOutputRow, 0, 4)
+	for _, name := range []string{"sda", "sdb", "sdc", "sdd"} {
+		disk := hdd(name, 500)
+		disk.PartitionTableType = ""
+		devices = append(devices, disk)
+	}
+
+	plan, err := GenerateStoragePlan(context.Background(), "srv-fresh", newMock("1000\n", devices), 80, 220)
+	require.NoError(t, err)
+	require.Len(t, plan.OS, 2)
+	require.Len(t, plan.ZFS, 2)
+
+	for _, disk := range plan.Disks {
+		assert.Equal(t, partitionTableTypeGPT, disk.PartitionTableType,
+			"disk %s should default to GPT", disk.Name)
+	}
+}
