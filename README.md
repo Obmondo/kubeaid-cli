@@ -150,7 +150,7 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for setup instructions.
 
 ```sh
 # Build the CLI binary
-make build-cli
+make build
 
 # Build the KubeAid Core container image
 make build-image
