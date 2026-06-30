@@ -2,7 +2,7 @@
 ccm-hetzner:
   {{- /* robot.enabled controls the Hetzner Robot controller. Enable it only
        when bare-metal nodes are present (bare-metal or hybrid mode).
-       Must explicitly set false for hcloud — the chart defaults robot to true. */ -}}
+       Must explicitly set false for hcloud — the chart defaults robot to true. */}}
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
   robot:
     enabled: true
@@ -14,7 +14,7 @@ ccm-hetzner:
   {{- /* In a hybrid cluster ccm-hetzner handles bare-metal (Robot) nodes only;
        ccm-hcloud owns LoadBalancers and the service controller. Scope ccm-hetzner
        to the node-lifecycle controllers so the two CCMs don't fight over Services.
-       For pure bare-metal mode ccm-hetzner is the only CCM, so no scoping. */ -}}
+       For pure bare-metal mode ccm-hetzner is the only CCM, so no scoping. */}}
   {{- if (eq .HetznerConfig.Mode "hybrid") }}
   args:
     controllers: "cloud-node,cloud-node-lifecycle"
@@ -22,7 +22,7 @@ ccm-hetzner:
 
   {{- /* Mirror the additionalTolerations the postKubeadm helm block sets at bootstrap,
        so ArgoCD's desired state matches and does not strip the toleration on the
-       next sync. */ -}}
+       next sync. */}}
   additionalTolerations:
     - key: node.kubernetes.io/not-ready
       operator: Exists
