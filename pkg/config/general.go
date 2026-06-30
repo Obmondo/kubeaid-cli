@@ -610,6 +610,13 @@ type (
 		Zone      string `yaml:"zone"      validate:"notblank"`
 		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-24.04"`
 
+		// NATGatewayServerType is the HCloud server type for the NAT gateway
+		// that fronts the private network during bootstrap. cpx22 is a small,
+		// cost-optimised x86 box — ample for NAT. Override it if cpx22 is out
+		// of stock / not offered in your locations, or you need more throughput
+		// (`hcloud server-type list` shows what's available).
+		NATGatewayServerType string `yaml:"natGatewayServerType" validate:"notblank" default:"cpx22"`
+
 		// Hetzner Network specific details.
 		HetznerNetwork HetznerNetworkConfig `yaml:"hetznerNetwork" validate:"required"`
 	}
