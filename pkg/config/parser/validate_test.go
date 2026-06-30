@@ -194,7 +194,7 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 					},
 					HCloud: &config.HCloudConfig{
 						Zone:      "eu-central",
-						ImageName: "ubuntu-24.04",
+						ImageName: "ubuntu-26.04",
 						HetznerNetwork: config.HetznerNetworkConfig{
 							CIDR:                    "10.0.0.0/16",
 							HCloudServersSubnetCIDR: "10.0.0.0/24",

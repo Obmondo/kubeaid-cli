@@ -323,7 +323,7 @@ cloud:
     # HCloud specific details.
     hcloud:
       zone:
-      imageName: ubuntu-24.04
+      imageName: ubuntu-26.04
       # NATGatewayServerType is the HCloud server type for the NAT gateway
       # that fronts the private network during bootstrap. cpx22 is a small,
       # cost-optimised x86 box — ample for NAT. Override it if cpx22 is out

@@ -244,7 +244,7 @@ const (
 	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 
-	HCloudServerImageUbuntu2404 = "ubuntu-24.04"
+	HCloudServerImageUbuntu2604 = "ubuntu-26.04"
 
 	HCloudLocationHel1 = "hel1"
 	HCloudLocationFsn1 = "fsn1"
