@@ -654,6 +654,10 @@ type (
 		VLANID int    `yaml:"vlanID"`
 		Name   string `yaml:"name"   validate:"notblank"`
 
+		// SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.
+		// The IP written here doubles as the subnet's gateway (net.ParseCIDR's
+		// first return), so "10.0.1.0/24" yields gateway 10.0.1.0 — write the IP
+		// you want as the gateway, not just any address in the range.
 		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
 	}
 

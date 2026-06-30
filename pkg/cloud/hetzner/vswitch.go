@@ -125,7 +125,7 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 
 	gatewayIP, subnetCIDR, err := net.ParseCIDR(vSwitchSubnetCIDR)
 	if err != nil {
-		return fmt.Errorf("parsing VSwitch Subnet CIDR: %w", err)
+		return fmt.Errorf("parsing VSwitch Subnet CIDR %q: %w", vSwitchSubnetCIDR, err)
 	}
 
 	_, _, err = h.hcloudClient.Network.AddSubnet(ctx, network, hcloud.NetworkAddSubnetOpts{

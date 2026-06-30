@@ -234,7 +234,6 @@ const (
 	HetznerNetworkCIDR       = "10.0.0.0/16"
 	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
-	HetznerVSwitchGatewayIP  = "10.0.1.0"
 
 	HCloudServerTypeCPX22 = "cpx22"
 
