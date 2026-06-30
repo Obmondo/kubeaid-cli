@@ -107,12 +107,12 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 	return nil
 }
 
-// findOrCreateNATGatewayServer returns the existing HCloud server
-// named serverName if it exists, otherwise creates a fresh cx23
-// (x86 Intel/AMD, cost-optimized) server attached to networkID
-// with a public v4. cx23 is a limited-availability type so stock
-// can be uneven per datacenter; try each location in
-// constants.HCloudNATGatewayLocations in turn before giving up.
+// findOrCreateNATGatewayServer returns the existing HCloud server named
+// serverName if it exists, otherwise creates a fresh NAT gateway using the
+// configured server type (cloud.hetzner.hcloud.natGatewayServerType, default
+// cpx22 — a small cost-optimized x86 box) attached to networkID with a public
+// v4. Cost-optimized types can have uneven per-datacenter stock, so try each
+// location in constants.HCloudNATGatewayLocations before giving up.
 func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName string, networkID int) (*hcloud.Server, error) {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
@@ -139,7 +139,7 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 
 	opts := hcloud.ServerCreateOpts{
 		Name:       serverName,
-		ServerType: &hcloud.ServerType{Name: constants.HCloudServerTypeCX23},
+		ServerType: &hcloud.ServerType{Name: hetznerConfig.HCloud.NATGatewayServerType},
 		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
 		SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
 		Networks:   []*hcloud.Network{{ID: networkID}},
@@ -204,8 +204,13 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 		}
 	}
 
-	return nil, fmt.Errorf("creating NAT gateway server %q: all %d NAT-gateway locations returned resource_unavailable for cx23; last error: %w",
-		serverName, len(constants.HCloudNATGatewayLocations), lastErr)
+	return nil, fmt.Errorf(
+		"NAT gateway server %q could not be created: server type %q is unavailable "+
+			"(out of stock or not offered) in every tried location %v. Set "+
+			"cloud.hetzner.hcloud.natGatewayServerType to a type available in your region "+
+			"(`hcloud server-type list`), or retry once stock returns; last Hetzner error: %w",
+		serverName, hetznerConfig.HCloud.NATGatewayServerType,
+		constants.HCloudNATGatewayLocations, lastErr)
 }
 
 // isHCloudResourceUnavailable reports whether err is a Hetzner API

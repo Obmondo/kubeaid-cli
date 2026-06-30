@@ -38,11 +38,11 @@ const (
 
 	// ManagementClusterNamePrefix is prepended to the target cluster name when the operator
 	// does not supply --management-cluster-name explicitly. The resulting name
-	// (e.g. "kubeaid-mgmt-staging") scopes the local k3d bootstrap cluster to the
+	// (e.g. "mgmt-staging") scopes the local k3d bootstrap cluster to the
 	// target cluster, preventing a second bootstrap run — or a bootstrap of a different
 	// target cluster — from silently reusing a stale k3d cluster with leftover Cluster API
 	// state. Operators who supply the flag explicitly retain full control.
-	ManagementClusterNamePrefix = "kubeaid-mgmt-"
+	ManagementClusterNamePrefix = "mgmt-"
 
 	FlagNameConfigsDirectory             = "configs-directory"
 	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
@@ -243,9 +243,6 @@ const (
 	HetznerNetworkCIDR       = "10.0.0.0/16"
 	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
-	HetznerVSwitchGatewayIP  = "10.0.1.0"
-
-	HCloudServerTypeCX23 = "cx23"
 
 	HCloudServerImageUbuntu2404 = "ubuntu-24.04"
 

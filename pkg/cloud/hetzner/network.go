@@ -14,7 +14,6 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -22,14 +21,16 @@ import (
 func (h *Hetzner) CreateNetwork(ctx context.Context) (*hcloud.Network, error) {
 	clusterName := config.ParsedGeneralConfig.Cluster.Name
 
-	_, parsedHetznerNetworkCIDR, err := net.ParseCIDR(constants.HetznerNetworkCIDR)
+	hetznerNetwork := config.ParsedGeneralConfig.Cloud.Hetzner.HCloud.HetznerNetwork
+
+	_, parsedHetznerNetworkCIDR, err := net.ParseCIDR(hetznerNetwork.CIDR)
 	if err != nil {
-		return nil, fmt.Errorf("parsing Hetzner Network CIDR %q: %w", constants.HetznerNetworkCIDR, err)
+		return nil, fmt.Errorf("parsing Hetzner Network CIDR %q: %w", hetznerNetwork.CIDR, err)
 	}
 
-	_, parsedHCloudServersSubnetCIDR, err := net.ParseCIDR(constants.HCloudServersSubnetCIDR)
+	_, parsedHCloudServersSubnetCIDR, err := net.ParseCIDR(hetznerNetwork.HCloudServersSubnetCIDR)
 	if err != nil {
-		return nil, fmt.Errorf("parsing HCloud servers subnet CIDR %q: %w", constants.HCloudServersSubnetCIDR, err)
+		return nil, fmt.Errorf("parsing HCloud servers subnet CIDR %q: %w", hetznerNetwork.HCloudServersSubnetCIDR, err)
 	}
 
 	network, response, err := h.networkClient.Get(ctx, clusterName)

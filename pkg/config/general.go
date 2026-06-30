@@ -610,6 +610,13 @@ type (
 		Zone      string `yaml:"zone"      validate:"notblank"`
 		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-24.04"`
 
+		// NATGatewayServerType is the HCloud server type for the NAT gateway
+		// that fronts the private network during bootstrap. cpx22 is a small,
+		// cost-optimised x86 box — ample for NAT. Override it if cpx22 is out
+		// of stock / not offered in your locations, or you need more throughput
+		// (`hcloud server-type list` shows what's available).
+		NATGatewayServerType string `yaml:"natGatewayServerType" validate:"notblank" default:"cpx22"`
+
 		// Hetzner Network specific details.
 		HetznerNetwork HetznerNetworkConfig `yaml:"hetznerNetwork" validate:"required"`
 	}
@@ -654,6 +661,10 @@ type (
 		VLANID int    `yaml:"vlanID"`
 		Name   string `yaml:"name"   validate:"notblank"`
 
+		// SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.
+		// The IP written here doubles as the subnet's gateway (net.ParseCIDR's
+		// first return), so "10.0.1.0/24" yields gateway 10.0.1.0 — write the IP
+		// you want as the gateway, not just any address in the range.
 		SubnetCIDRBlock string `yaml:"subnetCIDRBlock" validate:"cidrv4"`
 	}
 
@@ -740,12 +751,13 @@ type (
 
 		// Endpoint is the FQDN clients use to reach kube-apiserver
 		// (CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,
-		// kubeconfig server URL). Required. DNS resolution is the
-		// operator's responsibility — the LB has both public and
-		// private interfaces during bootstrap; once NetBird is up
-		// the public is removed and clients reach the private IP
-		// through the mesh.
-		Endpoint string `yaml:"endpoint" validate:"required,fqdn"`
+		// kubeconfig server URL). Optional: when omitted, the LB
+		// private IP is used as the control-plane endpoint directly
+		// (no public interface, no DNS wait). When set, the LB gets
+		// a public interface during bootstrap and kubeaid-cli waits
+		// for the operator's DNS A-record to land before continuing.
+		// DNS resolution is the operator's responsibility.
+		Endpoint string `yaml:"endpoint" validate:"omitempty,fqdn"`
 	}
 
 	// Details about node-groups in Hetzner.

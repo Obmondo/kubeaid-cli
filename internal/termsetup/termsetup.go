@@ -1,3 +1,6 @@
+// Copyright 2026 Obmondo
+// SPDX-License-Identifier: AGPL3
+
 // Package termsetup prevents lipgloss/termenv from sending OSC escape
 // sequences to query the terminal's background color. Those queries leak
 // visible "rgb:…" strings when stdout flows through a Docker PTY.
