@@ -16,10 +16,13 @@ import (
 	"github.com/charmbracelet/lipgloss/table"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	coreV1 "k8s.io/api/core/v1"
+	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/duration"
 	cloudProviderAPI "k8s.io/cloud-provider/api"
+	kubeadmControlPlaneV1Beta1 "sigs.k8s.io/cluster-api/api/controlplane/kubeadm/v1beta1"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -218,6 +221,80 @@ func WaitForAllMachinesRunning(ctx context.Context,
 			return renderMainClusterNodesTable(ctx, mainClusterClient)
 		},
 	)
+}
+
+// WaitForControlPlaneRolloutComplete blocks until the KubeadmControlPlane
+// reports no rolling update in progress (latest spec reconciled, no
+// old-revision or surge Machines), or until capiWaitTotalTimeout elapses.
+// It gates SetupCluster's workload installs so they don't run against the
+// apiserver/etcd churn of an in-flight control-plane roll.
+//
+// clusterClient must own the KubeadmControlPlane: the management cluster
+// pre-pivot, the provisioned cluster after `clusterctl move`. Returns nil
+// when no KCP is present.
+func WaitForControlPlaneRolloutComplete(ctx context.Context, clusterClient client.Client) error {
+	return waitForCAPIStableState(ctx,
+		"Waiting for control-plane rollout to settle",
+		"control-plane rollout did not settle (KubeadmControlPlane still rolling)",
+		func(c context.Context) ([]capiStatusRow, bool, error) {
+			return summarizeControlPlaneRollout(c, clusterClient)
+		},
+		nil,
+	)
+}
+
+// summarizeControlPlaneRollout reports whether the KubeadmControlPlane's
+// rolling update (if any) has settled, as one capiStatusRow plus the ready
+// flag for waitForCAPIStableState.
+//
+// settled = Spec.Replicas set, ObservedGeneration caught up to Generation,
+// UpdatedReplicas >= Replicas (no old-revision Machines) and Replicas <=
+// desired (no surge). Initial scale-up (Replicas < desired, all up-to-date)
+// counts as settled so first-time bring-up isn't blocked. An absent KCP
+// (NotFound / no-kind-match) is treated as ready; other Get errors are
+// returned so the wait loop retries.
+func summarizeControlPlaneRollout(ctx context.Context, clusterClient client.Client) ([]capiStatusRow, bool, error) {
+	kcp := &kubeadmControlPlaneV1Beta1.KubeadmControlPlane{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
+			Namespace: GetCapiClusterNamespace(),
+		},
+	}
+	err := GetKubernetesResource(ctx, clusterClient, kcp)
+	switch {
+	case k8sAPIErrors.IsNotFound(err) || meta.IsNoMatchError(err):
+		// No CAPI-managed control plane in this cluster — nothing to gate on.
+		return nil, true, nil
+
+	case err != nil:
+		return nil, false, err
+	}
+
+	st := kcp.Status
+
+	desiredStr := "?"
+	settled := false
+	if kcp.Spec.Replicas != nil {
+		desired := *kcp.Spec.Replicas
+		desiredStr = fmt.Sprintf("%d", desired)
+		settled = st.ObservedGeneration >= kcp.Generation &&
+			st.UpdatedReplicas >= st.Replicas &&
+			st.Replicas <= desired
+	}
+
+	phase := "RollingUpdate"
+	if settled {
+		phase = "Settled"
+	}
+	row := capiStatusRow{
+		Resource: "KubeadmControlPlane/" + kcp.Name,
+		Phase:    phase,
+		Status: fmt.Sprintf(
+			"replicas=%d/%s updated=%d ready=%d",
+			st.Replicas, desiredStr, st.UpdatedReplicas, st.ReadyReplicas,
+		),
+	}
+	return []capiStatusRow{row}, settled, nil
 }
 
 // machineProgressPollInterval is how often the post-wait background

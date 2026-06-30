@@ -395,6 +395,29 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		assert.AssertErrNil(ctx, err, "Failed waiting for atleast 1 worker node to be initialized")
 	}
 
+	// Gate the workload installs below on a settled control plane: a re-run
+	// can land mid control-plane rollout, and installing during that
+	// apiserver/etcd churn can leave a Helm release stuck "failed".
+	if kubernetes.UsingClusterAPI() {
+		// KCP lives in the management cluster pre-pivot, the provisioned
+		// cluster after clusterctl move (mgmt k3d may be gone by then).
+		kcpOwnerClient := provisionedClusterClient
+		if !kubernetes.IsClusterctlMoveExecuted(ctx) {
+			mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
+			assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
+
+			mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
+			assert.AssertErrNil(ctx, mgmtErr,
+				"Failed constructing management cluster client for control-plane rollout gate")
+
+			kcpOwnerClient = mgmtClient
+		}
+
+		err = kubernetes.WaitForControlPlaneRolloutComplete(ctx, kcpOwnerClient)
+		assert.AssertErrNil(ctx, err, "Failed waiting for control-plane rollout to settle")
+		bar.Substep("Control-plane rollout settled")
+	}
+
 	/*
 		Setup the main cluster.
 
