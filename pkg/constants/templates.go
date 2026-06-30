@@ -156,11 +156,15 @@ var (
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 	}
 
-	HCloudSpecificNonSecretTemplateNames = []string{
-		// For HCloud Cloud Controller Manager.
-		"argocd-apps/templates/ccm-hcloud.yaml.tmpl",
-		"argocd-apps/values-ccm-hcloud.yaml.tmpl",
+	// CommonHetznerCCMNonSecretTemplateNames are the ccm-hetzner ArgoCD App + values
+	// templates. Rendered for every Hetzner mode (hcloud, bare-metal, hybrid) — the
+	// values template gates robot/networking/LB-env per mode internally.
+	CommonHetznerCCMNonSecretTemplateNames = []string{
+		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
+		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
+	}
 
+	HCloudSpecificNonSecretTemplateNames = []string{
 		// For HCloud CSI driver.
 		"argocd-apps/templates/hcloud-csi-driver.yaml.tmpl",
 		"argocd-apps/values-hcloud-csi-driver.yaml.tmpl",
@@ -171,10 +175,6 @@ var (
 	}
 
 	HetznerBareMetalSpecificNonSecretTemplateNames = []string{
-		// For Hetzner Bare Metal (Syself's) Cloud Controller Manager.
-		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
-		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
-
 		// For postfinance kubelet-csr-approver. The values template
 		// reads TemplateValues.HetznerBareMetalHostPublicIPs, which
 		// getTemplateValues populates via a one-shot Robot API call

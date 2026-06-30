@@ -1,6 +1,18 @@
 ---
-{{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
 ccm-hetzner:
+  {{- /* robot.enabled controls the Hetzner Robot controller. Enable it only
+       when bare-metal nodes are present (bare-metal or hybrid mode).
+       Must explicitly set false for hcloud — the chart defaults robot to true. */ -}}
+  {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
+  robot:
+    enabled: true
+  {{- else }}
+  robot:
+    enabled: false
+  {{- end }}
+
+  {{- /* LB env is only relevant when HCloud VMs are provisioned (hcloud or hybrid mode). */ -}}
+  {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
   env:
     loadBalancers: "true"
 
@@ -8,10 +20,9 @@ ccm-hetzner:
     - name: HCLOUD_LOAD_BALANCERS_NETWORK_ZONE
       value: {{ .HetznerConfig.HCloud.Zone }}
 
-    {{- /* When using a VPN cluster, we'll be using Hetzner Network, and thus can have internal LBs.
-         By default, apps will be exposed to internally.
-         When needed, sysadmins can explicitly specify (using annotations) that they want to expose
-         an app to the public internet. */ -}}
+    {{- /* When using a workload cluster fronted by a VPN, we'll be using a Hetzner Network
+         and can have internal LBs. By default, apps are exposed internally; sysadmins
+         can explicitly opt an app onto the public internet via Service annotations. */ -}}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     # Disables the public interface of the Load Balancer by default.
     - name: HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK
@@ -23,8 +34,13 @@ ccm-hetzner:
       value: "true"
     {{- end }}
 
-  {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
-  privateNetwork:
+  {{- end }}
+
+  {{- /* networking.enabled tells HCCM to manage Hetzner Cloud Routes for pod-to-pod
+       connectivity via the private Hetzner Network. Applies to any VPN-connected cluster
+       (vpn-type or workload fronted by a VPN). Mutually exclusive with robot: bare-metal
+       and hybrid clusters never run as VPN. */ -}}
+  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+  networking:
     enabled: true
   {{- end }}
-{{- end }}
