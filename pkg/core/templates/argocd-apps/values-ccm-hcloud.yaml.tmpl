@@ -1,0 +1,53 @@
+---
+ccm-hetzner:
+  {{- /* nameOverride drives the Deployment, ServiceAccount, and RBAC resource names.
+       "ccm-hcloud" keeps the two CCM instances distinct in a hybrid cluster where
+       both ccm-hcloud and ccm-hetzner run in kube-system. */ -}}
+  nameOverride: ccm-hcloud
+
+  {{- /* ccm-hcloud owns HCloud nodes; Robot support must be off so it doesn't also
+       try to initialise bare-metal nodes (ccm-hetzner does that). */ -}}
+  robot:
+    enabled: false
+
+  {{- /* LB env is always relevant for ccm-hcloud — it is the CCM that manages
+       HCloud LoadBalancers for all modes that include HCloud nodes. */ -}}
+  env:
+    HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:
+      value: {{ .HetznerConfig.HCloud.Zone }}
+
+    {{- /* A workload cluster fronted by a VPN exposes apps internally by default;
+         sysadmins opt a Service onto the public internet via annotations.
+         A vpn-type cluster hosts its own LBs (Keycloak / NetBird ingress) and
+         those must stay public, so this pair is NOT set for vpn-type. */ -}}
+    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
+    HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:
+      value: "true"
+    HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
+      value: "true"
+    {{- end }}
+
+  {{- /* networking.enabled tells hccm to manage Hetzner Cloud Routes for pod-to-pod
+       connectivity via the private Hetzner Network and to populate InternalIP on
+       each HCloud node.
+       Must be true when:
+         - VPN clusters: pod-routing through the private network is the whole point.
+         - Workload clusters fronted by a VPN: same private-network requirement.
+         - Hybrid clusters: the HCloud control-plane nodes sit on a private network
+           to communicate with bare-metal workers; without networking=true hccm never
+           sets InternalIP on them, the apiserver cannot reach the kubelet, and
+           control-plane scale-up stalls on etcd health. */ -}}
+  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) (eq .HetznerConfig.Mode "hybrid")) }}
+  networking:
+    enabled: true
+  {{- end }}
+
+  {{- /* Mirror the additionalTolerations the postKubeadm helm block sets at bootstrap,
+       so ArgoCD's desired state matches and does not strip the toleration on the
+       next sync. The not-ready/Exists/NoSchedule toleration lets ccm-hcloud schedule
+       on nodes before they have been initialised (the chicken-and-egg window where
+       CCM itself must run to clear node.cloudprovider.kubernetes.io/uninitialized). */ -}}
+  additionalTolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+      effect: NoSchedule

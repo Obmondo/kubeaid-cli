@@ -156,10 +156,18 @@ var (
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 	}
 
-	// CommonHetznerCCMNonSecretTemplateNames are the ccm-hetzner ArgoCD App + values
-	// templates. Rendered for every Hetzner mode (hcloud, bare-metal, hybrid) — the
-	// values template gates robot/networking/LB-env per mode internally.
-	CommonHetznerCCMNonSecretTemplateNames = []string{
+	// HCloudCCMNonSecretTemplateNames are the ccm-hcloud ArgoCD App + values
+	// templates. Rendered for hcloud and hybrid modes — ccm-hcloud owns HCloud
+	// node routing (networking=true) and LoadBalancers.
+	HCloudCCMNonSecretTemplateNames = []string{
+		"argocd-apps/templates/ccm-hcloud.yaml.tmpl",
+		"argocd-apps/values-ccm-hcloud.yaml.tmpl",
+	}
+
+	// HetznerCCMNonSecretTemplateNames are the ccm-hetzner ArgoCD App + values
+	// templates. Rendered for bare-metal and hybrid modes — ccm-hetzner owns
+	// bare-metal (Robot) nodes.
+	HetznerCCMNonSecretTemplateNames = []string{
 		"argocd-apps/templates/ccm-hetzner.yaml.tmpl",
 		"argocd-apps/values-ccm-hetzner.yaml.tmpl",
 	}
