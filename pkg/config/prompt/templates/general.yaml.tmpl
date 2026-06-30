@@ -108,7 +108,7 @@ cloud:
 {{- if eq .HetznerMode "hcloud" }}
     hcloud:
       zone: {{ .HetznerHCloudZone }}
-      imageName: ubuntu-24.04
+      imageName: ubuntu-26.04
       hetznerNetwork:
         cidr: "10.0.0.0/16"
         hcloudServersSubnetCIDR: "10.0.0.0/24"
@@ -132,7 +132,7 @@ cloud:
 {{- if eq .HetznerMode "hybrid" }}
     hcloud:
       zone: {{ .HetznerHCloudZone }}
-      imageName: ubuntu-24.04
+      imageName: ubuntu-26.04
       hetznerNetwork:
         cidr: "10.0.0.0/16"
         hcloudServersSubnetCIDR: "10.0.0.0/24"

@@ -608,7 +608,7 @@ type (
 
 	HCloudConfig struct {
 		Zone      string `yaml:"zone"      validate:"notblank"`
-		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-24.04"`
+		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-26.04"`
 
 		// NATGatewayServerType is the HCloud server type for the NAT gateway
 		// that fronts the private network during bootstrap. cpx22 is a small,

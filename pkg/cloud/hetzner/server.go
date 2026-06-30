@@ -140,7 +140,7 @@ func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName s
 	opts := hcloud.ServerCreateOpts{
 		Name:       serverName,
 		ServerType: &hcloud.ServerType{Name: hetznerConfig.HCloud.NATGatewayServerType},
-		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2404},
+		Image:      &hcloud.Image{Name: constants.HCloudServerImageUbuntu2604},
 		SSHKeys:    []*hcloud.SSHKey{{ID: sshKeyPair.ID}},
 		Networks:   []*hcloud.Network{{ID: networkID}},
 		PublicNet: &hcloud.ServerCreatePublicNet{
