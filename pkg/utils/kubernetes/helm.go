@@ -125,6 +125,32 @@ func HelmInstall(ctx context.Context, args *HelmInstallArgs) error {
 	return helmInstallWithFactory(ctx, &realHelmFactory{cfg: actionConfig}, args)
 }
 
+// ErrReleaseExistsNonDeployed is returned by helmInstallWithFactory when a
+// release with the target name exists but isn't Deployed. Install-only can't
+// proceed; the caller decides whether to upgrade-recover or bail.
+type ErrReleaseExistsNonDeployed struct {
+	ReleaseName string
+	Status      release.Status
+}
+
+func (e *ErrReleaseExistsNonDeployed) Error() string {
+	return fmt.Sprintf(
+		"helm release %q already exists in state %q; this entry point is install-only, callers needing recovery should use helmUpgradeWithFactory",
+		e.ReleaseName, e.Status,
+	)
+}
+
+// RecoverableByUpgrade reports whether `helm upgrade` can salvage the release:
+// failed/superseded yes; pending-*/uninstalling hold a lock it can't clear.
+func (e *ErrReleaseExistsNonDeployed) RecoverableByUpgrade() bool {
+	switch e.Status {
+	case release.StatusFailed, release.StatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
 // helmInstallWithFactory is the unit-testable core of HelmInstall.
 func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
@@ -148,10 +174,10 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	//        operation here. Surface a clear error so the caller can
 	//        decide whether to upgrade-recover or bail.
 	if existingHelmRelease != nil {
-		return fmt.Errorf(
-			"helm release %q already exists in state %q; this entry point is install-only, callers needing recovery should use helmUpgradeWithFactory",
-			args.ReleaseName, existingHelmRelease.Info.Status,
-		)
+		return &ErrReleaseExistsNonDeployed{
+			ReleaseName: args.ReleaseName,
+			Status:      existingHelmRelease.Info.Status,
+		}
 	}
 
 	// Load and install the Helm chart.
