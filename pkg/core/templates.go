@@ -528,6 +528,12 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
+		// ccm-hetzner renders for every Hetzner mode; the values template
+		// gates robot/networking/LB-env internally per mode.
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.CommonHetznerCCMNonSecretTemplateNames...,
+		)
+
 		if config.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,

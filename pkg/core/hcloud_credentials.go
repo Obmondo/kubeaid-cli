@@ -62,8 +62,8 @@ func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Cli
 	stringData["hcloud"] = hetznerSecrets.APIToken
 
 	// HCloud Network name — required when the CCM is configured to
-	// manage LBs on a private network (values-ccm-hcloud.yaml.tmpl
-	// enables this for VPN clusters and workload-on-VPN). The
+	// manage LBs on a private network (values-ccm-hetzner.yaml.tmpl
+	// enables networking.enabled for VPN clusters and workload-on-VPN). The
 	// network is named after the cluster (see network.go::
 	// EnsureHetznerNetwork). Without this key, the CCM fails to
 	// start with "couldn't find key network in Secret

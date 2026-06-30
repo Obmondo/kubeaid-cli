@@ -165,19 +165,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	bar.Describe("Syncing ArgoCD applications")
 	var orderedApps []kubernetes.AppSyncStep
 	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
-		// ccm-hcloud manages LoadBalancers for HCloud servers,
-		// ccm-hetzner for Hetzner bare-metal; a hybrid cluster runs
-		// both. traefik (which owns the ingress LB Service) comes
-		// after, so CCM is up to assign its IP — then WaitForIngressLBDNS
-		// waits for that IP and the operator pointing DNS at it.
-		if config.UsingHCloud() {
-			orderedApps = append(orderedApps,
-				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHCloud})
-		}
-		if config.UsingHetznerBareMetal() {
-			orderedApps = append(orderedApps,
-				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHetzner})
-		}
+		// ccm-hetzner handles all Hetzner modes (hcloud, bare-metal, hybrid).
+		// traefik (which owns the ingress LB Service) comes after, so CCM is
+		// up to assign its IP — then WaitForIngressLBDNS waits for that IP
+		// and the operator pointing DNS at it.
+		orderedApps = append(orderedApps,
+			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHetzner})
 		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 			Name: constants.ArgoCDAppTraefik,
 			AfterSync: func(ctx context.Context) error {

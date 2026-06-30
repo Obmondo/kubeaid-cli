@@ -79,11 +79,11 @@ The VPN cluster relies on several infrastructural elements. These elements are o
 ### D. Cloud Controller Manager (CCM)
 * **Purpose**: Integrates Kubernetes with Hetzner Cloud APIs. In a VPN cluster, the CCM manages network routes for Pod IPs in the private Hetzner Network.
 * **Helm Reference**: `@KubeAid/argocd-helm-charts/ccm-hetzner/charts/ccm-hetzner` chart.
-* **Configuration Mapping**: `kubeaid-cli/pkg/core/templates/argocd-apps/values-ccm-hcloud.yaml.tmpl`. For VPN clusters (`.ClusterConfig.Type == "vpn"`), it explicitly sets `networking.enabled: true` and passes the Hetzner network ID via a Kubernetes secret. This ensures that the CCM configures Hetzner Cloud routes for internal pod-to-pod communication.
+* **Configuration Mapping**: `kubeaid-cli/pkg/core/templates/argocd-apps/values-ccm-hetzner.yaml.tmpl`. For VPN clusters (`.ClusterConfig.Type == "vpn"`), it explicitly sets `networking.enabled: true` and passes the Hetzner network ID via a Kubernetes secret. This ensures that the CCM configures Hetzner Cloud routes for internal pod-to-pod communication.
 
 ### E. Internal Load Balancer (Optional)
 * **Purpose**: If a Load Balancer is used for the API server, it can be configured to use private IPs so it isn't exposed to the public internet, maximizing security.
-* **Configuration Mapping**: `kubeaid-cli/pkg/core/templates/argocd-apps/values-ccm-hcloud.yaml.tmpl` injects specific environment variables (`HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK="true"` and `HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP="true"`) to enforce internal-only load balancing when connected to a VPN cluster.
+* **Configuration Mapping**: `kubeaid-cli/pkg/core/templates/argocd-apps/values-ccm-hetzner.yaml.tmpl` injects specific environment variables (`HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK="true"` and `HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP="true"`) to enforce internal-only load balancing when connected to a VPN cluster.
 
 ## 3. Example Configuration Snippet
 
