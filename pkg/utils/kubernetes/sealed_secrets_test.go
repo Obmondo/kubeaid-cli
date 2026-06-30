@@ -46,6 +46,7 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 		chartErr        error
 		installErr      error
 		wantInstalled   bool
+		wantUpgraded    bool
 		wantErr         bool
 		wantErrContains string
 	}{
@@ -82,14 +83,56 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 			wantErr:         true,
 			wantErrContains: "failed installing helm chart",
 		},
+		{
+			// A prior run left the release "failed"; install-only would
+			// refuse, so recover via helm upgrade.
+			name: "release failed -- recovers via upgrade",
+			releases: []*release.Release{
+				makeRelease(
+					constants.ReleaseNameSealedSecrets,
+					constants.NamespaceSealedSecrets,
+					release.StatusFailed,
+				),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			name: "release superseded -- recovers via upgrade",
+			releases: []*release.Release{
+				makeRelease(
+					constants.ReleaseNameSealedSecrets,
+					constants.NamespaceSealedSecrets,
+					release.StatusSuperseded,
+				),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			// pending-* holds a release lock upgrade can't clear -- surface
+			// the install-only error for manual intervention.
+			name: "release pending-install -- not recovered",
+			releases: []*release.Release{
+				makeRelease(
+					constants.ReleaseNameSealedSecrets,
+					constants.NamespaceSealedSecrets,
+					release.StatusPendingInstall,
+				),
+			},
+			wantErr:         true,
+			wantErrContains: "install-only",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			installer := &fakeInstallRunner{err: tc.installErr}
+			upgrader := &fakeUpgradeRunner{}
 			factory := &fakeHelmFactory{
 				lister:      singleResponseLister(tc.releases),
 				installer:   installer,
+				upgrader:    upgrader,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -103,6 +146,7 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
+			assert.Equal(t, tc.wantUpgraded, upgrader.called)
 		})
 	}
 }

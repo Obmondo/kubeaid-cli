@@ -10,6 +10,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -133,8 +134,19 @@ func sealedSecretsHelmArgs() *HelmInstallArgs {
 }
 
 // installSealedSecretsWithFactory is the testable core of InstallSealedSecrets.
+// A prior run can leave the release "failed" (install Wait timed out before the
+// controller went Ready); recover such releases via helm upgrade.
 func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
-	return helmInstallWithFactory(ctx, factory, sealedSecretsHelmArgs())
+	args := sealedSecretsHelmArgs()
+	err := helmInstallWithFactory(ctx, factory, args)
+
+	var existsErr *ErrReleaseExistsNonDeployed
+	if errors.As(err, &existsErr) && existsErr.RecoverableByUpgrade() {
+		slog.WarnContext(ctx, "sealed-secrets release in a non-deployed state — recovering via helm upgrade",
+			slog.String("status", string(existsErr.Status)))
+		return helmUpgradeWithFactory(ctx, factory, args)
+	}
+	return err
 }
 
 // upgradeSealedSecretsWithFactory is the testable core of ReinstallSealedSecrets.
