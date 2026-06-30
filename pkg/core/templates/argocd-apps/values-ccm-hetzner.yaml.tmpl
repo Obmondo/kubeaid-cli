@@ -20,15 +20,6 @@ ccm-hetzner:
     controllers: "cloud-node,cloud-node-lifecycle"
   {{- end }}
 
-  {{- /* networking.enabled tells HCCM to manage Hetzner Cloud Routes for pod-to-pod
-       connectivity via the private Hetzner Network. Applies to any VPN-connected cluster
-       (vpn-type or workload fronted by a VPN). Mutually exclusive with robot: bare-metal
-       and hybrid clusters never run as VPN. */ -}}
-  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
-  networking:
-    enabled: true
-  {{- end }}
-
   {{- /* Mirror the additionalTolerations the postKubeadm helm block sets at bootstrap,
        so ArgoCD's desired state matches and does not strip the toleration on the
        next sync. */ -}}
