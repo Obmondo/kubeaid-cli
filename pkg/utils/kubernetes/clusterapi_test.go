@@ -21,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	"k8s.io/utils/ptr"
+	kubeadmControlPlaneV1Beta1 "sigs.k8s.io/cluster-api/api/controlplane/kubeadm/v1beta1"
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -49,6 +50,7 @@ func newClusterAPITestScheme(t *testing.T) *runtime.Scheme {
 	require.NoError(t, coreV1.AddToScheme(s))
 	require.NoError(t, clusterAPIV1Beta1.AddToScheme(s))
 	require.NoError(t, caphV1Beta1.AddToScheme(s))
+	require.NoError(t, kubeadmControlPlaneV1Beta1.AddToScheme(s))
 	return s
 }
 
@@ -1877,4 +1879,219 @@ func TestEmitMachineDiff(t *testing.T) {
 			})
 		})
 	}
+}
+
+// makeKCP builds a KubeadmControlPlane for the rollout-gate tests. Status
+// counters and the spec replica count are passed explicitly so each case
+// can model a distinct point in (or out of) a rolling update.
+func makeKCP(generation int64, specReplicas *int32,
+	observedGen int64, replicas, updated, ready int32,
+) *kubeadmControlPlaneV1Beta1.KubeadmControlPlane {
+	return &kubeadmControlPlaneV1Beta1.KubeadmControlPlane{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:       testClusterName + "-control-plane",
+			Namespace:  testCapiClusterNamespace,
+			Generation: generation,
+		},
+		Spec: kubeadmControlPlaneV1Beta1.KubeadmControlPlaneSpec{
+			Replicas: specReplicas,
+		},
+		Status: kubeadmControlPlaneV1Beta1.KubeadmControlPlaneStatus{
+			ObservedGeneration: observedGen,
+			Replicas:           replicas,
+			UpdatedReplicas:    updated,
+			ReadyReplicas:      ready,
+		},
+	}
+}
+
+// TestSummarizeControlPlaneRollout exercises the rollout-settled predicate
+// behind WaitForControlPlaneRolloutComplete directly, so we assert on the
+// ready flag + row content without sitting through the poll loop.
+func TestSummarizeControlPlaneRollout(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+
+	tests := []struct {
+		name             string
+		preExist         []runtime.Object
+		wantReady        bool
+		wantRowCount     int
+		wantPhase        string
+		wantStatusSubstr string
+	}{
+		{
+			// No KubeadmControlPlane in this cluster (greenfield / not yet
+			// pivoted in / non-CAPI) — nothing to gate on, skip.
+			name:         "no control plane present -- skips",
+			preExist:     nil,
+			wantReady:    true,
+			wantRowCount: 0,
+		},
+		{
+			name: "fully rolled out -- ready",
+			preExist: []runtime.Object{
+				makeKCP(3, ptr.To(int32(3)), 3, 3, 3, 3),
+			},
+			wantReady:        true,
+			wantRowCount:     1,
+			wantPhase:        "Settled",
+			wantStatusSubstr: "ready=3",
+		},
+		{
+			// Initial scale-up: only 2 of 3 CP present, both up-to-date and
+			// observed. NOT a rollout — the gate must let the bootstrap
+			// proceed, matching the existing "tolerate partial provisioning"
+			// behaviour (otherwise we'd regress first-run bring-up).
+			name: "initial scale-up (not a roll) -- ready",
+			preExist: []runtime.Object{
+				makeKCP(3, ptr.To(int32(3)), 3, 2, 2, 2),
+			},
+			wantReady:        true,
+			wantRowCount:     1,
+			wantPhase:        "Settled",
+			wantStatusSubstr: "replicas=2/3",
+		},
+		{
+			// Surge Machine added (Replicas 4 > spec 3), only 1 updated and
+			// 1 unavailable: exactly the in-flight control-plane roll the
+			// old "≥1 CP Ready" gate sailed past.
+			name: "rolling update in progress -- not ready",
+			preExist: []runtime.Object{
+				makeKCP(3, ptr.To(int32(3)), 3, 4, 1, 3),
+			},
+			wantReady:        false,
+			wantRowCount:     1,
+			wantPhase:        "RollingUpdate",
+			wantStatusSubstr: "updated=1",
+		},
+		{
+			// Counts all match but the controller hasn't observed the
+			// latest spec yet — can't prove the roll is done.
+			name: "stale observedGeneration -- not ready",
+			preExist: []runtime.Object{
+				makeKCP(5, ptr.To(int32(3)), 3, 3, 3, 3),
+			},
+			wantReady:    false,
+			wantRowCount: 1,
+			wantPhase:    "RollingUpdate",
+		},
+		{
+			name: "nil spec replicas -- not ready",
+			preExist: []runtime.Object{
+				makeKCP(1, nil, 1, 0, 0, 0),
+			},
+			wantReady:    false,
+			wantRowCount: 1,
+			wantPhase:    "RollingUpdate",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origName := config.ParsedGeneralConfig.Cluster.Name
+			t.Cleanup(func() { config.ParsedGeneralConfig.Cluster.Name = origName })
+			config.ParsedGeneralConfig.Cluster.Name = testClusterName
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			rows, ready, err := summarizeControlPlaneRollout(context.Background(), fakeClient)
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantReady, ready)
+			assert.Len(t, rows, tc.wantRowCount)
+			if tc.wantRowCount > 0 {
+				assert.Equal(t, tc.wantPhase, rows[0].Phase)
+				if tc.wantStatusSubstr != "" {
+					assert.Contains(t, rows[0].Status, tc.wantStatusSubstr)
+				}
+			}
+		})
+	}
+}
+
+// TestWaitForControlPlaneRolloutComplete covers the wrapper: it skips
+// (returns nil) when there's no KubeadmControlPlane, returns nil once the
+// control plane is settled, and times out while a roll is in flight.
+func TestWaitForControlPlaneRolloutComplete(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+
+	tests := []struct {
+		name     string
+		preExist []runtime.Object
+		wantErr  bool
+	}{
+		{
+			name:     "no control plane -- skips with nil",
+			preExist: nil,
+			wantErr:  false,
+		},
+		{
+			name:     "settled -- returns nil",
+			preExist: []runtime.Object{makeKCP(3, ptr.To(int32(3)), 3, 3, 3, 3)},
+			wantErr:  false,
+		},
+		{
+			name:     "rolling update -- times out",
+			preExist: []runtime.Object{makeKCP(3, ptr.To(int32(3)), 3, 4, 1, 3)},
+			wantErr:  true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			origName := config.ParsedGeneralConfig.Cluster.Name
+			origPoll := capiWaitPollInterval
+			origTotal := capiWaitTotalTimeout
+			t.Cleanup(func() {
+				config.ParsedGeneralConfig.Cluster.Name = origName
+				capiWaitPollInterval = origPoll
+				capiWaitTotalTimeout = origTotal
+			})
+			config.ParsedGeneralConfig.Cluster.Name = testClusterName
+			capiWaitPollInterval = 50 * time.Millisecond
+			capiWaitTotalTimeout = 1 * time.Second
+
+			fakeClient := crFake.NewClientBuilder().
+				WithScheme(scheme).
+				WithRuntimeObjects(tc.preExist...).
+				Build()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			err := WaitForControlPlaneRolloutComplete(ctx, fakeClient)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+// TestSummarizeControlPlaneRolloutTransientError verifies that a transient
+// Get error (not NotFound / no-kind-match) is surfaced as (nil, false, err)
+// so the wait loop logs and retries — rather than being misread as "no KCP
+// present → skip", which would let an install race an in-flight roll.
+func TestSummarizeControlPlaneRolloutTransientError(t *testing.T) {
+	scheme := newClusterAPITestScheme(t)
+	origName := config.ParsedGeneralConfig.Cluster.Name
+	t.Cleanup(func() { config.ParsedGeneralConfig.Cluster.Name = origName })
+	config.ParsedGeneralConfig.Cluster.Name = testClusterName
+
+	fakeClient := crFake.NewClientBuilder().
+		WithScheme(scheme).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Get: func(context.Context, client.WithWatch, client.ObjectKey, client.Object, ...client.GetOption) error {
+				return fmt.Errorf("etcdserver: leader changed")
+			},
+		}).
+		Build()
+
+	rows, ready, err := summarizeControlPlaneRollout(context.Background(), fakeClient)
+	require.Error(t, err)
+	assert.False(t, ready)
+	assert.Nil(t, rows)
 }
