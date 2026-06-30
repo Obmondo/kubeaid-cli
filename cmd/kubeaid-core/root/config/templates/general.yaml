@@ -324,6 +324,12 @@ cloud:
     hcloud:
       zone:
       imageName: ubuntu-24.04
+      # NATGatewayServerType is the HCloud server type for the NAT gateway
+      # that fronts the private network during bootstrap. cpx22 is a small,
+      # cost-optimised x86 box — ample for NAT. Override it if cpx22 is out
+      # of stock / not offered in your locations, or you need more throughput
+      # (`hcloud server-type list` shows what's available).
+      natGatewayServerType: cpx22
       # Hetzner Network specific details.
       hetznerNetwork:
         cidr:
@@ -379,6 +385,10 @@ cloud:
       vSwitch:
         vlanID:
         name:
+        # SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.
+        # The IP written here doubles as the subnet's gateway (net.ParseCIDR's
+        # first return), so "10.0.1.0/24" yields gateway 10.0.1.0 — write the IP
+        # you want as the gateway, not just any address in the range.
         subnetCIDRBlock:
     # Control-plane specific details.
     controlPlane:
@@ -390,11 +400,12 @@ cloud:
           region:
           # Endpoint is the FQDN clients use to reach kube-apiserver
           # (CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,
-          # kubeconfig server URL). Required. DNS resolution is the
-          # operator's responsibility — the LB has both public and
-          # private interfaces during bootstrap; once NetBird is up
-          # the public is removed and clients reach the private IP
-          # through the mesh.
+          # kubeconfig server URL). Optional: when omitted, the LB
+          # private IP is used as the control-plane endpoint directly
+          # (no public interface, no DNS wait). When set, the LB gets
+          # a public interface during bootstrap and kubeaid-cli waits
+          # for the operator's DNS A-record to land before continuing.
+          # DNS resolution is the operator's responsibility.
           endpoint:
       bareMetal:
         endpoint:

@@ -441,11 +441,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -455,6 +455,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | zone | `string` |  |  |
 | imageName | `string` | ubuntu-24.04 |  |
+| natGatewayServerType | `string` | cpx22 | NATGatewayServerType is the HCloud server type for the NAT gateway<br>that fronts the private network during bootstrap. cpx22 is a small,<br>cost-optimised x86 box — ample for NAT. Override it if cpx22 is out<br>of stock / not offered in your locations, or you need more throughput<br>(`hcloud server-type list` shows what's available).<br> |
 | hetznerNetwork | [`HetznerNetworkConfig`](#hetznernetworkconfig) |  | Hetzner Network specific details.<br> |
 
 ## HCloudControlPlane
@@ -475,7 +476,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 |-------|------|---------|-------------|
 | enabled | `bool` |  |  |
 | region | `string` |  |  |
-| endpoint | `string` |  | Endpoint is the FQDN clients use to reach kube-apiserver<br>(CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,<br>kubeconfig server URL). Required. DNS resolution is the<br>operator's responsibility — the LB has both public and<br>private interfaces during bootstrap; once NetBird is up<br>the public is removed and clients reach the private IP<br>through the mesh.<br> |
+| endpoint | `string` |  | Endpoint is the FQDN clients use to reach kube-apiserver<br>(CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,<br>kubeconfig server URL). Optional: when omitted, the LB<br>private IP is used as the control-plane endpoint directly<br>(no public interface, no DNS wait). When set, the LB gets<br>a public interface during bootstrap and kubeaid-cli waits<br>for the operator's DNS A-record to land before continuing.<br>DNS resolution is the operator's responsibility.<br> |
 
 ## HCloudVPNClusterConfig
 
@@ -834,7 +835,7 @@ provision infrastructure.</p>
 |-------|------|---------|-------------|
 | vlanID | `int` |  |  |
 | name | `string` |  |  |
-| subnetCIDRBlock | `string` |  |  |
+| subnetCIDRBlock | `string` |  | SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.<br>The IP written here doubles as the subnet's gateway (net.ParseCIDR's<br>first return), so "10.0.1.0/24" yields gateway 10.0.1.0 — write the IP<br>you want as the gateway, not just any address in the range.<br> |
 
 ## WorkloadIdentity
 

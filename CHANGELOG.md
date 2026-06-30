@@ -1,4 +1,18 @@
 - - -
+## v0.29.3 - 2026-06-30
+#### Features
+- (**hetzner**) config-drive the NAT-gateway server type - (a13d5a8) - Ashish Jaiswal
+- (**hetzner**) single ccm-hetzner CCM for all modes; drop ccm-hcloud - (c652de7) - Ashish Jaiswal
+#### Bug Fixes
+- (**deps**) update azure-sdk-for-go monorepo - (e5e8aca) - Renovate Bot
+- (**deps**) update aws-sdk-go-v2 monorepo - (9839267) - Renovate Bot
+- (**deps**) update module github.com/argoproj/argo-cd/v2 to v2.14.21 - (91024aa) - Renovate Bot
+- using CPX22 for NAT gateway, shorter management cluster name, reading network and vSwitch subnet CIDR from config - (47c49b6) - Archisman
+#### Refactoring
+- (**hetzner**) tidy vSwitch CIDR handling - (6b8f2f6) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.2 - 2026-06-29
 #### Features
 - (**rook-ceph**) only deploy on Hetzner bare-metal with >= 3 worker nodes - (eaca546) - Ashish Jaiswal
