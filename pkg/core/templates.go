@@ -528,11 +528,21 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderHetzner:
-		// ccm-hetzner renders for every Hetzner mode; the values template
-		// gates robot/networking/LB-env internally per mode.
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.CommonHetznerCCMNonSecretTemplateNames...,
-		)
+		// CCM selection by mode — mirrors the postKubeadm helm blocks in
+		// argocd-helm-charts/capi-cluster/charts/hetzner/templates/KubeadmControlPlane.yaml:
+		//   hcloud    → ccm-hcloud only (networking=true, robot=false, owns LBs + routes)
+		//   bare-metal → ccm-hetzner only (robot=true, no networking)
+		//   hybrid    → both (ccm-hcloud for HCloud nodes + LBs, ccm-hetzner for Robot nodes)
+		if config.UsingHCloud() {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.HCloudCCMNonSecretTemplateNames...,
+			)
+		}
+		if config.UsingHetznerBareMetal() {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.HetznerCCMNonSecretTemplateNames...,
+			)
+		}
 
 		if config.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,

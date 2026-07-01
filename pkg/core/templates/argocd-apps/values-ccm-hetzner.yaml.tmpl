@@ -2,7 +2,7 @@
 ccm-hetzner:
   {{- /* robot.enabled controls the Hetzner Robot controller. Enable it only
        when bare-metal nodes are present (bare-metal or hybrid mode).
-       Must explicitly set false for hcloud — the chart defaults robot to true. */ -}}
+       Must explicitly set false for hcloud — the chart defaults robot to true. */}}
   {{- if (or (eq .HetznerConfig.Mode "bare-metal") (eq .HetznerConfig.Mode "hybrid")) }}
   robot:
     enabled: true
@@ -11,36 +11,19 @@ ccm-hetzner:
     enabled: false
   {{- end }}
 
-  {{- /* LB env is only relevant when HCloud VMs are provisioned (hcloud or hybrid mode). */ -}}
-  {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-  env:
-    loadBalancers: "true"
-
-  extraEnvVars:
-    - name: HCLOUD_LOAD_BALANCERS_NETWORK_ZONE
-      value: {{ .HetznerConfig.HCloud.Zone }}
-
-    {{- /* When using a workload cluster fronted by a VPN, we'll be using a Hetzner Network
-         and can have internal LBs. By default, apps are exposed internally; sysadmins
-         can explicitly opt an app onto the public internet via Service annotations. */ -}}
-    {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
-    # Disables the public interface of the Load Balancer by default.
-    - name: HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK
-      value: "true"
-
-    # Configures the Load Balancer to use the private IP for Load Balancer server targets by
-    # default.
-    - name: HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP
-      value: "true"
-    {{- end }}
-
+  {{- /* In a hybrid cluster ccm-hetzner handles bare-metal (Robot) nodes only;
+       ccm-hcloud owns LoadBalancers and the service controller. Scope ccm-hetzner
+       to the node-lifecycle controllers so the two CCMs don't fight over Services.
+       For pure bare-metal mode ccm-hetzner is the only CCM, so no scoping. */}}
+  {{- if (eq .HetznerConfig.Mode "hybrid") }}
+  args:
+    controllers: "cloud-node,cloud-node-lifecycle"
   {{- end }}
 
-  {{- /* networking.enabled tells HCCM to manage Hetzner Cloud Routes for pod-to-pod
-       connectivity via the private Hetzner Network. Applies to any VPN-connected cluster
-       (vpn-type or workload fronted by a VPN). Mutually exclusive with robot: bare-metal
-       and hybrid clusters never run as VPN. */ -}}
-  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
-  networking:
-    enabled: true
-  {{- end }}
+  {{- /* Mirror the additionalTolerations the postKubeadm helm block sets at bootstrap,
+       so ArgoCD's desired state matches and does not strip the toleration on the
+       next sync. */}}
+  additionalTolerations:
+    - key: node.kubernetes.io/not-ready
+      operator: Exists
+      effect: NoSchedule

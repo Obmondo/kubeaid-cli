@@ -1,4 +1,9 @@
 - - -
+## Unreleased
+#### Bug Fixes
+- (**hetzner**) two CCMs for hybrid: ccm-hcloud (networking + LBs) + ccm-hetzner (robot); fix hybrid HCloud CP InternalIP
+
+- - -
 ## v0.29.3 - 2026-06-30
 #### Features
 - (**hetzner**) config-drive the NAT-gateway server type - (a13d5a8) - Ashish Jaiswal

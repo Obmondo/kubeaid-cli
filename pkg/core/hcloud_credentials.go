@@ -61,17 +61,17 @@ func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Cli
 	}
 	stringData["hcloud"] = hetznerSecrets.APIToken
 
-	// HCloud Network name — required when the CCM is configured to
-	// manage LBs on a private network (values-ccm-hetzner.yaml.tmpl
-	// enables networking.enabled for VPN clusters and workload-on-VPN). The
-	// network is named after the cluster (see network.go::
-	// EnsureHetznerNetwork). Without this key, the CCM fails to
-	// start with "couldn't find key network in Secret
-	// kube-system/cloud-credentials". Matches the SealedSecret
-	// template at sealed-secrets/kube-system/cloud-credentials.yaml.tmpl.
+	// HCloud Network name — required when ccm-hcloud is configured with
+	// networking.enabled=true (values-ccm-hcloud.yaml.tmpl enables it for VPN
+	// clusters, workload-on-VPN, and hybrid). The network is named after the
+	// cluster (see network.go::EnsureHetznerNetwork). Without this key, the CCM
+	// fails with "couldn't find key network in Secret kube-system/cloud-credentials".
+	// Matches the SealedSecret template at
+	// sealed-secrets/kube-system/cloud-credentials.yaml.tmpl.
 	cluster := config.ParsedGeneralConfig.Cluster
 	if cluster.Type == constants.ClusterTypeVPN ||
-		(cluster.Type == constants.ClusterTypeWorkload && hetznerCfg.HCloudVPNCluster != nil) {
+		(cluster.Type == constants.ClusterTypeWorkload && hetznerCfg.HCloudVPNCluster != nil) ||
+		hetznerCfg.Mode == constants.HetznerModeHybrid {
 		stringData["network"] = cluster.Name
 	}
 

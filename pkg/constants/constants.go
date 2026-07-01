@@ -192,6 +192,7 @@ const (
 	ArgoCDAppHCloudCSIDriver    = "hcloud-csi-driver"
 	ArgoCDAppRookCeph           = "rook-ceph"
 	ArgoCDAppLocalPVProvisioner = "localpv-provisioner"
+	ArgoCDAppCCMHCloud          = "ccm-hcloud"
 	ArgoCDAppCCMHetzner         = "ccm-hetzner"
 	ArgoCDAppTraefik            = "traefik"
 
