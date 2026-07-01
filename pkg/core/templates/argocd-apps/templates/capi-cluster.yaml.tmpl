@@ -46,6 +46,14 @@ spec:
       kind: HetznerBareMetalHost
       jsonPointers:
         - /metadata/annotations/capi.syself.com~1wipe-disk
+    {{- /* installImage is immutable and applied only at provision time, so a
+         change under it (e.g. the boot-order postInstallScript) must not patch
+         existing machines — that wedges the sync on "installImage is immutable".
+         New machines still get the current spec at creation. */ -}}
+    - group: infrastructure.cluster.x-k8s.io
+      kind: HetznerBareMetalMachine
+      jsonPointers:
+        - /spec/installImage
     {{- end }}
 
     {{- end }}
