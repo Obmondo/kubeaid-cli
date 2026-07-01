@@ -1,4 +1,17 @@
 - - -
+## v0.29.4 - 2026-07-01
+#### Features
+- (**capi**) wait for control-plane rollout to settle before workload installs - (ae0309e) - Ashish Jaiswal
+- (**hetzner**) default hcloud nodes to ubuntu-26.04 - (5a395ec) - Ashish Jaiswal
+#### Bug Fixes
+- (**hetzner**) ignore immutable installImage on HetznerBareMetalMachine - (50fcf9d) - Ashish Jaiswal
+- (**hetzner**) stop comment trim markers gluing CCM values keys - (e1ac2f6) - Archisman, *Claude Opus 4.8*
+- (**hetzner**) never enable networking on the robot CCM - (824bdbb) - Ashish Jaiswal
+- (**hetzner**) two CCMs for hybrid; fix HCloud CP InternalIP on bare-metal - (a28a5d3) - Ashish Jaiswal
+- (**sealed-secrets**) recover a failed/superseded release via helm upgrade - (c136c71) - Ashish Jaiswal
+
+- - -
+
 ## Unreleased
 #### Bug Fixes
 - (**hetzner**) two CCMs for hybrid: ccm-hcloud (networking + LBs) + ccm-hetzner (robot); fix hybrid HCloud CP InternalIP

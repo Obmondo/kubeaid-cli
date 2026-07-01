@@ -92,7 +92,7 @@
 
         packages.default = buildGoModule {
           pname = "kubeaid-cli";
-          version = "0.29.3";
+          version = "0.29.4";
 
           meta = {
             mainProgram = "kubeaid-cli";
