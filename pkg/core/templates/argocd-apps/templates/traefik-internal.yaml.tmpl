@@ -1,0 +1,41 @@
+{{- /*
+Internal Traefik ArgoCD Application — a second deployment of the same
+argocd-helm-charts/traefik chart, configured (values-traefik-internal.yaml) as
+a ClusterIP-only instance with its own `traefik-internal` IngressClass for
+NetBird-private admin ingresses. Same traefik namespace as the public instance;
+no collision because the wrapper chart's middleware all default off and the
+upstream resources are renamed via fullnameOverride.
+
+Rendered only when secrets.yaml carries netbird.apiKey — without a NetBird Mgmt
+key there's no mesh to reach it over, so there's no point deploying it.
+*/ -}}
+{{- if .NetBirdAPIKey }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "15"
+  name: traefik-internal
+  namespace: argocd
+spec:
+  destination:
+    namespace: traefik
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/traefik
+      targetRevision: {{ .KubeaidFork.Version }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-traefik-internal.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+{{- end }}

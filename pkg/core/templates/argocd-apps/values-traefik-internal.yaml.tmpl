@@ -1,0 +1,40 @@
+{{- /*
+Internal Traefik values overlay.
+
+A second, ClusterIP-only Traefik instance that serves the NetBird-private admin
+ingresses (ingressClassName: traefik-internal). No hostPort / NodePort /
+LoadBalancer — reachable only in-cluster and over the mesh via the
+traefik-internal ClusterIP Service, published by the netbird-operator
+NetworkResource (cluster.netbird -> values-netbird-operator).
+
+fullnameOverride/instanceLabelOverride pin the Service / Deployment / SA /
+IngressClass to exactly "traefik-internal" so that NetworkResource
+(service: traefik-internal) resolves. No middleware block: the wrapper chart's
+jwt / ipwhitelists / wildcardCertificates all default off, so this instance
+renders none of them and can't collide with the public traefik app in the same
+namespace.
+
+Rendered only when secrets.yaml's netbird.apiKey is set — paired with the
+traefik-internal ArgoCD Application (templates/traefik-internal.yaml.tmpl),
+which is gated the same way.
+*/ -}}
+{{- if .NetBirdAPIKey }}
+traefik:
+  fullnameOverride: traefik-internal
+  instanceLabelOverride: traefik-internal
+  deployment:
+    kind: Deployment
+    replicas: 2
+  service:
+    spec:
+      type: ClusterIP
+    additionalServices: {}
+  ingressClass:
+    enabled: true
+    name: traefik-internal
+    isDefaultClass: false
+  additionalArguments:
+    - '--providers.kubernetesingress.ingressclass=traefik-internal'
+    - '--entrypoints.websecure.http.tls'
+    - '--metrics.prometheus=true'
+{{- end }}
