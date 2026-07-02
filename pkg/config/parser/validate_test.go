@@ -139,10 +139,10 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 		wantErrSub string
 	}{
 		{
-			name:       "empty endpoint is rejected",
-			endpoint:   "",
-			wantErr:    true,
-			wantErrSub: "Endpoint",
+			// Optional (omitempty): Hetzner assigns the node/LB IP, so the
+			// operator may leave the endpoint empty or set a DNS name.
+			name:     "empty endpoint is allowed",
+			endpoint: "",
 		},
 		{
 			name:     "fqdn endpoint passes",
@@ -193,8 +193,9 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 						},
 					},
 					HCloud: &config.HCloudConfig{
-						Zone:      "eu-central",
-						ImageName: "ubuntu-26.04",
+						Zone:                 "eu-central",
+						ImageName:            "ubuntu-26.04",
+						NATGatewayServerType: "cpx22",
 						HetznerNetwork: config.HetznerNetworkConfig{
 							CIDR:                    "10.0.0.0/16",
 							HCloudServersSubnetCIDR: "10.0.0.0/24",
