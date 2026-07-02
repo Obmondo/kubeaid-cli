@@ -432,3 +432,145 @@ func TestHelmUpgradeWithFactory(t *testing.T) {
 		})
 	}
 }
+
+func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
+	t.Parallel()
+
+	const (
+		relName = "argocd"
+		ns      = "argocd"
+	)
+
+	tests := []struct {
+		name            string
+		releases        []*release.Release
+		chartToLoad     *chart.Chart
+		chartErr        error
+		installErr      error
+		upgradeErr      error
+		values          *values.Options
+		wantInstalled   bool
+		wantUpgraded    bool
+		wantValsKey     string
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name:          "no existing release -- fresh install, no upgrade",
+			releases:      nil,
+			chartToLoad:   minimalChart(),
+			wantInstalled: true,
+		},
+		{
+			name: "already deployed -- skips install, no upgrade",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusDeployed),
+			},
+			wantInstalled: false,
+		},
+		{
+			// The bug this entry point fixes: a prior run left the
+			// release "failed", so install-only refuses. Recover via
+			// helm upgrade instead of surfacing the error.
+			name: "failed release -- recovers via upgrade",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusFailed),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			name: "superseded release -- recovers via upgrade",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusSuperseded),
+			},
+			chartToLoad:  minimalChart(),
+			wantUpgraded: true,
+		},
+		{
+			// pending-* holds a release lock upgrade can't clear -- surface
+			// the install-only error instead of attempting recovery.
+			name: "pending-install -- not recovered, error propagates",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusPendingInstall),
+			},
+			wantErr:         true,
+			wantErrContains: "install-only",
+		},
+		{
+			// A non-recovery error from the install path (e.g. a
+			// connection failure) must pass straight through, untouched.
+			name:            "install fails with non-recovery error -- propagates, no upgrade",
+			releases:        nil,
+			chartToLoad:     minimalChart(),
+			installErr:      errors.New("connection refused"),
+			wantInstalled:   true,
+			wantErr:         true,
+			wantErrContains: "failed installing helm chart",
+		},
+		{
+			name: "failed release with values -- upgrade receives merged values",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusFailed),
+			},
+			chartToLoad:  minimalChart(),
+			values:       &values.Options{Values: []string{"foo=bar"}},
+			wantUpgraded: true,
+			wantValsKey:  "foo",
+		},
+		{
+			// Recovery is attempted (install detected a failed release),
+			// but the recovery upgrade itself fails (e.g. connection
+			// drop mid-upgrade). The error from helmUpgradeWithFactory
+			// must surface untouched -- not swallowed, not re-wrapped --
+			// so callers see the real upgrade failure rather than a
+			// misleading install-only error.
+			name: "failed release -- upgrade recovery itself fails, error propagates",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusFailed),
+			},
+			chartToLoad:     minimalChart(),
+			upgradeErr:      errors.New("connection refused"),
+			wantUpgraded:    true,
+			wantErr:         true,
+			wantErrContains: "failed upgrading helm chart",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			installer := &fakeInstallRunner{err: tc.installErr}
+			upgrader := &fakeUpgradeRunner{err: tc.upgradeErr}
+			factory := &fakeHelmFactory{
+				lister:      singleResponseLister(tc.releases),
+				installer:   installer,
+				upgrader:    upgrader,
+				chartToLoad: tc.chartToLoad,
+				chartErr:    tc.chartErr,
+			}
+
+			err := helmInstallOrUpgradeWithFactory(context.Background(), factory, &HelmInstallArgs{
+				ChartPath:   t.TempDir(),
+				ReleaseName: relName,
+				Namespace:   ns,
+				Values:      tc.values,
+			})
+
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrContains)
+				assert.Equal(t, tc.wantUpgraded, upgrader.called, "upgrade attempt state should match expectation on the error path")
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantInstalled, installer.called)
+			assert.Equal(t, tc.wantUpgraded, upgrader.called)
+			if tc.wantValsKey != "" {
+				require.NotNil(t, upgrader.vals)
+				assert.Contains(t, upgrader.vals, tc.wantValsKey)
+			}
+		})
+	}
+}

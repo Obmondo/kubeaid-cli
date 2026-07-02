@@ -5,6 +5,7 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -262,6 +263,43 @@ func helmUpgradeWithFactory(ctx context.Context, factory HelmActionFactory, args
 		return fmt.Errorf("failed upgrading helm chart: %w", err)
 	}
 	return nil
+}
+
+// HelmInstallOrUpgrade installs the Helm chart, recovering via `helm
+// upgrade` when a prior run left the release in a non-deployed state
+// (failed, superseded) that install-only can't reuse. Callers needing
+// the stricter install-only contract (error out instead of recovering)
+// should use HelmInstall.
+func HelmInstallOrUpgrade(ctx context.Context, args *HelmInstallArgs) error {
+	settings := cli.New()
+
+	actionConfig := &action.Configuration{}
+	err := actionConfig.Init(
+		settings.RESTClientGetter(),
+		settings.Namespace(),
+		os.Getenv("HELM_DRIVER"),
+		func(_ string, _ ...any) {}, // Discard logs coming from the Helm Go SDK.
+	)
+	if err != nil {
+		return fmt.Errorf("failed initializing helm action config: %w", err)
+	}
+
+	return helmInstallOrUpgradeWithFactory(ctx, &realHelmFactory{cfg: actionConfig}, args)
+}
+
+// helmInstallOrUpgradeWithFactory is the unit-testable core of HelmInstallOrUpgrade.
+func helmInstallOrUpgradeWithFactory(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) error {
+	err := helmInstallWithFactory(ctx, factory, args)
+
+	var existsErr *ErrReleaseExistsNonDeployed
+	if errors.As(err, &existsErr) && existsErr.RecoverableByUpgrade() {
+		slog.WarnContext(ctx, "helm release in a non-deployed state — recovering via helm upgrade",
+			slog.String("release-name", args.ReleaseName),
+			slog.String("status", string(existsErr.Status)),
+		)
+		return helmUpgradeWithFactory(ctx, factory, args)
+	}
+	return err
 }
 
 // HelmRenderArgs are the inputs to HelmRenderManifest.
