@@ -90,8 +90,15 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		// the operator isn't watching the spinner spend an extra
 		// minute provisioning NAT after they've finished pasting DNS
 		// A records.
-		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
-			return fmt.Errorf("creating NAT gateway: %w", err)
+		//
+		// Skipped for the single-node public-control-plane VPN topology:
+		// the lone CP node egresses over its own primary public IPv4 and
+		// has no private worker nodes behind it, so the shared NAT egress
+		// route (and the NAT gateway server it runs on) is dead weight.
+		if !config.HCloudSingleNodePublicVPN() {
+			if err := h.CreateNATGateway(ctx, network.ID); err != nil {
+				return fmt.Errorf("creating NAT gateway: %w", err)
+			}
 		}
 
 		// Pre-create the control-plane LB. The DNS-wait it triggers is
