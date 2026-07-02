@@ -525,3 +525,95 @@ func TestNetbirdManagementURL(t *testing.T) {
 		})
 	}
 }
+
+func TestNetbirdNetworkRouterEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		netbird *config.NetBirdConfig
+		want    bool
+	}{
+		{name: "nil NetBird block: false", netbird: nil, want: false},
+		{name: "NetworkRouter block absent: false", netbird: &config.NetBirdConfig{}, want: false},
+		{
+			name:    "NetworkRouter present but disabled: false",
+			netbird: &config.NetBirdConfig{NetworkRouter: &config.NetBirdNetworkRouterConfig{Enabled: false}},
+			want:    false,
+		},
+		{
+			name:    "NetworkRouter present and enabled: true",
+			netbird: &config.NetBirdConfig{NetworkRouter: &config.NetBirdNetworkRouterConfig{Enabled: true}},
+			want:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
+				assert.Equal(t, tc.want, netbirdNetworkRouterEnabled())
+			})
+		})
+	}
+}
+
+func TestNetbirdClusterProxyEnabled(t *testing.T) {
+	tests := []struct {
+		name    string
+		netbird *config.NetBirdConfig
+		want    bool
+	}{
+		{name: "nil NetBird block: false", netbird: nil, want: false},
+		{name: "ClusterProxy block absent: false", netbird: &config.NetBirdConfig{}, want: false},
+		{
+			name:    "ClusterProxy present but disabled: false",
+			netbird: &config.NetBirdConfig{ClusterProxy: &config.NetBirdClusterProxyConfig{Enabled: false}},
+			want:    false,
+		},
+		{
+			name:    "ClusterProxy present and enabled: true",
+			netbird: &config.NetBirdConfig{ClusterProxy: &config.NetBirdClusterProxyConfig{Enabled: true}},
+			want:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
+				assert.Equal(t, tc.want, netbirdClusterProxyEnabled())
+			})
+		})
+	}
+}
+
+func TestNetbirdHasNetworkResources(t *testing.T) {
+	tests := []struct {
+		name    string
+		netbird *config.NetBirdConfig
+		want    bool
+	}{
+		{name: "nil NetBird block: false", netbird: nil, want: false},
+		{name: "NetworkResources nil: false", netbird: &config.NetBirdConfig{}, want: false},
+		{
+			name:    "NetworkResources empty slice: false",
+			netbird: &config.NetBirdConfig{NetworkResources: []config.NetBirdNetworkResourceConfig{}},
+			want:    false,
+		},
+		{
+			name: "NetworkResources non-empty: true",
+			netbird: &config.NetBirdConfig{NetworkResources: []config.NetBirdNetworkResourceConfig{
+				{Name: "db", Namespace: "data", Service: "postgres", Groups: []string{"dba"}},
+			}},
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			withFreshGeneralConfig(t, func() {
+				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
+				assert.Equal(t, tc.want, netbirdHasNetworkResources())
+			})
+		})
+	}
+}

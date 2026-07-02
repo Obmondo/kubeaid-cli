@@ -13,8 +13,51 @@ sealed into the netbird/netbird-mgmt-api-key Secret (from secrets.yaml's
 netbird.apiKey), which the chart's default netbirdAPI.keyFromSecret
 already references. awaitNetBirdOperatorToken gates bootstrap on that
 Secret existing.
+
+networkRouter / networkResources / clusterProxy come from
+cluster.netbird.* in general.yaml. networkRouter.dnsZone and
+clusterProxy.clusterName are defaulted in parser.hydrateNetBirdDefaults
+(from the netbird DNS base and cluster.name respectively). The *Enabled
+flags and HasNetBirdOperatorValues are precomputed in getTemplateValues,
+so this template needs no nil-guarding boolean logic.
 */ -}}
-{{- if .NetBirdManagementURL }}
+{{- if .HasNetBirdOperatorValues }}
 netbird-operator:
+{{- if .NetBirdManagementURL }}
   managementURL: {{ .NetBirdManagementURL | quote }}
+{{- end }}
+{{- if .NetBirdNetworkRouterEnabled }}
+  networkRouter:
+    enabled: true
+    dnsZone: {{ .NetBird.NetworkRouter.DNSZone | quote }}
+    replicas: {{ .NetBird.NetworkRouter.Replicas }}
+{{- end }}
+{{- with .NetBird }}
+{{- if gt (len .NetworkResources) 0 }}
+  networkResources:
+{{- range .NetworkResources }}
+    - name: {{ .Name | quote }}
+      namespace: {{ .Namespace | quote }}
+      service: {{ .Service | quote }}
+      groups:
+{{- range .Groups }}
+        - {{ . | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if .NetBirdClusterProxyEnabled }}
+  clusterProxy:
+    enabled: true
+    clusterName: {{ .NetBird.ClusterProxy.ClusterName | quote }}
+{{- with .NetBird.ClusterProxy }}
+{{- if gt (len .RBAC) 0 }}
+    rbac:
+{{- range .RBAC }}
+      - group: {{ .Group | quote }}
+        clusterRole: {{ .ClusterRole | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

@@ -169,6 +169,20 @@ type TemplateValues struct {
 	// managementURL and the operator must be wired manually.
 	NetBirdManagementURL string
 
+	// NetBird surfaces the cluster's netbird config to the
+	// values-netbird-operator overlay so it can render the operator's
+	// networkRouter / networkResources / clusterProxy blocks. Nil when the
+	// cluster has no netbird block. The *Enabled bools and
+	// HasNetBirdOperatorValues below are precomputed at render time so the
+	// template stays nil-safe and free of boolean plumbing.
+	NetBird                     *config.NetBirdConfig
+	NetBirdNetworkRouterEnabled bool
+	NetBirdClusterProxyEnabled  bool
+	// HasNetBirdOperatorValues is true when the overlay should emit the
+	// top-level `netbird-operator:` key at all (managementURL set, or any
+	// router / resources / clusterProxy feature enabled).
+	HasNetBirdOperatorValues bool
+
 	// NetBirdAPIKey is secrets.yaml's netbird.apiKey (a Mgmt
 	// service-user access token), sealed into the
 	// netbird/netbird-mgmt-api-key Secret the operator reads.
@@ -237,6 +251,14 @@ func storagectlVersion(operatorOverride, cliVersion string) string {
 }
 
 func getTemplateValues(ctx context.Context) *TemplateValues {
+	// Precompute netbird-operator overlay flags so the values template
+	// stays nil-safe (see values-netbird-operator.yaml.tmpl).
+	netbirdCfg := config.ParsedGeneralConfig.Cluster.NetBird
+	netbirdMgmtURL := netbirdManagementURL()
+	netbirdRouterEnabled := netbirdNetworkRouterEnabled()
+	netbirdProxyEnabled := netbirdClusterProxyEnabled()
+	netbirdHasResources := netbirdHasNetworkResources()
+
 	templateValues := &TemplateValues{
 		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
 
@@ -267,8 +289,14 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
 
-		NetBirdManagementURL: netbirdManagementURL(),
+		NetBirdManagementURL: netbirdMgmtURL,
 		NetBirdAPIKey:        netbirdAPIKey(),
+
+		NetBird:                     netbirdCfg,
+		NetBirdNetworkRouterEnabled: netbirdRouterEnabled,
+		NetBirdClusterProxyEnabled:  netbirdProxyEnabled,
+		HasNetBirdOperatorValues: netbirdMgmtURL != "" || netbirdRouterEnabled ||
+			netbirdProxyEnabled || netbirdHasResources,
 
 		CloudflareAPIToken: cloudflareAPIToken(),
 
@@ -711,6 +739,29 @@ func netBirdOperatorEnabled() bool {
 		return true
 	}
 	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
+}
+
+// netbirdNetworkRouterEnabled reports whether the netbird-operator
+// networkRouter block is configured and enabled. Nil-safe. Drives the
+// NetBirdNetworkRouterEnabled TemplateValues flag that
+// values-netbird-operator.yaml.tmpl gates the networkRouter block on.
+func netbirdNetworkRouterEnabled() bool {
+	nb := config.ParsedGeneralConfig.Cluster.NetBird
+	return nb != nil && nb.NetworkRouter != nil && nb.NetworkRouter.Enabled
+}
+
+// netbirdClusterProxyEnabled reports whether the netbird-operator
+// clusterProxy block is configured and enabled. Nil-safe.
+func netbirdClusterProxyEnabled() bool {
+	nb := config.ParsedGeneralConfig.Cluster.NetBird
+	return nb != nil && nb.ClusterProxy != nil && nb.ClusterProxy.Enabled
+}
+
+// netbirdHasNetworkResources reports whether any netbird-operator
+// networkResources are configured. Nil-safe.
+func netbirdHasNetworkResources() bool {
+	nb := config.ParsedGeneralConfig.Cluster.NetBird
+	return nb != nil && len(nb.NetworkResources) > 0
 }
 
 // netbirdManagementURL returns the NetBird Mgmt endpoint the

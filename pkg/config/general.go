@@ -355,6 +355,72 @@ type (
 		// generated and persisted in the Secret. Optional, defaults
 		// to "netbird".
 		TurnUser string `yaml:"turnUser" default:"netbird"`
+
+		// NetworkRouter configures the netbird-operator's network router,
+		// which publishes each exposed Service as a DNS record under its
+		// DNSZone in NetBird Mgmt. Optional; omit the block to leave the
+		// router disabled.
+		NetworkRouter *NetBirdNetworkRouterConfig `yaml:"networkRouter"`
+
+		// NetworkResources are the in-cluster Services the netbird-operator
+		// exposes to NetBird groups as network resources. Empty leaves the
+		// operator with no network resources.
+		NetworkResources []NetBirdNetworkResourceConfig `yaml:"networkResources" validate:"omitempty,dive"`
+
+		// ClusterProxy configures the netbird-operator's kube-apiserver
+		// proxy (operator >= 0.7.0): a dedicated mesh peer that proxies
+		// kubectl to the in-cluster apiserver, impersonating the caller's
+		// NetBird identity. Optional; omit the block to leave it disabled.
+		ClusterProxy *NetBirdClusterProxyConfig `yaml:"clusterProxy"`
+	}
+
+	// NetBirdNetworkRouterConfig configures the netbird-operator network
+	// router (netbird-operator.networkRouter in the chart values).
+	NetBirdNetworkRouterConfig struct {
+		// Enabled toggles the network router. Set explicitly — the block
+		// being present is not on its own enough to enable it.
+		Enabled bool `yaml:"enabled"`
+
+		// DNSZone is an existing NetBird Mgmt DNS zone the router publishes
+		// exposed-Service records under, e.g. "vpn.acme.com". Defaults to
+		// cluster.netbird.dns with the leading "netbird." stripped
+		// (netbird.vpn.acme.com → vpn.acme.com); see hydrateNetBirdDefaults.
+		DNSZone string `yaml:"dnsZone" validate:"omitempty,fqdn"`
+
+		// Replicas is the router Deployment's replica count. Defaults to 1.
+		Replicas int `yaml:"replicas" validate:"omitempty,min=1"`
+	}
+
+	// NetBirdNetworkResourceConfig exposes one in-cluster Service to NetBird
+	// groups as a network resource (netbird-operator.networkResources[]).
+	NetBirdNetworkResourceConfig struct {
+		Name      string   `yaml:"name"      validate:"required"`
+		Namespace string   `yaml:"namespace" validate:"required"`
+		Service   string   `yaml:"service"   validate:"required"`
+		Groups    []string `yaml:"groups"    validate:"required,min=1,dive,required"`
+	}
+
+	// NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
+	// proxy (netbird-operator.clusterProxy in the chart values).
+	NetBirdClusterProxyConfig struct {
+		// Enabled toggles the cluster proxy. Set explicitly.
+		Enabled bool `yaml:"enabled"`
+
+		// ClusterName is the per-cluster label the proxy registers under
+		// (netbird kubernetes write-kubeconfig <clusterName>). Defaults to
+		// cluster.name; see hydrateNetBirdDefaults.
+		ClusterName string `yaml:"clusterName"`
+
+		// RBAC binds NetBird groups to cluster roles via the proxy's
+		// identity impersonation.
+		RBAC []NetBirdClusterProxyRBACConfig `yaml:"rbac" validate:"omitempty,dive"`
+	}
+
+	// NetBirdClusterProxyRBACConfig binds one NetBird group to one
+	// ClusterRole through the cluster proxy.
+	NetBirdClusterProxyRBACConfig struct {
+		Group       string `yaml:"group"       validate:"required"`
+		ClusterRole string `yaml:"clusterRole" validate:"required"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount

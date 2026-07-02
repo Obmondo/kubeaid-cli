@@ -1117,3 +1117,56 @@ func TestValidateACMEDNS01(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateNetBirdOperatorConfig covers the networkRouter.dnsZone
+// cross-field requirement: dnsZone is auto-derived from cluster.netbird.dns
+// in hydrateNetBirdDefaults, but that derivation is a no-op when dns is
+// empty, so this validator catches the resulting empty-dnsZone case
+// directly rather than letting it render into the operator values.
+func TestValidateNetBirdOperatorConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		cluster    config.ClusterConfig
+		wantErrSub string
+	}{
+		{
+			name:    "netbird block absent: no-op",
+			cluster: config.ClusterConfig{},
+		},
+		{
+			name:    "networkRouter block absent: no-op",
+			cluster: config.ClusterConfig{NetBird: &config.NetBirdConfig{}},
+		},
+		{
+			name: "networkRouter disabled with empty dnsZone: passes",
+			cluster: config.ClusterConfig{NetBird: &config.NetBirdConfig{
+				NetworkRouter: &config.NetBirdNetworkRouterConfig{Enabled: false, DNSZone: ""},
+			}},
+		},
+		{
+			name: "networkRouter enabled with dnsZone set: passes",
+			cluster: config.ClusterConfig{NetBird: &config.NetBirdConfig{
+				NetworkRouter: &config.NetBirdNetworkRouterConfig{Enabled: true, DNSZone: "vpn.acme.com"},
+			}},
+		},
+		{
+			name: "networkRouter enabled with empty dnsZone: rejected",
+			cluster: config.ClusterConfig{NetBird: &config.NetBirdConfig{
+				NetworkRouter: &config.NetBirdNetworkRouterConfig{Enabled: true, DNSZone: ""},
+			}},
+			wantErrSub: "networkRouter.dnsZone",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateNetBirdOperatorConfig(tc.cluster)
+			if tc.wantErrSub != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tc.wantErrSub)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
