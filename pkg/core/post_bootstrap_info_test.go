@@ -124,3 +124,44 @@ func TestKeycloakPasswordLine_FallbackKubectlCommand(t *testing.T) {
 		}
 	}
 }
+
+// TestKeycloakAdminLoginLines_InlinePassword verifies the four console /
+// user / password / realm rows, with the password shown inline. Shared by
+// the final next-steps panel and the pre-NetBird-gate prompt, so both must
+// render identical rows.
+func TestKeycloakAdminLoginLines_InlinePassword(t *testing.T) {
+	lines := keycloakAdminLoginLines("keycloak.acme.com", "acme", "s3cret-from-cluster")
+
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "https://keycloak.acme.com/auth/admin/") {
+		t.Fatalf("expected console line to contain the admin console URL, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "admin") {
+		t.Fatalf("expected user line to contain the admin username, got %q", lines[1])
+	}
+	if lines[2] != keycloakPasswordLine("s3cret-from-cluster") {
+		t.Fatalf("expected password line to equal keycloakPasswordLine's output, got %q", lines[2])
+	}
+	if !strings.Contains(lines[3], "\"acme\"") || !strings.Contains(lines[3], "Users → Add user") {
+		t.Fatalf("expected realm line to quote the realm and include the click-through hint, got %q", lines[3])
+	}
+}
+
+// TestKeycloakAdminLoginLines_FallbackPassword verifies the password row
+// falls back to keycloakPasswordLine's kubectl command when no live
+// password was supplied.
+func TestKeycloakAdminLoginLines_FallbackPassword(t *testing.T) {
+	lines := keycloakAdminLoginLines("keycloak.acme.com", "acme", "")
+
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines), lines)
+	}
+	if lines[2] != keycloakPasswordLine("") {
+		t.Fatalf("expected password line to equal keycloakPasswordLine's fallback output, got %q", lines[2])
+	}
+	if !strings.Contains(lines[2], "kubectl") {
+		t.Fatalf("expected password line to fall back to the kubectl command, got %q", lines[2])
+	}
+}

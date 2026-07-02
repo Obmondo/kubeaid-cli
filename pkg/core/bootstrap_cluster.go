@@ -274,8 +274,13 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// blocks every cluster-wide Pod create. Better to discover and
 	// fix while the LB public interface is still up. No-op when the
 	// cluster doesn't host the netbird-operator.
+	//
+	// Also prints the Keycloak create-user instructions before the NetBird
+	// dashboard steps (the dashboard login is Keycloak SSO), passing the
+	// admin password read above so the operator can create their login
+	// without reaching kube-apiserver.
 	assert.AssertErrNil(ctx,
-		awaitNetBirdOperatorToken(ctx, mainClusterClient),
+		awaitNetBirdOperatorToken(ctx, mainClusterClient, keycloakAdminPassword),
 		"Failed waiting for NetBird operator API-key Secret",
 	)
 

@@ -33,6 +33,13 @@ const (
 // Secret exists in the cluster. Returns nil once the Secret is there
 // so the caller can proceed to DisableControlPlaneLBPublicInterface.
 //
+// keycloakAdminPassword is the live Keycloak admin password (read by the
+// caller before the control-plane LB is disabled). It's surfaced in a
+// "create your Keycloak login first" box printed just before the NetBird
+// instructions, since signing in to the NetBird dashboard is Keycloak SSO
+// — see printKeycloakUserSetupForNetBird. Empty triggers the same
+// kubectl-fetch fallback the final next-steps panel uses.
+//
 // Rationale for blocking here, instead of just printing and moving
 // on: the netbird-operator ships a MutatingWebhookConfiguration on
 // Pods with failurePolicy: Fail. Without NB_API_KEY the operator
@@ -57,6 +64,7 @@ const (
 func awaitNetBirdOperatorToken(
 	ctx context.Context,
 	clusterClient client.Client,
+	keycloakAdminPassword string,
 ) error {
 	if !netBirdOperatorEnabled() {
 		return nil
@@ -75,9 +83,49 @@ func awaitNetBirdOperatorToken(
 		return nil
 	}
 
+	// Signing in to the NetBird dashboard (to mint the service-user PAT in
+	// the steps below) is Keycloak SSO — so the operator needs a Keycloak
+	// realm user first. Print the Keycloak create-user instructions BEFORE
+	// the NetBird steps. No-op on clusters without a managed Keycloak.
+	printKeycloakUserSetupForNetBird(keycloakAdminPassword)
+
 	printNetBirdOperatorInstructions(netbirdDashboardHost())
 
 	return waitForNetBirdOperatorSecret(ctx, clusterClient)
+}
+
+// printKeycloakUserSetupForNetBird renders the "create your Keycloak login
+// first" panel shown immediately before the NetBird operator API-key
+// instructions. The NetBird dashboard login is Keycloak SSO, so the
+// operator must have a realm user before they can sign in to mint the
+// service-user PAT.
+//
+// No-op unless this cluster hosts a managed Keycloak (VPN cluster with
+// managed Keycloak) — only then does the admin console + admin credential
+// this panel surfaces exist locally. keycloakAdminPassword is the live
+// admin password read before the control-plane LB was disabled; empty
+// falls back to the kubectl-fetch command (same logic as the final panel).
+func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
+	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+		return
+	}
+	cluster := config.ParsedGeneralConfig.Cluster
+	if cluster.Keycloak == nil || cluster.Keycloak.DNS == "" {
+		return
+	}
+
+	lines := []string{
+		"",
+		"  Sign in to Keycloak admin and create a user, then use that user to",
+		"  sign in to the NetBird dashboard below (NetBird login is Keycloak SSO).",
+		"",
+	}
+	lines = append(lines,
+		keycloakAdminLoginLines(cluster.Keycloak.DNS, cluster.Keycloak.Realm, keycloakAdminPassword)...,
+	)
+	lines = append(lines, "")
+
+	printNextStepsBox("Create your Keycloak login first", lines)
 }
 
 // netbirdDashboardHost returns the NetBird dashboard hostname for the

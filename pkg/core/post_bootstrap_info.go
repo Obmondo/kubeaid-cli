@@ -64,19 +64,18 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 		"",
 		"  1. Sign in to Keycloak admin and create a user",
 		"",
-		"       Console   https://" + keycloakDNS + "/auth/admin/",
-		"       User      " + constants.KeycloakAdminUsername,
-		keycloakPasswordLine(keycloakAdminPassword),
-		"       Realm     \"" + realm + "\" → Users → Add user (set password under the Credentials tab)",
+	}
+	lines = append(lines, keycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword)...)
+	lines = append(lines,
 		"",
 		"  2. Join the NetBird mesh with that user",
 		"",
-		"       Dashboard https://" + netbirdDNS + "/",
+		"       Dashboard https://"+netbirdDNS+"/",
 		"       Sign-in   click \"Continue\" → Keycloak (confirms the user works)",
-		"       Connect   netbird up --management-url https://" + netbirdDNS,
+		"       Connect   netbird up --management-url https://"+netbirdDNS,
 		"                 (opens a browser for Keycloak OIDC sign-in on first run)",
 		"",
-	}
+	)
 
 	title := "Bootstrap complete — next steps"
 	if elapsed > 0 {
@@ -108,6 +107,20 @@ func formatBootstrapDuration(d time.Duration) string {
 	}
 	fmt.Fprintf(&b, "%ds", s)
 	return b.String()
+}
+
+// keycloakAdminLoginLines returns the console / user / password / realm
+// rows for signing in to the Keycloak admin console and adding a user.
+// Shared by the final next-steps panel (as step 1) and the pre-NetBird-
+// gate prompt in awaitNetBirdOperatorToken, so both render identical
+// rows — including the same live-password vs kubectl-fallback logic.
+func keycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword string) []string {
+	return []string{
+		"       Console   https://" + keycloakDNS + "/auth/admin/",
+		"       User      " + constants.KeycloakAdminUsername,
+		keycloakPasswordLine(keycloakAdminPassword),
+		"       Realm     \"" + realm + "\" → Users → Add user (set password under the Credentials tab)",
+	}
 }
 
 // keycloakPasswordLine returns the "Password" row of the next-steps
