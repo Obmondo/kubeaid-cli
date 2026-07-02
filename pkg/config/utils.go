@@ -89,6 +89,29 @@ func CoturnFloatingIPEnabled() bool {
 	return ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.Replicas > 1
 }
 
+// HCloudSingleNodePublicVPN reports whether this is the single-node
+// public-control-plane VPN topology: an HCloud VPN cluster with exactly one
+// control-plane replica and no HCloud worker node-groups. In that case
+// kubeaid-cli skips the NAT gateway + control-plane LB and puts the CP node on
+// a primary public IPv4 that api / stun / turn resolve to (netbird / keycloak
+// still go through the Traefik ingress LB). Derived, not opted into — the
+// counterpart of CoturnFloatingIPEnabled (which keys off Replicas > 1). A
+// private worker node-group would have no NAT gateway to egress through, so the
+// topology only holds for a single, standalone public node.
+func HCloudSingleNodePublicVPN() bool {
+	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
+		return false
+	}
+	if !UsingHCloud() {
+		return false
+	}
+	cp := ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud
+	if cp == nil || cp.Replicas != 1 {
+		return false
+	}
+	return len(ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud) == 0
+}
+
 // Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
 	if ParsedGeneralConfig.Cloud.Hetzner == nil {

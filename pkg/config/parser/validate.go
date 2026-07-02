@@ -427,6 +427,9 @@ func validateHetznerConfig(ctx context.Context) error {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
+		if err := validateHCloudSingleNodePublicVPN(ctx); err != nil {
+			return err
+		}
 	}
 	if config.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
@@ -484,6 +487,36 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 	if endpoint != "" && net.ParseIP(endpoint) != nil {
 		return errors.New("control-plane HCloud load-balancer Endpoint must be a DNS name, not an IP address")
 	}
+	return nil
+}
+
+// validateHCloudSingleNodePublicVPN enforces the one hard requirement of the
+// single-node public-control-plane VPN topology (config.HCloudSingleNodePublicVPN):
+// the CP node runs the whole cluster on its own, so its machineType needs
+// >= 8 GB RAM. The topology itself is derived (VPN + 1 HCloud CP replica + no
+// HCloud workers), not opted into, so there's nothing else to validate.
+//
+// The control-plane endpoint (loadBalancer.endpoint) is intentionally not
+// required in this mode: the node's public IP is Hetzner-assigned at provision
+// time, so the operator can't supply it up front — it may be empty (the
+// discovered node IP is used directly) or a DNS name they point at the node
+// afterwards. The not-an-IP rule above still applies.
+func validateHCloudSingleNodePublicVPN(ctx context.Context) error {
+	if !config.HCloudSingleNodePublicVPN() {
+		return nil
+	}
+
+	machineType := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.MachineType
+	specs, err := globals.CloudProvider.GetVMSpecs(ctx, machineType)
+	if err != nil {
+		return fmt.Errorf("checking control-plane machineType %q memory: %w", machineType, err)
+	}
+	if specs.Memory < 8 {
+		return fmt.Errorf(
+			"a single-control-plane HCloud VPN cluster runs entirely on the one node, so its "+
+				"machineType needs >= 8 GB RAM; %q has %d GB", machineType, specs.Memory)
+	}
+
 	return nil
 }
 
