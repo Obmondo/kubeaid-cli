@@ -284,6 +284,22 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"Failed waiting for NetBird operator API-key Secret",
 	)
 
+	bar.Finish()
+
+	// Host-firewall lockdown runs BEFORE the LB public-interface disable
+	// below: every step inside it needs live kube-apiserver access — the
+	// IsClusterctlMoveExecuted gate check (a live Get), listing node public
+	// IPs, and the CCNP server-side apply — and disabling the control-plane
+	// LB public interface severs that access on a VPN cluster (the operator's
+	// machine isn't on the NetBird mesh yet). Placed after bar.Finish() so its
+	// confirm prompt + PR output don't corrupt the live progress bar.
+	// Self-gates to Hetzner bare-metal post-pivot; the operator can decline.
+	lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+
+	// Disable the control-plane LB public interface LAST — it's the final
+	// step that severs the operator's public path to kube-apiserver, so it
+	// must run after every CLI→cluster operation above, lockdown included.
+	// No-op on non-VPN clusters and non-Hetzner providers.
 	if globals.CloudProviderName == constants.CloudProviderHetzner {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
@@ -293,15 +309,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		)
 	}
 
-	bar.Finish()
 	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
-
-	// Host-firewall lockdown is the LAST cluster-touching step — it locks the
-	// apiserver to node IPs, so it must run after every CLI→cluster operation
-	// above (ArgoCD sync, backups, secret reads) AND after bar.Finish(), since
-	// its confirm prompt + PR output would otherwise corrupt the live progress
-	// bar. Self-gates to Hetzner bare-metal post-pivot; the operator can decline.
-	lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
 
 	// Elapsed time only renders on the success path — a Ctrl+C or
 	// assert.AssertErrNil bail-out short-circuits before this call,
