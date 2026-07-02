@@ -123,7 +123,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// configs.ssh.knownHosts payload that the argocd Application will use
 	// on self-sync — keeping argocd-ssh-known-hosts-cm populated before
 	// the first root-app clone of a private git server.
-	err := HelmInstall(ctx, &HelmInstallArgs{
+	err := HelmInstallOrUpgrade(ctx, &HelmInstallArgs{
 		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
 
 		Namespace:   constants.NamespaceArgoCD,
