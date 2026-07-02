@@ -170,18 +170,24 @@ type TemplateValues struct {
 	NetBirdManagementURL string
 
 	// NetBird surfaces the cluster's netbird config to the
-	// values-netbird-operator overlay so it can render the operator's
-	// networkRouter / networkResources / clusterProxy blocks. Nil when the
-	// cluster has no netbird block. The *Enabled bools and
-	// HasNetBirdOperatorValues below are precomputed at render time so the
-	// template stays nil-safe and free of boolean plumbing.
-	NetBird                     *config.NetBirdConfig
-	NetBirdNetworkRouterEnabled bool
-	NetBirdClusterProxyEnabled  bool
-	// HasNetBirdOperatorValues is true when the overlay should emit the
-	// top-level `netbird-operator:` key at all (managementURL set, or any
-	// router / resources / clusterProxy feature enabled).
-	HasNetBirdOperatorValues bool
+	// values-netbird-operator overlay (used for the clusterProxy block).
+	// Nil when the cluster has no netbird block; the flags below are
+	// precomputed at render time so the template stays nil-safe.
+	NetBird                    *config.NetBirdConfig
+	NetBirdClusterProxyEnabled bool
+	// NetBirdOperatorEnabled gates the whole `netbird-operator:` overlay
+	// (rendered only when this cluster runs the netbird-operator).
+	NetBirdOperatorEnabled bool
+	// NetBirdRouterEnabled is true when a mesh DNS zone is set
+	// (cluster.netbird.dnsZone): the network router and the traefik-internal
+	// networkResource are then rendered, using that zone as the router's
+	// dnsZoneRef. The chart hard-requires the zone, so the router is only
+	// emitted when we have one.
+	NetBirdRouterEnabled bool
+	// NetBirdInternalIngressGroup is the NetBird group the traefik-internal
+	// networkResource is bound to (k8s-<cluster.name>); the operator creates
+	// it in the NetBird dashboard during bootstrap.
+	NetBirdInternalIngressGroup string
 
 	// NetBirdAPIKey is secrets.yaml's netbird.apiKey (a Mgmt
 	// service-user access token), sealed into the
@@ -255,9 +261,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	// stays nil-safe (see values-netbird-operator.yaml.tmpl).
 	netbirdCfg := config.ParsedGeneralConfig.Cluster.NetBird
 	netbirdMgmtURL := netbirdManagementURL()
-	netbirdRouterEnabled := netbirdNetworkRouterEnabled()
 	netbirdProxyEnabled := netbirdClusterProxyEnabled()
-	netbirdHasResources := netbirdHasNetworkResources()
+	// Router (+ traefik-internal resource) needs the mesh DNS zone the chart
+	// requires; only render it when cluster.netbird.dnsZone is set.
+	netbirdRouterEnabled := netbirdCfg != nil && netbirdCfg.DNSZone != ""
 
 	templateValues := &TemplateValues{
 		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
@@ -293,10 +300,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		NetBirdAPIKey:        netbirdAPIKey(),
 
 		NetBird:                     netbirdCfg,
-		NetBirdNetworkRouterEnabled: netbirdRouterEnabled,
 		NetBirdClusterProxyEnabled:  netbirdProxyEnabled,
-		HasNetBirdOperatorValues: netbirdMgmtURL != "" || netbirdRouterEnabled ||
-			netbirdProxyEnabled || netbirdHasResources,
+		NetBirdOperatorEnabled:      netBirdOperatorEnabled(),
+		NetBirdRouterEnabled:        netbirdRouterEnabled,
+		NetBirdInternalIngressGroup: "k8s-" + config.ParsedGeneralConfig.Cluster.Name,
 
 		CloudflareAPIToken: cloudflareAPIToken(),
 
@@ -741,27 +748,11 @@ func netBirdOperatorEnabled() bool {
 	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
 }
 
-// netbirdNetworkRouterEnabled reports whether the netbird-operator
-// networkRouter block is configured and enabled. Nil-safe. Drives the
-// NetBirdNetworkRouterEnabled TemplateValues flag that
-// values-netbird-operator.yaml.tmpl gates the networkRouter block on.
-func netbirdNetworkRouterEnabled() bool {
-	nb := config.ParsedGeneralConfig.Cluster.NetBird
-	return nb != nil && nb.NetworkRouter != nil && nb.NetworkRouter.Enabled
-}
-
 // netbirdClusterProxyEnabled reports whether the netbird-operator
 // clusterProxy block is configured and enabled. Nil-safe.
 func netbirdClusterProxyEnabled() bool {
 	nb := config.ParsedGeneralConfig.Cluster.NetBird
 	return nb != nil && nb.ClusterProxy != nil && nb.ClusterProxy.Enabled
-}
-
-// netbirdHasNetworkResources reports whether any netbird-operator
-// networkResources are configured. Nil-safe.
-func netbirdHasNetworkResources() bool {
-	nb := config.ParsedGeneralConfig.Cluster.NetBird
-	return nb != nil && len(nb.NetworkResources) > 0
 }
 
 // netbirdManagementURL returns the NetBird Mgmt endpoint the

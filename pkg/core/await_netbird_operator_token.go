@@ -219,6 +219,17 @@ func waitForNetBirdOperatorSecret(
 func printNetBirdOperatorInstructions(netbirdDNS string) {
 	dashboardURL := "https://" + netbirdDNS + "/"
 
+	// The network router references an existing NetBird DNS zone and the
+	// traefik-internal networkResource references a group — both are
+	// dashboard-side (kubeaid-cli only points at them by name), so the
+	// operator has to create them here too.
+	cluster := config.ParsedGeneralConfig.Cluster
+	meshDNSZone := ""
+	if cluster.NetBird != nil {
+		meshDNSZone = cluster.NetBird.DNSZone
+	}
+	internalGroup := "k8s-" + cluster.Name
+
 	lines := []string{
 		"",
 		"  The netbird-operator on this cluster needs a NetBird API token",
@@ -235,6 +246,23 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 		"          Name:        kubeaid-operator",
 		"          Expiration:  pick the longest available (rotation note below)",
 		"          Copy the token (shown only once).",
+	}
+
+	// Only shown when a mesh DNS zone is set — that's when kubeaid-cli renders
+	// the network router + traefik-internal networkResource that need them.
+	if meshDNSZone != "" {
+		lines = append(lines,
+			"    4. Sidebar  →  Networks  →  DNS zones  →  + create a DNS zone:",
+			"          Domain:  "+meshDNSZone,
+			"          (the network router publishes exposed Services under it)",
+			"    5. Sidebar  →  Team  →  Groups  →  + create a group:",
+			"          Name:  "+internalGroup,
+			"          (the internal Traefik is exposed to this group — add a",
+			"           NetBird policy granting your peers access to it)",
+		)
+	}
+
+	lines = append(lines,
 		"",
 		"  Then EITHER (preferred — persists in git, survives re-creation):",
 		"",
@@ -244,9 +272,9 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 		"",
 		"  OR create the Secret directly (one-off, this cluster only):",
 		"",
-		"    kubectl -n " + netBirdOperatorSecretNamespace +
-			" create secret generic " + netBirdOperatorSecretName + " \\",
-		"      --from-literal=" + netBirdOperatorSecretKey + "='<paste-token-here>'",
+		"    kubectl -n "+netBirdOperatorSecretNamespace+
+			" create secret generic "+netBirdOperatorSecretName+" \\",
+		"      --from-literal="+netBirdOperatorSecretKey+"='<paste-token-here>'",
 		"",
 		"  Bootstrap will resume automatically once the Secret exists (polls",
 		"  every 10s, gives up after 30 minutes). Ctrl+C to abort if you'd",
@@ -256,7 +284,7 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 		"  may allow longer; pick the maximum the UI offers. Plan a calendar",
 		"  reminder until upstream supports no-expiry service-user tokens.",
 		"",
-	}
+	)
 
 	printNextStepsBox("NetBird operator API key required", lines)
 }

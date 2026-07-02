@@ -65,27 +65,23 @@ func stringSlice(t *testing.T, v any) []string {
 	return out
 }
 
-// TestNetBirdOperatorValuesTemplate covers the four independently-gated
-// blocks (managementURL, networkRouter, networkResources, clusterProxy)
-// and the top-level HasNetBirdOperatorValues gate.
+// TestNetBirdOperatorValuesTemplate covers values-netbird-operator.yaml.tmpl's
+// current shape: the whole overlay is gated on NetBirdOperatorEnabled, but
+// networkRouter / networkResources / clusterProxy render as TOP-LEVEL keys
+// (siblings of netbird-operator:, not nested under it) — only managementURL
+// nests under netbird-operator:, and only when it's non-empty.
+//
+// Fixtures mirror getTemplateValues' invariants: NetBirdRouterEnabled=true
+// implies NetBird != nil (dnsZone comes from .NetBird.DNSZone), and
+// NetBirdClusterProxyEnabled=true implies NetBird.ClusterProxy != nil —
+// violating either would nil-deref inside the template.
 func TestNetBirdOperatorValuesTemplate(t *testing.T) {
-	t.Run("all features on: everything nests under netbird-operator", func(t *testing.T) {
+	t.Run("operator+router+clusterProxy all on: router/resources/clusterProxy are top-level, managementURL nests under netbird-operator", func(t *testing.T) {
 		tv := &TemplateValues{
-			NetBirdManagementURL: "https://netbird.vpn.acme.com",
+			NetBirdOperatorEnabled: true,
+			NetBirdManagementURL:   "https://netbird.vpn.acme.com",
 			NetBird: &config.NetBirdConfig{
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{
-					Enabled:  true,
-					DNSZone:  "vpn.acme.com",
-					Replicas: 3,
-				},
-				NetworkResources: []config.NetBirdNetworkResourceConfig{
-					{
-						Name:      "internal-api",
-						Namespace: "backend",
-						Service:   "internal-api",
-						Groups:    []string{"engineering", "sre"},
-					},
-				},
+				DNSZone: "mesh.acme.com",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{
 					Enabled:     true,
 					ClusterName: "acme-prod",
@@ -95,35 +91,40 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 					},
 				},
 			},
-			NetBirdNetworkRouterEnabled: true,
+			NetBirdRouterEnabled:        true,
 			NetBirdClusterProxyEnabled:  true,
-			HasNetBirdOperatorValues:    true,
+			NetBirdInternalIngressGroup: "k8s-acme-prod",
 		}
 
-		raw, parsed := renderNetBirdOperatorValues(t, tv)
-		require.NotEmpty(t, strings.TrimSpace(raw))
-		require.Len(t, parsed, 1, "only the netbird-operator top-level key should be rendered")
+		_, parsed := renderNetBirdOperatorValues(t, tv)
+
+		// networkRouter, networkResources, and clusterProxy are top-level
+		// siblings of netbird-operator — NOT nested under it.
+		require.Len(t, parsed, 4)
+		for _, key := range []string{"netbird-operator", "networkRouter", "networkResources", "clusterProxy"} {
+			assert.Contains(t, parsed, key)
+		}
 
 		op := subMap(t, parsed, "netbird-operator")
-
+		require.Len(t, op, 1, "netbird-operator only carries managementURL now")
 		assert.Equal(t, "https://netbird.vpn.acme.com", op["managementURL"])
 
-		router := subMap(t, op, "networkRouter")
+		router := subMap(t, parsed, "networkRouter")
 		assert.Equal(t, true, router["enabled"])
-		assert.Equal(t, "vpn.acme.com", router["dnsZone"])
-		assert.EqualValues(t, 3, router["replicas"])
+		assert.Equal(t, "mesh.acme.com", router["dnsZone"])
+		assert.EqualValues(t, 1, router["replicas"])
 
-		resourcesRaw, ok := op["networkResources"].([]any)
+		resourcesRaw, ok := parsed["networkResources"].([]any)
 		require.True(t, ok, "networkResources must be a list")
-		require.Len(t, resourcesRaw, 1)
+		require.Len(t, resourcesRaw, 1, "exactly the one hardcoded traefik-internal resource")
 		res, ok := resourcesRaw[0].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, "internal-api", res["name"])
-		assert.Equal(t, "backend", res["namespace"])
-		assert.Equal(t, "internal-api", res["service"])
-		assert.Equal(t, []string{"engineering", "sre"}, stringSlice(t, res["groups"]))
+		assert.Equal(t, "traefik-internal", res["name"])
+		assert.Equal(t, "traefik", res["namespace"])
+		assert.Equal(t, "traefik-internal", res["service"])
+		assert.Equal(t, []string{"k8s-acme-prod"}, stringSlice(t, res["groups"]))
 
-		proxy := subMap(t, op, "clusterProxy")
+		proxy := subMap(t, parsed, "clusterProxy")
 		assert.Equal(t, true, proxy["enabled"])
 		assert.Equal(t, "acme-prod", proxy["clusterName"])
 
@@ -142,76 +143,55 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 		assert.Equal(t, "cluster-admin", rbac1["clusterRole"])
 	})
 
-	// Regression: managementURL-only output must stay exactly
-	// `netbird-operator: {managementURL: ...}`, unchanged by the new blocks.
-	t.Run("managementURL only: regression, matches pre-change shape exactly", func(t *testing.T) {
+	t.Run("managementURL only: router and clusterProxy disabled, no top-level leakage", func(t *testing.T) {
 		tv := &TemplateValues{
-			NetBirdManagementURL: "https://netbird.vpn.acme.com",
-			// NetBird nil, every *Enabled flag false — matches
-			// getTemplateValues' output for a netbird block with no
-			// operator features configured.
-			HasNetBirdOperatorValues: true,
+			NetBirdOperatorEnabled: true,
+			NetBirdManagementURL:   "https://netbird.vpn.acme.com",
+			// NetBird nil, NetBirdRouterEnabled/NetBirdClusterProxyEnabled
+			// false — matches getTemplateValues' output for a netbird block
+			// with no dnsZone/clusterProxy configured.
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
 
-		require.Len(t, parsed, 1, "exactly one top-level key")
+		require.Len(t, parsed, 1, "only netbird-operator should render")
 		op := subMap(t, parsed, "netbird-operator")
-		require.Len(t, op, 1, "exactly one key under netbird-operator")
+		require.Len(t, op, 1)
 		assert.Equal(t, "https://netbird.vpn.acme.com", op["managementURL"])
 	})
 
-	t.Run("only networkRouter enabled: renders just that block", func(t *testing.T) {
+	t.Run("router enabled, no managementURL or clusterProxy: only top-level networkRouter/networkResources render", func(t *testing.T) {
 		tv := &TemplateValues{
+			NetBirdOperatorEnabled: true,
 			NetBird: &config.NetBirdConfig{
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{
-					Enabled:  true,
-					DNSZone:  "vpn.acme.com",
-					Replicas: 1,
-				},
+				DNSZone: "mesh.acme.com",
 			},
-			NetBirdNetworkRouterEnabled: true,
-			HasNetBirdOperatorValues:    true,
+			NetBirdRouterEnabled:        true,
+			NetBirdInternalIngressGroup: "k8s-acme-prod",
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
-		op := subMap(t, parsed, "netbird-operator")
-		require.Len(t, op, 1, "only networkRouter should render")
 
-		router := subMap(t, op, "networkRouter")
+		require.Len(t, parsed, 2)
+		assert.NotContains(t, parsed, "netbird-operator", "empty managementURL means no netbird-operator: key at all")
+		assert.NotContains(t, parsed, "clusterProxy")
+
+		router := subMap(t, parsed, "networkRouter")
 		assert.Equal(t, true, router["enabled"])
-		assert.Equal(t, "vpn.acme.com", router["dnsZone"])
+		assert.Equal(t, "mesh.acme.com", router["dnsZone"])
 		assert.EqualValues(t, 1, router["replicas"])
-	})
 
-	t.Run("only networkResources set: renders just that block", func(t *testing.T) {
-		tv := &TemplateValues{
-			NetBird: &config.NetBirdConfig{
-				NetworkResources: []config.NetBirdNetworkResourceConfig{
-					{Name: "db", Namespace: "data", Service: "postgres", Groups: []string{"dba"}},
-				},
-			},
-			HasNetBirdOperatorValues: true,
-		}
-
-		_, parsed := renderNetBirdOperatorValues(t, tv)
-		op := subMap(t, parsed, "netbird-operator")
-		require.Len(t, op, 1, "only networkResources should render")
-
-		resourcesRaw, ok := op["networkResources"].([]any)
+		resourcesRaw, ok := parsed["networkResources"].([]any)
 		require.True(t, ok)
 		require.Len(t, resourcesRaw, 1)
-
 		res, ok := resourcesRaw[0].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, "db", res["name"])
-		assert.Equal(t, "data", res["namespace"])
-		assert.Equal(t, "postgres", res["service"])
-		assert.Equal(t, []string{"dba"}, stringSlice(t, res["groups"]))
+		assert.Equal(t, []string{"k8s-acme-prod"}, stringSlice(t, res["groups"]))
 	})
 
-	t.Run("only clusterProxy enabled: renders just that block", func(t *testing.T) {
+	t.Run("clusterProxy enabled alone: only top-level clusterProxy renders", func(t *testing.T) {
 		tv := &TemplateValues{
+			NetBirdOperatorEnabled: true,
 			NetBird: &config.NetBirdConfig{
 				ClusterProxy: &config.NetBirdClusterProxyConfig{
 					Enabled:     true,
@@ -219,22 +199,36 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 				},
 			},
 			NetBirdClusterProxyEnabled: true,
-			HasNetBirdOperatorValues:   true,
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
-		op := subMap(t, parsed, "netbird-operator")
-		require.Len(t, op, 1, "only clusterProxy should render")
 
-		proxy := subMap(t, op, "clusterProxy")
+		require.Len(t, parsed, 1)
+		assert.NotContains(t, parsed, "netbird-operator")
+		assert.NotContains(t, parsed, "networkRouter")
+		assert.NotContains(t, parsed, "networkResources")
+
+		proxy := subMap(t, parsed, "clusterProxy")
 		assert.Equal(t, true, proxy["enabled"])
 		assert.Equal(t, "acme-prod", proxy["clusterName"])
 		_, hasRBAC := proxy["rbac"]
 		assert.False(t, hasRBAC, "rbac key must be absent when no RBAC entries are configured")
 	})
 
-	t.Run("HasNetBirdOperatorValues false: renders no netbird-operator key at all", func(t *testing.T) {
-		tv := &TemplateValues{}
+	t.Run("NetBirdOperatorEnabled false: renders nothing, even with router/proxy/managementURL set", func(t *testing.T) {
+		tv := &TemplateValues{
+			NetBirdOperatorEnabled: false,
+			NetBirdManagementURL:   "https://netbird.vpn.acme.com",
+			NetBird: &config.NetBirdConfig{
+				DNSZone: "mesh.acme.com",
+				ClusterProxy: &config.NetBirdClusterProxyConfig{
+					Enabled:     true,
+					ClusterName: "acme-prod",
+				},
+			},
+			NetBirdRouterEnabled:       true,
+			NetBirdClusterProxyEnabled: true,
+		}
 
 		raw, parsed := renderNetBirdOperatorValues(t, tv)
 		assert.Empty(t, parsed, "no top-level keys expected")

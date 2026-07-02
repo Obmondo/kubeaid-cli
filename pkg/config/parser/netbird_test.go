@@ -90,74 +90,27 @@ func TestHydrateNetBirdDefaults(t *testing.T) {
 	}
 }
 
-// TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy covers
-// networkRouter.dnsZone/replicas and clusterProxy.clusterName defaulting.
-// Complements TestHydrateNetBirdDefaults, which covers stun/turn/turnUser.
-func TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy(t *testing.T) {
+// TestHydrateNetBirdDefaultsClusterProxy covers clusterProxy.clusterName
+// defaulting. Complements TestHydrateNetBirdDefaults, which covers
+// stun/turn/turnUser. The network router's DNS zone is no longer derived
+// here at all (operator-created in the NetBird dashboard instead), so
+// there's nothing router-related left to default.
+func TestHydrateNetBirdDefaultsClusterProxy(t *testing.T) {
 	tests := []struct {
 		name        string
 		clusterName string
 		netbird     *config.NetBirdConfig
 
-		// wantNilRouter / wantNilProxy assert hydrateNetBirdDefaults never
-		// allocates a block the operator didn't configure.
-		wantNilRouter  bool
-		wantRouterZone string
-		wantRouterReps int
-
+		// wantNilProxy asserts hydrateNetBirdDefaults never allocates a
+		// ClusterProxy block the operator didn't configure.
 		wantNilProxy  bool
 		wantProxyName string
 	}{
 		{
-			name:          "nil NetBird block: no panic, no-op",
-			clusterName:   "acme-prod",
-			netbird:       nil,
-			wantNilRouter: true,
-			wantNilProxy:  true,
-		},
-		{
-			name:        "networkRouter present, both fields unset: dnsZone derived from netbird DNS base, replicas defaults to 1",
-			clusterName: "acme-prod",
-			netbird: &config.NetBirdConfig{
-				DNS:           "netbird.vpn.acme.com",
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{},
-			},
-			wantRouterZone: "vpn.acme.com",
-			wantRouterReps: 1,
-			wantNilProxy:   true,
-		},
-		{
-			name:        "networkRouter.dnsZone already set: not overridden",
-			clusterName: "acme-prod",
-			netbird: &config.NetBirdConfig{
-				DNS:           "netbird.vpn.acme.com",
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{DNSZone: "custom.acme.com"},
-			},
-			wantRouterZone: "custom.acme.com",
-			wantRouterReps: 1, // still defaulted — Replicas was left at 0
-			wantNilProxy:   true,
-		},
-		{
-			name:        "networkRouter.replicas already set: not overridden",
-			clusterName: "acme-prod",
-			netbird: &config.NetBirdConfig{
-				DNS:           "netbird.vpn.acme.com",
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{Replicas: 5},
-			},
-			wantRouterZone: "vpn.acme.com", // still derived — DNSZone was left empty
-			wantRouterReps: 5,
-			wantNilProxy:   true,
-		},
-		{
-			name:        "cfg.DNS empty: networkRouter.dnsZone NOT derived, but replicas STILL defaults to 1",
-			clusterName: "acme-prod",
-			netbird: &config.NetBirdConfig{
-				DNS:           "",
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{},
-			},
-			wantRouterZone: "",
-			wantRouterReps: 1,
-			wantNilProxy:   true,
+			name:         "nil NetBird block: no panic, no-op",
+			clusterName:  "acme-prod",
+			netbird:      nil,
+			wantNilProxy: true,
 		},
 		{
 			name:        "clusterProxy present, clusterName unset: defaults to cluster.name",
@@ -166,7 +119,6 @@ func TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy(t *testing.T) {
 				DNS:          "netbird.vpn.acme.com",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{},
 			},
-			wantNilRouter: true,
 			wantProxyName: "acme-prod",
 		},
 		{
@@ -176,7 +128,6 @@ func TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy(t *testing.T) {
 				DNS:          "netbird.vpn.acme.com",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{ClusterName: "custom-name"},
 			},
-			wantNilRouter: true,
 			wantProxyName: "custom-name",
 		},
 		{
@@ -186,29 +137,15 @@ func TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy(t *testing.T) {
 				DNS:          "",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{},
 			},
-			wantNilRouter: true,
 			wantProxyName: "acme-prod",
 		},
 		{
-			name:        "cfg.DNS empty, both blocks present: dnsZone empty, replicas + clusterName still derived",
-			clusterName: "acme-prod",
-			netbird: &config.NetBirdConfig{
-				DNS:           "",
-				NetworkRouter: &config.NetBirdNetworkRouterConfig{},
-				ClusterProxy:  &config.NetBirdClusterProxyConfig{},
-			},
-			wantRouterZone: "",
-			wantRouterReps: 1,
-			wantProxyName:  "acme-prod",
-		},
-		{
-			name:        "networkRouter and clusterProxy both absent: hydrate does not allocate them",
+			name:        "clusterProxy absent: hydrate does not allocate it",
 			clusterName: "acme-prod",
 			netbird: &config.NetBirdConfig{
 				DNS: "netbird.vpn.acme.com",
 			},
-			wantNilRouter: true,
-			wantNilProxy:  true,
+			wantNilProxy: true,
 		},
 	}
 
@@ -228,14 +165,6 @@ func TestHydrateNetBirdDefaultsNetworkRouterAndClusterProxy(t *testing.T) {
 			}
 
 			got := config.ParsedGeneralConfig.Cluster.NetBird
-
-			if tc.wantNilRouter {
-				assert.Nil(t, got.NetworkRouter)
-			} else {
-				require.NotNil(t, got.NetworkRouter)
-				assert.Equal(t, tc.wantRouterZone, got.NetworkRouter.DNSZone)
-				assert.Equal(t, tc.wantRouterReps, got.NetworkRouter.Replicas)
-			}
 
 			if tc.wantNilProxy {
 				assert.Nil(t, got.ClusterProxy)

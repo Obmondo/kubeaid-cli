@@ -107,7 +107,6 @@ func validateConfigFields(
 		func() error { return validateKnownHostsEntries(ctx, generalConfig.Git.KnownHosts) },
 		func() error { return validateObmondoMonitoring(generalConfig.Obmondo, stat) },
 		func() error { return validateACMEDNS01(generalConfig.Cluster, secretsConfig.ACME) },
-		func() error { return validateNetBirdOperatorConfig(generalConfig.Cluster) },
 	}
 
 	for _, validator := range validators {
@@ -140,33 +139,6 @@ func validateACMEDNS01(cluster config.ClusterConfig, acmeCreds *config.ACMECrede
 	if acmeCreds == nil || acmeCreds.CloudflareAPIToken == "" {
 		return errors.New(
 			"secrets.yaml: acme.cloudflareApiToken is required when cluster.acmeDNS01 is set — the DNS-01 solver creates TXT challenge records with it (needs Zone:Read + DNS:Edit on the solved zones)",
-		)
-	}
-
-	return nil
-}
-
-// validateNetBirdOperatorConfig enforces cross-field requirements of the
-// netbird-operator blocks that struct tags can't express. networkRouter,
-// when enabled, needs a DNS zone to publish records under: it's derived
-// from cluster.netbird.dns in hydrateNetBirdDefaults, but that derivation
-// is a no-op when dns is empty (e.g. a workload cluster that references a
-// parent VPN's Mgmt). Without this check an empty dnsZone would render into
-// the operator values as `dnsZone: ""` — accepted here, broken in-cluster.
-//
-// clusterProxy.clusterName needs no equivalent check: it derives from
-// cluster.name, which is validate:"notblank"-enforced, so it's never empty
-// when ClusterProxy is set.
-func validateNetBirdOperatorConfig(cluster config.ClusterConfig) error {
-	nb := cluster.NetBird
-	if nb == nil {
-		return nil
-	}
-
-	if nb.NetworkRouter != nil && nb.NetworkRouter.Enabled && nb.NetworkRouter.DNSZone == "" {
-		return errors.New(
-			"cluster.netbird.networkRouter.dnsZone is required when networkRouter.enabled=true — " +
-				"it's auto-derived from cluster.netbird.dns, but that's empty here, so set it explicitly",
 		)
 	}
 

@@ -25,16 +25,16 @@ import (
 // hostname for all three services unless they override.
 //
 // cluster.netbird.dnsZone (the mesh --dns-domain) is NOT defaulted here — it
-// is operator-supplied via the prompt. netbird.networkRouter.dnsZone (an
-// existing NetBird Mgmt DNS zone, a different field) IS defaulted, from the
-// same base as stun/turn.
+// is operator-supplied via the prompt.
 //
-// Also derives netbird-operator defaults: networkRouter.replicas (1) and
-// clusterProxy.clusterName (cluster.name).
+// Also derives the netbird-operator clusterProxy.clusterName default
+// (cluster.name). The network router's DNS zone is deliberately NOT derived —
+// it's created by the operator in the NetBird dashboard, because deriving it
+// from the cluster DNS tripped NetBird's domain-mismatch check.
 //
-// No-op when the netbird block is absent. The stun/turn/router-dnsZone
-// derivations additionally require a non-empty cfg.DNS; replica and
-// cluster-proxy-name defaults do not.
+// No-op when the netbird block is absent. The stun/turn derivations
+// additionally require a non-empty cfg.DNS; the cluster-proxy-name default
+// does not.
 func hydrateNetBirdDefaults() {
 	cfg := config.ParsedGeneralConfig.Cluster.NetBird
 	if cfg == nil {
@@ -55,21 +55,11 @@ func hydrateNetBirdDefaults() {
 		if cfg.TurnUser == "" {
 			cfg.TurnUser = "netbird"
 		}
-
-		// NetworkRouter publishes records under an existing NetBird Mgmt
-		// DNS zone; default it to the same base stun/turn derive from
-		// (netbird.vpn.acme.com → vpn.acme.com). Operator-overridable.
-		if cfg.NetworkRouter != nil && cfg.NetworkRouter.DNSZone == "" {
-			cfg.NetworkRouter.DNSZone = base
-		}
 	}
 
-	// Replica count and cluster-proxy name don't depend on the Mgmt DNS,
-	// so they're derived even when cfg.DNS is empty (a cluster pointing at
-	// a parent VPN's Mgmt).
-	if cfg.NetworkRouter != nil && cfg.NetworkRouter.Replicas == 0 {
-		cfg.NetworkRouter.Replicas = 1
-	}
+	// ClusterProxy registers under a per-cluster label; default it to the
+	// cluster name (netbird kubernetes write-kubeconfig <clusterName>).
+	// Independent of the Mgmt DNS, so derived even when cfg.DNS is empty.
 	if cfg.ClusterProxy != nil && cfg.ClusterProxy.ClusterName == "" {
 		cfg.ClusterProxy.ClusterName = config.ParsedGeneralConfig.Cluster.Name
 	}
