@@ -24,3 +24,16 @@ traefik:
         enabled: true
   podDisruptionBudget:
     enabled: false
+{{- if .NetBirdAPIKey }}
+
+# Internal Traefik: a second, ClusterIP-only Traefik with its own
+# `traefik-internal` IngressClass, for internal / mesh-only domains. It has no
+# public HCloud LB — it's reached over the NetBird mesh via the
+# netbird-operator networkResource that targets the traefik-internal Service
+# (see cluster.netbird.networkResources). Gated on secrets.yaml netbird.apiKey
+# being set: without a Mgmt key there's no mesh to expose it on. The instance's
+# shape (ClusterIP, ingressClass name, fullnameOverride, replicas) lives in the
+# kubeaid traefik chart's traefik-internal defaults; here we only enable it.
+traefik-internal:
+  enabled: true
+{{- end }}
