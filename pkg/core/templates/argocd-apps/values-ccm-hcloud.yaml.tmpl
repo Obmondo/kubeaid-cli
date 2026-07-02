@@ -16,13 +16,18 @@ ccm-hetzner:
     HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:
       value: {{ .HetznerConfig.HCloud.Zone }}
 
-    {{- /* A workload cluster fronted by a VPN exposes apps internally by default;
-         sysadmins opt a Service onto the public internet via annotations.
-         A vpn-type cluster hosts its own LBs (Keycloak / NetBird ingress) and
-         those must stay public, so this pair is NOT set for vpn-type. */}}
+    {{- /* Two independent knobs, gated separately:
+           DISABLE_PUBLIC_NETWORK (LB frontend, no public IP) is workload-behind-VPN
+           only — a vpn-type cluster hosts its own public-facing LBs (Keycloak /
+           NetBird ingress) and those must keep a public frontend.
+           USE_PRIVATE_IP (LB backend target attachment) applies to both — HCloud
+           nodes have no public interface on either topology, so ccm-hcloud can
+           only attach them as LB targets over the private network. */}}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:
       value: "true"
+    {{- end }}
+    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
       value: "true"
     {{- end }}
