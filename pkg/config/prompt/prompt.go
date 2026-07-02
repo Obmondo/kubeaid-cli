@@ -811,9 +811,23 @@ func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 		huh.NewGroup(
 			huh.NewInput().
 				Title("NetBird mesh DNS zone (e.g. mesh.acme.com):").
-				Description("The domain your NetBird mesh resolves peers under (NetBird --dns-domain). Used to create the DNS zone on NetBird. Required.").
+				Description("The domain your NetBird mesh resolves peers under (NetBird --dns-domain), also used as the network router's DNS zone. Must differ from the control-plane and NetBird Mgmt domains. Required.").
 				Value(&cfg.NetBirdDNSZone).
-				Validate(nonEmpty),
+				Validate(func(s string) error {
+					if err := nonEmpty(s); err != nil {
+						return err
+					}
+					// NetBird rejects a mesh --dns-domain that collides with a
+					// real service domain (domain mismatch), so it can't be the
+					// control-plane (apiserver) endpoint or the Mgmt domain.
+					switch s {
+					case cfg.ControlPlaneEndpoint:
+						return fmt.Errorf("must differ from the control-plane endpoint (%s)", cfg.ControlPlaneEndpoint)
+					case cfg.NetBirdDNS:
+						return fmt.Errorf("must differ from the NetBird Mgmt domain (%s)", cfg.NetBirdDNS)
+					}
+					return nil
+				}),
 		).Title("NetBird — mesh DNS zone"),
 	).Run()
 }
