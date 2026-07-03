@@ -178,34 +178,19 @@ hetzner:
       host: {{ .ControlPlaneEndpoint | quote }}
     {{- end }}
 
-    {{- /* When kubeaid-cli pre-provisions the control-plane LB
-         (cluster.type=vpn, or workload connecting to an existing
-         HCloudVPNCluster), the chart consumes the pre-created LB
-         instead of letting CAPH auto-create one:
-           - endpoint.host    : kubeadm controlPlaneEndpoint,
-                                kubeconfig server, HetznerCluster
-                                spec.controlPlaneEndpoint.host.
-           - extraCertSANs    : operator-supplied extras merged with
-                                endpoint.host into kubeadm's
-                                apiServer.certSANs. Consumed by
-                                KubeadmControlPlane.yaml.
-           - loadBalancer.privateIP / bootstrapPublicIP : runtime
-                                info kubeaid-cli surfaces about the
-                                pre-created LB. Currently informational
-                                in the chart schema; future templates
-                                may consume them for postKubeadm
-                                CoreDNS hosts patching.
-         For workload-not-on-VPN clusters this whole block is
-         skipped and CAPH handles LB lifecycle on its own. */ -}}
+    {{- /* apiserver endpoint, rendered whenever kubeaid-cli knows it up
+         front: the lone public CP node's api DNS name, or the pre-created
+         control-plane LB (vpn / workload behind a VPN — CAPH consumes that
+         LB instead of creating one; privateIP / bootstrapPublicIP surface
+         its runtime info). Workload-not-on-VPN renders neither: CAPH owns
+         the LB lifecycle. */ -}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-    {{- if .HCloudSingleNodePublic }}
-    {{- /* Single public CP node: apiserver endpoint only — there is no
-         pre-created LB, so no loadBalancer.privateIP to surface. */}}
+    {{- $preCreatedLB := (and (not .HCloudSingleNodePublic) (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster))) }}
+    {{- if (or .HCloudSingleNodePublic $preCreatedLB) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
-    {{- else if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
-    endpoint:
-      host: {{ .ControlPlaneEndpoint }}
+    {{- end }}
+    {{- if $preCreatedLB }}
     loadBalancer:
       privateIP: {{ .ControlPlaneLBPrivateIP }}
       {{- if .ControlPlaneLBBootstrapPublicIP }}
