@@ -357,30 +357,19 @@ type (
 		TurnUser string `yaml:"turnUser" default:"netbird"`
 
 		// ClusterProxy configures the netbird-operator's kube-apiserver
-		// proxy (operator >= 0.7.0): a dedicated mesh peer that proxies
-		// kubectl to the in-cluster apiserver, impersonating the caller's
-		// NetBird identity. Optional; omit the block to leave it disabled.
-		//
-		// The network router and the traefik-internal networkResource are
-		// deliberately NOT operator-configurable: kubeaid-cli always renders
-		// them (see values-netbird-operator.yaml.tmpl), and the DNS zone +
-		// NetBird groups they reference are created by the operator in the
-		// NetBird dashboard during bootstrap (see printNetBirdOperatorInstructions).
-		// Deriving a router DNS zone from the cluster DNS tripped NetBird's
-		// domain-mismatch check, so it's a dashboard step instead.
+		// proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to
+		// the in-cluster apiserver, impersonating the caller's NetBird
+		// identity. Omit the block to leave it disabled.
 		ClusterProxy *NetBirdClusterProxyConfig `yaml:"clusterProxy"`
 	}
 
 	// NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
-	// proxy (netbird-operator.clusterProxy in the chart values).
+	// proxy (netbird-operator.clusterProxy in the chart values). The proxy
+	// registers under cluster.name (netbird kubernetes write-kubeconfig
+	// <cluster.name>).
 	NetBirdClusterProxyConfig struct {
-		// Enabled toggles the cluster proxy. Set explicitly.
+		// Enabled toggles the cluster proxy.
 		Enabled bool `yaml:"enabled"`
-
-		// ClusterName is the per-cluster label the proxy registers under
-		// (netbird kubernetes write-kubeconfig <clusterName>). Defaults to
-		// cluster.name; see hydrateNetBirdDefaults.
-		ClusterName string `yaml:"clusterName"`
 
 		// RBAC binds NetBird groups to cluster roles via the proxy's
 		// identity impersonation.

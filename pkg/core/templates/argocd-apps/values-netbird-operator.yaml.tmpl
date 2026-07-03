@@ -15,20 +15,17 @@ so when the URL can't be derived this file omits it and the operator must be
 wired manually. The Mgmt API token flows via the netbird-mgmt-api-key Secret,
 not values (awaitNetBirdOperatorToken gates bootstrap on that Secret).
 
-networkRouter + the traefik-internal networkResource are NOT operator-
-configurable — they're rendered whenever a mesh DNS zone is set. The router
-exposes the cluster as a NetBird routing peer; the resource publishes the
-internal Traefik (ClusterIP, traefik-internal IngressClass) to the mesh. The
-router's dnsZoneRef is the mesh DNS zone (cluster.netbird.dnsZone, prompted and
-validated to differ from the control-plane/Mgmt domains — deriving it from the
-cluster DNS tripped NetBird's domain-mismatch check). The DNS zone itself and
-the group the resource binds to (.NetBirdInternalIngressGroup, k8s-<cluster>)
-are created by the operator in the NetBird dashboard during bootstrap — see
-printNetBirdOperatorInstructions.
+networkRouter + the traefik-internal networkResource are convention, not
+config — rendered whenever a mesh DNS zone is set: the router registers the
+cluster as a NetBird routing peer; the resource publishes the internal Traefik
+to the mesh. dnsZoneRef is cluster.netbird.dnsZone, operator-chosen and
+validated to differ from the control-plane/Mgmt domains because NetBird
+rejects a zone that collides with a real service domain. The zone and the
+k8s-<cluster> group (.NetBirdInternalIngressGroup) must already exist in
+NetBird — created via the dashboard steps in printNetBirdOperatorInstructions.
 
 clusterProxy (kubectl-over-mesh + RBAC) comes from cluster.netbird.clusterProxy;
-clusterProxy.clusterName (defaulted to cluster.name) becomes the ClusterProxy
-CR's name.
+the ClusterProxy CR is named after cluster.name.
 */ -}}
 {{- if .NetBirdOperatorEnabled }}
 {{- if .NetBirdManagementURL }}
@@ -50,7 +47,7 @@ networkResources:
 {{- if .NetBirdClusterProxyEnabled }}
 clusterProxy:
   enabled: true
-  clusterName: {{ .NetBird.ClusterProxy.ClusterName | quote }}
+  clusterName: {{ .ClusterConfig.Name | quote }}
 {{- with .NetBird.ClusterProxy }}
 {{- if gt (len .RBAC) 0 }}
   rbac:

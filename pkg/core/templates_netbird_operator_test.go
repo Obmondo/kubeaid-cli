@@ -78,13 +78,13 @@ func stringSlice(t *testing.T, v any) []string {
 func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 	t.Run("operator+router+clusterProxy all on: router/resources/clusterProxy are top-level, managementURL nests under netbird-operator", func(t *testing.T) {
 		tv := &TemplateValues{
+			ClusterConfig:          config.ClusterConfig{Name: "acme-prod"},
 			NetBirdOperatorEnabled: true,
 			NetBirdManagementURL:   "https://netbird.vpn.acme.com",
 			NetBird: &config.NetBirdConfig{
 				DNSZone: "mesh.acme.com",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{
-					Enabled:     true,
-					ClusterName: "acme-prod",
+					Enabled: true,
 					RBAC: []config.NetBirdClusterProxyRBACConfig{
 						{Group: "engineering", ClusterRole: "edit"},
 						{Group: "sre", ClusterRole: "cluster-admin"},
@@ -191,11 +191,11 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 
 	t.Run("clusterProxy enabled alone: only top-level clusterProxy renders", func(t *testing.T) {
 		tv := &TemplateValues{
+			ClusterConfig:          config.ClusterConfig{Name: "acme-prod"},
 			NetBirdOperatorEnabled: true,
 			NetBird: &config.NetBirdConfig{
 				ClusterProxy: &config.NetBirdClusterProxyConfig{
-					Enabled:     true,
-					ClusterName: "acme-prod",
+					Enabled: true,
 				},
 			},
 			NetBirdClusterProxyEnabled: true,
@@ -222,8 +222,7 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 			NetBird: &config.NetBirdConfig{
 				DNSZone: "mesh.acme.com",
 				ClusterProxy: &config.NetBirdClusterProxyConfig{
-					Enabled:     true,
-					ClusterName: "acme-prod",
+					Enabled: true,
 				},
 			},
 			NetBirdRouterEnabled:       true,

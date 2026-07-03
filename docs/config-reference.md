@@ -443,11 +443,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -710,12 +710,13 @@ See GeneralConfig.KubeaidStoragectl for when to set it.</p>
 ## NetBirdClusterProxyConfig
 
 <p>NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
-proxy (netbird-operator.clusterProxy in the chart values).</p>
+proxy (netbird-operator.clusterProxy in the chart values). The proxy
+registers under cluster.name (netbird kubernetes write-kubeconfig
+<cluster.name>).</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| enabled | `bool` |  | Enabled toggles the cluster proxy. Set explicitly.<br> |
-| clusterName | `string` |  | ClusterName is the per-cluster label the proxy registers under<br>(netbird kubernetes write-kubeconfig <clusterName>). Defaults to<br>cluster.name; see hydrateNetBirdDefaults.<br> |
+| enabled | `bool` |  | Enabled toggles the cluster proxy.<br> |
 | rbac | [][`NetBirdClusterProxyRBACConfig`](#netbirdclusterproxyrbacconfig) |  | RBAC binds NetBird groups to cluster roles via the proxy's<br>identity impersonation.<br> |
 
 ## NetBirdClusterProxyRBACConfig
@@ -743,7 +744,7 @@ applies to any cluster on the mesh. cluster.type is the gate.</p>
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
-| clusterProxy | [`NetBirdClusterProxyConfig`](#netbirdclusterproxyconfig) |  | ClusterProxy configures the netbird-operator's kube-apiserver<br>proxy (operator >= 0.7.0): a dedicated mesh peer that proxies<br>kubectl to the in-cluster apiserver, impersonating the caller's<br>NetBird identity. Optional; omit the block to leave it disabled.<br> |
+| clusterProxy | [`NetBirdClusterProxyConfig`](#netbirdclusterproxyconfig) |  | ClusterProxy configures the netbird-operator's kube-apiserver<br>proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to<br>the in-cluster apiserver, impersonating the caller's NetBird<br>identity. Omit the block to leave it disabled.<br> |
 
 ## NetBirdCredentials
 
