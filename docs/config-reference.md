@@ -443,11 +443,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -740,7 +740,7 @@ applies to any cluster on the mesh. cluster.type is the gate.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | dns | `string` |  | DNS is the public hostname NetBird Management is reachable at,<br>e.g. "netbird.vpn.acme.com". Required only for cluster.type=vpn<br>(enforced in parser/keycloak.go); unused on workload clusters.<br> |
-| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Used to create the DNS zone on NetBird and to drive --dns-domain on<br>VPN clusters.<br> |
+| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "demo.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Used to create the DNS zone on NetBird and to drive --dns-domain on<br>VPN clusters.<br> |
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |

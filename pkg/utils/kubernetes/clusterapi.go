@@ -687,13 +687,11 @@ func isControlPlaneMachine(m *clusterAPIV1Beta1.Machine) bool {
 // Ready condition is True. Necessary because Machine.status.phase flips
 // to Running as soon as BootstrapReady + InfrastructureReady + NodeRef
 // are all set — that says nothing about per-component health (etcd,
-// kubelet, API-server pod, scheduler pod, controller-manager pod). On a
-// real kbm-obmondo-com bootstrap, the first CP Machine reached
-// Phase=Running with NodeRef populated but etcd never finished joining,
-// surfacing as EtcdMemberHealthy=False. CAPI's v1beta2 Ready aggregate
-// correctly went False, but the previous predicate only checked Phase
-// and counted the Machine, letting the wait declare success and
-// downstream steps hit an unreachable API.
+// kubelet, API-server pod, scheduler pod, controller-manager pod). A CP
+// Machine can reach Phase=Running while etcd never finishes joining
+// (EtcdMemberHealthy=False); the v1beta2 Ready aggregate goes False, so
+// gating on it keeps the wait from declaring success against an
+// unreachable API.
 //
 // Returns false when the v1beta2 condition list is absent (older CAPI
 // versions or a Machine very early in its v1beta2 reconcile lifecycle).

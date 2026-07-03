@@ -55,7 +55,7 @@ func TestRenderHetznerHybridVPN(t *testing.T) {
 		CloudProvider: "hetzner",
 
 		HetznerMode:          "hybrid",
-		HetznerSSHKeyName:    "kbm-hybrid",
+		HetznerSSHKeyName:    "demo-hybrid",
 		HetznerCPReplicas:    "3",
 		HetznerHCloudZone:    "eu-central",
 		HetznerCPMachineType: "cax21",

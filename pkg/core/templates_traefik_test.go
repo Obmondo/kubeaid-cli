@@ -36,7 +36,7 @@ func renderTemplateToMap(t *testing.T, path string, tv *TemplateValues) map[stri
 func forkTV(apiKey string) *TemplateValues {
 	tv := &TemplateValues{NetBirdAPIKey: apiKey}
 	tv.KubeaidFork = config.KubeAidForkConfig{URL: "https://example.test/KubeAid.git", Version: "master"}
-	tv.KubeaidConfigFork = config.KubeaidConfigForkConfig{URL: "https://example.test/cfg.git", Directory: "kbm"}
+	tv.KubeaidConfigFork = config.KubeaidConfigForkConfig{URL: "https://example.test/cfg.git", Directory: "demo"}
 	return tv
 }
 

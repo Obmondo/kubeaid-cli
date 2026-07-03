@@ -49,8 +49,8 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			// (50 GB on a 80/50 split), the operator's prompt would over-
 			// report Ceph capacity by `(vg0.size - rootVolumeSize) × disks
 			// × servers` — visibly inconsistent with the actual layout the
-			// node carves at boot (caught in the wild on a 6-server kbm
-			// cluster: prompt said 204 GB Ceph per disk, on-node said 174).
+			// node carves at boot (on a 6-server cluster the prompt said
+			// 204 GB Ceph per disk while the node carved 174).
 			//
 			// The 30 GB of unused space inside vg0 is LVM-managed headroom
 			// for future LVs, not bare-disk capacity ZFS or Ceph can claim,

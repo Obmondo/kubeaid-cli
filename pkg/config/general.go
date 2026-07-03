@@ -332,7 +332,7 @@ type (
 		DNS string `yaml:"dns" validate:"omitempty,fqdn"`
 
 		// DNSZone is the mesh DNS domain peers resolve under — NetBird
-		// Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to
+		// Mgmt's --dns-domain, e.g. "demo.local". Defaults to
 		// "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
 		// Used to create the DNS zone on NetBird and to drive --dns-domain on
 		// VPN clusters.
