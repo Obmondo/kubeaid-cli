@@ -34,34 +34,17 @@ const (
 	netBirdOperatorSecretKey       = "NB_API_KEY"
 )
 
-// awaitNetBirdOperatorToken handles the NetBird operator API-key gate. The
-// netbird-operator can't start without the netbird-mgmt-api-key Secret, and its
-// MutatingWebhookConfiguration on Pods (failurePolicy: Fail) then blocks every
-// cluster-wide Pod create — so this must be settled before lockdown, while the
-// control-plane LB's public interface is still up.
+// awaitNetBirdOperatorToken settles the netbird-mgmt-api-key Secret before
+// lockdown: without it the operator's Pod webhook (failurePolicy: Fail) blocks
+// every Pod create. When the Secret is missing and stdin is a terminal the
+// operator chooses paste-now / wait / defer; without a terminal it polls then
+// fails (CI expects the Secret via secrets.yaml).
 //
-// Returns proceedWithLockdown: true means the mesh key is in place (or not
-// needed) and the caller may lock the cluster down; false means the operator
-// deferred NetBird setup, so the caller must SKIP lockdown and the LB
-// public-interface disable and leave the cluster reachable (see
-// printNetBirdSetupDeferred) — otherwise they'd be cut off from kube-apiserver
-// with no mesh path back in.
-//
-// When the Secret is missing and stdin is a terminal, the operator chooses:
-// paste the token now (kubeaid-cli creates the Secret), wait while they create
-// it out-of-band (poll), or defer. Without a terminal (CI) it keeps the
-// original poll-then-fail behaviour — there the Secret is expected via
-// secrets.yaml, so a missing one is a misconfig worth surfacing.
-//
-// keycloakAdminPassword is the live Keycloak admin password (read before the LB
-// is disabled), surfaced in the "create your Keycloak login first" box printed
-// ahead of the NetBird steps since the dashboard login is Keycloak SSO. Empty
-// triggers the kubectl-fetch fallback.
-//
-// No-op — returns (true, nil) — when the cluster doesn't host the
-// netbird-operator (workload clusters without a keycloak block). When
-// secrets.yaml carries netbird.apiKey the sealed Secret lands via the secrets
-// app sync and the existence check passes without prompting.
+// Returns proceedWithLockdown=false when the operator defers — the caller must
+// then skip lockdown and the LB public-interface disable, or they'd lose
+// kube-apiserver with no mesh path back. keycloakAdminPassword feeds the
+// "create your Keycloak login first" box (NetBird login is Keycloak SSO).
+// No-op when the cluster doesn't host the operator.
 func awaitNetBirdOperatorToken(
 	ctx context.Context,
 	clusterClient client.Client,
@@ -84,16 +67,11 @@ func awaitNetBirdOperatorToken(
 		return true, nil
 	}
 
-	// Signing in to the NetBird dashboard (to mint the service-user PAT) is
-	// Keycloak SSO — so print the Keycloak create-user box BEFORE the NetBird
-	// steps. No-op on clusters without a managed Keycloak.
+	// Keycloak box first: the NetBird dashboard login is Keycloak SSO.
 	printKeycloakUserSetupForNetBird(keycloakAdminPassword)
 	printNetBirdOperatorInstructions(netbirdDashboardHost())
 
-	// No TTY (CI / unattended): keep the original poll-then-fail behaviour. The
-	// interactive chooser below needs a terminal, and in CI the Secret is meant
-	// to arrive via secrets.yaml — silently skipping lockdown would be worse
-	// than surfacing the misconfig.
+	// No TTY (CI): poll-then-fail — the Secret is expected via secrets.yaml.
 	if !stdinIsTerminal() {
 		if err := waitForNetBirdOperatorSecret(ctx, clusterClient); err != nil {
 			return false, err
@@ -124,9 +102,8 @@ func awaitNetBirdOperatorToken(
 
 	case netBirdTokenWait:
 		if err := waitForNetBirdOperatorSecret(ctx, clusterClient); err != nil {
-			// A cancellation (Ctrl+C) aborts the run. A plain 30-minute timeout
-			// does not: the cluster is provisioned, so leave it reachable and
-			// let the operator finish and re-run, rather than lock them out.
+			// Ctrl+C aborts; a timeout defers instead — leave the provisioned
+			// cluster reachable.
 			if ctx.Err() != nil {
 				return false, err
 			}
@@ -228,11 +205,8 @@ func createNetBirdOperatorSecret(ctx context.Context, c client.Client, token str
 	return nil
 }
 
-// sealedSecretCommandLines returns the wrapped kubeseal one-liner that creates
-// the netbird-mgmt-api-key as a SealedSecret — the git-safe, kubeaid-native way
-// to persist the token: the sealed-secrets controller decrypts it into the real
-// Secret, and the sealed manifest is safe to commit. indent is prepended to each
-// line so callers can place it inside a next-steps box.
+// sealedSecretCommandLines returns the kubeseal command that persists the
+// token as a git-safe SealedSecret, indented for a next-steps box.
 func sealedSecretCommandLines(indent string) []string {
 	return []string{
 		indent + "kubectl create secret generic " + netBirdOperatorSecretName +
@@ -269,11 +243,8 @@ func printNetBirdSecretPersistenceNote() {
 	printNextStepsBox("NetBird API key saved (one-off)", lines)
 }
 
-// printNetBirdSetupDeferred tells the operator the cluster was left publicly
-// reachable — host-firewall lockdown AND the control-plane LB public-interface
-// disable are both skipped — because without the NetBird API key they'd have no
-// mesh path back in. Re-running kubeaid-cli once the Secret exists completes
-// lockdown.
+// printNetBirdSetupDeferred tells the operator lockdown + the LB disable were
+// skipped (no mesh key yet = no way back in) and how to finish later.
 func printNetBirdSetupDeferred() {
 	printNextStepsBox("NetBird setup deferred — cluster left reachable", []string{
 		"",
@@ -292,16 +263,9 @@ func printNetBirdSetupDeferred() {
 }
 
 // printKeycloakUserSetupForNetBird renders the "create your Keycloak login
-// first" panel shown immediately before the NetBird operator API-key
-// instructions. The NetBird dashboard login is Keycloak SSO, so the
-// operator must have a realm user before they can sign in to mint the
-// service-user PAT.
-//
-// No-op unless this cluster hosts a managed Keycloak (VPN cluster with
-// managed Keycloak) — only then does the admin console + admin credential
-// this panel surfaces exist locally. keycloakAdminPassword is the live
-// admin password read before the control-plane LB was disabled; empty
-// falls back to the kubectl-fetch command (same logic as the final panel).
+// first" panel before the NetBird instructions — the dashboard login is
+// Keycloak SSO, so a realm user must exist first. No-op without a locally
+// managed Keycloak; an empty password falls back to the kubectl-fetch row.
 func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
 	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
 		return
@@ -367,11 +331,8 @@ func netBirdOperatorSecretExists(
 	return len(secret.Data[netBirdOperatorSecretKey]) > 0, nil
 }
 
-// waitForNetBirdOperatorSecret polls every 10s for the Secret to
-// appear with a non-empty NB_API_KEY value. Bounded at 30 minutes to
-// keep CI / unattended runs from hanging forever — the operator can
-// always restart kubeaid-cli later and we'll pick up where we left
-// off (the Secret check at the top is idempotent).
+// waitForNetBirdOperatorSecret polls every 10s (bounded at 30m) for the Secret
+// to appear with a non-empty NB_API_KEY; re-running kubeaid-cli resumes here.
 func waitForNetBirdOperatorSecret(
 	ctx context.Context,
 	c client.Client,
@@ -408,11 +369,8 @@ func waitForNetBirdOperatorSecret(
 	}
 }
 
-// printNetBirdOperatorInstructions renders the rounded-border panel
-// telling the operator how to mint a service-user PAT and persist it
-// as the netbird-mgmt-api-key Secret. Same renderer as the
-// post-bootstrap next-steps panel so the visual style stays
-// consistent across the bootstrap UX.
+// printNetBirdOperatorInstructions renders the panel telling the operator how
+// to mint a service-user PAT and persist it as the netbird-mgmt-api-key Secret.
 func printNetBirdOperatorInstructions(netbirdDNS string) {
 	dashboardURL := "https://" + netbirdDNS + "/"
 
@@ -447,6 +405,10 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 
 	// Only shown when a mesh DNS zone is set — that's when kubeaid-cli renders
 	// the network router + traefik-internal networkResource that need them.
+	//
+	// TODO : create the zone + groups via the Mgmt API once the PAT is in hand
+	// (the operator only references them, it never creates them) — see
+	// docs/TODO.md "Create the mesh DNS zone + groups via the Mgmt API".
 	if meshDNSZone != "" {
 		lines = append(lines,
 			"    4. Sidebar  →  Networks  →  DNS zones  →  + create a DNS zone:",

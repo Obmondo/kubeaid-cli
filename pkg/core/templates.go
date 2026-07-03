@@ -99,11 +99,9 @@ type TemplateValues struct {
 	// so each control-plane node binds them via netplan. Empty otherwise.
 	CoturnFloatingIPs []string
 
-	// HCloudSingleNodePublic mirrors config.HCloudSingleNodePublic: the
-	// single-node public control-plane topology (any cluster.type). Gates the
-	// chart values that put the lone CP node on a public IPv4 with no private
-	// network or LB — network.type=public, CCM networking off, and the
-	// apiserver endpoint sourced from the operator's api DNS name.
+	// HCloudSingleNodePublic mirrors config.HCloudSingleNodePublic. Gates the
+	// single-node chart values: network.type=public, CCM networking off,
+	// apiserver endpoint from the operator's api DNS name.
 	HCloudSingleNodePublic bool
 
 	// ControlPlaneExtraCertSANs are operator-supplied extra DNS names rendered
@@ -447,16 +445,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		case hetznerConfig.Mode == constants.HetznerModeBareMetal:
 			templateValues.ControlPlaneEndpoint = hetznerConfig.ControlPlane.BareMetal.Endpoint.Host
 
-		// Single-node public control-plane: no control-plane LB. The apiserver sits
-		// directly on the CP node's public IPv4, reached via the operator's
-		// api DNS name — which they point at the node IP that bootstrap
-		// discovers and prints post-provision. Required non-empty (enforced
-		// in validation) because CAPH needs the endpoint at manifest time,
-		// before the node's IP exists. Ordered before the LB case: this
-		// topology never pre-provisions an LB, so that case wouldn't fire
-		// anyway, but the explicit guard keeps the intent obvious.
-		// HCloudSingleNodePublic already implies pure-hcloud mode, so no
-		// mode check is needed here.
+		// Single-node public control-plane: no LB — the endpoint is the
+		// operator's api DNS name (validated non-empty).
 		case config.HCloudSingleNodePublic():
 			templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint
 

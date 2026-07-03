@@ -128,6 +128,44 @@ configs.
   `azp`-based admin path or kubeaid-cli needs to pre-seed the user
   record (no obvious way to do that without a human session).
 
+### Create the mesh DNS zone + groups via the Mgmt API
+
+The NetBird dashboard steps in `printNetBirdOperatorInstructions`
+(create the mesh DNS zone + the `k8s-<cluster>` group) are manual
+because the kubernetes-operator only *references* those objects
+(`dnsZoneRef.name`, `groups[].name`) — it never creates them.
+Checked 2026-07-03: upstream operator v0.7.0 is current and has no
+issue/PR for creating them; re-check before building this, and drop
+it if the operator gains support.
+
+Worse, the instructions box only prints when the
+`netbird-mgmt-api-key` Secret is missing — on the secrets.yaml path
+nobody is told to create the zone/groups at all, and the
+NetworkRouter / NetworkResource CRs sit pending until someone does.
+
+Once the API-key gate passes, kubeaid-cli holds an Admin PAT, so it
+can create them itself. Endpoints verified against Mgmt v0.72.4
+(what the kubeaid netbird chart deploys), auth
+`Authorization: Token <PAT>`:
+
+- `GET`/`POST /api/groups` — `{"name": "k8s-<cluster>"}` (the
+  traefik-internal networkResource group) and
+  `{"name": "k8s-<cluster>-admins"}` (clusterProxy RBAC, below)
+- `GET`/`POST /api/dns/zones` — `{"name", "domain",
+  "enable_search_domain", "distribution_groups"}`; open question:
+  which `distribution_groups` (the `All` group matches a manual
+  dashboard setup; scoping to `k8s-<cluster>` is tighter but makes
+  name resolution failures confusing)
+
+Plan: an idempotent ensure step (list → create when missing) right
+after `awaitNetBirdOperatorToken` returns; on failure warn and print
+the manual dashboard steps instead of aborting a provisioned
+cluster. With group creation in place, also render a default
+clusterProxy RBAC binding `k8s-<cluster>-admins → cluster-admin`
+when `clusterProxy.rbac` is empty (decided 2026-07-03: cluster-admin
+default is fine — group membership is the policy), and trim the
+zone/group steps from the instructions box.
+
 ### NetBird operator PAT rotation
 
 NetBird user PATs cap at 180 days; service-user PATs may allow

@@ -68,14 +68,11 @@ func ControlPlaneInHCloud() bool {
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
-// CoturnFloatingIPEnabled reports whether kubeaid-cli should provision an
-// HCloud Floating IP for NetBird Coturn (STUN/TURN) HA — and, with it,
-// the hcloud-fip-controller app, the Coturn DaemonSet overlay, and the
-// per-CP netplan binding. True only for a multi-control-plane HCloud VPN
-// cluster: a VPN cluster runs Coturn, and with more than one CP the
-// active Coturn can land on any node, so its public IP must float. A
-// single-CP VPN cluster has no failover (Coturn stays on its one node),
-// and a non-VPN cluster runs no Coturn at all.
+// CoturnFloatingIPEnabled reports whether to provision an HCloud Floating IP
+// for NetBird Coturn (STUN/TURN) — plus the hcloud-fip-controller app, Coturn
+// DaemonSet overlay, and per-CP netplan binding. Only multi-CP HCloud VPN
+// clusters: Coturn can land on any CP node, so its public IP must float;
+// a single CP has no failover and non-VPN clusters run no Coturn.
 func CoturnFloatingIPEnabled() bool {
 	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
 		return false
@@ -90,23 +87,12 @@ func CoturnFloatingIPEnabled() bool {
 }
 
 // HCloudSingleNodePublic reports whether this is the single-node public
-// control-plane topology: a pure-HCloud cluster with exactly one control-plane
-// replica and no HCloud worker node-groups. In that case kubeaid-cli skips the
-// NAT gateway + control-plane LB and puts the lone CP node on a public IPv4
-// that the apiserver endpoint resolves to via the operator's DNS name (on VPN
-// clusters, api / stun / turn point there too; netbird / keycloak still go
-// through the Traefik ingress LB). Derived, not opted into — the counterpart of
-// CoturnFloatingIPEnabled (which keys off Replicas > 1).
-//
-// It applies regardless of cluster.type (vpn, main, workload, management): the
-// decision is about the node's shape, not its role. Excluded:
-//   - hybrid mode — intrinsically private (an HCloud private network links it
-//     to its bare-metal workers).
-//   - workload clusters connecting to an existing VPN (hcloudVPNCluster set) —
-//     those nodes sit privately behind that VPN's mesh.
-//
-// A private worker node-group would have no NAT gateway to egress through, so
-// the topology only holds for a single, standalone public node.
+// control-plane topology: pure-HCloud, one CP replica, no HCloud worker
+// node-groups — any cluster.type. kubeaid-cli then skips the NAT gateway +
+// control-plane LB and puts the lone node on a public IPv4, reached via the
+// operator's api DNS name. Excluded: hybrid (private network to bare-metal
+// workers) and workloads behind an existing VPN (hcloudVPNCluster set) — both
+// stay private; a worker node-group would need the NAT gateway for egress.
 func HCloudSingleNodePublic() bool {
 	hetzner := ParsedGeneralConfig.Cloud.Hetzner
 	if hetzner == nil || hetzner.Mode != constants.HetznerModeHCloud {

@@ -267,24 +267,12 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"VPN cluster endpoint verification failed",
 	)
 
-	// Finish the progress bar before the NetBird gate: awaitNetBirdOperatorToken
-	// may show an interactive chooser, which (like the lockdown confirm prompt)
-	// needs clean stdout — a live bar would corrupt it.
+	// Interactive prompts below need clean stdout.
 	bar.Finish()
 
-	// The NetBird operator API-key gate. The netbird-operator can't start
-	// without the netbird-mgmt-api-key Secret, and its Pod MutatingWebhook
-	// (failurePolicy: Fail) then blocks every cluster-wide Pod create — so
-	// settle it while the LB public interface is still up. The operator can
-	// paste the token now (kubeaid-cli creates the Secret), wait while they
-	// create it out-of-band, or defer. Also prints the Keycloak create-user box
-	// first (the NetBird dashboard login is Keycloak SSO), using the admin
-	// password read above. No-op when the cluster doesn't host the operator.
-	//
-	// proceedWithLockdown is false only when the operator defers: with no mesh
-	// key they'd have no path back to kube-apiserver, so we must NOT lock down
-	// or disable the LB public interface — leave the cluster reachable and let
-	// them re-run once NetBird is set up.
+	// NetBird API-key gate — see awaitNetBirdOperatorToken. When the operator
+	// defers, skip lockdown + the LB disable: without a mesh key they'd have
+	// no path back to kube-apiserver.
 	proceedWithLockdown, netBirdErr := awaitNetBirdOperatorToken(ctx, mainClusterClient, keycloakAdminPassword)
 	assert.AssertErrNil(ctx, netBirdErr, "Failed handling the NetBird operator API-key gate")
 

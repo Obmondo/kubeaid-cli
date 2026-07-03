@@ -490,27 +490,16 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 	return nil
 }
 
-// validateHCloudSingleNodePublic enforces the one hard requirement of the
-// single-node public control-plane topology (config.HCloudSingleNodePublic):
-// the CP node runs the whole cluster on its own, so its machineType needs
-// >= 8 GB RAM. The topology itself is derived (pure-HCloud + 1 CP replica + no
-// HCloud workers), not opted into, so there's nothing else to validate.
-//
-// The control-plane endpoint (loadBalancer.endpoint) is intentionally not
-// required in this mode: the node's public IP is Hetzner-assigned at provision
-// time, so the operator can't supply it up front — it may be empty (the
-// discovered node IP is used directly) or a DNS name they point at the node
-// afterwards. The not-an-IP rule above still applies.
+// validateHCloudSingleNodePublic checks the single-node public control-plane
+// topology's two requirements: loadBalancer.endpoint set (there is no LB, and
+// CAPH needs the apiserver endpoint at manifest-render time, before the node's
+// IP exists) and a CP machineType with >= 8 GB RAM (the one node runs the
+// whole cluster). No-op for other topologies.
 func validateHCloudSingleNodePublic(ctx context.Context) error {
 	if !config.HCloudSingleNodePublic() {
 		return nil
 	}
 
-	// The apiserver sits directly on the CP node's public IPv4, reached via
-	// this DNS name (the operator points it at the node IP that bootstrap
-	// prints post-provision). It cannot be empty: there is no control-plane LB
-	// to fall back to, and CAPH needs the endpoint at manifest-render time —
-	// before the node's IP exists — so it must be a hostname known up front.
 	if config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
 		return errors.New(
 			"a single-node HCloud cluster has no control-plane load balancer, so " +
