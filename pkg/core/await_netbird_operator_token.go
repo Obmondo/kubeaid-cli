@@ -21,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // netBirdOperatorSecretName + namespace match the chart's
@@ -227,21 +228,45 @@ func createNetBirdOperatorSecret(ctx context.Context, c client.Client, token str
 	return nil
 }
 
+// sealedSecretCommandLines returns the wrapped kubeseal one-liner that creates
+// the netbird-mgmt-api-key as a SealedSecret — the git-safe, kubeaid-native way
+// to persist the token: the sealed-secrets controller decrypts it into the real
+// Secret, and the sealed manifest is safe to commit. indent is prepended to each
+// line so callers can place it inside a next-steps box.
+func sealedSecretCommandLines(indent string) []string {
+	return []string{
+		indent + "kubectl create secret generic " + netBirdOperatorSecretName +
+			" -n " + netBirdOperatorSecretNamespace + " \\",
+		indent + "  --dry-run=client --from-literal=" + netBirdOperatorSecretKey +
+			"='<paste-token-here>' -o yaml \\",
+		indent + "| kubeseal --namespace " + netBirdOperatorSecretNamespace + " \\",
+		indent + "    --controller-namespace " + constants.NamespaceSealedSecrets + " \\",
+		indent + "    --controller-name " + constants.SealedSecretsControllerName + " -o yaml \\",
+		indent + "| kubectl apply -f -",
+	}
+}
+
 // printNetBirdSecretPersistenceNote reminds the operator that the Secret
-// kubeaid-cli just created is one-off (dropped on cluster re-creation) and that
-// secrets.yaml is the durable home for the token.
+// kubeaid-cli just created is one-off (dropped on cluster re-creation) and shows
+// the two durable ways to persist the token: secrets.yaml, or a SealedSecret.
 func printNetBirdSecretPersistenceNote() {
-	printNextStepsBox("NetBird API key saved (one-off)", []string{
+	lines := []string{
 		"",
 		"  Created Secret " + netBirdOperatorSecretNamespace + "/" + netBirdOperatorSecretName + " from the pasted token.",
-		"  It won't survive cluster re-creation.",
+		"  It won't survive cluster re-creation. For a durable setup, either:",
 		"",
-		"  For a durable setup, also add it to secrets.yaml and re-run kubeaid-cli:",
+		"  1. Add it to secrets.yaml and re-run kubeaid-cli:",
 		"",
-		"    netbird:",
-		"      apiKey: <paste-token-here>",
+		"       netbird:",
+		"         apiKey: <paste-token-here>",
 		"",
-	})
+		"  2. Seal it into the cluster (commit the output for git durability):",
+		"",
+	}
+	lines = append(lines, sealedSecretCommandLines("       ")...)
+	lines = append(lines, "")
+
+	printNextStepsBox("NetBird API key saved (one-off)", lines)
 }
 
 // printNetBirdSetupDeferred tells the operator the cluster was left publicly
@@ -436,17 +461,18 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 
 	lines = append(lines,
 		"",
-		"  Then EITHER (preferred — persists in git, survives re-creation):",
+		"  Then persist the token — pick one:",
 		"",
-		"    Add it to secrets.yaml and re-run kubeaid-cli:",
-		"      netbird:",
-		"        apiKey: <paste-token-here>",
+		"  1. secrets.yaml (preferred — kubeaid seals + commits it, survives re-creation):",
+		"       netbird:",
+		"         apiKey: <paste-token-here>",
+		"     then re-run kubeaid-cli.",
 		"",
-		"  OR create the Secret directly (one-off, this cluster only):",
+		"  2. Sealed Secret (git-safe; commit the output for durability):",
 		"",
-		"    kubectl -n "+netBirdOperatorSecretNamespace+
-			" create secret generic "+netBirdOperatorSecretName+" \\",
-		"      --from-literal="+netBirdOperatorSecretKey+"='<paste-token-here>'",
+	)
+	lines = append(lines, sealedSecretCommandLines("       ")...)
+	lines = append(lines,
 		"",
 		"  Bootstrap will resume automatically once the Secret exists (polls",
 		"  every 10s, gives up after 30 minutes). Ctrl+C to abort if you'd",

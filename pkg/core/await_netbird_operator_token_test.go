@@ -263,6 +263,9 @@ func TestAwaitNetBirdOperatorToken_PasteNowCreatesSecret(t *testing.T) {
 	if !strings.Contains(out, "one-off") {
 		t.Errorf("expected the one-off persistence note in output, got:\n%s", out)
 	}
+	if !strings.Contains(out, "kubeseal") {
+		t.Errorf("expected the SealedSecret (kubeseal) durable-setup command, got:\n%s", out)
+	}
 }
 
 // TestAwaitNetBirdOperatorToken_DeferSkipsLockdown verifies the defer path:
