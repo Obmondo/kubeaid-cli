@@ -210,7 +210,7 @@ func buildK8sProfiles(currentMinor int, latestPerCycle map[string]string) []K8sP
 			Name:          "after-first-dot",
 			Label:         "Early Adopter",
 			Version:       earlyVer,
-			Risk:          "Medium-High",
+			Risk:          "Medium",
 			Maintenance:   "Medium — community shakes out bugs first",
 			UpgradeWindow: "~2-4 weeks delay",
 		},
