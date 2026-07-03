@@ -810,8 +810,8 @@ func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
-				Title("NetBird mesh DNS zone (e.g. mesh.acme.com):").
-				Description("The domain your NetBird mesh resolves peers under (NetBird --dns-domain), also used as the network router's DNS zone. Must differ from the control-plane and NetBird Mgmt domains. Required.").
+				Title("Internal domain for apps on the VPN (e.g. mesh.acme.com):").
+				Description("Apps exposed over the VPN are reachable under this domain. Must differ from the control-plane and Mgmt domains.").
 				Value(&cfg.NetBirdDNSZone).
 				Validate(func(s string) error {
 					if err := nonEmpty(s); err != nil {
@@ -828,7 +828,7 @@ func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 					}
 					return nil
 				}),
-		).Title("NetBird — mesh DNS zone"),
+		).Title("NetBird — internal apps domain"),
 	).Run()
 }
 
