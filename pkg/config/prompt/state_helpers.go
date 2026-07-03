@@ -6,15 +6,18 @@ package prompt
 import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
 type promptState struct {
-	K8sProfile          bool `yaml:"k8sProfile"`
-	Basics              bool `yaml:"basics"`
-	VPNKeycloak         bool `yaml:"vpnKeycloak"`
-	VPNEndpoints        bool `yaml:"vpnEndpoints"`
-	WorkloadKeycloak    bool `yaml:"workloadKeycloak"`
-	ProviderCredentials bool `yaml:"providerCredentials"`
-	GitSSH              bool `yaml:"gitSSH"`
-	ObmondoSupport      bool `yaml:"obmondoSupport"`
-	NetBirdDNSZone      bool `yaml:"netbirdDNSZone"`
+	K8sProfile       bool `yaml:"k8sProfile"`
+	Basics           bool `yaml:"basics"`
+	VPNKeycloak      bool `yaml:"vpnKeycloak"`
+	VPNEndpoints     bool `yaml:"vpnEndpoints"`
+	WorkloadKeycloak bool `yaml:"workloadKeycloak"`
+	// WorkloadNetBirdAPIKey is flag-only (no missing* twin): blank is a
+	// valid answer, deferring the token to bootstrap's interactive gate.
+	WorkloadNetBirdAPIKey bool `yaml:"workloadNetBirdAPIKey"`
+	ProviderCredentials   bool `yaml:"providerCredentials"`
+	GitSSH                bool `yaml:"gitSSH"`
+	ObmondoSupport        bool `yaml:"obmondoSupport"`
+	NetBirdDNSZone        bool `yaml:"netbirdDNSZone"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {

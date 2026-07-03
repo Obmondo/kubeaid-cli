@@ -87,6 +87,14 @@ type PromptedConfig struct {
 	// keycloak.netBirdBackendClientSecret. Empty when managed.
 	NetBirdBackendClientSecret string
 
+	// NetBirdAPIKey is the parent VPN's NetBird service-user PAT the
+	// netbird-operator authenticates with. Collected (optionally) for
+	// workload clusters that opted into Keycloak — their parent Mgmt
+	// already exists, so the operator can mint it now. Rendered into
+	// secrets.yaml netbird.apiKey; blank means bootstrap pauses at the
+	// interactive gate instead.
+	NetBirdAPIKey string
+
 	// HCloud-VPN control-plane endpoint FQDN — required when
 	// running a VPN cluster on Hetzner HCloud. Rendered into
 	// cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint;
@@ -443,6 +451,10 @@ func (s *promptSession) runPromptSteps() error {
 		return err
 	}
 
+	if err := s.collectWorkloadNetBirdAPIKeyIfNeeded(); err != nil {
+		return err
+	}
+
 	if err := s.collectNetBirdDNSZoneIfNeeded(); err != nil {
 		return err
 	}
@@ -540,6 +552,27 @@ func (s *promptSession) collectWorkloadKeycloakIfNeeded() error {
 	return nil
 }
 
+// collectWorkloadNetBirdAPIKeyIfNeeded optionally asks workload clusters that
+// opted into Keycloak for the netbird-operator's API token. Blank is a valid
+// answer (bootstrap's interactive gate covers it), so the state flag alone
+// gates re-asking.
+func (s *promptSession) collectWorkloadNetBirdAPIKeyIfNeeded() error {
+	if s.cfg.ClusterType != constants.ClusterTypeWorkload || !s.cfg.EnableOIDC {
+		return nil
+	}
+	if s.state.WorkloadNetBirdAPIKey {
+		return nil
+	}
+
+	if err := runWorkloadNetBirdAPIKeyForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting NetBird API key: %w", err)
+	}
+	s.cfg.NetBirdAPIKey = strings.TrimSpace(s.cfg.NetBirdAPIKey)
+	s.state.WorkloadNetBirdAPIKey = true
+
+	return nil
+}
+
 func (s *promptSession) collectProviderCredentialsIfNeeded(prompter ProviderPrompter) error {
 	if s.state.ProviderCredentials && !missingProviderPromptConfig(s.cfg) {
 		return nil
@@ -579,61 +612,91 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 	return nil
 }
 
-// printWorkloadNetBirdNextSteps prints two manual steps the operator
-// has to do before `kubeaid-cli bootstrap` can finish on a workload
-// cluster that opted into Keycloak (and therefore wants its kube-API
-// behind the NetBird mesh). No-op for VPN clusters and for workload
-// clusters that opted out of Keycloak — both flows are self-contained.
-//
-// Manual on purpose (decision: the operator mints the service-user
-// access token in the parent NetBird's dashboard and pastes it into
-// secrets.yaml; kubeaid-cli never speaks to the NetBird Mgmt API with
-// admin powers of its own). The token is what the netbird-operator
-// authenticates to the Mgmt API with — it mints setup keys for
-// routing peers itself, so no manual setup key is involved. Same
-// manual-ownership applies to NetBird group ACLs.
-//
-// An earlier revision of this notice asked for a *setup key* pasted
-// under netbird.setupKey — a field that never existed and a
-// credential type that can't call the Mgmt API. If the token is left
-// blank, bootstrap pauses at netbird.AwaitOperatorToken with the same
-// instructions instead.
+// workloadNetBirdMgmtURL derives the parent NetBird Mgmt URL from the
+// Keycloak DNS ("keycloak.<base>" → "netbird.<base>"); a placeholder when
+// off-convention.
+func workloadNetBirdMgmtURL(cfg *PromptedConfig) string {
+	if strings.HasPrefix(cfg.KeycloakDNS, "keycloak.") {
+		return "https://netbird." + strings.TrimPrefix(cfg.KeycloakDNS, "keycloak.")
+	}
+	return "<your NetBird Mgmt URL>"
+}
+
+// runWorkloadNetBirdAPIKeyForm optionally collects the NetBird service-user
+// PAT the netbird-operator authenticates with. The parent VPN's Mgmt already
+// exists for a workload cluster, so the operator can mint the token now;
+// blank defers to bootstrap's interactive gate.
+func runWorkloadNetBirdAPIKeyForm(cfg *PromptedConfig) error {
+	steps := fmt.Sprintf(
+		"The netbird-operator wires this cluster into the parent VPN's mesh and\n"+
+			"authenticates with a NetBird API token (service-user PAT). To mint one:\n\n"+
+			"  %s  →  Team  →  Service Users  →  + Create Service User\n"+
+			"    Name:  k8s-operator        Role:  Admin\n"+
+			"  From the new user's row  →  ⋮  →  Tokens  →  + Generate Token\n"+
+			"    Name:  kubeaid-%s   Expiration:  the longest offered\n"+
+			"    (the token is shown only once — copy it)\n\n"+
+			"Leave empty to handle it later: bootstrap pauses with the same steps.",
+		workloadNetBirdMgmtURL(cfg), cfg.ClusterName,
+	)
+
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("NetBird operator API key").
+				Description(steps),
+			huh.NewInput().
+				Title("NetBird service-user token (optional):").
+				EchoMode(huh.EchoModePassword).
+				Value(&cfg.NetBirdAPIKey),
+		).Title("NetBird — operator API key"),
+	).Run()
+}
+
+// printWorkloadNetBirdNextSteps prints the manual steps left before
+// `kubeaid-cli bootstrap` on a workload cluster that opted into Keycloak:
+// minting the netbird-operator's API token (skipped when it was provided at
+// the prompt) and the NetBird ACL for reaching the cluster. Manual on
+// purpose — the operator mints the token; kubeaid-cli never calls the Mgmt
+// API with admin powers of its own. No-op for VPN clusters and for workload
+// clusters that opted out of Keycloak.
 func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.EnableOIDC {
 		return
 	}
 
-	// Derive the typical NetBird Mgmt URL from the Keycloak DNS by
-	// swapping the leading "keycloak." label for "netbird." — Obmondo's
-	// VPN clusters expose both on the same base domain. Fall through
-	// to a placeholder if the prefix doesn't match (operator's
-	// off-pattern Keycloak DNS).
-	netbirdURL := "<your NetBird Mgmt URL>"
-	if strings.HasPrefix(cfg.KeycloakDNS, "keycloak.") {
-		netbirdURL = "https://netbird." + strings.TrimPrefix(cfg.KeycloakDNS, "keycloak.")
-	}
-
+	netbirdURL := workloadNetBirdMgmtURL(cfg)
 	clusterGroup := "k8s-" + cfg.ClusterName
 
+	header := "  One manual step before `kubeaid-cli bootstrap`:"
+	if cfg.NetBirdAPIKey == "" {
+		header = "  Two manual steps before `kubeaid-cli bootstrap`:"
+	}
+
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
-	fmt.Fprintln(os.Stderr, "  Two manual steps before `kubeaid-cli bootstrap`:")
+	fmt.Fprintln(os.Stderr, header)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "  1. Create a NetBird service user + access token for the netbird-operator")
-	fmt.Fprintln(os.Stderr, "     (the operator calls the Mgmt API to wire this cluster into the mesh —")
-	fmt.Fprintln(os.Stderr, "     it mints setup keys for its routing peers itself):")
-	fmt.Fprintf(os.Stderr, "       %s  →  Team  →  Service Users  →  + Create Service User\n", netbirdURL)
-	fmt.Fprintln(os.Stderr, "         Name:  k8s-operator")
-	fmt.Fprintln(os.Stderr, "         Role:  Admin")
-	fmt.Fprintln(os.Stderr, "       From the new user's row  →  ⋮  →  Tokens  →  + Generate Token")
-	fmt.Fprintf(os.Stderr, "         Name:        kubeaid-%s\n", cfg.ClusterName)
-	fmt.Fprintln(os.Stderr, "         Expiration:  the longest the UI offers (token shows only once)")
-	fmt.Fprintln(os.Stderr, "     Paste the generated token into secrets.yaml under:")
-	fmt.Fprintln(os.Stderr, "       netbird:")
-	fmt.Fprintln(os.Stderr, "         apiKey: <paste here>")
-	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "  2. Configure NetBird group ACLs so your laptop can reach the new cluster:")
+
+	step := 1
+	if cfg.NetBirdAPIKey == "" {
+		fmt.Fprintln(os.Stderr, "  1. Create a NetBird service user + access token for the netbird-operator")
+		fmt.Fprintln(os.Stderr, "     (the operator calls the Mgmt API to wire this cluster into the mesh —")
+		fmt.Fprintln(os.Stderr, "     it mints setup keys for its routing peers itself):")
+		fmt.Fprintf(os.Stderr, "       %s  →  Team  →  Service Users  →  + Create Service User\n", netbirdURL)
+		fmt.Fprintln(os.Stderr, "         Name:  k8s-operator")
+		fmt.Fprintln(os.Stderr, "         Role:  Admin")
+		fmt.Fprintln(os.Stderr, "       From the new user's row  →  ⋮  →  Tokens  →  + Generate Token")
+		fmt.Fprintf(os.Stderr, "         Name:        kubeaid-%s\n", cfg.ClusterName)
+		fmt.Fprintln(os.Stderr, "         Expiration:  the longest the UI offers (token shows only once)")
+		fmt.Fprintln(os.Stderr, "     Paste the generated token into secrets.yaml under:")
+		fmt.Fprintln(os.Stderr, "       netbird:")
+		fmt.Fprintln(os.Stderr, "         apiKey: <paste here>")
+		fmt.Fprintln(os.Stderr)
+		step = 2
+	}
+
+	fmt.Fprintf(os.Stderr, "  %d. Configure NetBird group ACLs so your laptop can reach the new cluster:\n", step)
 	fmt.Fprintf(os.Stderr, "       In %s, ensure a policy lets your laptop's group reach\n", netbirdURL)
 	fmt.Fprintf(os.Stderr, "       the cluster's routing peers (typically the group %q) on TCP 6443.\n", clusterGroup)
 	fmt.Fprintln(os.Stderr)
@@ -770,6 +833,11 @@ func runVPNKeycloakForm(cfg *PromptedConfig) error {
 	if cfg.KeycloakMode == constants.KeycloakModeExternal {
 		return huh.NewForm(
 			huh.NewGroup(
+				huh.NewNote().
+					Title("External Keycloak as NetBird's IdP").
+					Description("Your Keycloak must be set up as NetBird's identity provider —\n"+
+						"follow https://docs.netbird.io/selfhosted/identity-providers/keycloak\n"+
+						"(the netbird-backend client and its secret come from that setup)."),
 				huh.NewInput().
 					Title("netbird-backend client secret (from your external Keycloak):").
 					EchoMode(huh.EchoModePassword).
