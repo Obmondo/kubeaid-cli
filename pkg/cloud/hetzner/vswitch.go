@@ -147,55 +147,145 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 	return nil
 }
 
-// AttachServerToVSwitch registers a bare-metal server against the
-// vSwitch. Hetzner applies the change asynchronously: the first
-// server's POST returns 201 and the vSwitch then enters an "in
-// process" state, so an attach of a second server issued while that
-// update is still running is rejected with 409 VSWITCH_IN_PROCESS.
-// That is a transient "busy", NOT "already attached" — the server is
-// silently dropped if we don't retry, which is why only the first
-// server used to land. We poll-retry on that code until the prior
-// update settles and this attach takes. Any other 409 (VLAN clash,
-// server limit) and every other non-201 status is a hard failure.
-func (h *Hetzner) AttachServerToVSwitch(ctx context.Context, serverID string, vswitchID int) error {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("server-id", serverID), slog.Int("vswitch-id", vswitchID),
-	})
+// GetVSwitchResponseBody is the subset of GET /vswitch/{id} we need
+// to tell which servers are already attached.
+type GetVSwitchResponseBody struct {
+	ID int `json:"id"`
+
+	Server []struct {
+		ServerNumber int    `json:"server_number"`
+		Status       string `json:"status"`
+	} `json:"server"`
+}
+
+// AttachServersToVSwitch attaches every given bare-metal server to the
+// vSwitch and blocks until all of them are actually attached (status
+// "ready"), not merely enqueued.
+//
+// Hetzner applies vSwitch membership asynchronously: POST
+// /vswitch/{id}/server accepts an array of server IDs, moves each to
+// "in process", and rejects any further POST while busy with 409
+// VSWITCH_IN_PROCESS. So we:
+//
+//   - GET the vSwitch and POST (in ONE request) every requested server
+//     not already "ready"/"in process" — one atomic call, no per-server
+//     race.
+//   - Poll GET until every requested server reports "ready". "in
+//     process" means keep waiting; "failed" (or a server that fell out)
+//     gets re-POSTed on the next tick.
+//
+// Bounded by HBMSVSwitchAttachMaxWaitTime so a server Robot never
+// brings to "ready" fails the bootstrap instead of hanging forever.
+func (h *Hetzner) AttachServersToVSwitch(ctx context.Context, serverIDs []string, vswitchID int) error {
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{slog.Int("vswitch-id", vswitchID)})
+
+	if len(serverIDs) == 0 {
+		return nil
+	}
 
 	deadline := time.Now().Add(constants.HBMSVSwitchAttachMaxWaitTime)
 
 	for {
-		response, err := h.robotClient.NewRequest().
-			SetFormDataFromValues(url.Values{
-				"server": []string{serverID},
-			}).
-			Post(fmt.Sprintf("/vswitch/%d/server", vswitchID))
+		statuses, err := h.vSwitchServerStatuses(vswitchID)
 		if err != nil {
-			return fmt.Errorf("attaching Hetzner Bare Metal server %s to VSwitch: %w", serverID, err)
+			return err
 		}
 
-		if response.StatusCode() == http.StatusCreated {
-			slog.InfoContext(ctx, "Server is being attached to VSwitch")
+		// Partition requested servers by current status.
+		var notReady, toPost []string
+		for _, serverID := range serverIDs {
+			switch statuses[serverID] {
+			case constants.HRobotVSwitchServerStatusReady:
+				// Attached — nothing to do.
+			case constants.HRobotVSwitchServerStatusInProcess:
+				// Being attached — wait, don't re-POST.
+				notReady = append(notReady, serverID)
+			default:
+				// "failed", or not on the vSwitch at all — (re)POST it.
+				notReady = append(notReady, serverID)
+				toPost = append(toPost, serverID)
+			}
+		}
+
+		if len(notReady) == 0 {
+			slog.InfoContext(ctx, "All servers are attached to VSwitch",
+				slog.Any("server-ids", serverIDs),
+			)
 			return nil
 		}
 
-		// The vSwitch is still applying a previous attach; wait for it
-		// to settle, then retry this server.
-		if response.StatusCode() == http.StatusConflict &&
-			hRobotErrorCode(response.Body()) == constants.HRobotVSwitchInProcessErrorCode {
-			if !time.Now().Before(deadline) {
-				return fmt.Errorf("timed out waiting for VSwitch to become available to attach server %s (max wait %v)", serverID, constants.HBMSVSwitchAttachMaxWaitTime)
+		if len(toPost) > 0 {
+			if err := h.postServersToVSwitch(ctx, toPost, vswitchID); err != nil {
+				return err
 			}
-
-			slog.InfoContext(ctx, "VSwitch is busy applying a previous update, will retry attaching server...",
-				slog.Duration("interval", constants.HBMSVSwitchAttachPollInterval),
-			)
-			h.sleepFunc(constants.HBMSVSwitchAttachPollInterval)
-			continue
 		}
 
-		return fmt.Errorf("attaching server %s to VSwitch: unexpected status code %d", serverID, response.StatusCode())
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out waiting for servers %v to attach to VSwitch %d (max wait %v)", notReady, vswitchID, constants.HBMSVSwitchAttachMaxWaitTime)
+		}
+
+		slog.InfoContext(ctx, "Waiting for servers to finish attaching to VSwitch...",
+			slog.Any("pending-server-ids", notReady),
+			slog.Duration("interval", constants.HBMSVSwitchAttachPollInterval),
+		)
+		h.sleepFunc(constants.HBMSVSwitchAttachPollInterval)
 	}
+}
+
+// postServersToVSwitch issues the batch POST that enqueues the given
+// servers for attachment. A 409 VSWITCH_IN_PROCESS is not an error —
+// the vSwitch is busy applying a prior update; the caller's next poll
+// tick retries. Any other non-201 status is a hard failure.
+func (h *Hetzner) postServersToVSwitch(ctx context.Context, serverIDs []string, vswitchID int) error {
+	response, err := h.robotClient.NewRequest().
+		SetFormDataFromValues(url.Values{
+			"server[]": serverIDs,
+		}).
+		Post(fmt.Sprintf("/vswitch/%d/server", vswitchID))
+	if err != nil {
+		return fmt.Errorf("attaching Hetzner Bare Metal servers %v to VSwitch: %w", serverIDs, err)
+	}
+
+	switch {
+	case response.StatusCode() == http.StatusCreated:
+		slog.InfoContext(ctx, "Requested servers to be attached to VSwitch",
+			slog.Any("server-ids", serverIDs),
+		)
+		return nil
+
+	case response.StatusCode() == http.StatusConflict &&
+		hRobotErrorCode(response.Body()) == constants.HRobotVSwitchInProcessErrorCode:
+		// vSwitch busy; the poll loop will retry on the next tick.
+		return nil
+
+	default:
+		return fmt.Errorf("attaching servers %v to VSwitch: unexpected status code %d", serverIDs, response.StatusCode())
+	}
+}
+
+// vSwitchServerStatuses returns a map of server ID → vSwitch
+// attachment status ("ready"/"in process"/"failed") for every server
+// currently on the vSwitch. Servers absent from the map aren't on the
+// vSwitch at all.
+func (h *Hetzner) vSwitchServerStatuses(vswitchID int) (map[string]string, error) {
+	response, err := h.robotClient.NewRequest().Get(fmt.Sprintf("/vswitch/%d", vswitchID))
+	if err != nil {
+		return nil, fmt.Errorf("getting VSwitch %d: %w", vswitchID, err)
+	}
+	if response.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("getting VSwitch %d: unexpected status code %d", vswitchID, response.StatusCode())
+	}
+
+	getVSwitchResponseBody := new(GetVSwitchResponseBody)
+	if err := json.Unmarshal(response.Body(), getVSwitchResponseBody); err != nil {
+		return nil, fmt.Errorf("unmarshalling get VSwitch response body: %w", err)
+	}
+
+	statuses := make(map[string]string, len(getVSwitchResponseBody.Server))
+	for _, server := range getVSwitchResponseBody.Server {
+		statuses[strconv.Itoa(server.ServerNumber)] = server.Status
+	}
+	return statuses, nil
 }
 
 // hRobotErrorResponseBody is Hetzner Robot's standard error envelope.

@@ -210,30 +210,31 @@ func countBareMetalHosts(hetznerConfig *config.HetznerConfig) int {
 	return count
 }
 
-// attachAllBareMetalServersToVSwitch walks the CP + every BM node-
-// group and registers each host against vswitchID. Extracted so the
-// progress-bar caller can wrap the whole walk in a single
-// InProgress / Substep pair — Robot's vSwitch attach is one call
-// per server, so the count is what the operator sees moving.
+// attachAllBareMetalServersToVSwitch collects every bare-metal host
+// (CP + all BM node-groups) and attaches them to vswitchID in a single
+// batch request. Robot's POST /vswitch/{id}/server takes an array and
+// applies it atomically, so one call attaches every server without the
+// per-server VSWITCH_IN_PROCESS race a loop would hit.
 func attachAllBareMetalServersToVSwitch(
 	ctx context.Context,
 	h *Hetzner,
 	hetznerConfig *config.HetznerConfig,
 	vswitchID int,
 ) error {
+	var serverIDs []string
 	if config.ControlPlaneInHetznerBareMetal() {
 		for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
-			if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
-				return fmt.Errorf("attaching control-plane server %s to VSwitch: %w", host.ServerID, err)
-			}
+			serverIDs = append(serverIDs, host.ServerID)
 		}
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
 		for _, host := range nodeGroup.BareMetalHosts {
-			if err := h.AttachServerToVSwitch(ctx, host.ServerID, vswitchID); err != nil {
-				return fmt.Errorf("attaching node-group server %s to VSwitch: %w", host.ServerID, err)
-			}
+			serverIDs = append(serverIDs, host.ServerID)
 		}
+	}
+
+	if err := h.AttachServersToVSwitch(ctx, serverIDs, vswitchID); err != nil {
+		return fmt.Errorf("attaching bare-metal servers to VSwitch: %w", err)
 	}
 	return nil
 }
