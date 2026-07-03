@@ -291,22 +291,12 @@ func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
 }
 
 // netbirdDashboardHost returns the NetBird dashboard hostname for the
-// instructions panel: cluster.netbird.dns on VPN clusters, the
-// netbird.<base> Keycloak-DNS convention on workload clusters, and a
-// placeholder when neither derives.
+// instructions panel: cluster.netbird.dns, or a placeholder when unset.
 func netbirdDashboardHost() string {
 	cluster := config.ParsedGeneralConfig.Cluster
-
 	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
 		return cluster.NetBird.DNS
 	}
-
-	if cluster.Keycloak != nil {
-		if host := ExpectedHost(cluster.Keycloak.DNS); host != "" {
-			return host
-		}
-	}
-
 	return "<your-netbird-mgmt-dns>"
 }
 

@@ -510,6 +510,29 @@ func TestErrLockdownDeclined(t *testing.T) {
 	require.False(t, errors.Is(other, errLockdownDeclined))
 }
 
+// ---- lockdownDecision --------------------------------------------------
+
+func TestLockdownDecision(t *testing.T) {
+	f, tr := false, true
+	cases := []struct {
+		name            string
+		ld              *bool
+		wantRun         bool
+		wantSkipConfirm bool
+	}{
+		{"nil: interactive", nil, true, false},
+		{"true: pre-approved", &tr, true, true},
+		{"false: skipped", &f, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			run, skip := lockdownDecision(tc.ld)
+			assert.Equal(t, tc.wantRun, run)
+			assert.Equal(t, tc.wantSkipConfirm, skip)
+		})
+	}
+}
+
 // ---- firstCPNodeIP -----------------------------------------------------
 
 func TestFirstCPNodeIP(t *testing.T) {

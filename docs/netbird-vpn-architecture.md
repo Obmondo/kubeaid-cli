@@ -28,10 +28,8 @@ Topology notes:
 
 ### Not yet present (this design adds)
 - NetBird
-- Keycloak
-- OIDC wiring for `kube-apiserver`
-- The `klist` registry consumer
-- The `kubeaid-cli login` subcommand
+- Keycloak (VPN clusters — NetBird's dashboard IdP)
+- The netbird-operator clusterProxy for kubectl access
 
 The stacked code branch implements all of them.
 
@@ -49,12 +47,11 @@ The whole design splits into three independent planes, each with one responsibil
 - 1 or 3 control-plane nodes + N workers, all in a Hetzner private network.
 - NetBird host agent on every node (control-plane and workers).
 - NetBird Operator in-cluster — exposes `kube-apiserver` as a NetBird mesh resource.
-- `kube-apiserver` configured with `--oidc-issuer-url=https://keycloak.<vpn-server>` (plus `--oidc-groups-claim=groups`, `--oidc-username-claim=email`), so it validates Keycloak JWTs natively. Cert SANs include `k8s-X.netbird` (the mesh DNS name).
+- `kube-apiserver` reachable only through the mesh; the netbird-operator clusterProxy proxies kubectl to it under an impersonated identity. Cert SANs include `k8s-X.netbird` (the mesh DNS name).
 
 **3. User laptop** — the developer's workstation.
 - NetBird client — joins the WireGuard mesh on `netbird up`.
-- `kubectl` with the `kubelogin` exec plugin — handles OIDC PKCE + token refresh against Keycloak.
-- `kubeaid-cli login` — a small helper that writes a kubeconfig stub. No tokens, no OIDC, no network calls — purely local I/O.
+- `kubectl` — talks to the netbird-operator clusterProxy peer over the mesh; the proxy impersonates the caller's NetBird identity and maps NetBird groups to RBAC. No OIDC, no login helper on the kubectl path.
 
 ### What NetBird gives us natively (and what it doesn't)
 
@@ -66,23 +63,15 @@ NetBird has an official [Kubernetes Operator](https://docs.netbird.io/how-to/kub
 - **`NBPolicy` CRD** — declarative ACLs: group `k8s-cluster-X-*` reaches resource `k8s-X.netbird`.
 - **`NBSetupKey` CRD + sidecar injection** — annotate a pod with `netbird.io/setup-key` to inject a mesh sidecar. Optional, for pods that need outbound mesh egress.
 
-**What's missing — Keycloak fills it:**
-- No OIDC for `kube-apiserver` — Keycloak is the IdP; kube-api consumes its JWTs natively via `--oidc-issuer-url`. No custom auth-broker.
-- No k8s RBAC integration — Keycloak's `groups` claim drives standard `ClusterRoleBinding`s.
+**What's missing — the clusterProxy fills it:**
+- No kubectl access path — the netbird-operator clusterProxy proxies kubectl over the mesh, impersonating the caller's NetBird identity.
+- No k8s RBAC integration — NetBird group membership maps to standard `ClusterRoleBinding`s via the proxy's impersonation.
 
-NetBird = network gate. Keycloak = identity.
-
-### Cluster registry — `klist`
-
-- A Git repo at <https://gitea.obmondo.com/EnableIT/klist>. One YAML per cluster, organised by customer.
-- No runtime registry service — everything lives in the repo.
-- `kubeaid-cli login` reads it **locally**: the user keeps a checkout symlinked to `~/.config/klist` (override via `--registry` or `KUBEAID_REGISTRY`).
-- Cluster lookup is by **puppet certname** — direct file read, no picker.
-- The [klist README](https://gitea.obmondo.com/EnableIT/klist) is the source of truth for the YAML schema, the certname-bisect rule, the contribution flow, and the kubeconfig anatomy `login` produces. This doc only references them.
+NetBird = network gate + kubectl identity. Keycloak remains the NetBird dashboard's SSO IdP on VPN clusters.
 
 ## Network diagrams
 
-Two diagrams. The first shows the precondition (get on the NetBird mesh — done once per session). The second shows the main flow (`kubeaid-cli login` + `kubectl`).
+Two diagrams. The first shows the precondition (get on the NetBird mesh — done once per session). The second shows the main flow (`kubectl` over the mesh via the netbird-operator clusterProxy).
 
 ### Diagram 1 — NetBird mesh login (precondition)
 
@@ -120,68 +109,42 @@ flowchart LR
 
 Result: the laptop holds a NetBird-issued IP and a peer relationship with the master.
 
-### Diagram 2 — kubeaid-cli login + kubectl (the main flow)
+### Diagram 2 — kubectl over the mesh (the main flow)
 
-Assumes the NetBird mesh is already up (Diagram 1). Three numbered steps drive the daily flow; edges marked `(setup)` / `(bootstrap)` happen out-of-band — per-laptop or per-cluster, not per-session.
+Assumes the NetBird mesh is already up (Diagram 1). kubectl reaches the cluster through the netbird-operator's clusterProxy peer, which impersonates the caller's NetBird identity and maps NetBird groups to Kubernetes RBAC. No `kubeaid-cli login`, no klist, no OIDC on the kubectl path — the mesh identity is the credential.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
 flowchart LR
   subgraph laptop["User laptop (on the NetBird mesh)"]
-    kctl["kubectl + kubelogin"]
-    cli["kubeaid-cli login"]
-    klist_local["~/.config/klist (symlinked klist clone)"]
-    bro["Browser"]
-  end
-
-  subgraph public["Public Internet"]
-    lb["Hetzner LB - tcp/443 + udp/3478"]
-  end
-
-  subgraph mgmt["NetBird / VPN Server"]
-    kc["Keycloak - OIDC IdP"]
-  end
-
-  subgraph git["Git host (any)"]
-    klist_repo["klist repo - clusters/<custid>/*.yaml"]
+    kctl["kubectl"]
+    nb_c["NetBird client"]
   end
 
   subgraph hcloud["Workload k8s - Hetzner private network"]
-    master_api["Master VM · kube-apiserver --oidc-issuer-url=Keycloak"]
-    master_nb["Master VM · NetBird host agent (cloud-init)"]
+    proxy["netbird-operator clusterProxy - mesh peer"]
+    master_api["Master VM - kube-apiserver"]
     worker1["Worker - NetBird host agent"]
     worker2["Worker - NetBird host agent"]
-    nbop["NetBird Operator - NBSetupKey, NBPolicy"]
-    master_api -.- master_nb
+    proxy --- master_api
     master_api --- worker1
     master_api --- worker2
-    master_api --- nbop
   end
 
-  %% Step 1: kubeaid-cli login (purely local I/O)
-  cli -- "1. read certname + YAMLs, write kubeconfig" --> klist_local
+  %% kubectl over the mesh, via the clusterProxy peer
+  kctl == "1. kubeconfig points at the clusterProxy peer (mesh IP)" ==> proxy
+  proxy == "2. impersonate NetBird identity -> RBAC groups" ==> master_api
 
-  %% Step 2: kubelogin opens the browser; browser does PKCE with Keycloak
-  kctl -- "2a. exec kubelogin -> open browser" --> bro
-  bro -- "2b. OIDC PKCE (kube-api auth)" --> lb
-  lb -- "2c. authenticate with Keycloak" --> kc
+  %% joining the mesh (out of band, Diagram 1)
+  nb_c -. "(setup) netbird up: join the mesh" .-> proxy
 
-  %% Step 3: kubectl over the mesh
-  kctl == "3. JWT bearer, mesh-only" ==> master_api
-
-  %% Setup / bootstrap (out of band)
-  klist_repo -. "(setup) git clone / pull" .-> klist_local
-  master_api -. "(bootstrap) JWKS via NAT egress" .-> lb
-
-  classDef pub fill:#fde,stroke:#a55;
   classDef priv fill:#def,stroke:#56a;
   classDef user fill:#efd,stroke:#5a5;
-  class lb pub;
-  class master_api,master_nb,worker1,worker2,nbop priv;
-  class kctl,cli,bro user;
+  class proxy,master_api,worker1,worker2 priv;
+  class kctl,nb_c user;
 ```
 
-The master VM is drawn as two boxes connected by a dotted line — same VM, two independent roles (`kube-apiserver` for auth, NetBird host agent for network). The split is visual; it makes the auth-vs-network gate split easier to read off the diagram.
+kubectl talks only to the clusterProxy peer's mesh IP; the proxy forwards to the in-cluster apiserver under an impersonated identity derived from the caller's NetBird groups. The host firewall (CCNP) keeps 6443 closed to the public internet, so the mesh is the only path in.
 
 ## The full flow
 
@@ -252,33 +215,25 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   actor Dev as Developer
-  participant Lap as Laptop (kubectl + kubelogin)
-  participant Bro as Browser
-  participant KC as Keycloak
+  participant Lap as Laptop (kubectl)
+  participant Proxy as netbird-operator clusterProxy
   participant API as kube-api
 
   Dev->>Lap: netbird up
-  Note over Lap: laptop SSOs via Keycloak (Diagram 1) and joins the mesh
-  Dev->>Lap: kubeaid-cli login
-  Note over Lap: reads certname + klist YAMLs locally, writes ~/.kube/config
+  Note over Lap: laptop joins the mesh (Diagram 1)
   Dev->>Lap: kubectl get pods
-  Note over Lap: kubelogin checks its token cache
-  alt no usable cached token (first call, or expired)
-    Lap->>Bro: launch browser for PKCE
-    Bro->>KC: OIDC PKCE
-    KC-->>Bro: id_token
-    Bro-->>Lap: id_token (kubelogin caches)
-  end
-  Lap->>API: kubectl with Bearer JWT (over NetBird mesh)
-  API-->>Lap: response (RBAC matched on groups claim)
+  Lap->>Proxy: request to the clusterProxy peer (over the mesh)
+  Proxy->>API: impersonate NetBird identity -> RBAC groups
+  API-->>Proxy: response (RBAC matched on the impersonated groups)
+  Proxy-->>Lap: response
 ```
 
 ### Two enforcement points, one identity
 
-The same group name (`k8s-cluster-X-dev`) gates both layers — belt and suspenders:
+The same NetBird group name (`k8s-cluster-X-dev`) gates both layers — belt and suspenders:
 
 - **Network** — NetBird `NBPolicy` on resource `k8s-X.netbird`. Remove user from the NetBird group → reachability drops **immediately**.
-- **Auth/RBAC** — OIDC `groups` claim → `ClusterRoleBinding`. Remove user from the Keycloak group → 403 from kube-apiserver on the next token refresh (≤5 min).
+- **Auth/RBAC** — NetBird group → clusterProxy impersonation → `ClusterRoleBinding`. Remove user from the NetBird group → the proxy stops impersonating those groups, so kube-apiserver 403s.
 
 ### Namespace-scoped access
 
@@ -309,9 +264,8 @@ For revoking access mid-session or for the next session, see **[Two enforcement 
 
 ## Why this shape (the missing elements made explicit)
 
-- **Identity provider exists at all.** NetBird is *not* an OIDC IdP — it delegates to one. Keycloak is the actual identity source, used by both NetBird (for VPN auth) and kube-apiserver (via the `--oidc-issuer-url` flag). One IdP, two consumers, same group claims.
-- **kube-api authenticates via standard OIDC.** No custom broker, no CSRs. The user-flow is plain `kubectl` + `kubelogin` — a well-trodden k8s pattern. "Session-bound role" comes from short-lived id_tokens (typically 5 min, refreshed transparently).
-- **`kubeaid-cli login` is small.** It resolves a single cluster from the local klist clone using the puppet certname and writes a correctly-formed kubeconfig. It does not handle tokens, OIDC, or RBAC — those are kubelogin's and Keycloak's jobs.
+- **Identity provider exists at all.** Keycloak is the NetBird dashboard's SSO IdP on VPN clusters — it authenticates users onto the mesh. kubectl access to workload clusters does not touch Keycloak; the mesh identity is the credential.
+- **kube-api access via the clusterProxy.** No OIDC broker, no CSRs on the kubectl path. The netbird-operator clusterProxy proxies kubectl over the mesh and impersonates the caller's NetBird identity — RBAC binds to the impersonated groups.
 - **NetBird/VPN Server is separate from the workload cluster.** Avoids the loop where you need cluster access to fix cluster access. If the workload cluster dies, you can still authenticate, debug, and re-bootstrap.
 - **Single public ingress.** Only the NetBird/VPN Server is reachable on the internet. Workload cluster has zero public attack surface beyond NetBird's WireGuard handshake on the relay.
 - **Bootstrap chicken-and-egg solved by cloud-init.** NetBird agent is installed and enrolled on each node *during boot* via a setup key. The laptop running kubeaid-cli is itself a NetBird peer, so the local k3d bootstrap cluster reaches the new master through the same mesh path kubectl will later use. No temporary public 6443 needed.

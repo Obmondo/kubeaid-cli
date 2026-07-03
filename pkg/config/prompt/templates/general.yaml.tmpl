@@ -31,18 +31,6 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
-{{- if .EnableOIDC }}
-    oidc:
-      issuerUrl: {{ .OIDCIssuerURL }}
-      clientId: {{ .OIDCClientID }}
-{{- else }}
-    # Optional. Set cluster.apiServer.oidc to enable OIDC on
-    # kube-apiserver. Issuer URL is probed at bootstrap.
-    #
-    # oidc:
-    #   issuerUrl: https://keycloak.example/realms/clusters
-    #   clientId:  kubernetes-{{ .ClusterName }}
-{{- end }}
 {{- if .KeycloakDNS }}
   keycloak:
     mode: {{ .KeycloakMode }}
@@ -52,10 +40,13 @@ cluster:
 {{- end }}
 {{- end }}
   netbird:
-    {{- if eq .ClusterType "vpn" }}
+    {{- if .NetBirdDNS }}
     dns: {{ .NetBirdDNS }}
     {{- end }}
     dnsZone: {{ .NetBirdDNSZone }}
+{{- if .LockdownSet }}
+  lockdown: {{ .LockdownValue }}
+{{- end }}
   argoCD:
     deployKeys:
 {{- if .KubeaidIsSSH }}

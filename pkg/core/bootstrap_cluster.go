@@ -22,7 +22,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -44,41 +43,11 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	defer bar.Finish()
 	ctx = progress.WithBar(ctx, bar)
 
-	// Workload-cluster banner: names the OIDC client the operator
-	// must have pre-created in their Keycloak realm, or warns about
-	// the admin.conf fallback when no Keycloak is referenced. No-op
-	// on VPN clusters.
-	printWorkloadOIDCBanner(ctx)
-
-	// Workload + private Keycloak: bail early if the operator isn't on
-	// the NetBird mesh. The OIDC discovery probe below would otherwise
-	// fail with a cryptic DNS error half-a-spinner later.
+	// Workload + NetBird: bail early if the operator isn't on the mesh,
+	// so a connectivity failure surfaces here instead of half-a-spinner
+	// into provisioning. No-op on VPN / non-NetBird clusters.
 	assert.AssertErrNil(ctx, requireOperatorOnNetBird(ctx),
 		"NetBird preflight failed")
-
-	// Pre-flight: when the user opted into OIDC, probe Keycloak's
-	// discovery endpoint before any infrastructure is touched —
-	// catches typo'd issuer URLs / unreachable Keycloak before
-	// Hetzner VMs (etc.) are provisioned. Defense-in-depth: the
-	// config-prompt already probed the same URL; this re-check
-	// catches drift between prompt-write and bootstrap-run
-	// (NetBird went down, operator hand-edited issuerUrl).
-	//
-	// Runs silently — no bar.Describe — because the success case is
-	// the boring 99 % path and progress-bar real estate is better
-	// spent on steps the operator actually waits on. The probe is
-	// fast (a single HTTPS GET) and the failure path surfaces a
-	// clear error via assert.AssertErrNil.
-	//
-	// Skipped entirely when:
-	//   - apiServer.oidc isn't set, OR
-	//   - cluster.keycloak.mode == managed (the issuer is provisioned
-	//     by THIS bootstrap run; probing now would NXDOMAIN /
-	//     TLS-mismatch).
-	if shouldValidateOIDCNow() {
-		assert.AssertErrNil(ctx, parser.ValidateOIDCDiscovery(ctx),
-			"OIDC issuer validation failed")
-	}
 
 	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
 	// NOTE : Though HCloud has an official Terraform provider which can be imported into a

@@ -128,7 +128,6 @@ Day-to-day operator guides:
 Identity and SSO:
 
 - [`docs/keycloak-bootstrap.md`](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
-- [`docs/workload-cluster-keycloak.md`](docs/workload-cluster-keycloak.md) — per-workload-cluster OIDC client, groups scope, and RBAC prerequisites
 
 Architecture and background:
 

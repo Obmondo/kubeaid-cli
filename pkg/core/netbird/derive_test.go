@@ -29,34 +29,40 @@ func TestOperatorEnabled(t *testing.T) {
 	tests := []struct {
 		name        string
 		clusterType string
-		keycloak    *config.KeycloakConfig
+		netbird     *config.NetBirdConfig
 		want        bool
 	}{
 		{
-			name:        "workload + keycloak block: true",
+			name:        "workload + netbird.dns set: true",
 			clusterType: constants.ClusterTypeWorkload,
-			keycloak:    &config.KeycloakConfig{Mode: "external", DNS: "kc.acme.com"},
+			netbird:     &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"},
 			want:        true,
 		},
 		{
-			name:        "workload + no keycloak: false (admin.conf-only path)",
+			name:        "workload + netbird block but no dns: false",
 			clusterType: constants.ClusterTypeWorkload,
-			keycloak:    nil,
+			netbird:     &config.NetBirdConfig{DNSZone: "acme.local"},
+			want:        false,
+		},
+		{
+			name:        "workload + no netbird block: false (admin.conf-only path)",
+			clusterType: constants.ClusterTypeWorkload,
+			netbird:     nil,
 			want:        false,
 		},
 		{
 			// VPN clusters get the operator unconditionally — the cluster
 			// itself runs NetBird Mgmt, so the operator's CRDs are how
 			// routing-peer wiring gets declared.
-			name:        "vpn cluster + managed keycloak: true",
+			name:        "vpn cluster: true",
 			clusterType: constants.ClusterTypeVPN,
-			keycloak:    &config.KeycloakConfig{Mode: "managed", DNS: "kc.acme.com"},
+			netbird:     &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"},
 			want:        true,
 		},
 		{
-			name:        "vpn cluster, no keycloak: true (nil-safe)",
+			name:        "vpn cluster, no netbird block: true (nil-safe)",
 			clusterType: constants.ClusterTypeVPN,
-			keycloak:    nil,
+			netbird:     nil,
 			want:        true,
 		},
 	}
@@ -65,7 +71,7 @@ func TestOperatorEnabled(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			withFreshGeneralConfig(t, func() {
 				config.ParsedGeneralConfig.Cluster.Type = tc.clusterType
-				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
+				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
 
 				assert.Equal(t, tc.want, OperatorEnabled())
 			})
@@ -73,63 +79,32 @@ func TestOperatorEnabled(t *testing.T) {
 	}
 }
 
-func TestExpectedHost(t *testing.T) {
-	cases := []struct {
-		name        string
-		keycloakDNS string
-		want        string
-	}{
-		{"conventional keycloak.<base> name", "keycloak.vpn.acme.com", "netbird.vpn.acme.com"},
-		{"deeper base is preserved", "keycloak.k8s.acme.io", "netbird.k8s.acme.io"},
-		{"off-convention DNS yields empty (no guess)", "auth.acme.com", ""},
-		{"empty DNS yields empty", "", ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, ExpectedHost(tc.keycloakDNS))
-		})
-	}
-}
-
 func TestManagementURL(t *testing.T) {
 	cases := []struct {
-		name     string
-		netbird  *config.NetBirdConfig
-		keycloak *config.KeycloakConfig
-		want     string
+		name    string
+		netbird *config.NetBirdConfig
+		want    string
 	}{
 		{
-			name:     "vpn cluster: cluster.netbird.dns is authoritative",
-			netbird:  &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"},
-			keycloak: &config.KeycloakConfig{DNS: "keycloak.other.acme.com"},
-			want:     "https://netbird.vpn.acme.com",
+			name:    "netbird.dns set: authoritative",
+			netbird: &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"},
+			want:    "https://netbird.vpn.acme.com",
 		},
 		{
-			name:     "workload: derived from the keycloak DNS convention",
-			netbird:  nil,
-			keycloak: &config.KeycloakConfig{DNS: "keycloak.vpn.acme.com"},
-			want:     "https://netbird.vpn.acme.com",
+			name:    "netbird block but no dns: empty",
+			netbird: &config.NetBirdConfig{DNSZone: "acme.local"},
+			want:    "",
 		},
 		{
-			// The operator binary would fall back to NetBird Cloud; better
-			// to render nothing and let the gate instructions cover it.
-			name:     "workload, off-convention keycloak DNS: empty (no guess)",
-			netbird:  nil,
-			keycloak: &config.KeycloakConfig{DNS: "auth.acme.com"},
-			want:     "",
-		},
-		{
-			name:     "no keycloak block: empty",
-			netbird:  nil,
-			keycloak: nil,
-			want:     "",
+			name:    "no netbird block: empty",
+			netbird: nil,
+			want:    "",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			withFreshGeneralConfig(t, func() {
 				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
-				config.ParsedGeneralConfig.Cluster.Keycloak = tc.keycloak
 
 				assert.Equal(t, tc.want, ManagementURL())
 			})

@@ -256,26 +256,6 @@ injection is the worst-case loss; an unwedged cluster is the win.
 Belongs with the broader operator-config TODO above, but worth
 shipping standalone if that wider work slips.
 
-### Hard-fail `kubeaid-cli login` on a NetBird mesh mismatch
-
-`pickCluster` (`cmd/kubeaid-cli/login/login.go`) compares the local
-NetBird daemon's management URL against `global.NetBird.ManagementURL`
-from klist's `global.yaml`, but a mismatch only emits a `slog.Warn` —
-login then proceeds against whatever mesh the daemon is on, leaving
-the user with an easy-to-miss warning and a wrong or empty cluster
-list.
-
-The `bootstrap` pre-flight (`requireOperatorOnNetBird`) was made to
-hard-fail on exactly this mismatch — see `fix(netbird): verify the
-bootstrap operator is on the right mesh`. `login` should get the same
-treatment: turn the warn-only branch in `pickCluster` into a returned
-error that tells the user to `netbird up --management-url` against the
-right server first.
-
-Deferred rather than bundled into the bootstrap fix because `login`
-keys off klist's `global.yaml`, not `general.yaml` — a different
-config surface worth handling on its own.
-
 ### Detect `make build` dev versions in `storagectlVersion`
 
 `Makefile:1` injects `VERSION = $(git describe --tags --always --dirty)`

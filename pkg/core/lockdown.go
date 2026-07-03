@@ -75,12 +75,28 @@ func nodeExternalIPs(ctx context.Context, c client.Client, cpOnly bool) ([]strin
 	return ips, nil
 }
 
+// lockdownDecision resolves cluster.lockdown into (run, skipConfirm):
+// nil → interactive (run and prompt); true → pre-approved (run, skip the
+// confirm); false → skip the step entirely.
+func lockdownDecision(ld *bool) (run, skipConfirm bool) {
+	if ld == nil {
+		return true, false
+	}
+	return *ld, *ld
+}
+
 // lockdownInBootstrap runs the host-firewall lockdown step at the end of the
 // bootstrap flow. It is gated: only runs on Hetzner bare-metal after clusterctl
-// move. Operator declining is a graceful skip (info-logged); any actual failure
-// is warn-logged and bootstrap continues — the cluster is already provisioned.
+// move, and honors cluster.lockdown. Operator declining is a graceful skip
+// (info-logged); any actual failure is warn-logged and bootstrap continues —
+// the cluster is already provisioned.
 func lockdownInBootstrap(ctx context.Context, clusterClient client.Client, gitAuthMethod transport.AuthMethod) {
 	if !config.UsingHetznerBareMetal() || !kubernetes.IsClusterctlMoveExecuted(ctx) {
+		return
+	}
+
+	if run, _ := lockdownDecision(config.ParsedGeneralConfig.Cluster.Lockdown); !run {
+		slog.InfoContext(ctx, "Host Firewall (CCNP) lockdown skipped (cluster.lockdown=false)")
 		return
 	}
 
@@ -109,9 +125,12 @@ func runLockdownStep(ctx context.Context, clusterClient client.Client, gitAuthMe
 	accessLine := kubectlAccessLine(ctx, clusterClient)
 
 	// Runs after bar.Finish() in the bootstrap flow, so the confirm prompt has
-	// clean stdout — no progress-bar pause/resume needed.
-	if err := promptLockdownConfirm(accessLine); err != nil {
-		return err
+	// clean stdout — no progress-bar pause/resume needed. cluster.lockdown=true
+	// pre-approves it (CI-safe); nil keeps the interactive confirm.
+	if _, skipConfirm := lockdownDecision(config.ParsedGeneralConfig.Cluster.Lockdown); !skipConfirm {
+		if err := promptLockdownConfirm(accessLine); err != nil {
+			return err
+		}
 	}
 
 	if err := applyCCNP(ctx, clusterClient); err != nil {
