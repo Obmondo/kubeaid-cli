@@ -1,3 +1,8 @@
+{{- /* $preCreatedLB: kubeaid-cli pre-created the control-plane LB (vpn /
+     workload behind a VPN) and CAPH consumes it instead of creating one.
+     The single public CP node is excluded — it has no control-plane LB at
+     all. Nil-safe for non-Hetzner renders. */ -}}
+{{- $preCreatedLB := (and .HetznerConfig (not .HCloudSingleNodePublic) (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster))) -}}
 global:
   clusterName: {{ .ClusterConfig.Name }}
   {{- if .ObmondoConfig }}
@@ -185,7 +190,6 @@ hetzner:
          its runtime info). Workload-not-on-VPN renders neither: CAPH owns
          the LB lifecycle. */ -}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-    {{- $preCreatedLB := (and (not .HCloudSingleNodePublic) (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster))) }}
     {{- if (or .HCloudSingleNodePublic $preCreatedLB) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
@@ -228,9 +232,11 @@ hetzner:
         {{- end }}
       {{- end }}
       loadBalancer:
-        {{- if (or .HCloudSingleNodePublic (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
-        {{- /* Single public node has no LB at all; vpn / workload-behind-VPN use
-             a pre-created one — either way CAPH must not create its own. */}}
+        {{- /* enabled toggles CAPH creating its own control-plane LB. Forced
+             off for the single public node (no LB exists at all) and when
+             kubeaid-cli pre-created the LB (CAPH consumes that one via
+             endpoint.host above). */}}
+        {{- if (or .HCloudSingleNodePublic $preCreatedLB) }}
         enabled: false
         {{- else }}
         enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}
