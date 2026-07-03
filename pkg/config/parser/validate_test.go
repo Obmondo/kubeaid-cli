@@ -205,7 +205,9 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 						Regions: []string{"hel1"},
 						HCloud: &config.HCloudControlPlane{
 							MachineType: "cax11",
-							Replicas:    1,
+							// Multi-CP so this exercises the LB-endpoint validation, not the
+							// single-node public control-plane path (which has no LB).
+							Replicas: 3,
 							LoadBalancer: config.HCloudControlPlaneLoadBalancer{
 								Enabled:  true,
 								Region:   "hel1",
@@ -235,6 +237,50 @@ func TestValidateConfigsHetznerControlPlaneLoadBalancerEndpoint(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+// TestValidateHCloudSingleNodePublicEndpointRequired: the single-node public
+// control-plane has no load balancer, and CAPH needs the apiserver endpoint at
+// manifest time (before the node's IP exists), so an empty
+// controlPlane.hcloud.loadBalancer.endpoint must be rejected. The check runs
+// before the API-backed RAM check, so no cloud-provider stub is needed.
+func TestValidateHCloudSingleNodePublicEndpointRequired(t *testing.T) {
+	orig := config.ParsedGeneralConfig
+	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
+
+	singleNodeCP := func(endpoint string) *config.GeneralConfig {
+		return &config.GeneralConfig{
+			Cluster: config.ClusterConfig{Type: constants.ClusterTypeVPN},
+			Cloud: config.CloudConfig{
+				Hetzner: &config.HetznerConfig{
+					Mode: constants.HetznerModeHCloud,
+					ControlPlane: config.HetznerControlPlane{
+						HCloud: &config.HCloudControlPlane{
+							Replicas:     1,
+							MachineType:  "cpx41",
+							LoadBalancer: config.HCloudControlPlaneLoadBalancer{Endpoint: endpoint},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	t.Run("empty endpoint is rejected", func(t *testing.T) {
+		config.ParsedGeneralConfig = singleNodeCP("")
+		err := validateHCloudSingleNodePublic(context.Background())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "endpoint")
+	})
+
+	t.Run("not the single-node topology: check is a no-op", func(t *testing.T) {
+		// An HCloud worker node-group disqualifies the single-node topology, so
+		// the guard returns nil before any endpoint or RAM check.
+		cfg := singleNodeCP("")
+		cfg.Cloud.Hetzner.NodeGroups.HCloud = []config.HCloudAutoScalableNodeGroup{{}}
+		config.ParsedGeneralConfig = cfg
+		assert.NoError(t, validateHCloudSingleNodePublic(context.Background()))
+	})
 }
 
 func TestValidateLabelsAndTaints(t *testing.T) {

@@ -100,3 +100,63 @@ func TestRookCephEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestHCloudSingleNodePublic(t *testing.T) {
+	original := ParsedGeneralConfig
+	defer func() { ParsedGeneralConfig = original }()
+
+	// build assembles a Hetzner cluster config: cluster type, hetzner mode,
+	// control-plane replicas (0 => no HCloud control-plane block at all), and a
+	// count of HCloud worker node-groups.
+	build := func(clusterType, mode string, cpReplicas, hcloudNodeGroups int) *GeneralConfig {
+		hetzner := &HetznerConfig{Mode: mode}
+		if cpReplicas > 0 {
+			hetzner.ControlPlane.HCloud = &HCloudControlPlane{Replicas: uint(cpReplicas)}
+		}
+		for range hcloudNodeGroups {
+			hetzner.NodeGroups.HCloud = append(hetzner.NodeGroups.HCloud, HCloudAutoScalableNodeGroup{})
+		}
+		return &GeneralConfig{
+			Cluster: ClusterConfig{Type: clusterType},
+			Cloud:   CloudConfig{Hetzner: hetzner},
+		}
+	}
+
+	// workloadBehindVPN is a single hcloud node connecting to an existing VPN
+	// (hcloudVPNCluster set) — it must stay private behind that mesh.
+	workloadBehindVPN := build(constants.ClusterTypeWorkload, constants.HetznerModeHCloud, 1, 0)
+	workloadBehindVPN.Cloud.Hetzner.HCloudVPNCluster = &HCloudVPNClusterConfig{Name: "some-vpn"}
+
+	tests := []struct {
+		name string
+		cfg  *GeneralConfig
+		want bool
+	}{
+		// Applies regardless of cluster.type — the decision is about the
+		// node's shape, not its role.
+		{"single hcloud node, vpn type", build(constants.ClusterTypeVPN, constants.HetznerModeHCloud, 1, 0), true},
+		{"single hcloud node, workload type", build(constants.ClusterTypeWorkload, constants.HetznerModeHCloud, 1, 0), true},
+		{"single hcloud node, management type", build(constants.ClusterTypeManagement, constants.HetznerModeHCloud, 1, 0), true},
+		{"single hcloud node, main type", build(constants.ClusterTypeMain, constants.HetznerModeHCloud, 1, 0), true},
+		// Disqualifiers.
+		{"multi-CP is not single-node", build(constants.ClusterTypeVPN, constants.HetznerModeHCloud, 3, 0), false},
+		{"an hcloud worker node-group disqualifies it", build(constants.ClusterTypeWorkload, constants.HetznerModeHCloud, 1, 1), false},
+		// Hybrid is intrinsically private (private network to bare-metal workers).
+		{"hybrid is never single-node public", build(constants.ClusterTypeVPN, constants.HetznerModeHybrid, 1, 0), false},
+		{"bare-metal mode", build(constants.ClusterTypeMain, constants.HetznerModeBareMetal, 1, 0), false},
+		{"no hcloud control-plane block", build(constants.ClusterTypeWorkload, constants.HetznerModeHCloud, 0, 0), false},
+		// Workload connecting to an existing VPN stays private behind that mesh.
+		{"workload behind an existing VPN", workloadBehindVPN, false},
+		{
+			"nil hetzner",
+			&GeneralConfig{Cluster: ClusterConfig{Type: constants.ClusterTypeWorkload}, Cloud: CloudConfig{Hetzner: nil}},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ParsedGeneralConfig = tt.cfg
+			assert.Equal(t, tt.want, HCloudSingleNodePublic())
+		})
+	}
+}

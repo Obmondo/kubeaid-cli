@@ -427,7 +427,7 @@ func validateHetznerConfig(ctx context.Context) error {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
-		if err := validateHCloudSingleNodePublicVPN(ctx); err != nil {
+		if err := validateHCloudSingleNodePublic(ctx); err != nil {
 			return err
 		}
 	}
@@ -490,10 +490,10 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 	return nil
 }
 
-// validateHCloudSingleNodePublicVPN enforces the one hard requirement of the
-// single-node public-control-plane VPN topology (config.HCloudSingleNodePublicVPN):
+// validateHCloudSingleNodePublic enforces the one hard requirement of the
+// single-node public control-plane topology (config.HCloudSingleNodePublic):
 // the CP node runs the whole cluster on its own, so its machineType needs
-// >= 8 GB RAM. The topology itself is derived (VPN + 1 HCloud CP replica + no
+// >= 8 GB RAM. The topology itself is derived (pure-HCloud + 1 CP replica + no
 // HCloud workers), not opted into, so there's nothing else to validate.
 //
 // The control-plane endpoint (loadBalancer.endpoint) is intentionally not
@@ -501,9 +501,21 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 // time, so the operator can't supply it up front — it may be empty (the
 // discovered node IP is used directly) or a DNS name they point at the node
 // afterwards. The not-an-IP rule above still applies.
-func validateHCloudSingleNodePublicVPN(ctx context.Context) error {
-	if !config.HCloudSingleNodePublicVPN() {
+func validateHCloudSingleNodePublic(ctx context.Context) error {
+	if !config.HCloudSingleNodePublic() {
 		return nil
+	}
+
+	// The apiserver sits directly on the CP node's public IPv4, reached via
+	// this DNS name (the operator points it at the node IP that bootstrap
+	// prints post-provision). It cannot be empty: there is no control-plane LB
+	// to fall back to, and CAPH needs the endpoint at manifest-render time —
+	// before the node's IP exists — so it must be a hostname known up front.
+	if config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+		return errors.New(
+			"a single-node HCloud cluster has no control-plane load balancer, so " +
+				"cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint must be set to the api DNS " +
+				"name you will point at the control-plane node's public IP")
 	}
 
 	machineType := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.MachineType
@@ -513,7 +525,7 @@ func validateHCloudSingleNodePublicVPN(ctx context.Context) error {
 	}
 	if specs.Memory < 8 {
 		return fmt.Errorf(
-			"a single-control-plane HCloud VPN cluster runs entirely on the one node, so its "+
+			"a single-node HCloud cluster runs entirely on the one node, so its "+
 				"machineType needs >= 8 GB RAM; %q has %d GB", machineType, specs.Memory)
 	}
 

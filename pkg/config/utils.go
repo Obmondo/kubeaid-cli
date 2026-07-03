@@ -89,27 +89,37 @@ func CoturnFloatingIPEnabled() bool {
 	return ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.Replicas > 1
 }
 
-// HCloudSingleNodePublicVPN reports whether this is the single-node
-// public-control-plane VPN topology: an HCloud VPN cluster with exactly one
-// control-plane replica and no HCloud worker node-groups. In that case
-// kubeaid-cli skips the NAT gateway + control-plane LB and puts the CP node on
-// a primary public IPv4 that api / stun / turn resolve to (netbird / keycloak
-// still go through the Traefik ingress LB). Derived, not opted into — the
-// counterpart of CoturnFloatingIPEnabled (which keys off Replicas > 1). A
-// private worker node-group would have no NAT gateway to egress through, so the
-// topology only holds for a single, standalone public node.
-func HCloudSingleNodePublicVPN() bool {
-	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
+// HCloudSingleNodePublic reports whether this is the single-node public
+// control-plane topology: a pure-HCloud cluster with exactly one control-plane
+// replica and no HCloud worker node-groups. In that case kubeaid-cli skips the
+// NAT gateway + control-plane LB and puts the lone CP node on a public IPv4
+// that the apiserver endpoint resolves to via the operator's DNS name (on VPN
+// clusters, api / stun / turn point there too; netbird / keycloak still go
+// through the Traefik ingress LB). Derived, not opted into — the counterpart of
+// CoturnFloatingIPEnabled (which keys off Replicas > 1).
+//
+// It applies regardless of cluster.type (vpn, main, workload, management): the
+// decision is about the node's shape, not its role. Excluded:
+//   - hybrid mode — intrinsically private (an HCloud private network links it
+//     to its bare-metal workers).
+//   - workload clusters connecting to an existing VPN (hcloudVPNCluster set) —
+//     those nodes sit privately behind that VPN's mesh.
+//
+// A private worker node-group would have no NAT gateway to egress through, so
+// the topology only holds for a single, standalone public node.
+func HCloudSingleNodePublic() bool {
+	hetzner := ParsedGeneralConfig.Cloud.Hetzner
+	if hetzner == nil || hetzner.Mode != constants.HetznerModeHCloud {
 		return false
 	}
-	if !UsingHCloud() {
+	if hetzner.HCloudVPNCluster != nil {
 		return false
 	}
-	cp := ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud
+	cp := hetzner.ControlPlane.HCloud
 	if cp == nil || cp.Replicas != 1 {
 		return false
 	}
-	return len(ParsedGeneralConfig.Cloud.Hetzner.NodeGroups.HCloud) == 0
+	return len(hetzner.NodeGroups.HCloud) == 0
 }
 
 // Returns whether we're using Hetzner Bare Metal.

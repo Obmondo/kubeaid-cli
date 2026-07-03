@@ -98,6 +98,13 @@ provider:
 
 hetzner:
   mode: {{ .HetznerConfig.Mode }}
+  {{- if .HCloudSingleNodePublic }}
+  {{- /* Single public control-plane node: no private HCloud network, no NAT.
+       network.type=public flips the CP HCloudMachineTemplate to a public IPv4
+       and drops the HetznerCluster hcloudNetwork block. */}}
+  network:
+    type: public
+  {{- end }}
 
   sshKeyPair:
     name: {{ .HetznerConfig.SSHKeyPair.Name }}
@@ -191,7 +198,12 @@ hetzner:
          For workload-not-on-VPN clusters this whole block is
          skipped and CAPH handles LB lifecycle on its own. */ -}}
     {{- if (or (eq .HetznerConfig.Mode "hcloud") (eq .HetznerConfig.Mode "hybrid")) }}
-    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+    {{- if .HCloudSingleNodePublic }}
+    {{- /* Single public CP node: apiserver endpoint only — there is no
+         pre-created LB, so no loadBalancer.privateIP to surface. */}}
+    endpoint:
+      host: {{ .ControlPlaneEndpoint }}
+    {{- else if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
     endpoint:
       host: {{ .ControlPlaneEndpoint }}
     loadBalancer:
@@ -231,7 +243,9 @@ hetzner:
         {{- end }}
       {{- end }}
       loadBalancer:
-        {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+        {{- if (or .HCloudSingleNodePublic (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+        {{- /* Single public node has no LB at all; vpn / workload-behind-VPN use
+             a pre-created one — either way CAPH must not create its own. */}}
         enabled: false
         {{- else }}
         enabled: {{ .HetznerConfig.ControlPlane.HCloud.LoadBalancer.Enabled }}

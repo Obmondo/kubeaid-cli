@@ -20,14 +20,17 @@ ccm-hetzner:
            DISABLE_PUBLIC_NETWORK (LB frontend, no public IP) is workload-behind-VPN
            only — a vpn-type cluster hosts its own public-facing LBs (Keycloak /
            NetBird ingress) and those must keep a public frontend.
-           USE_PRIVATE_IP (LB backend target attachment) applies to both — HCloud
-           nodes have no public interface on either topology, so ccm-hcloud can
-           only attach them as LB targets over the private network. */}}
+           USE_PRIVATE_IP (LB backend target attachment) applies to the
+           private-network topologies — those HCloud nodes have no public
+           interface, so ccm-hcloud can only attach them as LB targets over
+           the private network. The single-node public control-plane is the exception:
+           its node has a public interface and no private network, so targets
+           attach over the public IP. */}}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:
       value: "true"
     {{- end }}
-    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+    {{- if (and (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) (not .HCloudSingleNodePublic)) }}
     HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
       value: "true"
     {{- end }}
@@ -41,8 +44,10 @@ ccm-hetzner:
          - Hybrid clusters: the HCloud control-plane nodes sit on a private network
            to communicate with bare-metal workers; without networking=true hccm never
            sets InternalIP on them, the apiserver cannot reach the kubelet, and
-           control-plane scale-up stalls on etcd health. */}}
-  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) (eq .HetznerConfig.Mode "hybrid")) }}
+           control-plane scale-up stalls on etcd health.
+       Excluded for the single-node public control-plane: there is no private network to
+       route through — the node's InternalIP comes from its public interface. */}}
+  {{- if (and (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) (eq .HetznerConfig.Mode "hybrid")) (not .HCloudSingleNodePublic)) }}
   networking:
     enabled: true
   {{- end }}
