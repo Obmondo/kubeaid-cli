@@ -164,7 +164,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// of leaning on the alphabetical order ArgoCD's List returns.
 	bar.Describe("Syncing ArgoCD applications")
 	var orderedApps []kubernetes.AppSyncStep
-	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
+	if config.VPNClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
 		// ccm-hcloud manages LoadBalancers for HCloud nodes and must be up before
 		// traefik so the ingress LB Service gets an IP. ccm-hetzner (bare-metal /
 		// hybrid) follows; it doesn't own LBs so traefik-ordering is less critical
@@ -185,7 +185,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			},
 		})
 	}
-	if vpnClusterEnabled() {
+	if config.VPNClusterEnabled() {
 		// cert-manager must be running before keycloakx / netbird sync
 		// so it can issue their Ingress certs. After each of those
 		// syncs, gate on the Certificate object itself being Ready —
@@ -202,7 +202,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		// apps loop happens to sync cnpg, which can be much later.
 		orderedApps = append(orderedApps,
 			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCloudNativePG})
-		if managedKeycloakEnabled() {
+		if config.ManagedKeycloakEnabled() {
 			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 				Name:      constants.ArgoCDAppKeycloakx,
 				AfterSync: keycloakxAfterSync(mainClusterClient),
@@ -320,7 +320,7 @@ func readKeycloakAdminPasswordForPanel(
 	ctx context.Context,
 	clusterClient client.Client,
 ) string {
-	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return ""
 	}
 	password, err := readSecretValue(ctx, clusterClient,
@@ -461,7 +461,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Sync cluster-autoscaler on AWS or Azure workload clusters.
 	// Skip Hetzner (chart wiring not in place), bare-metal (no
 	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
-	if !vpnClusterEnabled() &&
+	if !config.VPNClusterEnabled() &&
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")

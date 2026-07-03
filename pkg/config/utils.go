@@ -108,6 +108,26 @@ func HCloudSingleNodePublic() bool {
 	return len(hetzner.NodeGroups.HCloud) == 0
 }
 
+// VPNClusterEnabled reports whether to render the VPN-cluster-wide
+// infrastructure (cnpg, traefik, the netbird SealedSecrets, the postgres DSN
+// patch): any VPN cluster with a keycloak block, regardless of Keycloak mode —
+// NetBird itself runs in-cluster either way. Workload clusters: false.
+func VPNClusterEnabled() bool {
+	cluster := ParsedGeneralConfig.Cluster
+	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
+}
+
+// ManagedKeycloakEnabled reports whether kubeaid-cli installs Keycloak itself
+// (the keycloakx app, keycloak-admin SealedSecret, realm reconciler): a VPN
+// cluster with keycloak.mode=managed. Nil-safe; workload clusters: false.
+func ManagedKeycloakEnabled() bool {
+	cluster := ParsedGeneralConfig.Cluster
+	if cluster.Type != constants.ClusterTypeVPN || cluster.Keycloak == nil {
+		return false
+	}
+	return cluster.Keycloak.Mode == constants.KeycloakModeManaged
+}
+
 // Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
 	if ParsedGeneralConfig.Cloud.Hetzner == nil {

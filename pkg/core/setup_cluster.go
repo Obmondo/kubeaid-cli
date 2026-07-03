@@ -103,13 +103,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	//   - keycloakx       : only when managed (keycloak-admin
 	//                       SealedSecret consumed by the chart's
 	//                       pre-install hook).
-	if vpnClusterEnabled() {
+	if config.VPNClusterEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceCloudNativePG,
 			constants.NamespaceNetBird,
 		)
 	}
-	if managedKeycloakEnabled() {
+	if config.ManagedKeycloakEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceKeycloak,
 		)

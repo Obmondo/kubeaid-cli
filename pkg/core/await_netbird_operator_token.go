@@ -22,6 +22,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
 )
 
 // netBirdOperatorSecretName + namespace match the chart's
@@ -240,13 +241,13 @@ func printNetBirdSecretPersistenceNote() {
 	lines = append(lines, sealedSecretCommandLines("       ")...)
 	lines = append(lines, "")
 
-	printNextStepsBox("NetBird API key saved (one-off)", lines)
+	ui.PrintNextStepsBox("NetBird API key saved (one-off)", lines)
 }
 
 // printNetBirdSetupDeferred tells the operator lockdown + the LB disable were
 // skipped (no mesh key yet = no way back in) and how to finish later.
 func printNetBirdSetupDeferred() {
-	printNextStepsBox("NetBird setup deferred — cluster left reachable", []string{
+	ui.PrintNextStepsBox("NetBird setup deferred — cluster left reachable", []string{
 		"",
 		"  No NetBird API key yet, so kubeaid-cli did NOT lock down the cluster:",
 		"    - host firewall not applied",
@@ -267,7 +268,7 @@ func printNetBirdSetupDeferred() {
 // Keycloak SSO, so a realm user must exist first. No-op without a locally
 // managed Keycloak; an empty password falls back to the kubectl-fetch row.
 func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
-	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return
 	}
 	cluster := config.ParsedGeneralConfig.Cluster
@@ -282,11 +283,11 @@ func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
 		"",
 	}
 	lines = append(lines,
-		keycloakAdminLoginLines(cluster.Keycloak.DNS, cluster.Keycloak.Realm, keycloakAdminPassword)...,
+		ui.KeycloakAdminLoginLines(cluster.Keycloak.DNS, cluster.Keycloak.Realm, keycloakAdminPassword)...,
 	)
 	lines = append(lines, "")
 
-	printNextStepsBox("Create your Keycloak login first", lines)
+	ui.PrintNextStepsBox("Create your Keycloak login first", lines)
 }
 
 // netbirdDashboardHost returns the NetBird dashboard hostname for the
@@ -446,5 +447,5 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 		"",
 	)
 
-	printNextStepsBox("NetBird operator API key required", lines)
+	ui.PrintNextStepsBox("NetBird operator API key required", lines)
 }

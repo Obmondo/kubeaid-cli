@@ -8,10 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattn/go-runewidth"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
 )
 
 // printPostBootstrapNextSteps renders a "next steps" panel at the
@@ -46,7 +44,7 @@ import (
 // to each line and break the box. Called after bar.Finish(), so
 // there's no live spinner to clash with.
 func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Duration) {
-	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return
 	}
 	cluster := config.ParsedGeneralConfig.Cluster
@@ -65,7 +63,7 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 		"  1. Sign in to Keycloak admin and create a user",
 		"",
 	}
-	lines = append(lines, keycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword)...)
+	lines = append(lines, ui.KeycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword)...)
 	lines = append(lines,
 		"",
 		"  2. Join the NetBird mesh with that user",
@@ -81,7 +79,7 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 	if elapsed > 0 {
 		title = "Bootstrap complete in " + formatBootstrapDuration(elapsed) + " — next steps"
 	}
-	printNextStepsBox(title, lines)
+	ui.PrintNextStepsBox(title, lines)
 }
 
 // formatBootstrapDuration renders d as a short, human-friendly
@@ -106,90 +104,5 @@ func formatBootstrapDuration(d time.Duration) string {
 		fmt.Fprintf(&b, "%dm ", m)
 	}
 	fmt.Fprintf(&b, "%ds", s)
-	return b.String()
-}
-
-// keycloakAdminLoginLines returns the console / user / password / realm
-// rows for signing in to the Keycloak admin console and adding a user.
-// Shared by the final next-steps panel (as step 1) and the pre-NetBird-
-// gate prompt in awaitNetBirdOperatorToken, so both render identical
-// rows — including the same live-password vs kubectl-fallback logic.
-func keycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword string) []string {
-	return []string{
-		"       Console   https://" + keycloakDNS + "/auth/admin/",
-		"       User      " + constants.KeycloakAdminUsername,
-		keycloakPasswordLine(keycloakAdminPassword),
-		"       Realm     \"" + realm + "\" → Users → Add user (set password under the Credentials tab)",
-	}
-}
-
-// keycloakPasswordLine returns the "Password" row of the next-steps
-// panel. When keycloakAdminPassword is non-empty it's printed inline
-// — the friendly path that works after the control-plane LB's public
-// IP is disabled, because the operator doesn't have to reach
-// kube-apiserver at all to read it. Empty triggers the kubectl-fetch
-// fallback the operator can run from inside the NAT gateway / VPN.
-func keycloakPasswordLine(keycloakAdminPassword string) string {
-	const prefix = "       Password  "
-	if keycloakAdminPassword != "" {
-		return prefix + keycloakAdminPassword
-	}
-	cmd := fmt.Sprintf(
-		"kubectl get secret -n %s %s -o jsonpath='{.data.%s}' | base64 -d",
-		constants.NamespaceKeycloak,
-		constants.SecretNameKeycloakAdmin,
-		constants.SecretKeyKeycloakPassword,
-	)
-	return prefix + "$ " + cmd
-}
-
-// printNextStepsBox renders the box and writes it to stdout. Thin
-// wrapper over renderNextStepsBox so the formatting itself stays
-// pure-and-testable.
-func printNextStepsBox(title string, lines []string) {
-	fmt.Print(renderNextStepsBox(title, lines))
-}
-
-// renderNextStepsBox returns title + lines wrapped in a rounded-corner
-// Unicode box, no line-wrapping: the box widens to fit the longest
-// line so every line — most importantly the Keycloak password kubectl
-// command — stays intact for copy-paste.
-//
-// Differs from pkg/config/prompt.printBox, which wraps overlong
-// content to the terminal width and is right for variable-length
-// config summaries but would split the kubectl one-liner here.
-func renderNextStepsBox(title string, lines []string) string {
-	width := runewidth.StringWidth(title) + 4
-	for _, l := range lines {
-		if w := runewidth.StringWidth(l); w > width {
-			width = w
-		}
-	}
-
-	// Content is padded to width+1 so the longest line still gets one
-	// trailing space inside the box — matches the leading space after
-	// ╭─ in the top border, so the visual gutter is symmetric.
-	pad := func(s string) string {
-		gap := width + 1 - runewidth.StringWidth(s)
-		if gap <= 0 {
-			return s
-		}
-		return s + strings.Repeat(" ", gap)
-	}
-
-	var b strings.Builder
-
-	// Top border: ╭─ Title ───…─╮
-	topFill := width - runewidth.StringWidth(title) - 2
-	if topFill < 1 {
-		topFill = 1
-	}
-	fmt.Fprintf(&b, "\n╭─ %s %s╮\n", title, strings.Repeat("─", topFill))
-
-	for _, l := range lines {
-		fmt.Fprintf(&b, "│%s│\n", pad(l))
-	}
-
-	fmt.Fprintf(&b, "╰%s╯\n\n", strings.Repeat("─", width+1))
 	return b.String()
 }

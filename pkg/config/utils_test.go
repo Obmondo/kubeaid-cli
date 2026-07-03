@@ -101,6 +101,86 @@ func TestRookCephEnabled(t *testing.T) {
 	}
 }
 
+func TestManagedKeycloakEnabled(t *testing.T) {
+	original := ParsedGeneralConfig
+	defer func() { ParsedGeneralConfig = original }()
+
+	tests := []struct {
+		name        string
+		clusterType string
+		keycloak    *KeycloakConfig
+		want        bool
+	}{
+		{"workload cluster without keycloak block", constants.ClusterTypeWorkload, nil, false},
+		{"vpn cluster without keycloak block (nil-safe)", constants.ClusterTypeVPN, nil, false},
+		{
+			"vpn cluster with mode=external",
+			constants.ClusterTypeVPN,
+			&KeycloakConfig{Mode: "external", DNS: "keycloak.demo.example.com"},
+			false,
+		},
+		{
+			"vpn cluster with mode=managed",
+			constants.ClusterTypeVPN,
+			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			true,
+		},
+		{
+			// Schema validation rejects this at parse time, but the gate must
+			// stay nil-safe and false rather than render a broken config.
+			"workload cluster with managed keycloak (defensive)",
+			constants.ClusterTypeWorkload,
+			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ParsedGeneralConfig = &GeneralConfig{}
+			ParsedGeneralConfig.Cluster.Type = tt.clusterType
+			ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
+			assert.Equal(t, tt.want, ManagedKeycloakEnabled())
+		})
+	}
+}
+
+func TestVPNClusterEnabled(t *testing.T) {
+	original := ParsedGeneralConfig
+	defer func() { ParsedGeneralConfig = original }()
+
+	tests := []struct {
+		name        string
+		clusterType string
+		keycloak    *KeycloakConfig
+		want        bool
+	}{
+		{"workload cluster", constants.ClusterTypeWorkload, nil, false},
+		{"vpn cluster without keycloak block (nil-safe)", constants.ClusterTypeVPN, nil, false},
+		{
+			"vpn cluster + managed",
+			constants.ClusterTypeVPN,
+			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			true,
+		},
+		{
+			// External Keycloak still needs the VPN-cluster infra — only the
+			// Keycloak install itself differs.
+			"vpn cluster + external",
+			constants.ClusterTypeVPN,
+			&KeycloakConfig{Mode: "external", DNS: "auth.demo.example.com"},
+			true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ParsedGeneralConfig = &GeneralConfig{}
+			ParsedGeneralConfig.Cluster.Type = tt.clusterType
+			ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
+			assert.Equal(t, tt.want, VPNClusterEnabled())
+		})
+	}
+}
+
 func TestHCloudSingleNodePublic(t *testing.T) {
 	original := ParsedGeneralConfig
 	defer func() { ParsedGeneralConfig = original }()
