@@ -1,4 +1,43 @@
 - - -
+## v0.29.5 - 2026-07-03
+#### Features
+- (**config**) re-running config generate edits the existing config - (d12c763) - Ashish Jaiswal
+- (**config**) default kube-prometheus to v0.18.0; support k8s 1.36 - (3b4f903) - Ashish Jaiswal
+- (**hetzner**) render single-node public control-plane for any cluster type - (497c31b) - Ashish Jaiswal
+- (**hetzner**) skip the NAT gateway for the single-node public VPN topology - (2c675a9) - Ashish Jaiswal
+- (**hetzner**) derive the single-node public-control-plane VPN topology - (524d0af) - Ashish Jaiswal
+- (**netbird**) show the kubeseal SealedSecret command for durable token setup - (7f2522b) - Ashish Jaiswal
+- (**netbird**) interactive API-key gate with paste-now, wait, or defer - (3491152) - Ashish Jaiswal
+- (**netbird**) render netbird-operator networkRouter/networkResources/clusterProxy from config - (8dd47ef) - Ashish Jaiswal
+- (**prompt**) collect the NetBird API key for workload clusters - (f291513) - Ashish Jaiswal
+- (**prompt**) ask for the internal apps domain in plain terms - (dc13ca9) - Ashish Jaiswal
+- (**traefik**) enable internal traefik-internal instance when a NetBird Mgmt key is set - (48b27c1) - Ashish Jaiswal
+#### Bug Fixes
+- (**argocd**) recover helm release stuck in non-deployed state via upgrade - (b9e9039) - Ashish Jaiswal
+- (**bootstrap**) run host-firewall lockdown before disabling the control-plane LB - (0aa82a0) - Ashish Jaiswal
+- (**hetzner**) default LB private-IP targets on vpn-type clusters - (13ca7bd) - Ashish Jaiswal
+- (**netbird**) reject a mesh DNS zone equal to the control-plane or Mgmt domain - (822a258) - Ashish Jaiswal
+- (**prompt**) Early Adopter risk is Medium, not Medium-High - (3fc4b0b) - Ashish Jaiswal
+- (**vpn**) print Keycloak create-user box before the NetBird operator gate - (43cbca4) - Ashish Jaiswal
+#### Documentation
+- (**hetzner**) cut the storage-plan VG0.Size comment to the why - (9c01d95) - Ashish Jaiswal
+- (**netbird**) plain-language token prompt; trim the operator values header - (1eee77f) - Ashish Jaiswal
+- (**netbird**) record the mesh-objects TODO; cut comments to purpose + why - (dd8a3e4) - Ashish Jaiswal
+#### Tests
+- (**config**) fix the HCloud control-plane LB endpoint validation test - (6fd9c76) - Ashish Jaiswal
+#### Refactoring
+- (**hetzner**) reuse $preCreatedLB for loadBalancer.enabled - (7554706) - Ashish Jaiswal
+- (**hetzner**) name the chart-values topology conditions - (8a11899) - Ashish Jaiswal
+- (**netbird**) move bootstrap-side NetBird orchestration to pkg/core/netbird - (d4e70e7) - Ashish Jaiswal
+- (**netbird**) drop clusterProxy.clusterName, derive from cluster.name - (84261ff) - Ashish Jaiswal
+- (**netbird**) drive operator router + traefik-internal resource from convention, not config - (8113ce9) - Ashish Jaiswal
+- (**traefik**) deploy traefik-internal as its own ArgoCD app - (7b3fc90) - Ashish Jaiswal
+- (**ui,config**) extract shared next-steps UI and cluster predicates - (2c45235) - Ashish Jaiswal
+#### Miscellaneous Chores
+- anonymize real cluster names in fixtures and comments - (14f91df) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.4 - 2026-07-01
 #### Features
 - (**capi**) wait for control-plane rollout to settle before workload installs - (ae0309e) - Ashish Jaiswal
