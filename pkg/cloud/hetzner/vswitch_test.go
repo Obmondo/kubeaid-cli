@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -200,57 +201,172 @@ func TestCreateVSwitch(t *testing.T) {
 	}
 }
 
-func TestAttachServerToVSwitch(t *testing.T) {
+func TestAttachServersToVSwitch(t *testing.T) {
 	t.Parallel()
+
+	const vswitchID = 50
 
 	inProcessBody := fmt.Sprintf(
 		`{"error":{"status":409,"code":%q,"message":"in process"}}`,
 		constants.HRobotVSwitchInProcessErrorCode,
 	)
+	emptyVSwitchBody := fmt.Sprintf(`{"id":%d,"server":[]}`, vswitchID)
+
+	// serverJSON renders a GET /vswitch/{id} body with the given
+	// servers all at the given status.
+	serverJSON := func(status string, ids ...int) string {
+		parts := make([]string, len(ids))
+		for i, id := range ids {
+			parts[i] = fmt.Sprintf(`{"server_number":%d,"status":%q}`, id, status)
+		}
+		return fmt.Sprintf(`{"id":%d,"server":[%s]}`, vswitchID, strings.Join(parts, ","))
+	}
 
 	tests := []struct {
 		name       string
-		serverID   string
-		vswitchID  int
+		serverIDs  []string
 		handler    http.HandlerFunc
 		wantErr    bool
 		wantErrMsg string
 	}{
 		{
-			name:      "success on HTTP 201",
-			serverID:  "100",
-			vswitchID: 50,
+			// POST all servers in one call, then poll until both are
+			// "ready" — "in process" is not "done".
+			name:      "attaches all servers and waits until ready",
+			serverIDs: []string{"100", "200"},
+			handler: func() http.HandlerFunc {
+				var gets atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						assert.Equal(t, "/vswitch/50/server", r.URL.Path)
+						require.NoError(t, r.ParseForm())
+						assert.ElementsMatch(t, []string{"100", "200"}, r.PostForm["server[]"])
+						w.WriteHeader(http.StatusCreated)
+					case http.MethodGet:
+						assert.Equal(t, "/vswitch/50", r.URL.Path)
+						switch gets.Add(1) {
+						case 1:
+							_, _ = fmt.Fprint(w, emptyVSwitchBody)
+						case 2:
+							_, _ = fmt.Fprint(w, serverJSON("in process", 100, 200))
+						default:
+							_, _ = fmt.Fprint(w, serverJSON("ready", 100, 200))
+						}
+					}
+				}
+			}(),
+		},
+		{
+			name:      "all servers already ready, no POST",
+			serverIDs: []string{"100", "200"},
 			handler: func(w http.ResponseWriter, r *http.Request) {
-				assert.Equal(t, http.MethodPost, r.Method)
-				assert.Equal(t, "/vswitch/50/server", r.URL.Path)
-				w.WriteHeader(http.StatusCreated)
+				if r.Method == http.MethodPost {
+					t.Errorf("POST must not be called when all servers are ready")
+					w.WriteHeader(http.StatusInternalServerError)
+					return
+				}
+				_, _ = fmt.Fprint(w, serverJSON("ready", 100, 200))
 			},
 		},
 		{
-			// The vSwitch is busy applying a previous server's attach;
-			// the first call gets 409 VSWITCH_IN_PROCESS, the retry
-			// (after the update settles) gets 201. This is the case
-			// that used to silently drop every server past the first.
-			name:      "retries on VSWITCH_IN_PROCESS then succeeds",
-			serverID:  "100",
-			vswitchID: 50,
+			// An "in process" server must be waited on, never re-POSTed.
+			name:      "waits for in-process server without re-posting",
+			serverIDs: []string{"100"},
 			handler: func() http.HandlerFunc {
-				var calls atomic.Int32
-				return func(w http.ResponseWriter, _ *http.Request) {
-					if calls.Add(1) == 1 {
-						w.WriteHeader(http.StatusConflict)
-						_, _ = w.Write([]byte(inProcessBody))
+				var gets atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					if r.Method == http.MethodPost {
+						t.Errorf("in-process server must not be re-POSTed")
+						w.WriteHeader(http.StatusInternalServerError)
 						return
 					}
-					w.WriteHeader(http.StatusCreated)
+					if gets.Add(1) == 1 {
+						_, _ = fmt.Fprint(w, serverJSON("in process", 100))
+						return
+					}
+					_, _ = fmt.Fprint(w, serverJSON("ready", 100))
+				}
+			}(),
+		},
+		{
+			// A "failed" server must be re-POSTed.
+			name:      "re-posts failed server then waits until ready",
+			serverIDs: []string{"100"},
+			handler: func() http.HandlerFunc {
+				var gets atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						require.NoError(t, r.ParseForm())
+						assert.Equal(t, []string{"100"}, r.PostForm["server[]"])
+						w.WriteHeader(http.StatusCreated)
+					case http.MethodGet:
+						if gets.Add(1) == 1 {
+							_, _ = fmt.Fprint(w, serverJSON("failed", 100))
+							return
+						}
+						_, _ = fmt.Fprint(w, serverJSON("ready", 100))
+					}
+				}
+			}(),
+		},
+		{
+			// Only the un-attached server gets POSTed.
+			name:      "posts only the pending server",
+			serverIDs: []string{"100", "200"},
+			handler: func() http.HandlerFunc {
+				var gets atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						require.NoError(t, r.ParseForm())
+						assert.Equal(t, []string{"200"}, r.PostForm["server[]"])
+						w.WriteHeader(http.StatusCreated)
+					case http.MethodGet:
+						if gets.Add(1) == 1 {
+							_, _ = fmt.Fprint(w, serverJSON("ready", 100))
+							return
+						}
+						_, _ = fmt.Fprint(w, serverJSON("ready", 100, 200))
+					}
+				}
+			}(),
+		},
+		{
+			// POST rejected with VSWITCH_IN_PROCESS is not fatal — the
+			// next poll tick re-POSTs once the vSwitch settles.
+			name:      "retries POST on VSWITCH_IN_PROCESS then succeeds",
+			serverIDs: []string{"100"},
+			handler: func() http.HandlerFunc {
+				var gets, posts atomic.Int32
+				return func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						if posts.Add(1) == 1 {
+							w.WriteHeader(http.StatusConflict)
+							_, _ = w.Write([]byte(inProcessBody))
+							return
+						}
+						w.WriteHeader(http.StatusCreated)
+					case http.MethodGet:
+						if gets.Add(1) >= 3 {
+							_, _ = fmt.Fprint(w, serverJSON("ready", 100))
+							return
+						}
+						_, _ = fmt.Fprint(w, emptyVSwitchBody)
+					}
 				}
 			}(),
 		},
 		{
 			name:      "other 409 returns error",
-			serverID:  "100",
-			vswitchID: 50,
-			handler: func(w http.ResponseWriter, _ *http.Request) {
+			serverIDs: []string{"100"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					_, _ = fmt.Fprint(w, emptyVSwitchBody)
+					return
+				}
 				w.WriteHeader(http.StatusConflict)
 				_, _ = w.Write([]byte(`{"error":{"status":409,"code":"VSWITCH_SERVER_LIMIT_REACHED"}}`))
 			},
@@ -258,14 +374,34 @@ func TestAttachServerToVSwitch(t *testing.T) {
 			wantErrMsg: "unexpected status code 409",
 		},
 		{
-			name:      "unexpected status returns error",
-			serverID:  "100",
-			vswitchID: 50,
-			handler: func(w http.ResponseWriter, _ *http.Request) {
+			name:      "unexpected POST status returns error",
+			serverIDs: []string{"100"},
+			handler: func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet {
+					_, _ = fmt.Fprint(w, emptyVSwitchBody)
+					return
+				}
 				w.WriteHeader(http.StatusBadRequest)
 			},
 			wantErr:    true,
 			wantErrMsg: "unexpected status code 400",
+		},
+		{
+			name:      "GET failure returns error",
+			serverIDs: []string{"100"},
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusInternalServerError)
+			},
+			wantErr:    true,
+			wantErrMsg: "getting VSwitch 50",
+		},
+		{
+			name:      "no servers is a no-op",
+			serverIDs: nil,
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				t.Errorf("no request must be made for an empty server list")
+				w.WriteHeader(http.StatusInternalServerError)
+			},
 		},
 	}
 
@@ -277,7 +413,7 @@ func TestAttachServerToVSwitch(t *testing.T) {
 			defer server.Close()
 			h.sleepFunc = noopSleep
 
-			err := h.AttachServerToVSwitch(context.Background(), tc.serverID, tc.vswitchID)
+			err := h.AttachServersToVSwitch(context.Background(), tc.serverIDs, vswitchID)
 			if tc.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrMsg)

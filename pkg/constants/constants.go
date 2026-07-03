@@ -251,17 +251,25 @@ const (
 	// investigation note.
 	HBMSOSInstallationMaxWaitTime = 20 * time.Minute
 
-	// Attaching a bare-metal server to a vSwitch is asynchronous on
-	// Hetzner's side: POST /vswitch/{id}/server returns 201 and the
-	// vSwitch then enters an "in process" state while it applies the
-	// change. A second attach issued while that update is still
-	// running is rejected with 409 VSWITCH_IN_PROCESS — it is NOT
-	// "already attached", the server is simply dropped. We poll-retry
-	// on that code until the prior update settles and the attach
-	// takes. One server's update typically clears in a few seconds.
-	HRobotVSwitchInProcessErrorCode = "VSWITCH_IN_PROCESS"
-	HBMSVSwitchAttachPollInterval   = 10 * time.Second
-	HBMSVSwitchAttachMaxWaitTime    = 40 * time.Second
+	// Attaching bare-metal servers to a vSwitch is asynchronous on
+	// Hetzner's side. POST /vswitch/{id}/server takes an array of
+	// server IDs and applies them in one atomic update; while that
+	// update runs each server sits in "in process" and the vSwitch
+	// rejects any further POST with 409 VSWITCH_IN_PROCESS.
+	//
+	// We GET the vSwitch, POST every server not yet "ready", then poll
+	// GET until all requested servers report "ready" — "in process"
+	// means keep waiting, "failed" means re-POST that server. This is
+	// a genuine wait-until-attached, not fire-and-forget.
+	HRobotVSwitchInProcessErrorCode    = "VSWITCH_IN_PROCESS"
+	HRobotVSwitchServerStatusReady     = "ready"
+	HRobotVSwitchServerStatusInProcess = "in process"
+	HRobotVSwitchServerStatusFailed    = "failed"
+	HBMSVSwitchAttachPollInterval      = 10 * time.Second
+	// A vSwitch attach usually settles in well under a minute, but the
+	// tail can be slow; 10 min leaves ample margin without hanging the
+	// bootstrap forever if Robot never brings a server to "ready".
+	HBMSVSwitchAttachMaxWaitTime = 10 * time.Minute
 )
 
 // HCloudNATGatewayLocations is the ordered list of HCloud locations
