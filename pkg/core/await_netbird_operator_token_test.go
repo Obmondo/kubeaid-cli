@@ -10,6 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	coreV1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
@@ -159,13 +162,20 @@ func TestAwaitNetBirdOperatorToken_KeycloakBoxBeforeNetBirdBox(t *testing.T) {
 	config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{DNS: "netbird.acme.com"}
 	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
 
+	// Force the non-interactive path so the test hits the poll (and the
+	// cancelled ctx) deterministically — regardless of whether `go test` is
+	// run from a real terminal.
+	prevTTY := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = prevTTY })
+
 	fakeClient := crFake.NewClientBuilder().WithScheme(newPostgresTestScheme(t)).Build()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
 	out := captureStdout(t, func() {
-		if err := awaitNetBirdOperatorToken(ctx, fakeClient, "s3cret-from-cluster"); err == nil {
+		if _, err := awaitNetBirdOperatorToken(ctx, fakeClient, "s3cret-from-cluster"); err == nil {
 			t.Error("expected an error once the cancelled context aborts the wait, got nil")
 		}
 	})
@@ -182,5 +192,131 @@ func TestAwaitNetBirdOperatorToken_KeycloakBoxBeforeNetBirdBox(t *testing.T) {
 	if idxKeycloak >= idxNetBird {
 		t.Fatalf("expected the Keycloak login box BEFORE the NetBird box; got Keycloak at %d, NetBird at %d:\n%s",
 			idxKeycloak, idxNetBird, out)
+	}
+}
+
+// netBirdVPNTestConfig installs a managed-Keycloak VPN cluster config (which
+// makes netBirdOperatorEnabled() true) for the duration of the test.
+func netBirdVPNTestConfig(t *testing.T) {
+	t.Helper()
+	orig := config.ParsedGeneralConfig
+	config.ParsedGeneralConfig = &config.GeneralConfig{}
+	config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
+	config.ParsedGeneralConfig.Cluster.Keycloak = &config.KeycloakConfig{
+		Mode:  constants.KeycloakModeManaged,
+		DNS:   "keycloak.acme.com",
+		Realm: "acme",
+	}
+	config.ParsedGeneralConfig.Cluster.NetBird = &config.NetBirdConfig{DNS: "netbird.acme.com"}
+	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
+}
+
+// forceInteractive makes stdinIsTerminal report true and installs the given
+// stubs for the choice/token prompts, restoring all three on cleanup.
+func forceInteractive(
+	t *testing.T,
+	choice netBirdTokenChoice,
+	token string,
+) {
+	t.Helper()
+	prevTTY, prevChoice, prevToken := stdinIsTerminal, promptNetBirdTokenChoice, readNetBirdToken
+	stdinIsTerminal = func() bool { return true }
+	promptNetBirdTokenChoice = func() (netBirdTokenChoice, error) { return choice, nil }
+	readNetBirdToken = func() (string, error) { return token, nil }
+	t.Cleanup(func() {
+		stdinIsTerminal, promptNetBirdTokenChoice, readNetBirdToken = prevTTY, prevChoice, prevToken
+	})
+}
+
+// TestAwaitNetBirdOperatorToken_PasteNowCreatesSecret verifies the paste-now
+// path: kubeaid-cli creates the netbird-mgmt-api-key Secret from the pasted
+// token and returns proceedWithLockdown=true.
+func TestAwaitNetBirdOperatorToken_PasteNowCreatesSecret(t *testing.T) {
+	netBirdVPNTestConfig(t)
+	forceInteractive(t, netBirdTokenPasteNow, "pasted-pat")
+
+	fakeClient := crFake.NewClientBuilder().WithScheme(newPostgresTestScheme(t)).Build()
+
+	var proceed bool
+	out := captureStdout(t, func() {
+		var err error
+		proceed, err = awaitNetBirdOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if !proceed {
+		t.Error("expected proceedWithLockdown=true after pasting the token")
+	}
+
+	secret := &coreV1.Secret{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{
+		Namespace: netBirdOperatorSecretNamespace,
+		Name:      netBirdOperatorSecretName,
+	}, secret); err != nil {
+		t.Fatalf("expected the Secret to exist after paste-now: %v", err)
+	}
+	if got := string(secret.Data[netBirdOperatorSecretKey]); got != "pasted-pat" {
+		t.Errorf("%s = %q, want %q", netBirdOperatorSecretKey, got, "pasted-pat")
+	}
+	if !strings.Contains(out, "one-off") {
+		t.Errorf("expected the one-off persistence note in output, got:\n%s", out)
+	}
+}
+
+// TestAwaitNetBirdOperatorToken_DeferSkipsLockdown verifies the defer path:
+// no Secret is created, proceedWithLockdown=false, and the "left reachable"
+// box prints.
+func TestAwaitNetBirdOperatorToken_DeferSkipsLockdown(t *testing.T) {
+	netBirdVPNTestConfig(t)
+	forceInteractive(t, netBirdTokenDefer, "")
+
+	fakeClient := crFake.NewClientBuilder().WithScheme(newPostgresTestScheme(t)).Build()
+
+	var proceed bool
+	out := captureStdout(t, func() {
+		var err error
+		proceed, err = awaitNetBirdOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	if proceed {
+		t.Error("expected proceedWithLockdown=false when the operator defers")
+	}
+	if !strings.Contains(out, "cluster left reachable") {
+		t.Errorf("expected the deferred box in output, got:\n%s", out)
+	}
+
+	secret := &coreV1.Secret{}
+	err := fakeClient.Get(context.Background(), types.NamespacedName{
+		Namespace: netBirdOperatorSecretNamespace,
+		Name:      netBirdOperatorSecretName,
+	}, secret)
+	if !apierrors.IsNotFound(err) {
+		t.Errorf("expected no Secret to be created on defer, Get returned: %v", err)
+	}
+}
+
+// TestCreateNetBirdOperatorSecret verifies the Secret is written with the
+// NB_API_KEY value in the expected namespace/name.
+func TestCreateNetBirdOperatorSecret(t *testing.T) {
+	fakeClient := crFake.NewClientBuilder().WithScheme(newPostgresTestScheme(t)).Build()
+
+	if err := createNetBirdOperatorSecret(context.Background(), fakeClient, "the-pat"); err != nil {
+		t.Fatalf("createNetBirdOperatorSecret: %v", err)
+	}
+
+	secret := &coreV1.Secret{}
+	if err := fakeClient.Get(context.Background(), types.NamespacedName{
+		Namespace: netBirdOperatorSecretNamespace,
+		Name:      netBirdOperatorSecretName,
+	}, secret); err != nil {
+		t.Fatalf("expected the Secret to exist: %v", err)
+	}
+	if got := string(secret.Data[netBirdOperatorSecretKey]); got != "the-pat" {
+		t.Errorf("%s = %q, want %q", netBirdOperatorSecretKey, got, "the-pat")
 	}
 }

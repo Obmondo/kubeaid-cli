@@ -267,49 +267,52 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"VPN cluster endpoint verification failed",
 	)
 
-	// Block until the operator has minted a NetBird service-user PAT
-	// and persisted it as the netbird-mgmt-api-key Secret. Without it
-	// the netbird-operator pod can't start, and its
-	// MutatingWebhookConfiguration on Pods (failurePolicy: Fail)
-	// blocks every cluster-wide Pod create. Better to discover and
-	// fix while the LB public interface is still up. No-op when the
-	// cluster doesn't host the netbird-operator.
-	//
-	// Also prints the Keycloak create-user instructions before the NetBird
-	// dashboard steps (the dashboard login is Keycloak SSO), passing the
-	// admin password read above so the operator can create their login
-	// without reaching kube-apiserver.
-	assert.AssertErrNil(ctx,
-		awaitNetBirdOperatorToken(ctx, mainClusterClient, keycloakAdminPassword),
-		"Failed waiting for NetBird operator API-key Secret",
-	)
-
+	// Finish the progress bar before the NetBird gate: awaitNetBirdOperatorToken
+	// may show an interactive chooser, which (like the lockdown confirm prompt)
+	// needs clean stdout — a live bar would corrupt it.
 	bar.Finish()
 
-	// Host-firewall lockdown runs BEFORE the LB public-interface disable
-	// below: every step inside it needs live kube-apiserver access — the
-	// IsClusterctlMoveExecuted gate check (a live Get), listing node public
-	// IPs, and the CCNP server-side apply — and disabling the control-plane
-	// LB public interface severs that access on a VPN cluster (the operator's
-	// machine isn't on the NetBird mesh yet). Placed after bar.Finish() so its
-	// confirm prompt + PR output don't corrupt the live progress bar.
-	// Self-gates to Hetzner bare-metal post-pivot; the operator can decline.
-	lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+	// The NetBird operator API-key gate. The netbird-operator can't start
+	// without the netbird-mgmt-api-key Secret, and its Pod MutatingWebhook
+	// (failurePolicy: Fail) then blocks every cluster-wide Pod create — so
+	// settle it while the LB public interface is still up. The operator can
+	// paste the token now (kubeaid-cli creates the Secret), wait while they
+	// create it out-of-band, or defer. Also prints the Keycloak create-user box
+	// first (the NetBird dashboard login is Keycloak SSO), using the admin
+	// password read above. No-op when the cluster doesn't host the operator.
+	//
+	// proceedWithLockdown is false only when the operator defers: with no mesh
+	// key they'd have no path back to kube-apiserver, so we must NOT lock down
+	// or disable the LB public interface — leave the cluster reachable and let
+	// them re-run once NetBird is set up.
+	proceedWithLockdown, netBirdErr := awaitNetBirdOperatorToken(ctx, mainClusterClient, keycloakAdminPassword)
+	assert.AssertErrNil(ctx, netBirdErr, "Failed handling the NetBird operator API-key gate")
 
-	// Disable the control-plane LB public interface LAST — it's the final
-	// step that severs the operator's public path to kube-apiserver, so it
-	// must run after every CLI→cluster operation above, lockdown included.
-	// No-op on non-VPN clusters and non-Hetzner providers.
-	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
-		assert.AssertErrNil(ctx,
-			hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
-			"Failed disabling control-plane LB public interface",
-		)
+	if proceedWithLockdown {
+		// Host-firewall lockdown runs BEFORE the LB public-interface disable
+		// below: every step inside it needs live kube-apiserver access — the
+		// IsClusterctlMoveExecuted gate check (a live Get), listing node public
+		// IPs, and the CCNP server-side apply — and disabling the control-plane
+		// LB public interface severs that access on a VPN cluster (the operator's
+		// machine isn't on the NetBird mesh yet). Self-gates to Hetzner
+		// bare-metal post-pivot; the operator can decline.
+		lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+
+		// Disable the control-plane LB public interface LAST — it's the final
+		// step that severs the operator's public path to kube-apiserver, so it
+		// must run after every CLI→cluster operation above, lockdown included.
+		// No-op on non-VPN clusters and non-Hetzner providers.
+		if globals.CloudProviderName == constants.CloudProviderHetzner {
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+			assert.AssertErrNil(ctx,
+				hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
+				"Failed disabling control-plane LB public interface",
+			)
+		}
 	}
 
-	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
+	slog.InfoContext(ctx, "Main cluster has been bootstrapped successfully 🎊")
 
 	// Elapsed time only renders on the success path — a Ctrl+C or
 	// assert.AssertErrNil bail-out short-circuits before this call,
