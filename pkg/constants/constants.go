@@ -487,7 +487,8 @@ const (
 // REFER : https://github.com/prometheus-operator/kube-prometheus?tab=readme-ov-file#compatibility.
 var KubernetesKubePrometheusVersionCompatibilityMatrix = map[string][]string{
 	"v1.32": {"v0.16.0"},
-	"v1.33": {"v0.16.0", "v0.17.0"},
-	"v1.34": {"v0.16.0", "v0.17.0"},
-	"v1.35": {"v0.17.0"},
+	"v1.33": {"v0.16.0", "v0.17.0", "v0.18.0"},
+	"v1.34": {"v0.16.0", "v0.17.0", "v0.18.0"},
+	"v1.35": {"v0.17.0", "v0.18.0"},
+	"v1.36": {"v0.18.0"},
 }

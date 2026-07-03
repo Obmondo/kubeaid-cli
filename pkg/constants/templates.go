@@ -233,6 +233,12 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 var TraefikTemplateNames = []string{
 	"argocd-apps/templates/traefik.yaml.tmpl",
 	"argocd-apps/values-traefik.yaml.tmpl",
+
+	// Second, ClusterIP-only Traefik ("traefik-internal") for NetBird-private
+	// admin ingresses (ingressClassName: traefik-internal). Both the App and
+	// its values overlay render only when secrets.yaml carries netbird.apiKey.
+	"argocd-apps/templates/traefik-internal.yaml.tmpl",
+	"argocd-apps/values-traefik-internal.yaml.tmpl",
 }
 
 // CloudNativePG operator. Provides the Cluster CRD that the
@@ -283,7 +289,7 @@ const CertManagerCloudflareAPITokenSecretTemplateName = "sealed-secrets/cert-man
 // netbird/netbird-mgmt-api-key Secret the operator Deployment's
 // NB_API_KEY env reads (the chart's default secret ref). Only
 // registered when the operator is rendered AND the key is present —
-// when absent, bootstrap pauses at awaitNetBirdOperatorToken with
+// when absent, bootstrap pauses at netbird.AwaitOperatorToken with
 // create-it-manually instructions instead.
 const NetBirdOperatorAPIKeySecretTemplateName = "sealed-secrets/netbird/netbird-mgmt-api-key.yaml.tmpl"
 

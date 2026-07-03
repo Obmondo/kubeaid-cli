@@ -766,8 +766,8 @@ func renderServerInfo(info *robotServerInfo) string {
 // the cluster name already lives in cluster.name and shows up in
 // every label / annotation that needs cluster context; baking it
 // into the node-group label again only adds noise (operators see
-// "kbm-obmondo-com / kbm-obmondo-com-workers" in the storage-plan
-// tree, kubectl get nodes, etc.).
+// "demo / demo-workers" in the storage-plan tree, kubectl get
+// nodes, etc.).
 func promptWorkerNodeGroupName(cfg *PromptedConfig) error {
 	if cfg.HetznerBMNodeGroupName == "" {
 		cfg.HetznerBMNodeGroupName = "workers"

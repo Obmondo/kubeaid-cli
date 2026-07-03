@@ -190,6 +190,45 @@ func TestRenderSecretsOmitsRobotWhenIncomplete(t *testing.T) {
 	}
 }
 
+// TestRenderSecretsNetBirdAPIKey: the workload-collected netbird.apiKey
+// renders %q-quoted and parses back into SecretsConfig.NetBird; the block is
+// omitted entirely when blank (bootstrap's gate collects it instead).
+func TestRenderSecretsNetBirdAPIKey(t *testing.T) {
+	t.Run("renders when set", func(t *testing.T) {
+		cfg := &PromptedConfig{
+			CloudProvider:   "hetzner",
+			HetznerAPIToken: "fake-api-token",
+			NetBirdAPIKey:   "nbp_tok#en",
+		}
+		dir := t.TempDir()
+		require.NoError(t, writeConfigFiles(dir, cfg))
+
+		body, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
+		require.NoError(t, err)
+
+		parsed := &config.SecretsConfig{}
+		require.NoError(t, yaml.Unmarshal(body, parsed),
+			"rendered secrets.yaml must parse cleanly — raw bytes:\n%s", string(body))
+		require.NotNil(t, parsed.NetBird, "netbird block must render")
+		assert.Equal(t, "nbp_tok#en", parsed.NetBird.APIKey,
+			"the # metacharacter must survive the %%q quoting")
+	})
+
+	t.Run("omitted when blank", func(t *testing.T) {
+		cfg := &PromptedConfig{
+			CloudProvider:   "hetzner",
+			HetznerAPIToken: "fake-api-token",
+		}
+		dir := t.TempDir()
+		require.NoError(t, writeConfigFiles(dir, cfg))
+
+		body, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
+		require.NoError(t, err)
+		assert.NotContains(t, string(body), "netbird:",
+			"no netbird block when the key wasn't provided")
+	})
+}
+
 func TestRenderObmondoSupportConfig(t *testing.T) {
 	cfg := &PromptedConfig{
 		CloudProvider: "local",

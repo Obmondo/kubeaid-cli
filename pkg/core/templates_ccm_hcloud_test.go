@@ -33,7 +33,7 @@ func TestCCMHCloudValuesTemplateLoadBalancerEnv(t *testing.T) {
 		wantNotContains []string
 	}{
 		{
-			name: "vpn-type cluster: USE_PRIVATE_IP set, DISABLE_PUBLIC_NETWORK not set",
+			name: "vpn-type cluster: USE_PRIVATE_IP + networking set, DISABLE_PUBLIC_NETWORK not set",
 			tmplValues: TemplateValues{
 				ClusterConfig: config.ClusterConfig{Type: constants.ClusterTypeVPN},
 				HetznerConfig: &config.HetznerConfig{
@@ -42,9 +42,33 @@ func TestCCMHCloudValuesTemplateLoadBalancerEnv(t *testing.T) {
 			},
 			wantContains: []string{
 				"HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:",
+				"networking:",
 			},
 			wantNotContains: []string{
 				"HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:",
+			},
+		},
+		{
+			// Single public control-plane node: no private network, so the CCM
+			// must not attach LB targets over a private IP and must not manage
+			// private-network pod routes. Both USE_PRIVATE_IP and networking
+			// drop out; the node's InternalIP comes from its public interface.
+			name: "single-node public: no USE_PRIVATE_IP, no networking",
+			tmplValues: TemplateValues{
+				ClusterConfig:          config.ClusterConfig{Type: constants.ClusterTypeVPN},
+				HCloudSingleNodePublic: true,
+				HetznerConfig: &config.HetznerConfig{
+					HCloud: &config.HCloudConfig{Zone: "eu-central"},
+				},
+			},
+			wantContains: []string{
+				// Baseline env still renders regardless of topology.
+				"HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:",
+			},
+			wantNotContains: []string{
+				"HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:",
+				"HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:",
+				"networking:",
 			},
 		},
 		{

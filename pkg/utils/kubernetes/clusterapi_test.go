@@ -391,7 +391,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
 		},
 		{
-			// kbm-obmondo-com shape that surfaced the bug: Cluster CR
+			// Real-world shape that surfaced the bug: Cluster CR
 			// already at Provisioned+Ready (HetznerCluster endpoint set)
 			// but the CP Machine is still in `ensure-provisioned` and no
 			// worker has joined. The old predicate marked this ready and
@@ -541,7 +541,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 			wantClusterPhase: string(clusterAPIV1Beta1.ClusterPhaseProvisioned),
 		},
 		{
-			// kbm-obmondo-com bug shape that drove this predicate
+			// Real-world bug shape that drove this predicate
 			// tightening: CP Machine reached Phase=Running with NodeRef
 			// populated but its v1beta2 Ready aggregate stayed False
 			// because EtcdMemberHealthy never went True (etcd member
@@ -778,7 +778,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 					Spec: clusterAPIV1Beta1.MachineSpec{
 						InfrastructureRef: coreV1.ObjectReference{
 							Kind: "HetznerBareMetalMachine",
-							Name: "kbm-cp-g7nxx",
+							Name: "demo-cp-g7nxx",
 						},
 					},
 					Status: clusterAPIV1Beta1.MachineStatus{
@@ -797,7 +797,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 				},
 				&caphV1Beta1.HetznerBareMetalMachine{
 					ObjectMeta: metaV1.ObjectMeta{
-						Name:      "kbm-cp-g7nxx",
+						Name:      "demo-cp-g7nxx",
 						Namespace: testCapiClusterNamespace,
 					},
 					Status: caphV1Beta1.HetznerBareMetalMachineStatus{
@@ -843,7 +843,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 					Spec: clusterAPIV1Beta1.MachineSpec{
 						InfrastructureRef: coreV1.ObjectReference{
 							Kind: "HetznerBareMetalMachine",
-							Name: "kbm-w-bad-disk",
+							Name: "demo-w-bad-disk",
 						},
 					},
 					Status: clusterAPIV1Beta1.MachineStatus{
@@ -852,7 +852,7 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 				},
 				&caphV1Beta1.HetznerBareMetalMachine{
 					ObjectMeta: metaV1.ObjectMeta{
-						Name:      "kbm-w-bad-disk",
+						Name:      "demo-w-bad-disk",
 						Namespace: testCapiClusterNamespace,
 					},
 					Status: caphV1Beta1.HetznerBareMetalMachineStatus{

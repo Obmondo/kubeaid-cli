@@ -171,7 +171,7 @@ cluster:
     # (enforced in parser/keycloak.go); unused on workload clusters.
     dns:
     # DNSZone is the mesh DNS domain peers resolve under — NetBird
-    # Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to
+    # Mgmt's --dns-domain, e.g. "demo.local". Defaults to
     # "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
     # Used to create the DNS zone on NetBird and to drive --dns-domain on
     # VPN clusters.
@@ -191,6 +191,16 @@ cluster:
     # generated and persisted in the Secret. Optional, defaults
     # to "netbird".
     turnUser: netbird
+    # ClusterProxy configures the netbird-operator's kube-apiserver
+    # proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to
+    # the in-cluster apiserver, impersonating the caller's NetBird
+    # identity. Omit the block to leave it disabled.
+    clusterProxy:
+      # Enabled toggles the cluster proxy.
+      enabled:
+      # RBAC binds NetBird groups to cluster roles via the proxy's
+      # identity impersonation.
+      rbac:
   # Other than the root user, addtional users that you would like to be created in each node.
   # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
   additionalUsers:

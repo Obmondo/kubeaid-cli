@@ -90,8 +90,13 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		// the operator isn't watching the spinner spend an extra
 		// minute provisioning NAT after they've finished pasting DNS
 		// A records.
-		if err := h.CreateNATGateway(ctx, network.ID); err != nil {
-			return fmt.Errorf("creating NAT gateway: %w", err)
+		//
+		// Skipped for the single-node public control-plane topology: the
+		// lone node egresses over its own public IPv4 — no NAT needed.
+		if !config.HCloudSingleNodePublic() {
+			if err := h.CreateNATGateway(ctx, network.ID); err != nil {
+				return fmt.Errorf("creating NAT gateway: %w", err)
+			}
 		}
 
 		// Pre-create the control-plane LB. The DNS-wait it triggers is
@@ -241,9 +246,13 @@ func attachAllBareMetalServersToVSwitch(
 //   - HCloudVPNCluster set — workload connecting to an existing VPN;
 //     CAPI HCloudCluster manifest references the pre-created LB by IP.
 //
-// False otherwise (workload-not-on-VPN), where CAPI handles LB
-// lifecycle on its own.
+// False otherwise: workload-not-on-VPN clusters let CAPI handle LB
+// lifecycle on its own, and the single-node public control-plane
+// topology has no control-plane LB at all.
 func (h *Hetzner) shouldPreCreateControlPlaneLB() bool {
+	if config.HCloudSingleNodePublic() {
+		return false
+	}
 	cluster := config.ParsedGeneralConfig.Cluster
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	return cluster.Type == constants.ClusterTypeVPN ||

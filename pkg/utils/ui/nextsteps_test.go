@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package core
+package ui
 
 import (
 	"strings"
@@ -15,7 +15,7 @@ import (
 func TestRenderNextStepsBox_NoWrap(t *testing.T) {
 	longCmd := "kubectl get secret -n keycloakx keycloak-admin -o jsonpath='{.data.KEYCLOAK_PASSWORD}' | base64 -d"
 
-	got := renderNextStepsBox("Bootstrap complete — next steps", []string{
+	got := RenderNextStepsBox("Bootstrap complete — next steps", []string{
 		"  1. Sign in to Keycloak admin",
 		"       Password  $ " + longCmd,
 	})
@@ -46,7 +46,7 @@ func TestRenderNextStepsBox_NoWrap(t *testing.T) {
 // box is the usual visual symptom of a width-calc bug (off-by-one
 // on Unicode runewidth, padding pulled from the wrong place, etc.).
 func TestRenderNextStepsBox_BordersAlign(t *testing.T) {
-	out := renderNextStepsBox("Test", []string{
+	out := RenderNextStepsBox("Test", []string{
 		"short",
 		"a somewhat longer line that drives the width",
 		// Unicode arrow — exercises runewidth handling.
@@ -94,7 +94,7 @@ func runesIn(s string) int {
 // with no `kubectl` / `$` prefix to mislead the operator into
 // thinking they need to run something.
 func TestKeycloakPasswordLine_InlineWhenLiveReadSucceeded(t *testing.T) {
-	got := keycloakPasswordLine("s3cret-from-cluster")
+	got := KeycloakPasswordLine("s3cret-from-cluster")
 
 	if !strings.Contains(got, "s3cret-from-cluster") {
 		t.Fatalf("expected the password to appear in the line, got %q", got)
@@ -113,7 +113,7 @@ func TestKeycloakPasswordLine_InlineWhenLiveReadSucceeded(t *testing.T) {
 // single line for copy-paste, must mention the right Secret /
 // namespace / key so the operator doesn't have to figure them out.
 func TestKeycloakPasswordLine_FallbackKubectlCommand(t *testing.T) {
-	got := keycloakPasswordLine("")
+	got := KeycloakPasswordLine("")
 
 	if strings.Contains(got, "\n") {
 		t.Fatalf("kubectl fallback must stay on one line, got %q", got)
@@ -122,5 +122,46 @@ func TestKeycloakPasswordLine_FallbackKubectlCommand(t *testing.T) {
 		if !strings.Contains(got, expect) {
 			t.Fatalf("kubectl fallback missing %q substring; got %q", expect, got)
 		}
+	}
+}
+
+// TestKeycloakAdminLoginLines_InlinePassword verifies the four console /
+// user / password / realm rows, with the password shown inline. Shared by
+// the final next-steps panel and the pre-NetBird-gate prompt, so both must
+// render identical rows.
+func TestKeycloakAdminLoginLines_InlinePassword(t *testing.T) {
+	lines := KeycloakAdminLoginLines("keycloak.acme.com", "acme", "s3cret-from-cluster")
+
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines), lines)
+	}
+	if !strings.Contains(lines[0], "https://keycloak.acme.com/auth/admin/") {
+		t.Fatalf("expected console line to contain the admin console URL, got %q", lines[0])
+	}
+	if !strings.Contains(lines[1], "admin") {
+		t.Fatalf("expected user line to contain the admin username, got %q", lines[1])
+	}
+	if lines[2] != KeycloakPasswordLine("s3cret-from-cluster") {
+		t.Fatalf("expected password line to equal KeycloakPasswordLine's output, got %q", lines[2])
+	}
+	if !strings.Contains(lines[3], "\"acme\"") || !strings.Contains(lines[3], "Users → Add user") {
+		t.Fatalf("expected realm line to quote the realm and include the click-through hint, got %q", lines[3])
+	}
+}
+
+// TestKeycloakAdminLoginLines_FallbackPassword verifies the password row
+// falls back to KeycloakPasswordLine's kubectl command when no live
+// password was supplied.
+func TestKeycloakAdminLoginLines_FallbackPassword(t *testing.T) {
+	lines := KeycloakAdminLoginLines("keycloak.acme.com", "acme", "")
+
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d: %v", len(lines), lines)
+	}
+	if lines[2] != KeycloakPasswordLine("") {
+		t.Fatalf("expected password line to equal KeycloakPasswordLine's fallback output, got %q", lines[2])
+	}
+	if !strings.Contains(lines[2], "kubectl") {
+		t.Fatalf("expected password line to fall back to the kubectl command, got %q", lines[2])
 	}
 }

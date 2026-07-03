@@ -364,6 +364,9 @@ func applySecretsConfigToPromptedConfig(secrets *config.SecretsConfig, cfg *Prom
 			)
 		}
 	}
+	if secrets.NetBird != nil {
+		cfg.NetBirdAPIKey = firstNonEmpty(secrets.NetBird.APIKey, cfg.NetBirdAPIKey)
+	}
 	if secrets.Keycloak != nil {
 		cfg.NetBirdBackendClientSecret = firstNonEmpty(
 			secrets.Keycloak.NetBirdBackendClientSecret,

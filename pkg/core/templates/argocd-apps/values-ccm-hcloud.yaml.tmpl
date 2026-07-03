@@ -1,3 +1,7 @@
+{{- /* $privateNodes: HCloud nodes that live on the private Hetzner Network
+     with no public interface (vpn / workload behind a VPN). The single
+     public CP node is the exception — public IPv4, no private network. */ -}}
+{{- $privateNodes := (and (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) (not .HCloudSingleNodePublic)) -}}
 ---
 ccm-hetzner:
   {{- /* nameOverride drives the Deployment, ServiceAccount, and RBAC resource names.
@@ -16,33 +20,28 @@ ccm-hetzner:
     HCLOUD_LOAD_BALANCERS_NETWORK_ZONE:
       value: {{ .HetznerConfig.HCloud.Zone }}
 
-    {{- /* Two independent knobs, gated separately:
-           DISABLE_PUBLIC_NETWORK (LB frontend, no public IP) is workload-behind-VPN
-           only — a vpn-type cluster hosts its own public-facing LBs (Keycloak /
-           NetBird ingress) and those must keep a public frontend.
-           USE_PRIVATE_IP (LB backend target attachment) applies to both — HCloud
-           nodes have no public interface on either topology, so ccm-hcloud can
-           only attach them as LB targets over the private network. */}}
+    {{- /* Two independent knobs:
+           DISABLE_PUBLIC_NETWORK (no public LB frontend) is workload-behind-
+           VPN only — a vpn cluster's own LBs (Keycloak / NetBird ingress)
+           must keep a public frontend.
+           USE_PRIVATE_IP (LB target attachment) covers all private nodes —
+           they have no public interface to attach over. */}}
     {{- if (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) }}
     HCLOUD_LOAD_BALANCERS_DISABLE_PUBLIC_NETWORK:
       value: "true"
     {{- end }}
-    {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster)) }}
+    {{- if $privateNodes }}
     HCLOUD_LOAD_BALANCERS_USE_PRIVATE_IP:
       value: "true"
     {{- end }}
 
-  {{- /* networking.enabled tells hccm to manage Hetzner Cloud Routes for pod-to-pod
-       connectivity via the private Hetzner Network and to populate InternalIP on
-       each HCloud node.
-       Must be true when:
-         - VPN clusters: pod-routing through the private network is the whole point.
-         - Workload clusters fronted by a VPN: same private-network requirement.
-         - Hybrid clusters: the HCloud control-plane nodes sit on a private network
-           to communicate with bare-metal workers; without networking=true hccm never
-           sets InternalIP on them, the apiserver cannot reach the kubelet, and
-           control-plane scale-up stalls on etcd health. */}}
-  {{- if (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster) (eq .HetznerConfig.Mode "hybrid")) }}
+  {{- /* networking.enabled: hccm manages private-network pod Routes and sets
+       InternalIP on HCloud nodes. Needed for private nodes and for hybrid
+       (HCloud CPs reach bare-metal workers over the private network; without
+       InternalIP the apiserver can't reach kubelets). The single public node
+       has no private network — its InternalIP comes from the public
+       interface. */}}
+  {{- if (or $privateNodes (eq .HetznerConfig.Mode "hybrid")) }}
   networking:
     enabled: true
   {{- end }}

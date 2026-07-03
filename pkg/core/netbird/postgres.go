@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package core
+package netbird
 
 import (
 	"context"
@@ -44,7 +44,7 @@ const (
 	cnpgAppSecretPollTimeout  = 5 * time.Minute
 )
 
-// waitAndPatchNetBirdPostgresDSN polls until CNPG has created the
+// WaitAndPatchPostgresDSN polls until CNPG has created the
 // netbird-pgsql-app Secret in the netbird namespace, then patches
 // netbird's Secret with the DSN built from it.
 //
@@ -54,7 +54,7 @@ const (
 // sync returns as soon as the Cluster CR is applied — CNPG still
 // has to reconcile that CR into running pods + the *-app Secret,
 // a few seconds later.
-func waitAndPatchNetBirdPostgresDSN(ctx context.Context, clusterClient client.Client) error {
+func WaitAndPatchPostgresDSN(ctx context.Context, clusterClient client.Client) error {
 	err := wait.PollUntilContextTimeout(ctx,
 		cnpgAppSecretPollInterval, cnpgAppSecretPollTimeout, true,
 		func(ctx context.Context) (bool, error) {
@@ -75,10 +75,10 @@ func waitAndPatchNetBirdPostgresDSN(ctx context.Context, clusterClient client.Cl
 		return fmt.Errorf("waiting for CNPG app Secret %s/%s: %w",
 			constants.NamespaceNetBird, netBirdPostgresAppSecret, err)
 	}
-	return patchNetBirdPostgresDSN(ctx, clusterClient)
+	return patchPostgresDSN(ctx, clusterClient)
 }
 
-// patchNetBirdPostgresDSN reads the CNPG-generated app credentials
+// patchPostgresDSN reads the CNPG-generated app credentials
 // Secret in the netbird namespace, builds a postgres connection
 // string from it, and patches the netbird Secret's postgresDSN key
 // with the result.
@@ -96,7 +96,7 @@ func waitAndPatchNetBirdPostgresDSN(ctx context.Context, clusterClient client.Cl
 // netbird-pgsql Cluster CR not yet rendered into kubeaid-config) —
 // logged but not fatal so an operator can rerun bootstrap once the
 // Cluster CR is in place.
-func patchNetBirdPostgresDSN(ctx context.Context, clusterClient client.Client) error {
+func patchPostgresDSN(ctx context.Context, clusterClient client.Client) error {
 	appSecret := &coreV1.Secret{}
 	err := clusterClient.Get(ctx,
 		types.NamespacedName{Namespace: constants.NamespaceNetBird, Name: netBirdPostgresAppSecret},

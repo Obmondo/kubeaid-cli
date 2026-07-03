@@ -33,7 +33,7 @@ import (
 //
 // No-op when the cluster is not a managed-Keycloak VPN cluster.
 func verifyVPNClusterEndpoints(ctx context.Context) error {
-	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return nil
 	}
 	cluster := config.ParsedGeneralConfig.Cluster

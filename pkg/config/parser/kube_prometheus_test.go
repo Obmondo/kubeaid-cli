@@ -32,19 +32,25 @@ func TestHydrateKubePrometheusVersion(t *testing.T) {
 			name:              "selects latest KubePrometheus version for v1.33",
 			k8sVersion:        "v1.33.0",
 			existingKPVersion: "",
-			expectedKPVersion: "v0.17.0",
+			expectedKPVersion: "v0.18.0",
 		},
 		{
 			name:              "selects latest KubePrometheus version for v1.34",
 			k8sVersion:        "v1.34.0",
 			existingKPVersion: "",
-			expectedKPVersion: "v0.17.0",
+			expectedKPVersion: "v0.18.0",
 		},
 		{
 			name:              "selects default KubePrometheus version for v1.35",
 			k8sVersion:        "v1.35.0",
 			existingKPVersion: "",
-			expectedKPVersion: "v0.17.0",
+			expectedKPVersion: "v0.18.0",
+		},
+		{
+			name:              "selects default KubePrometheus version for v1.36",
+			k8sVersion:        "v1.36.0",
+			existingKPVersion: "",
+			expectedKPVersion: "v0.18.0",
 		},
 		{
 			name:              "does not override existing KubePrometheus version",
@@ -118,6 +124,16 @@ func TestValidateKubePrometheusVersion_CompatibleCases(t *testing.T) {
 			name:       "valid compatible versions - v1.35 with v0.17.0",
 			kpVersion:  "v0.17.0",
 			k8sVersion: "v1.35.0",
+		},
+		{
+			name:       "valid compatible versions - v1.35 with v0.18.0",
+			kpVersion:  "v0.18.0",
+			k8sVersion: "v1.35.0",
+		},
+		{
+			name:       "valid compatible versions - v1.36 with v0.18.0",
+			kpVersion:  "v0.18.0",
+			k8sVersion: "v1.36.0",
 		},
 	}
 

@@ -1,20 +1,45 @@
 {{- /*
-NetBird Kubernetes Operator values overlay.
+The kubeaid chart wraps the upstream operator: `netbird-operator:` is the
+subchart; networkRouter / networkResources / clusterProxy are top-level
+wrapper values — hence the differing indentation.
 
-managementURL points the operator at the parent NetBird Mgmt —
-cluster.netbird.dns on VPN clusters (they host Mgmt themselves), the
-netbird.<base> Keycloak-DNS convention on workload clusters. Omitting
-it is NOT harmless: the operator binary falls back to NetBird Cloud
-(api.netbird.io), so when the URL can't be derived this file renders
-empty and the operator must be wired manually.
+managementURL: cluster.netbird.dns (VPN) or netbird.<base> (workload);
+omitted when underivable — the operator would fall back to NetBird Cloud.
+The API token flows via the netbird-mgmt-api-key Secret, not values.
 
-The Mgmt API token deliberately does NOT flow through values — it's
-sealed into the netbird/netbird-mgmt-api-key Secret (from secrets.yaml's
-netbird.apiKey), which the chart's default netbirdAPI.keyFromSecret
-already references. awaitNetBirdOperatorToken gates bootstrap on that
-Secret existing.
+The router + traefik-internal resource render when a mesh DNS zone is set;
+the zone and k8s-<cluster> group must already exist in NetBird (see
+printNetBirdOperatorInstructions). ClusterProxy is named after cluster.name.
 */ -}}
+{{- if .NetBirdOperatorEnabled }}
 {{- if .NetBirdManagementURL }}
 netbird-operator:
   managementURL: {{ .NetBirdManagementURL | quote }}
+{{- end }}
+{{- if .NetBirdRouterEnabled }}
+networkRouter:
+  enabled: true
+  dnsZone: {{ .NetBird.DNSZone | quote }}
+  replicas: 1
+networkResources:
+  - name: traefik-internal
+    namespace: traefik
+    service: traefik-internal
+    groups:
+      - {{ .NetBirdInternalIngressGroup | quote }}
+{{- end }}
+{{- if .NetBirdClusterProxyEnabled }}
+clusterProxy:
+  enabled: true
+  clusterName: {{ .ClusterConfig.Name | quote }}
+{{- with .NetBird.ClusterProxy }}
+{{- if gt (len .RBAC) 0 }}
+  rbac:
+{{- range .RBAC }}
+    - group: {{ .Group | quote }}
+      clusterRole: {{ .ClusterRole | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

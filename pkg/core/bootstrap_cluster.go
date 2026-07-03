@@ -24,6 +24,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -164,7 +165,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// of leaning on the alphabetical order ArgoCD's List returns.
 	bar.Describe("Syncing ArgoCD applications")
 	var orderedApps []kubernetes.AppSyncStep
-	if vpnClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
+	if config.VPNClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
 		// ccm-hcloud manages LoadBalancers for HCloud nodes and must be up before
 		// traefik so the ingress LB Service gets an IP. ccm-hetzner (bare-metal /
 		// hybrid) follows; it doesn't own LBs so traefik-ordering is less critical
@@ -185,7 +186,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			},
 		})
 	}
-	if vpnClusterEnabled() {
+	if config.VPNClusterEnabled() {
 		// cert-manager must be running before keycloakx / netbird sync
 		// so it can issue their Ingress certs. After each of those
 		// syncs, gate on the Certificate object itself being Ready —
@@ -202,7 +203,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		// apps loop happens to sync cnpg, which can be much later.
 		orderedApps = append(orderedApps,
 			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCloudNativePG})
-		if managedKeycloakEnabled() {
+		if config.ManagedKeycloakEnabled() {
 			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 				Name:      constants.ArgoCDAppKeycloakx,
 				AfterSync: keycloakxAfterSync(mainClusterClient),
@@ -267,36 +268,40 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		"VPN cluster endpoint verification failed",
 	)
 
-	// Block until the operator has minted a NetBird service-user PAT
-	// and persisted it as the netbird-mgmt-api-key Secret. Without it
-	// the netbird-operator pod can't start, and its
-	// MutatingWebhookConfiguration on Pods (failurePolicy: Fail)
-	// blocks every cluster-wide Pod create. Better to discover and
-	// fix while the LB public interface is still up. No-op when the
-	// cluster doesn't host the netbird-operator.
-	assert.AssertErrNil(ctx,
-		awaitNetBirdOperatorToken(ctx, mainClusterClient),
-		"Failed waiting for NetBird operator API-key Secret",
-	)
+	// Interactive prompts below need clean stdout.
+	bar.Finish()
 
-	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
-		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
-		assert.AssertErrNil(ctx,
-			hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
-			"Failed disabling control-plane LB public interface",
-		)
+	// NetBird API-key gate — see netbird.AwaitOperatorToken. When the operator
+	// defers, skip lockdown + the LB disable: without a mesh key they'd have
+	// no path back to kube-apiserver.
+	proceedWithLockdown, netBirdErr := netbird.AwaitOperatorToken(ctx, mainClusterClient, keycloakAdminPassword)
+	assert.AssertErrNil(ctx, netBirdErr, "Failed handling the NetBird operator API-key gate")
+
+	if proceedWithLockdown {
+		// Host-firewall lockdown runs BEFORE the LB public-interface disable
+		// below: every step inside it needs live kube-apiserver access — the
+		// IsClusterctlMoveExecuted gate check (a live Get), listing node public
+		// IPs, and the CCNP server-side apply — and disabling the control-plane
+		// LB public interface severs that access on a VPN cluster (the operator's
+		// machine isn't on the NetBird mesh yet). Self-gates to Hetzner
+		// bare-metal post-pivot; the operator can decline.
+		lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+
+		// Disable the control-plane LB public interface LAST — it's the final
+		// step that severs the operator's public path to kube-apiserver, so it
+		// must run after every CLI→cluster operation above, lockdown included.
+		// No-op on non-VPN clusters and non-Hetzner providers.
+		if globals.CloudProviderName == constants.CloudProviderHetzner {
+			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+			assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+			assert.AssertErrNil(ctx,
+				hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
+				"Failed disabling control-plane LB public interface",
+			)
+		}
 	}
 
-	bar.Finish()
-	slog.InfoContext(ctx, "Main cluster has been bootsrapped successfully 🎊")
-
-	// Host-firewall lockdown is the LAST cluster-touching step — it locks the
-	// apiserver to node IPs, so it must run after every CLI→cluster operation
-	// above (ArgoCD sync, backups, secret reads) AND after bar.Finish(), since
-	// its confirm prompt + PR output would otherwise corrupt the live progress
-	// bar. Self-gates to Hetzner bare-metal post-pivot; the operator can decline.
-	lockdownInBootstrap(ctx, mainClusterClient, gitAuthMethod)
+	slog.InfoContext(ctx, "Main cluster has been bootstrapped successfully 🎊")
 
 	// Elapsed time only renders on the success path — a Ctrl+C or
 	// assert.AssertErrNil bail-out short-circuits before this call,
@@ -316,7 +321,7 @@ func readKeycloakAdminPasswordForPanel(
 	ctx context.Context,
 	clusterClient client.Client,
 ) string {
-	if !vpnClusterEnabled() || !managedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return ""
 	}
 	password, err := readSecretValue(ctx, clusterClient,
@@ -457,7 +462,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Sync cluster-autoscaler on AWS or Azure workload clusters.
 	// Skip Hetzner (chart wiring not in place), bare-metal (no
 	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
-	if !vpnClusterEnabled() &&
+	if !config.VPNClusterEnabled() &&
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
@@ -760,7 +765,7 @@ func netbirdAfterSync(clusterClient client.Client) func(context.Context) error {
 	return func(ctx context.Context) error {
 		bar := progress.FromCtx(ctx)
 		release := bar.InProgress("Patching netbird Secret with CNPG-generated postgres DSN")
-		err := waitAndPatchNetBirdPostgresDSN(ctx, clusterClient)
+		err := netbird.WaitAndPatchPostgresDSN(ctx, clusterClient)
 		release()
 		if err != nil {
 			return err

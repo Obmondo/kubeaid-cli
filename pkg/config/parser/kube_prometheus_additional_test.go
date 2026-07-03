@@ -23,8 +23,8 @@ func TestValidateKubePrometheusVersion_Errors(t *testing.T) {
 	}{
 		{
 			name:       "incompatible KubePrometheus version",
-			kpVersion:  "v0.18.0",
-			k8sVersion: "v1.34.2",
+			kpVersion:  "v0.16.0",
+			k8sVersion: "v1.35.2",
 			wantErrSub: "aren't officially compatible",
 		},
 		{
@@ -59,7 +59,7 @@ func TestHydrateKubePrometheusVersion_Errors(t *testing.T) {
 	}{
 		{
 			name:       "K8s version outside compatibility matrix",
-			k8sVersion: "v1.36.0",
+			k8sVersion: "v1.37.0",
 			wantErrSub: "unsupported Kubernetes version",
 		},
 		{

@@ -427,6 +427,9 @@ func validateHetznerConfig(ctx context.Context) error {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
+		if err := validateHCloudSingleNodePublic(ctx); err != nil {
+			return err
+		}
 	}
 	if config.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
@@ -484,6 +487,37 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 	if endpoint != "" && net.ParseIP(endpoint) != nil {
 		return errors.New("control-plane HCloud load-balancer Endpoint must be a DNS name, not an IP address")
 	}
+	return nil
+}
+
+// validateHCloudSingleNodePublic checks the single-node public control-plane
+// topology's two requirements: loadBalancer.endpoint set (there is no LB, and
+// CAPH needs the apiserver endpoint at manifest-render time, before the node's
+// IP exists) and a CP machineType with >= 8 GB RAM (the one node runs the
+// whole cluster). No-op for other topologies.
+func validateHCloudSingleNodePublic(ctx context.Context) error {
+	if !config.HCloudSingleNodePublic() {
+		return nil
+	}
+
+	if config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
+		return errors.New(
+			"a single-node HCloud cluster has no control-plane load balancer, so " +
+				"cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint must be set to the api DNS " +
+				"name you will point at the control-plane node's public IP")
+	}
+
+	machineType := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.MachineType
+	specs, err := globals.CloudProvider.GetVMSpecs(ctx, machineType)
+	if err != nil {
+		return fmt.Errorf("checking control-plane machineType %q memory: %w", machineType, err)
+	}
+	if specs.Memory < 8 {
+		return fmt.Errorf(
+			"a single-node HCloud cluster runs entirely on the one node, so its "+
+				"machineType needs >= 8 GB RAM; %q has %d GB", machineType, specs.Memory)
+	}
+
 	return nil
 }
 

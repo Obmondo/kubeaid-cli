@@ -24,6 +24,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -103,13 +104,13 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	//   - keycloakx       : only when managed (keycloak-admin
 	//                       SealedSecret consumed by the chart's
 	//                       pre-install hook).
-	if vpnClusterEnabled() {
+	if config.VPNClusterEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceCloudNativePG,
 			constants.NamespaceNetBird,
 		)
 	}
-	if managedKeycloakEnabled() {
+	if config.ManagedKeycloakEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated,
 			constants.NamespaceKeycloak,
 		)
@@ -246,7 +247,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// would create its own namespace — without this, the secrets sync
 	// fails on the missing namespace. Same rationale as capi-cluster
 	// above.
-	if netBirdOperatorEnabled() {
+	if netbird.OperatorEnabled() {
 		err := kubernetes.CreateNamespace(ctx, constants.NamespaceNetBird, args.ClusterClient)
 		assert.AssertErrNil(ctx, err, "Failed creating namespace",
 			slog.String("namespace", constants.NamespaceNetBird))

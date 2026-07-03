@@ -119,7 +119,7 @@ func TestRobotClientLookupErrorMapping(t *testing.T) {
 			return &robotServerInfo{
 				ID:       id,
 				PublicIP: "1.2.3.4",
-				Name:     "kbm-c01",
+				Name:     "demo-c01",
 				Product:  "AX52",
 				DC:       "hel1-dc4",
 				Status:   "ready",
@@ -127,7 +127,7 @@ func TestRobotClientLookupErrorMapping(t *testing.T) {
 		}
 		info, err := lookup("1234567")
 		require.NoError(t, err)
-		assert.Equal(t, "kbm-c01", info.Name)
+		assert.Equal(t, "demo-c01", info.Name)
 		assert.Equal(t, "1.2.3.4", info.PublicIP)
 	})
 }
@@ -146,13 +146,13 @@ func TestRenderServerInfo(t *testing.T) {
 		{
 			name: "fully populated",
 			info: &robotServerInfo{
-				Name:      "kbm-c01",
+				Name:      "demo-c01",
 				Product:   "AX52",
 				DC:        "hel1-dc4",
 				PublicIP:  "1.2.3.4",
 				PaidUntil: "2027-03-15",
 			},
-			want: "✓ kbm-c01 — AX52 — hel1-dc4 — main IP 1.2.3.4 — paid until 2027-03-15",
+			want: "✓ demo-c01 — AX52 — hel1-dc4 — main IP 1.2.3.4 — paid until 2027-03-15",
 		},
 		{
 			name: "missing name and DC",
@@ -225,7 +225,7 @@ func TestScanSiblingConfigsForServerIDs(t *testing.T) {
 
 	t.Run("scans siblings, skips self, returns serverID -> cluster map", func(t *testing.T) {
 		parent := t.TempDir()
-		selfDir := filepath.Join(parent, "kbm")
+		selfDir := filepath.Join(parent, "demo")
 		stagingDir := filepath.Join(parent, "staging")
 		prodDir := filepath.Join(parent, "prod")
 		require.NoError(t, os.MkdirAll(selfDir, 0o750))
@@ -278,11 +278,11 @@ func TestScanSiblingConfigsForServerIDs(t *testing.T) {
 
 	t.Run("malformed YAML is silently skipped", func(t *testing.T) {
 		parent := t.TempDir()
-		require.NoError(t, os.MkdirAll(filepath.Join(parent, "kbm"), 0o750))
+		require.NoError(t, os.MkdirAll(filepath.Join(parent, "demo"), 0o750))
 		require.NoError(t, os.MkdirAll(filepath.Join(parent, "broken"), 0o750))
 		require.NoError(t, os.WriteFile(filepath.Join(parent, "broken", "general.yaml"),
 			[]byte("this: is: not: valid: yaml: : :\n"), 0o600))
-		got := scanSiblingConfigsForServerIDs(filepath.Join(parent, "kbm"))
+		got := scanSiblingConfigsForServerIDs(filepath.Join(parent, "demo"))
 		assert.Empty(t, got)
 	})
 }

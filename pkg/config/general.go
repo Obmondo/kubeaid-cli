@@ -332,7 +332,7 @@ type (
 		DNS string `yaml:"dns" validate:"omitempty,fqdn"`
 
 		// DNSZone is the mesh DNS domain peers resolve under — NetBird
-		// Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to
+		// Mgmt's --dns-domain, e.g. "demo.local". Defaults to
 		// "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
 		// Used to create the DNS zone on NetBird and to drive --dns-domain on
 		// VPN clusters.
@@ -355,6 +355,32 @@ type (
 		// generated and persisted in the Secret. Optional, defaults
 		// to "netbird".
 		TurnUser string `yaml:"turnUser" default:"netbird"`
+
+		// ClusterProxy configures the netbird-operator's kube-apiserver
+		// proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to
+		// the in-cluster apiserver, impersonating the caller's NetBird
+		// identity. Omit the block to leave it disabled.
+		ClusterProxy *NetBirdClusterProxyConfig `yaml:"clusterProxy"`
+	}
+
+	// NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
+	// proxy (netbird-operator.clusterProxy in the chart values). The proxy
+	// registers under cluster.name (netbird kubernetes write-kubeconfig
+	// <cluster.name>).
+	NetBirdClusterProxyConfig struct {
+		// Enabled toggles the cluster proxy.
+		Enabled bool `yaml:"enabled"`
+
+		// RBAC binds NetBird groups to cluster roles via the proxy's
+		// identity impersonation.
+		RBAC []NetBirdClusterProxyRBACConfig `yaml:"rbac" validate:"omitempty,dive"`
+	}
+
+	// NetBirdClusterProxyRBACConfig binds one NetBird group to one
+	// ClusterRole through the cluster proxy.
+	NetBirdClusterProxyRBACConfig struct {
+		Group       string `yaml:"group"       validate:"required"`
+		ClusterRole string `yaml:"clusterRole" validate:"required"`
 	}
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount

@@ -57,6 +57,8 @@
 - [KubeaidConfigForkConfig](#kubeaidconfigforkconfig)
 - [KubeaidStoragectlConfig](#kubeaidstoragectlconfig)
 - [LocalConfig](#localconfig)
+- [NetBirdClusterProxyConfig](#netbirdclusterproxyconfig)
+- [NetBirdClusterProxyRBACConfig](#netbirdclusterproxyrbacconfig)
 - [NetBirdConfig](#netbirdconfig)
 - [NetBirdCredentials](#netbirdcredentials)
 - [NodeGroup](#nodegroup)
@@ -705,6 +707,28 @@ See GeneralConfig.KubeaidStoragectl for when to set it.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 
+## NetBirdClusterProxyConfig
+
+<p>NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
+proxy (netbird-operator.clusterProxy in the chart values). The proxy
+registers under cluster.name (netbird kubernetes write-kubeconfig
+<cluster.name>).</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  | Enabled toggles the cluster proxy.<br> |
+| rbac | [][`NetBirdClusterProxyRBACConfig`](#netbirdclusterproxyrbacconfig) |  | RBAC binds NetBird groups to cluster roles via the proxy's<br>identity impersonation.<br> |
+
+## NetBirdClusterProxyRBACConfig
+
+<p>NetBirdClusterProxyRBACConfig binds one NetBird group to one
+ClusterRole through the cluster proxy.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| group | `string` |  |  |
+| clusterRole | `string` |  |  |
+
 ## NetBirdConfig
 
 <p>NetBirdConfig describes this cluster's relationship to the NetBird
@@ -716,10 +740,11 @@ applies to any cluster on the mesh. cluster.type is the gate.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | dns | `string` |  | DNS is the public hostname NetBird Management is reachable at,<br>e.g. "netbird.vpn.acme.com". Required only for cluster.type=vpn<br>(enforced in parser/keycloak.go); unused on workload clusters.<br> |
-| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "kbm-obmondo-com.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Used to create the DNS zone on NetBird and to drive --dns-domain on<br>VPN clusters.<br> |
+| dnsZone | `string` |  | DNSZone is the mesh DNS domain peers resolve under — NetBird<br>Mgmt's --dns-domain, e.g. "demo.local". Defaults to<br>"<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).<br>Used to create the DNS zone on NetBird and to drive --dns-domain on<br>VPN clusters.<br> |
 | stunDNS | `string` |  | StunDNS is the public hostname Coturn answers STUN queries<br>on, e.g. "stun.vpn.acme.com". Optional: kubeaid-cli derives<br>it as "stun.<base>" where base is DNS with the leading<br>"netbird." stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).<br>Override only when STUN is exposed on a non-standard FQDN.<br> |
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
+| clusterProxy | [`NetBirdClusterProxyConfig`](#netbirdclusterproxyconfig) |  | ClusterProxy configures the netbird-operator's kube-apiserver<br>proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to<br>the in-cluster apiserver, impersonating the caller's NetBird<br>identity. Omit the block to leave it disabled.<br> |
 
 ## NetBirdCredentials
 
