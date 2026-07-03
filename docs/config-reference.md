@@ -62,7 +62,6 @@
 - [NetBirdConfig](#netbirdconfig)
 - [NetBirdCredentials](#netbirdcredentials)
 - [NodeGroup](#nodegroup)
-- [OIDCConfig](#oidcconfig)
 - [ObmondoConfig](#obmondoconfig)
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
@@ -127,7 +126,6 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | extraArgs | `map[string]string` | {} |  |
 | extraVolumes | [][`HostPathMountConfig`](#hostpathmountconfig) | [] |  |
 | files | [][`FileConfig`](#fileconfig) | [] |  |
-| oidc | [`OIDCConfig`](#oidcconfig) |  | OIDC configures kube-apiserver to validate JWTs issued by an<br>external OpenID Connect provider (typically Keycloak). When<br>set, the parser renders a structured AuthenticationConfiguration<br>YAML, writes it via APIServerConfig.Files, and points<br>kube-apiserver at it with --authentication-config. Skipping<br>this block leaves kube-apiserver without OIDC.<br> |
 
 ## AWSAutoScalableNodeGroup
 
@@ -139,11 +137,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -207,11 +205,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -344,7 +342,8 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | acmeEmail | `string` |  | ACMEEmail is the contact email used to register with the ACME<br>CA (Let's Encrypt) when cert-manager's ClusterIssuer is<br>rendered. Required when cluster.keycloak.mode=managed (the<br>keycloakx and netbird-mgmt Ingresses both need TLS certs);<br>optional otherwise. Used as Issuer.spec.acme.email.<br> |
 | acmeDNS01 | [`ACMEDNS01Config`](#acmedns01config) |  | ACMEDNS01 switches the rendered ClusterIssuer's solver from<br>the HTTP-01 default to DNS-01. Required for the split-horizon<br>mesh pattern: NetBird-exposed services use real public DNS<br>names (e.g. argocd.staging.acme.com) that only resolve inside<br>the mesh — Let's Encrypt can never reach them over HTTP, but<br>proves ownership via a TXT record on the public zone instead.<br>Requires cluster.acmeEmail plus the provider credential in<br>secrets.yaml (acme.cloudflareApiToken).<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
-| keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance this cluster<br>authenticates against. Semantics depend on cluster.type:<br><br>  - cluster.type=vpn (required block):<br>      mode=managed  → kubeaid-cli installs Keycloak on<br>                      this cluster.<br>      mode=external → operator runs Keycloak elsewhere.<br><br>  - cluster.type=workload (optional block):<br>      mode=external only → the cluster's kube-apiserver<br>                           trusts this Keycloak for OIDC.<br>                           kubeaid-cli derives<br>                           apiServer.oidc.{issuerUrl,<br>                           clientId} from this block;<br>                           explicit apiServer.oidc still<br>                           wins. Workload clusters never<br>                           host Keycloak — mode=managed is<br>                           rejected.<br><br>Omitting the block on a workload cluster boots it without<br>OIDC; users authenticate with admin.conf (the workload<br>bootstrap prints a warning).<br> |
+| lockdown | `bool` |  | Lockdown pre-answers the end-of-bootstrap Host Firewall (CCNP)<br>step. nil = ask interactively (legacy behavior); true = apply<br>without prompting (CI-safe); false = skip the step.<br> |
+| keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance a VPN cluster hosts as<br>NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →<br>kubeaid-cli installs it; mode=external → operator runs it<br>elsewhere). Not supported on workload clusters — access there is<br>via the NetBird mesh (cluster.netbird.dns), so a keycloak block<br>on a workload cluster is rejected.<br> |
 | netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
 | argoCD | [`ArgoCDConfig`](#argocdconfig) |  | ArgoCD specific details.<br> |
@@ -443,11 +442,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -634,12 +633,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 
 ## KeycloakConfig
 
-<p>KeycloakConfig declares the OIDC provider for this cluster. The
-parser hydrates derived fields (Realm from DNS, the apiServer.oidc
-block) and validates the combination against cluster.type. The
-admin password is generated by kubeaid-cli at bootstrap and never
-lives in this struct or in secrets.yaml; only Mode/DNS/Realm are
-user-facing.</p>
+<p>KeycloakConfig declares the Keycloak instance a VPN cluster hosts as
+NetBird's SSO IdP. The parser derives the Realm from DNS when unset
+and validates the combination against cluster.type. The admin
+password is generated by kubeaid-cli at bootstrap and never lives in
+this struct or in secrets.yaml; only Mode/DNS/Realm are user-facing.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -770,26 +768,6 @@ KeycloakCredentials.</p>
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-
-## OIDCConfig
-
-<p>OIDCConfig is the typed kube-apiserver OIDC configuration.
-
-Required fields (IssuerURL + ClientID) must be present when the
-block is set; the rest carry sensible defaults. The IssuerURL is
-also probed at bootstrap time (see parser.ValidateOIDCDiscovery)
-so an unreachable / mistyped issuer fails fast — before we
-provision infrastructure.</p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| issuerUrl | `string` |  | IssuerURL is the Keycloak realm URL (e.g.<br>https://keycloak.<vpn-server>/realms/clusters). kube-apiserver<br>validates JWTs against this issuer's JWKS.<br> |
-| clientId | `string` |  | ClientID is the per-cluster OIDC client created in Keycloak<br>(e.g. kubernetes-staging). Must match the `aud` claim in<br>tokens kube-apiserver should accept.<br> |
-| usernameClaim | `string` | email | UsernameClaim is the JWT claim kube-apiserver maps to the<br>user's identity. Defaults to "email" — what the architecture<br>doc recommends — but can be overridden per Keycloak setup.<br> |
-| groupsClaim | `string` | groups | GroupsClaim is the JWT claim kube-apiserver reads to<br>populate the user's groups for RBAC. Defaults to "groups".<br> |
-| usernamePrefix | `string` |  | UsernamePrefix is prepended to usernames extracted from the<br>token (e.g. "oidc:"). Empty by default — useful when you<br>want to avoid collisions with non-OIDC users in RBAC bindings.<br> |
-| groupsPrefix | `string` |  | GroupsPrefix is prepended to groups extracted from the token<br>(e.g. "oidc:"). Empty by default.<br> |
-| caBundlePath | `string` |  | CABundlePath is an absolute host path to a PEM file<br>containing the CA that signed the issuer's TLS certificate.<br>Set this only when the issuer's cert is not chainable to a<br>publicly-trusted CA. When set, the parser reads the file<br>at config-render time and embeds its contents inline in the<br>AuthenticationConfiguration YAML.<br> |
 
 ## ObmondoConfig
 

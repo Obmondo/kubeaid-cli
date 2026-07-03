@@ -43,15 +43,20 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 		)
 	}
 
-	if cfg.ClusterType == constants.ClusterTypeWorkload && cfg.EnableOIDC {
-		netbirdKey := "not set — bootstrap will ask"
-		if cfg.NetBirdAPIKey != "" {
-			netbirdKey = "provided"
+	if cfg.ClusterType == constants.ClusterTypeWorkload {
+		if cfg.LockdownValue() {
+			netbirdKey := "not set — bootstrap will ask"
+			if cfg.NetBirdAPIKey != "" {
+				netbirdKey = "provided"
+			}
+			lines = append(lines,
+				"  Lockdown:      yes — Host Firewall (CCNP) after bootstrap",
+				fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
+				fmt.Sprintf("  NetBird key:   %s", netbirdKey),
+			)
+		} else {
+			lines = append(lines, "  Lockdown:      no")
 		}
-		lines = append(lines,
-			fmt.Sprintf("  Keycloak DNS:  %s", cfg.KeycloakDNS),
-			fmt.Sprintf("  NetBird key:   %s", netbirdKey),
-		)
 	}
 
 	if cfg.CloudProvider != constants.CloudProviderLocal {

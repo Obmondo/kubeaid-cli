@@ -20,13 +20,10 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
-    oidc:
-      issuerUrl: https://keycloak.example.com/realms/demo
-      clientId: kubernetes-demo
-  keycloak:
-    mode: external
-    dns: keycloak.example.com
-    realm: demo
+  netbird:
+    dns: netbird.example.com
+    dnsZone: demo.local
+  lockdown: true
   argoCD:
     deployKeys:
       kubeaidConfig:

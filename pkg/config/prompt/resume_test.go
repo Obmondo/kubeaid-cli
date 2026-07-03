@@ -62,7 +62,7 @@ func TestPromptStateRoundTrip(t *testing.T) {
 			state: &promptState{
 				K8sProfile:       true,
 				Basics:           true,
-				WorkloadKeycloak: true,
+				WorkloadLockdown: true,
 			},
 		},
 	}
@@ -88,6 +88,7 @@ func TestPromptStateRoundTrip(t *testing.T) {
 }
 
 func TestLoadExistingPromptedConfig(t *testing.T) {
+	lockdownTrue := true
 	tests := []struct {
 		name       string
 		fixtureDir string
@@ -102,12 +103,9 @@ func TestLoadExistingPromptedConfig(t *testing.T) {
 				K8sVersion:                 "v1.33.0",
 				KubePrometheusVersion:      "v0.15.0",
 				EnableAuditLogging:         true,
-				EnableOIDC:                 true,
-				OIDCIssuerURL:              "https://keycloak.example.com/realms/demo",
-				OIDCClientID:               "kubernetes-demo",
-				KeycloakMode:               "external",
-				KeycloakDNS:                "keycloak.example.com",
-				KeycloakRealm:              "demo",
+				NetBirdDNS:                 "netbird.example.com",
+				NetBirdDNSZone:             "demo.local",
+				Lockdown:                   &lockdownTrue,
 				SSHUsername:                "git",
 				SSHKeyPath:                 "/tmp/id_ed25519",
 				KubeaidForkURL:             "https://github.com/Obmondo/KubeAid.git",

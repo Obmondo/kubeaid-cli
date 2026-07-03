@@ -171,24 +171,19 @@ func applyGeneralConfigToPromptedConfig(general *config.GeneralConfig, cfg *Prom
 	cfg.EnableAuditLogging = general.Cluster.EnableAuditLogging
 	cfg.ACMEEmail = firstNonEmpty(general.Cluster.ACMEEmail, cfg.ACMEEmail)
 
-	if general.Cluster.APIServer.OIDC != nil {
-		cfg.EnableOIDC = true
-		cfg.OIDCIssuerURL = firstNonEmpty(general.Cluster.APIServer.OIDC.IssuerURL, cfg.OIDCIssuerURL)
-		cfg.OIDCClientID = firstNonEmpty(general.Cluster.APIServer.OIDC.ClientID, cfg.OIDCClientID)
-	}
-
 	if general.Cluster.Keycloak != nil {
 		cfg.KeycloakMode = firstNonEmpty(general.Cluster.Keycloak.Mode, cfg.KeycloakMode)
 		cfg.KeycloakDNS = firstNonEmpty(general.Cluster.Keycloak.DNS, cfg.KeycloakDNS)
 		cfg.KeycloakRealm = firstNonEmpty(general.Cluster.Keycloak.Realm, cfg.KeycloakRealm)
-		if cfg.ClusterType == constants.ClusterTypeWorkload {
-			cfg.EnableOIDC = true
-		}
 	}
 
 	if general.Cluster.NetBird != nil {
 		cfg.NetBirdDNS = firstNonEmpty(general.Cluster.NetBird.DNS, cfg.NetBirdDNS)
 		cfg.NetBirdDNSZone = firstNonEmpty(general.Cluster.NetBird.DNSZone, cfg.NetBirdDNSZone)
+	}
+
+	if general.Cluster.Lockdown != nil {
+		cfg.Lockdown = general.Cluster.Lockdown
 	}
 
 	cfg.KubeaidConfigDeployKeyPath = firstNonEmpty(
@@ -361,19 +356,12 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		Basics:              !missingBasics(cfg),
 		VPNKeycloak:         cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNKeycloak(cfg),
 		VPNEndpoints:        cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNEndpoints(cfg),
-		WorkloadKeycloak:    cfg.ClusterType == constants.ClusterTypeVPN || !missingWorkloadKeycloak(cfg),
+		WorkloadLockdown:    cfg.ClusterType == constants.ClusterTypeVPN || cfg.Lockdown != nil,
 		ProviderCredentials: !missingProviderPromptConfig(cfg),
 		GitSSH:              !missingGitSSH(cfg),
 		ObmondoSupport:      !missingObmondoSupportConfig(cfg),
 		NetBirdDNSZone:      cfg.NetBirdDNSZone != "",
 	}
-}
-
-func missingClusterModeConfig(cfg *PromptedConfig) bool {
-	if cfg.ClusterType == constants.ClusterTypeVPN {
-		return missingVPNKeycloak(cfg) || missingVPNEndpoints(cfg)
-	}
-	return missingWorkloadKeycloak(cfg)
 }
 
 func missingProviderRenderedConfig(cfg *PromptedConfig) bool {

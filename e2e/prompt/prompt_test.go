@@ -34,12 +34,8 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-baremetal")
 
-	// Step 2 — OIDC form: decline OIDC (default No).
-	c.expectString("Authenticate kubectl users via Keycloak")
-	c.acceptDefault()
-
 	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
-	c.expectString("NetBird mesh DNS zone")
+	c.expectString("Internal domain for apps")
 	c.sendLine("mesh.example.com")
 
 	// Step 3 — Bare-metal has no credential form (sets defaults programmatically).
@@ -112,12 +108,8 @@ func TestLocal_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-local")
 
-	// Step 2 — OIDC form: decline OIDC (default No).
-	c.expectString("Authenticate kubectl users via Keycloak")
-	c.acceptDefault()
-
 	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
-	c.expectString("NetBird mesh DNS zone")
+	c.expectString("Internal domain for apps")
 	c.sendLine("mesh.example.com")
 
 	// Step 3 — Local has no credential form.
@@ -191,12 +183,8 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2e-aws")
 
-	// Step 2 — OIDC: decline (default No).
-	c.expectString("Authenticate kubectl users via Keycloak")
-	c.acceptDefault()
-
 	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
-	c.expectString("NetBird mesh DNS zone")
+	c.expectString("Internal domain for apps")
 	c.sendLine("mesh.example.com")
 
 	// Step 3 — AWS credentials form.
@@ -298,12 +286,8 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Cluster name:")
 	c.sendLine("e2eazure")
 
-	// Step 2 — OIDC: decline (default No).
-	c.expectString("Authenticate kubectl users via Keycloak")
-	c.acceptDefault()
-
 	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
-	c.expectString("NetBird mesh DNS zone")
+	c.expectString("Internal domain for apps")
 	c.sendLine("mesh.example.com")
 
 	// Step 3 — Azure credentials (all in one group + HA confirm).
@@ -398,12 +382,8 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.expectString("What are you setting up?")
 	c.acceptDefault()
 
-	// Step 2 — OIDC: decline (default No; VPN would auto-configure OIDC).
-	c.expectString("Authenticate kubectl users via Keycloak")
-	c.acceptDefault()
-
 	// Step 2d — NetBird mesh DNS zone: asked for every cluster type, required, no default.
-	c.expectString("NetBird mesh DNS zone")
+	c.expectString("Internal domain for apps")
 	c.sendLine("mesh.example.com")
 
 	// Step 3 — Hetzner credentials form: mode + token + SSH key + HA.
@@ -456,7 +436,7 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "machineType: cax21")
 	assert.Contains(t, general, "replicas: 3")
 	assert.Contains(t, general, "region: hel1")
-	assert.Contains(t, general, "imageName: ubuntu-24.04")
+	assert.Contains(t, general, "imageName: ubuntu-26.04")
 	assert.Contains(t, general, "cidr: \"10.0.0.0/16\"")
 	assert.Contains(t, general, "hcloudServersSubnetCIDR: \"10.0.0.0/24\"")
 

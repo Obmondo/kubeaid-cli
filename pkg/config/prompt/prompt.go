@@ -5,7 +5,6 @@ package prompt
 
 import (
 	"bufio"
-	"context"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -15,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/huh/spinner"
 
 	configpkg "github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -53,27 +51,18 @@ type PromptedConfig struct {
 	KubePrometheusVersion string
 	EnableAuditLogging    bool
 
-	// OIDC for kube-apiserver. EnableOIDC gates whether the apiServer
-	// .oidc block is rendered into general.yaml at all; when false,
-	// the template emits a commented-out placeholder so the user can
-	// fill it in by hand later. UsernameClaim/GroupsClaim default to
-	// "email"/"groups" in the schema, so we don't prompt for them.
-	EnableOIDC    bool
-	OIDCIssuerURL string
-	OIDCClientID  string
-
-	// Keycloak reference fields. Populated for VPN clusters
-	// (always — kubeaid-cli installs or references Keycloak) and
-	// for workload clusters that opted into Keycloak login at the
-	// OIDC prompt. Render the cluster.keycloak.{mode,dns,realm}
-	// block in general.yaml.
+	// Keycloak reference fields, VPN clusters only (kubeaid-cli installs
+	// or references Keycloak as NetBird's IdP). Render the
+	// cluster.keycloak.{mode,dns,realm} block in general.yaml.
 	KeycloakMode  string // "managed" | "external"
 	KeycloakDNS   string
 	KeycloakRealm string
 
-	// VPN-only fields — populated only for cluster.type=vpn.
+	// NetBirdDNS is the NetBird Management endpoint. Set for VPN clusters
+	// (the host) and for workload clusters that lock down (the mesh they
+	// join). Rendered to cluster.netbird.dns.
 	NetBirdDNS string
-	ACMEEmail  string
+	ACMEEmail  string // VPN-only
 
 	// NetBirdDNSZone is the mesh DNS domain (NetBird --dns-domain), collected
 	// for both cluster types (vpn host + workload joiner). Defaults to
@@ -87,13 +76,14 @@ type PromptedConfig struct {
 	// keycloak.netBirdBackendClientSecret. Empty when managed.
 	NetBirdBackendClientSecret string
 
-	// NetBirdAPIKey is the parent VPN's NetBird service-user PAT the
-	// netbird-operator authenticates with. Collected (optionally) for
-	// workload clusters that opted into Keycloak — their parent Mgmt
-	// already exists, so the operator can mint it now. Rendered into
-	// secrets.yaml netbird.apiKey; blank means bootstrap pauses at the
-	// interactive gate instead.
+	// NetBirdAPIKey is the NetBird service-user PAT the netbird-operator
+	// authenticates with, collected when a workload cluster locks down.
+	// Rendered into secrets.yaml netbird.apiKey.
 	NetBirdAPIKey string
+
+	// Lockdown is the workload Host Firewall (CCNP) decision: nil when not
+	// asked, else the operator's choice. Rendered to cluster.lockdown.
+	Lockdown *bool
 
 	// HCloud-VPN control-plane endpoint FQDN — required when
 	// running a VPN cluster on Hetzner HCloud. Rendered into
@@ -451,10 +441,6 @@ func (s *promptSession) runPromptSteps() error {
 		return err
 	}
 
-	if err := s.collectWorkloadNetBirdAPIKeyIfNeeded(); err != nil {
-		return err
-	}
-
 	if err := s.collectNetBirdDNSZoneIfNeeded(); err != nil {
 		return err
 	}
@@ -463,6 +449,13 @@ func (s *promptSession) runPromptSteps() error {
 	if err := s.collectProviderCredentialsIfNeeded(prompter); err != nil {
 		return err
 	}
+
+	// Runs after provider credentials so cfg.HetznerMode is known — lockdown
+	// only applies to Hetzner bare-metal / hybrid workload clusters.
+	if err := s.collectWorkloadLockdownIfNeeded(); err != nil {
+		return err
+	}
+
 	if err := s.collectGitSSHIfNeeded(); err != nil {
 		return err
 	}
@@ -491,7 +484,9 @@ func (s *promptSession) collectClusterAuthIfNeeded() error {
 	if s.cfg.ClusterType == constants.ClusterTypeVPN {
 		return s.collectVPNConfigIfNeeded()
 	}
-	return s.collectWorkloadKeycloakIfNeeded()
+	// Workload clusters have no Keycloak/OIDC step — access is via the
+	// NetBird mesh, collected in collectWorkloadLockdownIfNeeded.
+	return nil
 }
 
 // collectNetBirdDNSZoneIfNeeded asks for the mesh DNS zone (NetBird
@@ -528,47 +523,33 @@ func (s *promptSession) collectVPNConfigIfNeeded() error {
 		s.state.VPNEndpoints = true
 	}
 
-	s.cfg.EnableOIDC = true
 	s.cfg.KeycloakRealm = deriveRealmFromDNS(s.cfg.KeycloakDNS)
-	// /auth/realms matches the keycloakx chart's base path; see
-	// parser/keycloak.go's hydrateKeycloakOIDC for the same
-	// derivation on the validate-config side.
-	s.cfg.OIDCIssuerURL = "https://" + s.cfg.KeycloakDNS + "/auth/realms/" + s.cfg.KeycloakRealm
-	s.cfg.OIDCClientID = "kubernetes-" + s.cfg.ClusterName
 
 	return nil
 }
 
-func (s *promptSession) collectWorkloadKeycloakIfNeeded() error {
-	if s.state.WorkloadKeycloak && !missingWorkloadKeycloak(s.cfg) {
+// collectWorkloadLockdownIfNeeded asks workload Hetzner bare-metal / hybrid
+// clusters whether to apply the Host Firewall (CCNP) at bootstrap; on yes it
+// collects the NetBird Management DNS + service-user API key so mesh access
+// survives the lockdown. Other providers skip lockdown entirely.
+func (s *promptSession) collectWorkloadLockdownIfNeeded() error {
+	if s.cfg.ClusterType != constants.ClusterTypeWorkload {
+		return nil
+	}
+	if s.state.WorkloadLockdown {
+		return nil
+	}
+	if !hetznerUsesBareMetal(s.cfg.HetznerMode) {
+		s.state.WorkloadLockdown = true
 		return nil
 	}
 
-	if err := runWorkloadKeycloakForm(s.cfg); err != nil {
-		return fmt.Errorf("collecting workload Keycloak config: %w", err)
+	if err := runLockdownForm(s.cfg); err != nil {
+		return fmt.Errorf("collecting lockdown config: %w", err)
 	}
-	s.state.WorkloadKeycloak = true
-
-	return nil
-}
-
-// collectWorkloadNetBirdAPIKeyIfNeeded optionally asks workload clusters that
-// opted into Keycloak for the netbird-operator's API token. Blank is a valid
-// answer (bootstrap's interactive gate covers it), so the state flag alone
-// gates re-asking.
-func (s *promptSession) collectWorkloadNetBirdAPIKeyIfNeeded() error {
-	if s.cfg.ClusterType != constants.ClusterTypeWorkload || !s.cfg.EnableOIDC {
-		return nil
-	}
-	if s.state.WorkloadNetBirdAPIKey {
-		return nil
-	}
-
-	if err := runWorkloadNetBirdAPIKeyForm(s.cfg); err != nil {
-		return fmt.Errorf("collecting NetBird API key: %w", err)
-	}
+	s.cfg.NetBirdDNS = strings.TrimSpace(s.cfg.NetBirdDNS)
 	s.cfg.NetBirdAPIKey = strings.TrimSpace(s.cfg.NetBirdAPIKey)
-	s.state.WorkloadNetBirdAPIKey = true
+	s.state.WorkloadLockdown = true
 
 	return nil
 }
@@ -612,93 +593,91 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 	return nil
 }
 
-// workloadNetBirdMgmtURL derives the parent NetBird Mgmt URL from the
-// Keycloak DNS ("keycloak.<base>" → "netbird.<base>"); a placeholder when
-// off-convention.
-func workloadNetBirdMgmtURL(cfg *PromptedConfig) string {
-	if strings.HasPrefix(cfg.KeycloakDNS, "keycloak.") {
-		return "https://netbird." + strings.TrimPrefix(cfg.KeycloakDNS, "keycloak.")
-	}
-	return "<your NetBird Mgmt URL>"
-}
+// runLockdownForm is the test seam for the workload lockdown form.
+var runLockdownForm = runWorkloadLockdownForm
 
-// runWorkloadNetBirdAPIKeyForm optionally collects the NetBird service-user
-// PAT the netbird-operator authenticates with. The parent VPN's Mgmt already
-// exists for a workload cluster, so the operator can mint the token now;
-// blank defers to bootstrap's interactive gate.
-func runWorkloadNetBirdAPIKeyForm(cfg *PromptedConfig) error {
+// runWorkloadLockdownForm asks whether to lock the cluster down with the Host
+// Firewall (CCNP); on yes it collects the NetBird Management DNS + service-user
+// API token that keep mesh access working after lockdown.
+func runWorkloadLockdownForm(cfg *PromptedConfig) error {
+	lockdown := false
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("Host Firewall (CCNP)").
+				Description("Lock this cluster down at the end of bootstrap: a host-firewall\n"+
+					"CiliumClusterwideNetworkPolicy restricts every node's public\n"+
+					"interface, and cluster access goes through the NetBird mesh\n"+
+					"(the netbird-operator clusterProxy)."),
+			huh.NewConfirm().
+				Title("Lock down this cluster with the Host Firewall (CCNP)?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&lockdown),
+		),
+	).Run(); err != nil {
+		return err
+	}
+	cfg.Lockdown = &lockdown
+	if !lockdown {
+		return nil
+	}
+
 	steps := fmt.Sprintf(
-		"To connect this cluster to your VPN, kubeaid-cli needs a NetBird API\n"+
-			"token. Create one in the NetBird dashboard:\n\n"+
-			"  %s  →  Team  →  Service Users  →  + Create Service User\n"+
+		"kubeaid-cli needs your NetBird Management endpoint and a service-user\n"+
+			"API token so the netbird-operator can join this cluster to the mesh.\n\n"+
+			"Create the token in the NetBird dashboard:\n"+
+			"  https://<netbird-mgmt-dns>/  →  Team  →  Service Users  →  + Create Service User\n"+
 			"    Name:  k8s-operator        Role:  Admin\n"+
 			"  From the new user's row  →  ⋮  →  Tokens  →  + Generate Token\n"+
 			"    Name:  kubeaid-%s   Expiration:  the longest offered\n"+
-			"    (the token is shown only once — copy it)\n\n"+
-			"Leave empty to provide it later — bootstrap will ask again.",
-		workloadNetBirdMgmtURL(cfg), cfg.ClusterName,
+			"    (the token is shown only once — copy it)",
+		cfg.ClusterName,
 	)
-
 	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewNote().
 				Title("NetBird operator API key").
 				Description(steps),
 			huh.NewInput().
-				Title("NetBird service-user token (optional):").
+				Title("NetBird Management DNS (e.g. netbird.vpn.acme.com):").
+				Value(&cfg.NetBirdDNS).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("NetBird service-user token:").
 				EchoMode(huh.EchoModePassword).
-				Value(&cfg.NetBirdAPIKey),
-		).Title("NetBird — operator API key"),
+				Value(&cfg.NetBirdAPIKey).
+				Validate(nonEmpty),
+		).Title("Host Firewall (CCNP) — NetBird access"),
 	).Run()
 }
 
-// printWorkloadNetBirdNextSteps prints the manual steps left before
-// `kubeaid-cli bootstrap` on a workload cluster that opted into Keycloak:
-// minting the netbird-operator's API token (skipped when it was provided at
-// the prompt) and the NetBird ACL for reaching the cluster. Manual on
-// purpose — the operator mints the token; kubeaid-cli never calls the Mgmt
-// API with admin powers of its own. No-op for VPN clusters and for workload
-// clusters that opted out of Keycloak.
+// LockdownSet reports whether cluster.lockdown should be rendered.
+func (c PromptedConfig) LockdownSet() bool { return c.Lockdown != nil }
+
+// LockdownValue is the value for the rendered cluster.lockdown line.
+func (c PromptedConfig) LockdownValue() bool { return c.Lockdown != nil && *c.Lockdown }
+
+// printWorkloadNetBirdNextSteps prints the manual NetBird step left before
+// `kubeaid-cli bootstrap` on a locked-down workload cluster: configuring the
+// group ACL so the operator's laptop can reach the cluster over the mesh.
+// No-op for VPN clusters and workload clusters that didn't lock down.
 func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
-	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.EnableOIDC {
+	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.LockdownValue() {
 		return
 	}
 
-	netbirdURL := workloadNetBirdMgmtURL(cfg)
+	netbirdURL := "https://" + cfg.NetBirdDNS + "/"
 	clusterGroup := "k8s-" + cfg.ClusterName
 
-	header := "  One manual step before `kubeaid-cli bootstrap`:"
-	if cfg.NetBirdAPIKey == "" {
-		header = "  Two manual steps before `kubeaid-cli bootstrap`:"
-	}
-
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
-	fmt.Fprintln(os.Stderr, header)
+	fmt.Fprintln(os.Stderr, "  One manual step before `kubeaid-cli bootstrap`:")
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 	fmt.Fprintln(os.Stderr)
-
-	step := 1
-	if cfg.NetBirdAPIKey == "" {
-		fmt.Fprintln(os.Stderr, "  1. Create a NetBird service user + access token for the netbird-operator")
-		fmt.Fprintln(os.Stderr, "     (the operator calls the Mgmt API to wire this cluster into the mesh —")
-		fmt.Fprintln(os.Stderr, "     it mints setup keys for its routing peers itself):")
-		fmt.Fprintf(os.Stderr, "       %s  →  Team  →  Service Users  →  + Create Service User\n", netbirdURL)
-		fmt.Fprintln(os.Stderr, "         Name:  k8s-operator")
-		fmt.Fprintln(os.Stderr, "         Role:  Admin")
-		fmt.Fprintln(os.Stderr, "       From the new user's row  →  ⋮  →  Tokens  →  + Generate Token")
-		fmt.Fprintf(os.Stderr, "         Name:        kubeaid-%s\n", cfg.ClusterName)
-		fmt.Fprintln(os.Stderr, "         Expiration:  the longest the UI offers (token shows only once)")
-		fmt.Fprintln(os.Stderr, "     Paste the generated token into secrets.yaml under:")
-		fmt.Fprintln(os.Stderr, "       netbird:")
-		fmt.Fprintln(os.Stderr, "         apiKey: <paste here>")
-		fmt.Fprintln(os.Stderr)
-		step = 2
-	}
-
-	fmt.Fprintf(os.Stderr, "  %d. Configure NetBird group ACLs so your laptop can reach the new cluster:\n", step)
-	fmt.Fprintf(os.Stderr, "       In %s, ensure a policy lets your laptop's group reach\n", netbirdURL)
-	fmt.Fprintf(os.Stderr, "       the cluster's routing peers (typically the group %q) on TCP 6443.\n", clusterGroup)
+	fmt.Fprintln(os.Stderr, "  Configure NetBird group ACLs so your laptop can reach the new cluster:")
+	fmt.Fprintf(os.Stderr, "    In %s, ensure a policy lets your laptop's group reach\n", netbirdURL)
+	fmt.Fprintf(os.Stderr, "    the cluster's routing peers (typically the group %q) on TCP 6443.\n", clusterGroup)
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "──────────────────────────────────────────────────────────────────")
 }
@@ -707,7 +686,7 @@ func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 func runBasicsForm(cfg *PromptedConfig) error {
 	const (
 		optVPN      = "A new VPN cluster (Phase 0 — hosts Keycloak + NetBird mesh)"
-		optWorkload = "A workload cluster (no managed Keycloak; OIDC is optional)"
+		optWorkload = "A workload cluster (joins a NetBird mesh; optional lockdown)"
 	)
 
 	clusterKindChoice := optWorkload
@@ -898,126 +877,6 @@ func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 				}),
 		).Title("NetBird — internal apps domain"),
 	).Run()
-}
-
-// runWorkloadKeycloakForm shows the workload-cluster Keycloak group
-// (Step 2c). Operator picks whether to wire OIDC at all; if yes,
-// supplies the parent Keycloak's DNS / realm / client ID. kubeaid-cli
-// then probes the realm's discovery endpoint to catch typos and
-// NetBird-down cases before bootstrap kicks off.
-//
-// When the operator opts out (use admin.conf only), no keycloak block
-// is rendered into general.yaml and the bootstrap prints a warning
-// that sharing admin.conf isn't best practice.
-//
-// The kubernetes-<cluster> OIDC client is the operator's responsibility
-// to create in the referenced Keycloak (public PKCE, redirect URIs
-// http://localhost:8000 + http://localhost:18000). The probe only
-// verifies the realm is reachable; it doesn't check the client exists.
-func runWorkloadKeycloakForm(cfg *PromptedConfig) error {
-	if err := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Authenticate kubectl users via Keycloak (OIDC)?").
-				Description("Recommended for shared clusters. Choosing No falls back to admin.conf, which all users share — fine for solo work, not for production.").
-				Affirmative("Yes — use Keycloak").
-				Negative("No — admin.conf only").
-				Value(&cfg.EnableOIDC),
-		).Title("OIDC (optional)").Description("Step 2c/4"),
-	).Run(); err != nil {
-		return err
-	}
-
-	if !cfg.EnableOIDC {
-		cfg.KeycloakDNS = ""
-		cfg.KeycloakRealm = ""
-		cfg.OIDCIssuerURL = ""
-		cfg.OIDCClientID = ""
-		return nil
-	}
-
-	if cfg.OIDCClientID == "" {
-		cfg.OIDCClientID = "kubernetes-" + cfg.ClusterName
-	}
-	cfg.KeycloakMode = constants.KeycloakModeExternal
-
-	// Form + probe loop. Each iteration re-runs the form pre-filled
-	// with the last values so an operator who fat-fingered a name
-	// can fix it without retyping the rest.
-	for {
-		if err := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					Title("Keycloak DNS (e.g. keycloak.vpn.acme.com):").
-					Value(&cfg.KeycloakDNS).
-					Validate(nonEmpty),
-				huh.NewInput().
-					Title("Keycloak realm (blank = derive from DNS via publicsuffix):").
-					Value(&cfg.KeycloakRealm),
-				huh.NewInput().
-					TitleFunc(func() string {
-						return fmt.Sprintf("OIDC client ID (must exist as a public PKCE client in the realm, e.g. kubernetes-%s):", cfg.ClusterName)
-					}, &cfg.ClusterName).
-					Value(&cfg.OIDCClientID).
-					Validate(nonEmpty),
-			).Title("Keycloak for workload OIDC").Description("Step 2c/4"),
-		).Run(); err != nil {
-			return err
-		}
-
-		if strings.TrimSpace(cfg.KeycloakRealm) == "" {
-			cfg.KeycloakRealm = deriveRealmFromDNS(cfg.KeycloakDNS)
-		}
-
-		// Visible feedback during the probe — without it the form
-		// freezes silently for up to promptOIDCProbeTimeout (10s)
-		// when NetBird is down or the realm is unreachable.
-		var probeErr error
-		_ = spinner.New().
-			Title(fmt.Sprintf("  Validating Keycloak at https://%s/auth/realms/%s ...", cfg.KeycloakDNS, cfg.KeycloakRealm)).
-			Action(func() {
-				probeErr = probeOIDCIssuer(context.Background(), cfg.KeycloakDNS, cfg.KeycloakRealm)
-			}).
-			Run()
-
-		if probeErr == nil {
-			// /auth/realms — keycloakx chart base path; must match
-			// the URL probeOIDCIssuer just hit, the JWT `iss` claim
-			// Keycloak will emit, and the kube-apiserver
-			// AuthenticationConfiguration's jwt[].issuer.url.
-			cfg.OIDCIssuerURL = "https://" + cfg.KeycloakDNS + "/auth/realms/" + cfg.KeycloakRealm
-			return nil
-		}
-
-		// Probe failed — show the operator what we saw and let them
-		// choose between retrying (loop runs again, form pre-filled)
-		// and skipping OIDC entirely.
-		retry := true
-		if err := huh.NewForm(
-			huh.NewGroup(
-				huh.NewNote().
-					Title("Cannot reach Keycloak").
-					Description(renderProbeOIDCError(probeErr)),
-				huh.NewConfirm().
-					Title("Try again?").
-					Affirmative("Edit and retry").
-					Negative("Skip OIDC (use admin.conf)").
-					Value(&retry),
-			),
-		).Run(); err != nil {
-			return err
-		}
-
-		if !retry {
-			cfg.EnableOIDC = false
-			cfg.KeycloakDNS = ""
-			cfg.KeycloakRealm = ""
-			cfg.KeycloakMode = ""
-			cfg.OIDCIssuerURL = ""
-			cfg.OIDCClientID = ""
-			return nil
-		}
-	}
 }
 
 // runGitSSHForm shows Step 4 — ArgoCD deploy key, config repo URL, and (when

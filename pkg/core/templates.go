@@ -724,52 +724,6 @@ func cloudflareAPIToken() string {
 	return creds.CloudflareAPIToken
 }
 
-// printWorkloadOIDCBanner emits a one-time, operator-facing banner
-// near the start of BootstrapCluster for workload-cluster runs:
-//
-//   - When cluster.keycloak is set: names the OIDC client the operator
-//     must have created in their Keycloak realm
-//     (kubernetes-<cluster.name>, public PKCE) and points at the doc
-//     with the exact steps. Read-only check — kubeaid-cli does NOT
-//     touch the operator's Keycloak admin API; the OIDC discovery
-//     probe runs separately and validates realm reachability only.
-//
-//   - When cluster.keycloak is absent: warns that the cluster will
-//     boot without OIDC and all users share admin.conf. Acceptable
-//     for solo / dev clusters; bad practice for shared / production.
-//
-// No-op for VPN clusters — those run their own managed-Keycloak
-// reconciler later in the bootstrap and don't need this banner.
-func printWorkloadOIDCBanner(ctx context.Context) {
-	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.Type != constants.ClusterTypeWorkload {
-		return
-	}
-
-	if cluster.Keycloak == nil {
-		slog.WarnContext(ctx,
-			"No cluster.keycloak block — bootstrap will continue without OIDC. "+
-				"Operators authenticate via admin.conf, which is shared and bypasses "+
-				"per-user RBAC. Not best practice for shared clusters. See "+
-				"docs/workload-cluster-keycloak.md for the OIDC alternative.",
-		)
-		return
-	}
-
-	clientID := "kubernetes-" + cluster.Name
-	slog.InfoContext(ctx,
-		"Workload OIDC pre-flight",
-		slog.String("realm_issuer", "https://"+cluster.Keycloak.DNS+"/auth/realms/"+cluster.Keycloak.Realm),
-		slog.String("expected_client_id", clientID),
-		slog.String("doc", "docs/workload-cluster-keycloak.md"),
-	)
-	slog.InfoContext(ctx,
-		"Make sure a public PKCE OIDC client with the exact ID above exists "+
-			"in that realm before running `kubeaid-cli login` — see the doc for "+
-			"the create-client click-through.",
-	)
-}
-
 // fetchNetBirdStatus is the test seam for requireOperatorOnNetBird —
 // tests assign it before exercising the gate to avoid shelling out
 // to a real `netbird` binary. Defaults to the real status fetcher.
@@ -777,109 +731,60 @@ var fetchNetBirdStatus = netbird.FetchStatus
 
 // requireOperatorOnNetBird hard-fails the bootstrap when the
 // operator's laptop isn't connected to the NetBird mesh AND the
-// cluster about to be bootstrapped depends on mesh reachability
-// (workload cluster + cluster.keycloak set — the Keycloak realm
-// almost certainly lives on a private DNS reachable only through
-// NetBird, and the OIDC discovery probe would fail later with a
-// cryptic DNS error).
+// cluster about to be bootstrapped joins one (workload cluster with
+// cluster.netbird.dns set — its apiserver / Management is reachable
+// only through the mesh).
 //
 // Skipped when:
-//   - cluster.type != workload (VPN clusters provision their own
-//     Keycloak; the operator doesn't need the mesh to reach it
-//     during bootstrap)
-//   - cluster.keycloak is unset (no Keycloak to reach, the cluster
-//     boots admin.conf-only — already covered by the workload OIDC
-//     banner's WARN line)
+//   - cluster.type != workload (VPN clusters provision their own mesh)
+//   - cluster.netbird.dns is unset (no mesh to reach)
 //
 // Returns an error suitable for assert.AssertErrNil — callers
 // surface it to the bootstrap pipeline so the failure happens before
 // any infrastructure is touched.
 func requireOperatorOnNetBird(ctx context.Context) error {
 	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.Type != constants.ClusterTypeWorkload || cluster.Keycloak == nil {
+	if cluster.Type != constants.ClusterTypeWorkload ||
+		cluster.NetBird == nil || cluster.NetBird.DNS == "" {
 		return nil
 	}
+	mgmtDNS := cluster.NetBird.DNS
 
 	status, err := fetchNetBirdStatus(ctx)
 	if err != nil {
 		return fmt.Errorf(
 			"querying NetBird daemon: %w — install netbird from "+
 				"https://netbird.io and run `netbird up` against %s before "+
-				"running `kubeaid-cli bootstrap` (the workload cluster's "+
-				"Keycloak at %s is only reachable through the mesh)",
-			err, cluster.Keycloak.DNS, cluster.Keycloak.DNS,
+				"running `kubeaid-cli bootstrap` (this cluster's Management at "+
+				"%s is only reachable through the mesh)",
+			err, mgmtDNS, mgmtDNS,
 		)
 	}
 
 	if status.DaemonStatus != netbird.DaemonStatusConnected {
 		return fmt.Errorf(
 			"NetBird daemon status is %q, not %q — run `netbird up` to "+
-				"connect to the mesh; the workload cluster's Keycloak at %s is "+
+				"connect to the mesh; this cluster's Management at %s is "+
 				"only reachable through NetBird",
-			status.DaemonStatus, netbird.DaemonStatusConnected, cluster.Keycloak.DNS,
+			status.DaemonStatus, netbird.DaemonStatusConnected, mgmtDNS,
 		)
 	}
 
-	// The daemon reports "Connected" — but to which mesh? An operator
-	// who ran `netbird up` against a different NetBird server (their
-	// personal netbird.io account, another customer's mesh) clears the
-	// check above yet still cannot reach this cluster's Keycloak.
-	//
-	// Obmondo provisions Keycloak and NetBird Mgmt as siblings —
-	// keycloak.<base> and netbird.<base> — so the mesh that hosts this
-	// cluster's Keycloak is derivable from cluster.keycloak.dns. The
-	// server check is skipped (not failed) when either side can't be
-	// determined: a hard pre-flight gate must not block a valid
-	// bootstrap on a guess.
-	expectedHost := corenetbird.ExpectedHost(cluster.Keycloak.DNS)
+	// The daemon reports "Connected" — but to which mesh? Compare the
+	// daemon's management host against cluster.netbird.dns. Skipped (not
+	// failed) when the daemon reports no parseable URL: a hard pre-flight
+	// gate must not block a valid bootstrap on a guess.
 	actualHost := status.Management.Host()
-
-	switch {
-	case expectedHost == "":
-		slog.DebugContext(ctx,
-			"skipping NetBird management-server check: cluster.keycloak.dns "+
-				"is not a keycloak.<base> name, so the expected NetBird host "+
-				"cannot be derived",
-			slog.String("keycloakDNS", cluster.Keycloak.DNS),
-		)
-
-	case actualHost == "":
-		slog.DebugContext(ctx,
-			"skipping NetBird management-server check: the daemon reported "+
-				"no parseable management URL",
-			slog.String("managementURL", status.Management.URL),
-		)
-
-	case !strings.EqualFold(expectedHost, actualHost):
+	if actualHost != "" && !strings.EqualFold(mgmtDNS, actualHost) {
 		return fmt.Errorf(
-			"NetBird daemon is connected to the %q mesh, but this workload "+
-				"cluster's Keycloak at %s lives on %q — run "+
-				"`netbird up --management-url https://%s` to switch to the "+
-				"correct mesh before running `kubeaid-cli bootstrap`",
-			actualHost, cluster.Keycloak.DNS, expectedHost, expectedHost,
+			"NetBird daemon is connected to the %q mesh, but this cluster's "+
+				"Management is %s — run `netbird up --management-url https://%s` "+
+				"to switch to the correct mesh before running `kubeaid-cli bootstrap`",
+			actualHost, mgmtDNS, mgmtDNS,
 		)
 	}
 
 	return nil
-}
-
-// shouldValidateOIDCNow reports whether the pre-flight OIDC
-// discovery probe should run at the start of bootstrap. True when
-// apiServer.oidc is configured AND we aren't standing Keycloak up
-// in this same bootstrap run (managed-Keycloak issuer doesn't
-// exist yet — kubeaid-cli probes it via in-cluster port-forward
-// later, after the keycloakx app syncs). Mirrors the internal
-// skip in parser.ValidateOIDCDiscovery so the progress-bar spinner
-// step is suppressed at the outer level too.
-func shouldValidateOIDCNow() bool {
-	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.APIServer.OIDC == nil {
-		return false
-	}
-	if cluster.Keycloak != nil && cluster.Keycloak.Mode == constants.KeycloakModeManaged {
-		return false
-	}
-	return true
 }
 
 // hetznerBareMetalFirewallEnabled reports whether the Cilium host-firewall

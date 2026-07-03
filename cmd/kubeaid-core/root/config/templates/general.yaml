@@ -83,64 +83,16 @@ cluster:
     extraArgs: {}
     extraVolumes: []
     files: []
-    # OIDC configures kube-apiserver to validate JWTs issued by an
-    # external OpenID Connect provider (typically Keycloak). When
-    # set, the parser renders a structured AuthenticationConfiguration
-    # YAML, writes it via APIServerConfig.Files, and points
-    # kube-apiserver at it with --authentication-config. Skipping
-    # this block leaves kube-apiserver without OIDC.
-    oidc:
-      # IssuerURL is the Keycloak realm URL (e.g.
-      # https://keycloak.<vpn-server>/realms/clusters). kube-apiserver
-      # validates JWTs against this issuer's JWKS.
-      issuerUrl:
-      # ClientID is the per-cluster OIDC client created in Keycloak
-      # (e.g. kubernetes-staging). Must match the `aud` claim in
-      # tokens kube-apiserver should accept.
-      clientId:
-      # UsernameClaim is the JWT claim kube-apiserver maps to the
-      # user's identity. Defaults to "email" — what the architecture
-      # doc recommends — but can be overridden per Keycloak setup.
-      usernameClaim: email
-      # GroupsClaim is the JWT claim kube-apiserver reads to
-      # populate the user's groups for RBAC. Defaults to "groups".
-      groupsClaim: groups
-      # UsernamePrefix is prepended to usernames extracted from the
-      # token (e.g. "oidc:"). Empty by default — useful when you
-      # want to avoid collisions with non-OIDC users in RBAC bindings.
-      usernamePrefix:
-      # GroupsPrefix is prepended to groups extracted from the token
-      # (e.g. "oidc:"). Empty by default.
-      groupsPrefix:
-      # CABundlePath is an absolute host path to a PEM file
-      # containing the CA that signed the issuer's TLS certificate.
-      # Set this only when the issuer's cert is not chainable to a
-      # publicly-trusted CA. When set, the parser reads the file
-      # at config-render time and embeds its contents inline in the
-      # AuthenticationConfiguration YAML.
-      caBundlePath:
-  # Keycloak declares the Keycloak instance this cluster
-  # authenticates against. Semantics depend on cluster.type:
-  # 
-  #   - cluster.type=vpn (required block):
-  #       mode=managed  → kubeaid-cli installs Keycloak on
-  #                       this cluster.
-  #       mode=external → operator runs Keycloak elsewhere.
-  # 
-  #   - cluster.type=workload (optional block):
-  #       mode=external only → the cluster's kube-apiserver
-  #                            trusts this Keycloak for OIDC.
-  #                            kubeaid-cli derives
-  #                            apiServer.oidc.{issuerUrl,
-  #                            clientId} from this block;
-  #                            explicit apiServer.oidc still
-  #                            wins. Workload clusters never
-  #                            host Keycloak — mode=managed is
-  #                            rejected.
-  # 
-  # Omitting the block on a workload cluster boots it without
-  # OIDC; users authenticate with admin.conf (the workload
-  # bootstrap prints a warning).
+  # Lockdown pre-answers the end-of-bootstrap Host Firewall (CCNP)
+  # step. nil = ask interactively (legacy behavior); true = apply
+  # without prompting (CI-safe); false = skip the step.
+  lockdown:
+  # Keycloak declares the Keycloak instance a VPN cluster hosts as
+  # NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →
+  # kubeaid-cli installs it; mode=external → operator runs it
+  # elsewhere). Not supported on workload clusters — access there is
+  # via the NetBird mesh (cluster.netbird.dns), so a keycloak block
+  # on a workload cluster is rejected.
   keycloak:
     # Mode is "managed" (kubeaid-cli installs Keycloak via the
     # keycloakx Helm chart on this cluster — VPN clusters only)

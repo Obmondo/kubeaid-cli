@@ -92,23 +92,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// Default cluster.keycloak.realm from DNS when unset (uses
 		// publicsuffix). Validation of the typed block happens after
 		// defaults so error messages reference the user-visible value.
-		//
-		// Must run before hydrateKeycloakOIDC and
-		// hydrateWithOIDCOptions: both read the resolved realm.
 		hydrateKeycloakDefaults()
-
-		// Fill cluster.apiServer.oidc from the cluster.keycloak block
-		// so the operator doesn't have to repeat the derivable issuer
-		// URL + client ID. Fires for both modes — managed (VPN host)
-		// and external (workload cluster referencing a parent VPN's
-		// Keycloak, or VPN using an operator-managed Keycloak). No-op
-		// when the OIDC block is already set explicitly.
-		hydrateKeycloakOIDC()
-
-		// Translate the typed apiServer.oidc block (if any) into the
-		// corresponding kube-apiserver AuthenticationConfiguration
-		// file + --authentication-config flag + host-path mount.
-		hydrateWithOIDCOptions()
 
 		// Default cluster.netbird.{stunDNS,turnDNS,turnUser} when
 		// unset. Renders into the netbird Secret consumed by NetBird

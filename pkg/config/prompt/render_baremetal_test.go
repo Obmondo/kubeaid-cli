@@ -24,6 +24,7 @@ import (
 // failure the operator hit in the prompt UX is fixed
 // (cloud.hetzner.controlPlane.bareMetal + bareMetalHosts now render).
 func TestRenderHetznerBareMetalWorkload(t *testing.T) {
+	lockdown := true
 	cfg := &PromptedConfig{
 		SSHUsername:                "git",
 		UseSSHAgent:                true,
@@ -33,12 +34,10 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 		ClusterName:                "bm-acme",
 		ClusterType:                "workload",
 		K8sVersion:                 "v1.35.4",
-		EnableOIDC:                 true,
-		OIDCIssuerURL:              "https://keycloak.vpn.acme.com/auth/realms/acme",
-		OIDCClientID:               "kubernetes-bm-acme",
-		KeycloakMode:               "external",
-		KeycloakDNS:                "keycloak.vpn.acme.com",
-		KeycloakRealm:              "acme",
+		Lockdown:                   &lockdown,
+		NetBirdDNS:                 "netbird.vpn.acme.com",
+		NetBirdDNSZone:             "bm-acme.local",
+		NetBirdAPIKey:              "nbp_faketoken",
 		KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
 
 		CloudProvider:     "hetzner",
@@ -107,6 +106,13 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "vlanID: 4002")
 	assert.Contains(t, general, `subnetCIDRBlock: "10.0.1.0/24"`)
 
+	// Workload lockdown: NetBird Mgmt DNS + cluster.lockdown rendered;
+	// no apiServer.oidc / keycloak block on a workload cluster.
+	assert.Contains(t, general, "dns: netbird.vpn.acme.com")
+	assert.Contains(t, general, "lockdown: true")
+	assert.NotContains(t, general, "oidc:")
+	assert.NotContains(t, general, "keycloak:")
+
 	// Cilium host-firewall block rendered with its defaults (enabled, empty
 	// allowSshFrom + allowPublic) so prompt-generated configs document the
 	// public-NIC lockdown knobs; see docs/hetzner-bare-metal-network-surface.md.
@@ -143,7 +149,7 @@ func TestRenderHetznerBareMetalWorkload(t *testing.T) {
 	assert.Contains(t, general, "name: bm-acme")
 	assert.Contains(t, general, "type: workload")
 	assert.Contains(t, general, "mode: bare-metal")
-	assert.Contains(t, general, "issuerUrl: https://keycloak.vpn.acme.com/auth/realms/acme")
+	assert.NotContains(t, general, "issuerUrl:", "no apiServer.oidc on a workload cluster")
 
 	secrets, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
 	require.NoError(t, err)

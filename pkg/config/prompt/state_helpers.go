@@ -6,18 +6,17 @@ package prompt
 import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
 type promptState struct {
-	K8sProfile       bool `yaml:"k8sProfile"`
-	Basics           bool `yaml:"basics"`
-	VPNKeycloak      bool `yaml:"vpnKeycloak"`
-	VPNEndpoints     bool `yaml:"vpnEndpoints"`
-	WorkloadKeycloak bool `yaml:"workloadKeycloak"`
-	// WorkloadNetBirdAPIKey is flag-only (no missing* twin): blank is a
-	// valid answer, deferring the token to bootstrap's interactive gate.
-	WorkloadNetBirdAPIKey bool `yaml:"workloadNetBirdAPIKey"`
-	ProviderCredentials   bool `yaml:"providerCredentials"`
-	GitSSH                bool `yaml:"gitSSH"`
-	ObmondoSupport        bool `yaml:"obmondoSupport"`
-	NetBirdDNSZone        bool `yaml:"netbirdDNSZone"`
+	K8sProfile   bool `yaml:"k8sProfile"`
+	Basics       bool `yaml:"basics"`
+	VPNKeycloak  bool `yaml:"vpnKeycloak"`
+	VPNEndpoints bool `yaml:"vpnEndpoints"`
+	// WorkloadLockdown gates the workload Host Firewall (CCNP) + NetBird
+	// collection step.
+	WorkloadLockdown    bool `yaml:"workloadLockdown"`
+	ProviderCredentials bool `yaml:"providerCredentials"`
+	GitSSH              bool `yaml:"gitSSH"`
+	ObmondoSupport      bool `yaml:"obmondoSupport"`
+	NetBirdDNSZone      bool `yaml:"netbirdDNSZone"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {
@@ -35,16 +34,6 @@ func missingVPNKeycloak(cfg *PromptedConfig) bool {
 
 func missingVPNEndpoints(cfg *PromptedConfig) bool {
 	return cfg.NetBirdDNS == "" || cfg.ControlPlaneEndpoint == "" || cfg.ACMEEmail == ""
-}
-
-func missingWorkloadKeycloak(cfg *PromptedConfig) bool {
-	if !cfg.EnableOIDC {
-		return false
-	}
-	if cfg.OIDCIssuerURL != "" && cfg.OIDCClientID != "" {
-		return false
-	}
-	return cfg.KeycloakDNS == "" || cfg.OIDCClientID == ""
 }
 
 func missingProviderPromptConfig(cfg *PromptedConfig) bool {
