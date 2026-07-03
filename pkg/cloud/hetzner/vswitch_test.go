@@ -8,12 +8,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 const robotVSwitchPath = "/vswitch"
@@ -201,6 +203,11 @@ func TestCreateVSwitch(t *testing.T) {
 func TestAttachServerToVSwitch(t *testing.T) {
 	t.Parallel()
 
+	inProcessBody := fmt.Sprintf(
+		`{"error":{"status":409,"code":%q,"message":"in process"}}`,
+		constants.HRobotVSwitchInProcessErrorCode,
+	)
+
 	tests := []struct {
 		name       string
 		serverID   string
@@ -220,12 +227,35 @@ func TestAttachServerToVSwitch(t *testing.T) {
 			},
 		},
 		{
-			name:      "conflict returns success (HTTP 409)",
+			// The vSwitch is busy applying a previous server's attach;
+			// the first call gets 409 VSWITCH_IN_PROCESS, the retry
+			// (after the update settles) gets 201. This is the case
+			// that used to silently drop every server past the first.
+			name:      "retries on VSWITCH_IN_PROCESS then succeeds",
+			serverID:  "100",
+			vswitchID: 50,
+			handler: func() http.HandlerFunc {
+				var calls atomic.Int32
+				return func(w http.ResponseWriter, _ *http.Request) {
+					if calls.Add(1) == 1 {
+						w.WriteHeader(http.StatusConflict)
+						_, _ = w.Write([]byte(inProcessBody))
+						return
+					}
+					w.WriteHeader(http.StatusCreated)
+				}
+			}(),
+		},
+		{
+			name:      "other 409 returns error",
 			serverID:  "100",
 			vswitchID: 50,
 			handler: func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusConflict)
+				_, _ = w.Write([]byte(`{"error":{"status":409,"code":"VSWITCH_SERVER_LIMIT_REACHED"}}`))
 			},
+			wantErr:    true,
+			wantErrMsg: "unexpected status code 409",
 		},
 		{
 			name:      "unexpected status returns error",
@@ -245,6 +275,7 @@ func TestAttachServerToVSwitch(t *testing.T) {
 
 			h, server := newTestHetznerWithRobotServer(tc.handler)
 			defer server.Close()
+			h.sleepFunc = noopSleep
 
 			err := h.AttachServerToVSwitch(context.Background(), tc.serverID, tc.vswitchID)
 			if tc.wantErr {
