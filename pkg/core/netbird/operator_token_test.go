@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package core
+package netbird
 
 import (
 	"context"
@@ -175,7 +175,7 @@ func TestAwaitNetBirdOperatorToken_KeycloakBoxBeforeNetBirdBox(t *testing.T) {
 	cancel()
 
 	out := captureStdout(t, func() {
-		if _, err := awaitNetBirdOperatorToken(ctx, fakeClient, "s3cret-from-cluster"); err == nil {
+		if _, err := AwaitOperatorToken(ctx, fakeClient, "s3cret-from-cluster"); err == nil {
 			t.Error("expected an error once the cancelled context aborts the wait, got nil")
 		}
 	})
@@ -196,7 +196,7 @@ func TestAwaitNetBirdOperatorToken_KeycloakBoxBeforeNetBirdBox(t *testing.T) {
 }
 
 // netBirdVPNTestConfig installs a managed-Keycloak VPN cluster config (which
-// makes netBirdOperatorEnabled() true) for the duration of the test.
+// makes OperatorEnabled() true) for the duration of the test.
 func netBirdVPNTestConfig(t *testing.T) {
 	t.Helper()
 	orig := config.ParsedGeneralConfig
@@ -240,7 +240,7 @@ func TestAwaitNetBirdOperatorToken_PasteNowCreatesSecret(t *testing.T) {
 	var proceed bool
 	out := captureStdout(t, func() {
 		var err error
-		proceed, err = awaitNetBirdOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
+		proceed, err = AwaitOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -280,7 +280,7 @@ func TestAwaitNetBirdOperatorToken_DeferSkipsLockdown(t *testing.T) {
 	var proceed bool
 	out := captureStdout(t, func() {
 		var err error
-		proceed, err = awaitNetBirdOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
+		proceed, err = AwaitOperatorToken(context.Background(), fakeClient, "s3cret-from-cluster")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}

@@ -289,7 +289,7 @@ const CertManagerCloudflareAPITokenSecretTemplateName = "sealed-secrets/cert-man
 // netbird/netbird-mgmt-api-key Secret the operator Deployment's
 // NB_API_KEY env reads (the chart's default secret ref). Only
 // registered when the operator is rendered AND the key is present —
-// when absent, bootstrap pauses at awaitNetBirdOperatorToken with
+// when absent, bootstrap pauses at netbird.AwaitOperatorToken with
 // create-it-manually instructions instead.
 const NetBirdOperatorAPIKeySecretTemplateName = "sealed-secrets/netbird/netbird-mgmt-api-key.yaml.tmpl"
 

@@ -596,7 +596,7 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 // An earlier revision of this notice asked for a *setup key* pasted
 // under netbird.setupKey — a field that never existed and a
 // credential type that can't call the Mgmt API. If the token is left
-// blank, bootstrap pauses at awaitNetBirdOperatorToken with the same
+// blank, bootstrap pauses at netbird.AwaitOperatorToken with the same
 // instructions instead.
 func printWorkloadNetBirdNextSteps(cfg *PromptedConfig) {
 	if cfg.ClusterType != constants.ClusterTypeWorkload || !cfg.EnableOIDC {

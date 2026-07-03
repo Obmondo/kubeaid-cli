@@ -17,6 +17,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	corenetbird "github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -199,7 +200,7 @@ type TemplateValues struct {
 	// netbird/netbird-mgmt-api-key Secret the operator reads.
 	// Empty when the operator hasn't minted one yet — the matching
 	// SealedSecret template is skipped and bootstrap pauses at
-	// awaitNetBirdOperatorToken instead.
+	// netbird.AwaitOperatorToken instead.
 	NetBirdAPIKey string
 
 	// CloudflareAPIToken is secrets.yaml's acme.cloudflareApiToken,
@@ -265,8 +266,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	// Precompute netbird-operator overlay flags so the values template
 	// stays nil-safe (see values-netbird-operator.yaml.tmpl).
 	netbirdCfg := config.ParsedGeneralConfig.Cluster.NetBird
-	netbirdMgmtURL := netbirdManagementURL()
-	netbirdProxyEnabled := netbirdClusterProxyEnabled()
+	netbirdMgmtURL := corenetbird.ManagementURL()
+	netbirdProxyEnabled := corenetbird.ClusterProxyEnabled()
 	// Router (+ traefik-internal resource) needs the mesh DNS zone the chart
 	// requires; only render it when cluster.netbird.dnsZone is set.
 	netbirdRouterEnabled := netbirdCfg != nil && netbirdCfg.DNSZone != ""
@@ -303,11 +304,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
 
 		NetBirdManagementURL: netbirdMgmtURL,
-		NetBirdAPIKey:        netbirdAPIKey(),
+		NetBirdAPIKey:        corenetbird.APIKey(),
 
 		NetBird:                     netbirdCfg,
 		NetBirdClusterProxyEnabled:  netbirdProxyEnabled,
-		NetBirdOperatorEnabled:      netBirdOperatorEnabled(),
+		NetBirdOperatorEnabled:      corenetbird.OperatorEnabled(),
 		NetBirdRouterEnabled:        netbirdRouterEnabled,
 		NetBirdInternalIngressGroup: "k8s-" + config.ParsedGeneralConfig.Cluster.Name,
 
@@ -378,7 +379,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		// after the netbird-pgsql Cluster CR is reconciled. On the
 		// first kubeaid-cli run the Secret doesn't have the key yet
 		// → render an empty string; bootstrap_cluster.go's
-		// patchNetBirdPostgresDSN step fills it in post-sync. On
+		// netbird.WaitAndPatchPostgresDSN step fills it in post-sync. On
 		// re-runs the patched value is read back here so the
 		// SealedSecret in git stays in sync. This is the only field
 		// that genuinely needs a cluster read — kubeaid-cli has no
@@ -669,7 +670,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// clusters"). Until then the operator pod runs with chart
 	// defaults; CRDs are registered and an operator can apply
 	// hand-rolled CRs.
-	if netBirdOperatorEnabled() {
+	if corenetbird.OperatorEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorTemplateNames...,
 		)
@@ -703,88 +704,6 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	return embeddedTemplateNames
-}
-
-// netBirdOperatorEnabled reports whether kubeaid-cli should render
-// the netbird-operator ArgoCD app on this cluster.
-//
-// True when either:
-//
-//   - cluster.type=workload AND cluster.keycloak is set — the
-//     keycloak gate is the proxy for "operator wants private kube-API
-//     behind a parent VPN's mesh": if they're already routing OIDC
-//     through that VPN's Keycloak, they almost certainly want
-//     kube-API on the same mesh. Operators on admin.conf-only (no
-//     keycloak block) explicitly opted out — skip the operator.
-//
-//   - cluster.type=vpn — the VPN cluster itself runs NetBird Mgmt,
-//     and the operator's CRDs (NBRoutingPeer / NetworkRouter /
-//     NetworkResource etc.) are how routing-peer + exposed-service
-//     wiring is declared. Earlier revisions claimed VPN clusters
-//     got the operator "implicitly" via the netbird chart's
-//     kubeaid-addons subdep — that subdep only installs NetBird
-//     Mgmt, not the operator. Fixed by including VPN clusters in
-//     this gate directly.
-//
-// The values overlay (values-netbird-operator.yaml.tmpl) renders
-// managementURL when derivable (see netbirdManagementURL); the Mgmt
-// API token flows via the netbird-mgmt-api-key SealedSecret when
-// secrets.yaml carries netbird.apiKey, with awaitNetBirdOperatorToken
-// as the interactive fallback.
-func netBirdOperatorEnabled() bool {
-	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.Type == constants.ClusterTypeVPN {
-		return true
-	}
-	return cluster.Type == constants.ClusterTypeWorkload && cluster.Keycloak != nil
-}
-
-// netbirdClusterProxyEnabled reports whether the netbird-operator
-// clusterProxy block is configured and enabled. Nil-safe.
-func netbirdClusterProxyEnabled() bool {
-	nb := config.ParsedGeneralConfig.Cluster.NetBird
-	return nb != nil && nb.ClusterProxy != nil && nb.ClusterProxy.Enabled
-}
-
-// netbirdManagementURL returns the NetBird Mgmt endpoint the
-// netbird-operator should target, or "" when it can't be derived
-// (the values overlay then omits managementURL — NOT harmless: the
-// operator binary falls back to NetBird Cloud, so the await step's
-// instructions cover wiring it manually).
-//
-//   - VPN clusters host Mgmt themselves: cluster.netbird.dns is
-//     authoritative.
-//   - Workload clusters derive netbird.<base> from the Keycloak DNS
-//     convention — the same rule expectedNetBirdHost encodes for the
-//     post-prompt guidance.
-func netbirdManagementURL() string {
-	cluster := config.ParsedGeneralConfig.Cluster
-
-	if cluster.NetBird != nil && cluster.NetBird.DNS != "" {
-		return "https://" + cluster.NetBird.DNS
-	}
-
-	if cluster.Keycloak == nil {
-		return ""
-	}
-
-	host := expectedNetBirdHost(cluster.Keycloak.DNS)
-	if host == "" {
-		return ""
-	}
-
-	return "https://" + host
-}
-
-// netbirdAPIKey returns secrets.yaml's netbird.apiKey, nil-safe —
-// the netbird block is optional and absent on most workload-cluster
-// secrets files until the operator wiring step.
-func netbirdAPIKey() string {
-	creds := config.ParsedSecretsConfig.NetBird
-	if creds == nil {
-		return ""
-	}
-	return creds.APIKey
 }
 
 // acmeDNS01Enabled reports whether the cluster's ClusterIssuer uses a
@@ -912,7 +831,7 @@ func requireOperatorOnNetBird(ctx context.Context) error {
 	// server check is skipped (not failed) when either side can't be
 	// determined: a hard pre-flight gate must not block a valid
 	// bootstrap on a guess.
-	expectedHost := expectedNetBirdHost(cluster.Keycloak.DNS)
+	expectedHost := corenetbird.ExpectedHost(cluster.Keycloak.DNS)
 	actualHost := status.Management.Host()
 
 	switch {
@@ -942,23 +861,6 @@ func requireOperatorOnNetBird(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// expectedNetBirdHost derives the NetBird Management hostname a
-// workload cluster's operator must be meshed with, from the cluster's
-// Keycloak DNS. Obmondo provisions the two as siblings: a Keycloak at
-// "keycloak.<base>" implies a NetBird mesh at "netbird.<base>".
-//
-// Returns "" when keycloakDNS does not carry the "keycloak." prefix —
-// the "netbird.<base>" derivation would then be guesswork, and
-// requireOperatorOnNetBird must not hard-fail a bootstrap on a guess.
-func expectedNetBirdHost(keycloakDNS string) string {
-	base, ok := strings.CutPrefix(keycloakDNS, "keycloak.")
-	if !ok {
-		return ""
-	}
-
-	return "netbird." + base
 }
 
 // shouldValidateOIDCNow reports whether the pre-flight OIDC
@@ -1106,11 +1008,11 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	// netbird-operator Mgmt API token — only when the operator app is
 	// rendered AND the operator has minted a service-user token into
-	// secrets.yaml. When absent, awaitNetBirdOperatorToken pauses
+	// secrets.yaml. When absent, netbird.AwaitOperatorToken pauses
 	// bootstrap with create-it-manually instructions instead of
 	// sealing an empty value (which would let the operator pod
 	// schedule and then fail at runtime).
-	if netBirdOperatorEnabled() && netbirdAPIKey() != "" {
+	if corenetbird.OperatorEnabled() && corenetbird.APIKey() != "" {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorAPIKeySecretTemplateName,
 		)

@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package core
+package netbird
 
 import (
 	"context"
@@ -93,7 +93,7 @@ func TestPatchNetBirdPostgresDSN_HappyPath(t *testing.T) {
 		).
 		Build()
 
-	require.NoError(t, patchNetBirdPostgresDSN(context.Background(), cl))
+	require.NoError(t, patchPostgresDSN(context.Background(), cl))
 
 	got := &coreV1.Secret{}
 	require.NoError(t, cl.Get(context.Background(),
@@ -123,7 +123,7 @@ func TestPatchNetBirdPostgresDSN_AppSecretMissing(t *testing.T) {
 		}).
 		Build()
 
-	err := patchNetBirdPostgresDSN(context.Background(), cl)
+	err := patchPostgresDSN(context.Background(), cl)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), netBirdPostgresAppSecret)
 	assert.Contains(t, err.Error(), "netbird-pgsql Cluster CR")
@@ -143,7 +143,7 @@ func TestPatchNetBirdPostgresDSN_AppSecretMissingPasswordKey(t *testing.T) {
 		}).
 		Build()
 
-	err := patchNetBirdPostgresDSN(context.Background(), cl)
+	err := patchPostgresDSN(context.Background(), cl)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing 'password' key")
 }
@@ -168,7 +168,7 @@ func TestPatchNetBirdPostgresDSN_NetBirdSecretMissing(t *testing.T) {
 		}).
 		Build()
 
-	err := patchNetBirdPostgresDSN(context.Background(), cl)
+	err := patchPostgresDSN(context.Background(), cl)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "reading netbird Secret")
 }
@@ -205,7 +205,7 @@ func TestPatchNetBirdPostgresDSN_OverwritesExistingValue(t *testing.T) {
 		).
 		Build()
 
-	require.NoError(t, patchNetBirdPostgresDSN(context.Background(), cl))
+	require.NoError(t, patchPostgresDSN(context.Background(), cl))
 
 	got := &coreV1.Secret{}
 	require.NoError(t, cl.Get(context.Background(),

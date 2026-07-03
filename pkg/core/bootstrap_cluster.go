@@ -24,6 +24,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -270,10 +271,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Interactive prompts below need clean stdout.
 	bar.Finish()
 
-	// NetBird API-key gate — see awaitNetBirdOperatorToken. When the operator
+	// NetBird API-key gate — see netbird.AwaitOperatorToken. When the operator
 	// defers, skip lockdown + the LB disable: without a mesh key they'd have
 	// no path back to kube-apiserver.
-	proceedWithLockdown, netBirdErr := awaitNetBirdOperatorToken(ctx, mainClusterClient, keycloakAdminPassword)
+	proceedWithLockdown, netBirdErr := netbird.AwaitOperatorToken(ctx, mainClusterClient, keycloakAdminPassword)
 	assert.AssertErrNil(ctx, netBirdErr, "Failed handling the NetBird operator API-key gate")
 
 	if proceedWithLockdown {
@@ -764,7 +765,7 @@ func netbirdAfterSync(clusterClient client.Client) func(context.Context) error {
 	return func(ctx context.Context) error {
 		bar := progress.FromCtx(ctx)
 		release := bar.InProgress("Patching netbird Secret with CNPG-generated postgres DSN")
-		err := waitAndPatchNetBirdPostgresDSN(ctx, clusterClient)
+		err := netbird.WaitAndPatchPostgresDSN(ctx, clusterClient)
 		release()
 		if err != nil {
 			return err

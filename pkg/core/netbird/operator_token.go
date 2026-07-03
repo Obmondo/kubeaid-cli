@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: AGPL3
 
-package core
+package netbird
 
 import (
 	"context"
@@ -35,7 +35,7 @@ const (
 	netBirdOperatorSecretKey       = "NB_API_KEY"
 )
 
-// awaitNetBirdOperatorToken settles the netbird-mgmt-api-key Secret before
+// AwaitOperatorToken settles the netbird-mgmt-api-key Secret before
 // lockdown: without it the operator's Pod webhook (failurePolicy: Fail) blocks
 // every Pod create. When the Secret is missing and stdin is a terminal the
 // operator chooses paste-now / wait / defer; without a terminal it polls then
@@ -46,12 +46,12 @@ const (
 // kube-apiserver with no mesh path back. keycloakAdminPassword feeds the
 // "create your Keycloak login first" box (NetBird login is Keycloak SSO).
 // No-op when the cluster doesn't host the operator.
-func awaitNetBirdOperatorToken(
+func AwaitOperatorToken(
 	ctx context.Context,
 	clusterClient client.Client,
 	keycloakAdminPassword string,
 ) (proceedWithLockdown bool, err error) {
-	if !netBirdOperatorEnabled() {
+	if !OperatorEnabled() {
 		return true, nil
 	}
 
@@ -302,7 +302,7 @@ func netbirdDashboardHost() string {
 	}
 
 	if cluster.Keycloak != nil {
-		if host := expectedNetBirdHost(cluster.Keycloak.DNS); host != "" {
+		if host := ExpectedHost(cluster.Keycloak.DNS); host != "" {
 			return host
 		}
 	}

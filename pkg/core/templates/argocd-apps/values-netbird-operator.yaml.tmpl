@@ -13,7 +13,7 @@ netbird.<base> Keycloak-DNS convention on workload clusters. Omitting it is
 NOT harmless: the operator binary falls back to NetBird Cloud (api.netbird.io),
 so when the URL can't be derived this file omits it and the operator must be
 wired manually. The Mgmt API token flows via the netbird-mgmt-api-key Secret,
-not values (awaitNetBirdOperatorToken gates bootstrap on that Secret).
+not values (netbird.AwaitOperatorToken gates bootstrap on that Secret).
 
 networkRouter + the traefik-internal networkResource are convention, not
 config — rendered whenever a mesh DNS zone is set: the router registers the

@@ -89,7 +89,7 @@ type (
 		// SealedSecret whose NB_API_KEY the operator Deployment
 		// reads (the chart's default secret ref). When blank,
 		// the SealedSecret is skipped and bootstrap pauses at
-		// awaitNetBirdOperatorToken with instructions instead.
+		// netbird.AwaitOperatorToken with instructions instead.
 		APIKey string `yaml:"apiKey"`
 	}
 
