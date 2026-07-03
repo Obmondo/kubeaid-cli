@@ -628,14 +628,14 @@ func workloadNetBirdMgmtURL(cfg *PromptedConfig) string {
 // blank defers to bootstrap's interactive gate.
 func runWorkloadNetBirdAPIKeyForm(cfg *PromptedConfig) error {
 	steps := fmt.Sprintf(
-		"The netbird-operator wires this cluster into the parent VPN's mesh and\n"+
-			"authenticates with a NetBird API token (service-user PAT). To mint one:\n\n"+
+		"To connect this cluster to your VPN, kubeaid-cli needs a NetBird API\n"+
+			"token. Create one in the NetBird dashboard:\n\n"+
 			"  %s  →  Team  →  Service Users  →  + Create Service User\n"+
 			"    Name:  k8s-operator        Role:  Admin\n"+
 			"  From the new user's row  →  ⋮  →  Tokens  →  + Generate Token\n"+
 			"    Name:  kubeaid-%s   Expiration:  the longest offered\n"+
 			"    (the token is shown only once — copy it)\n\n"+
-			"Leave empty to handle it later: bootstrap pauses with the same steps.",
+			"Leave empty to provide it later — bootstrap will ask again.",
 		workloadNetBirdMgmtURL(cfg), cfg.ClusterName,
 	)
 

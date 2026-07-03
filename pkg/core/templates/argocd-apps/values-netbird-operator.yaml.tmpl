@@ -1,31 +1,15 @@
 {{- /*
-NetBird Kubernetes Operator values overlay.
+The kubeaid chart wraps the upstream operator: `netbird-operator:` is the
+subchart; networkRouter / networkResources / clusterProxy are top-level
+wrapper values — hence the differing indentation.
 
-The kubeaid netbird-operator chart is a wrapper: `netbird-operator:` is the
-upstream operator subchart (where managementURL lives), while networkRouter /
-networkResources / clusterProxy are TOP-LEVEL wrapper values consumed by the
-chart's own CR templates (templates/{network-router,network-resources,
-cluster-proxy}.yaml) — hence the differing indentation below.
+managementURL: cluster.netbird.dns (VPN) or netbird.<base> (workload);
+omitted when underivable — the operator would fall back to NetBird Cloud.
+The API token flows via the netbird-mgmt-api-key Secret, not values.
 
-managementURL points the operator at the parent NetBird Mgmt —
-cluster.netbird.dns on VPN clusters (they host Mgmt themselves), the
-netbird.<base> Keycloak-DNS convention on workload clusters. Omitting it is
-NOT harmless: the operator binary falls back to NetBird Cloud (api.netbird.io),
-so when the URL can't be derived this file omits it and the operator must be
-wired manually. The Mgmt API token flows via the netbird-mgmt-api-key Secret,
-not values (netbird.AwaitOperatorToken gates bootstrap on that Secret).
-
-networkRouter + the traefik-internal networkResource are convention, not
-config — rendered whenever a mesh DNS zone is set: the router registers the
-cluster as a NetBird routing peer; the resource publishes the internal Traefik
-to the mesh. dnsZoneRef is cluster.netbird.dnsZone, operator-chosen and
-validated to differ from the control-plane/Mgmt domains because NetBird
-rejects a zone that collides with a real service domain. The zone and the
-k8s-<cluster> group (.NetBirdInternalIngressGroup) must already exist in
-NetBird — created via the dashboard steps in printNetBirdOperatorInstructions.
-
-clusterProxy (kubectl-over-mesh + RBAC) comes from cluster.netbird.clusterProxy;
-the ClusterProxy CR is named after cluster.name.
+The router + traefik-internal resource render when a mesh DNS zone is set;
+the zone and k8s-<cluster> group must already exist in NetBird (see
+printNetBirdOperatorInstructions). ClusterProxy is named after cluster.name.
 */ -}}
 {{- if .NetBirdOperatorEnabled }}
 {{- if .NetBirdManagementURL }}
