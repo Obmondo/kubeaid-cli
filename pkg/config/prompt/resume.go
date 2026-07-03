@@ -84,7 +84,7 @@ func confirmLoadExistingConfig(configsDirectory string) (bool, error) {
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Existing config found. Load it and continue the prompt?").
-				Description(configsDirectory).
+				Description(configsDirectory + "\nFiles are rewritten only after the final confirm.").
 				Affirmative("Load existing").
 				Negative("Start fresh").
 				Value(&loadExisting),
@@ -94,26 +94,6 @@ func confirmLoadExistingConfig(configsDirectory string) (bool, error) {
 		return false, err
 	}
 	return loadExisting, nil
-}
-
-// ConfigNeedsInteractiveResume reports whether the config directory carries an
-// interrupted prompt state or has generated config files with blank fields the
-// prompt can fill. It intentionally avoids full parser validation because the
-// parser exits the process on validation errors.
-func ConfigNeedsInteractiveResume(configsDirectory string) (bool, error) {
-	if _, stateLoaded, err := loadPromptState(configsDirectory); err != nil || stateLoaded {
-		return stateLoaded, err
-	}
-
-	cfg := &PromptedConfig{}
-	if err := loadExistingPromptedConfig(configsDirectory, cfg); err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
-			return true, nil
-		}
-		return false, err
-	}
-
-	return missingPromptedConfig(cfg), nil
 }
 
 func loadExistingPromptedConfig(configsDirectory string, cfg *PromptedConfig) error {
@@ -387,15 +367,6 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		ObmondoSupport:      !missingObmondoSupportConfig(cfg),
 		NetBirdDNSZone:      cfg.NetBirdDNSZone != "",
 	}
-}
-
-func missingPromptedConfig(cfg *PromptedConfig) bool {
-	return cfg.K8sVersion == "" ||
-		missingBasics(cfg) ||
-		missingGitSSH(cfg) ||
-		missingClusterModeConfig(cfg) ||
-		missingProviderRenderedConfig(cfg) ||
-		missingObmondoSupportConfig(cfg)
 }
 
 func missingClusterModeConfig(cfg *PromptedConfig) bool {
