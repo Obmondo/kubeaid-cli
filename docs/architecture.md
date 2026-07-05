@@ -354,7 +354,7 @@ classDiagram
 | AWS       | [`pkg/cloud/aws`](../pkg/cloud/aws)     | CloudFormation IAM stack; CAPA provider                    |
 | Azure     | [`pkg/cloud/azure`](../pkg/cloud/azure) | CrossPlane provisions resource group, VNet, OIDC blob; Workload Identity |
 | Hetzner   | [`pkg/cloud/hetzner`](../pkg/cloud/hetzner) | Network, VSwitch, NAT GW, failover IP; Robot API for bare-metal OS install and storage plans |
-| BareMetal | embedded in core (KubeOne)              | No CAPI; `kubeone apply` runs directly against target hosts |
+| BareMetal | embedded in core (KubeOne)              | No CAPI; `kubeone apply` runs directly against target hosts, for both bootstrap and Kubernetes version upgrades (see [`upgrade-bare-metal.md`](./upgrade-bare-metal.md)) |
 | Local     | not applicable                          | The K3D management cluster *is* the main cluster            |
 
 ---

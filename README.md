@@ -106,7 +106,7 @@ kubeaid-cli [command] [flags]
 | Hetzner Cloud | Yes | — | — | Yes |
 | Hetzner Bare Metal | Yes | — | — | Yes |
 | Hetzner Hybrid | Yes | — | — | Yes |
-| Bare Metal | Yes | — | — | Yes |
+| Bare Metal | Yes | Yes | — | Yes |
 | Local (K3D) | Yes | — | — | — |
 
 ## Configuration
@@ -124,6 +124,7 @@ Day-to-day operator guides:
 
 - [`docs/post-bootstrap.md`](docs/post-bootstrap.md) — what to do right after a cluster comes up
 - [`docs/add-bare-metal-worker.md`](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (and the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
+- [`docs/upgrade-bare-metal.md`](docs/upgrade-bare-metal.md) — upgrade the Kubernetes version of a bare-metal (KubeOne) cluster
 
 Identity and SSO:
 

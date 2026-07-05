@@ -55,18 +55,12 @@ const (
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
 	FlagNameAWSSessionToken    = "aws-session-token"
 	FlagNameAWSRegion          = "aws-region"
-	FlagNameAMIID              = "ami-id"
 
 	FlagNameAzureClientSecret = "azure-client-secret"
-	FlagNameNewImageOffer     = "new-image-offer"
 
 	FlagNameHetznerAPIToken      = "hetzner-cloud-api-token"
 	FlagNameHetznerRobotUsername = "hetzner-robot-username"
 	FlagNameHetznerRobotPassword = "hetzner-robot-password"
-	FlagNameNewImageName         = "new-image-name"
-	FlagNameNewImagePath         = "new-image-path"
-
-	FlagNameNewK8sVersion = "new-k8s-version"
 
 	FlagNameOSSize      = "os-size"
 	FlagNameZFSPoolSize = "zfs-pool-size"
