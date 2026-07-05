@@ -12,7 +12,7 @@ import (
 var TestCmd = &cobra.Command{
 	Use: "test",
 
-	Short: "Test whether KubeAid Bootstrap Script properly bootstrapped your cluster or not",
+	Short: "Test a KubeAid managed K8s cluster (verify it was bootstrapped properly)",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.TestCluster(cmd.Context())
