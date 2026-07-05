@@ -1,4 +1,19 @@
 - - -
+## v0.29.6 - 2026-07-05
+#### Features
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**cluster**) make 'cluster upgrade' GitOps driven - no flags, no provider subcommands - (bd861eb) - Ashish Jaiswal
+- (**cluster**) day-2 K8s version upgrades for the Bare Metal (KubeOne) provider - (ea62151) - Ashish Jaiswal
+- (**kubeone**) bump KubeOne to v1.13.5, supporting K8s v1.33 - v1.35 - (1e10ae7) - Ashish Jaiswal
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**netbird**) workload access via clusterProxy; remove kube-apiserver OIDC - (d28d4a8) - Ashish Jaiswal
+#### Bug Fixes
+- (**cli**) report embedded VCS build info from plain 'go build' binaries - (cc411f7) - Ashish Jaiswal
+- (**hetzner**) wait until all bare-metal servers are attached to vSwitch - (da06d7e) - Archisman
+- (**hetzner**) retry vSwitch attach on VSWITCH_IN_PROCESS so all servers attach - (af8a617) - Archisman
+#### Miscellaneous Chores
+- (**cli**) consistent command descriptions - (d6edc1f) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.5 - 2026-07-03
 #### Features
 - (**config**) re-running config generate edits the existing config - (d12c763) - Ashish Jaiswal
