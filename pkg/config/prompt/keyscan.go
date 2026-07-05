@@ -67,7 +67,8 @@ func formatKnownHostsLine(host string, port int, key ssh.PublicKey) string {
 	if port != 22 {
 		hostField = fmt.Sprintf("[%s]:%d", host, port)
 	}
-	return fmt.Sprintf("%s %s",
+	return fmt.Sprintf(
+		"%s %s",
 		hostField,
 		strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key))),
 	)

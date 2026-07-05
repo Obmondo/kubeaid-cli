@@ -35,7 +35,8 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 	lines = append(lines, prompter.SummaryLines(cfg)...)
 
 	if cfg.ClusterType == constants.ClusterTypeVPN {
-		lines = append(lines,
+		lines = append(
+			lines,
 			fmt.Sprintf("  Keycloak DNS:  %s", cfg.KeycloakDNS),
 			fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
 			fmt.Sprintf("  CP endpoint:   %s", cfg.ControlPlaneEndpoint),
@@ -49,7 +50,8 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 			if cfg.NetBirdAPIKey != "" {
 				netbirdKey = "provided"
 			}
-			lines = append(lines,
+			lines = append(
+				lines,
 				"  Lockdown:      yes — Host Firewall (CCNP) after bootstrap",
 				fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
 				fmt.Sprintf("  NetBird key:   %s", netbirdKey),
@@ -65,7 +67,8 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 			gitAuth = "SSH agent (yubikey)"
 		}
 
-		lines = append(lines,
+		lines = append(
+			lines,
 			fmt.Sprintf("  Deploy key:    %s", cfg.KubeaidConfigDeployKeyPath),
 			fmt.Sprintf("  Git push:      %s", gitAuth),
 		)

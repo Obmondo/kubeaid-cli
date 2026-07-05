@@ -195,10 +195,15 @@ type PromptedConfig struct {
 	HetznerVSwitchVLANID     string
 	HetznerVSwitchSubnetCIDR string
 
-	// Bare Metal (generic, not Hetzner).
-	BareMetalSSHPort      string
-	BareMetalEndpointHost string
-	BareMetalEndpointPort string
+	// Bare Metal (generic, not Hetzner). Hosts are collected one at a time by
+	// the add-loop in provider_baremetal.go, same flow as the Hetzner
+	// bare-metal prompt.
+	BareMetalSSHPort           string
+	BareMetalEndpointHost      string
+	BareMetalEndpointPort      string
+	BareMetalControlPlaneHosts []string
+	BareMetalWorkerHosts       []string
+	BareMetalNodeGroupName     string
 
 	Obmondo *configpkg.ObmondoConfig
 }
@@ -209,7 +214,8 @@ var (
 )
 
 func askSaveInterruptedConfig(configsDirectory string) (bool, error) {
-	if _, err := fmt.Fprintf(interruptedConfigSaveWriter,
+	if _, err := fmt.Fprintf(
+		interruptedConfigSaveWriter,
 		"\nSave the answers entered so far to %s so the prompt can resume later? [y/N] ",
 		configsDirectory,
 	); err != nil {

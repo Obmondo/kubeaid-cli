@@ -31,3 +31,12 @@ func TestEnsureRuntimeDependencyInstalledReturnsErrorForMissingExecutable(t *tes
 	assert.Contains(t, err.Error(), "runtime dependency unavailable")
 	assert.Contains(t, err.Error(), "definitely-not-a-kubeaid-runtime-dependency")
 }
+
+func TestEnsureDockerDaemonReachableReturnsErrorForDeadSocket(t *testing.T) {
+	t.Setenv("DOCKER_HOST", "unix:///nonexistent-kubeaid-docker.sock")
+
+	err := EnsureDockerDaemonReachable(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "docker daemon unreachable")
+}

@@ -32,7 +32,8 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	// plane. Pure bare-metal mode has none of those — show server
 	// IDs instead so the operator can verify the IDs they typed.
 	if cfg.HetznerMode == constants.HetznerModeHCloud || cfg.HetznerMode == constants.HetznerModeHybrid {
-		lines = append(lines,
+		lines = append(
+			lines,
 			fmt.Sprintf("  Zone:          %s", cfg.HetznerHCloudZone),
 			fmt.Sprintf("  Machine type:  %s", cfg.HetznerCPMachineType),
 			fmt.Sprintf("  LB region:     %s", cfg.HetznerLBRegion),
@@ -41,7 +42,8 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 	}
 
 	if cfg.HetznerMode == constants.HetznerModeBareMetal {
-		lines = append(lines,
+		lines = append(
+			lines,
 			fmt.Sprintf("  CP replicas:   %s", cfg.HetznerCPReplicas),
 			fmt.Sprintf("  CP servers:    %s", formatServerSummary(cfg.HetznerBMCPServerIDs, cfg.HetznerBMServerPublicIPs)),
 			fmt.Sprintf("  Worker group:  %s", cfg.HetznerBMNodeGroupName),

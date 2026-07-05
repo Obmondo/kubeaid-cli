@@ -57,7 +57,8 @@ func validateConfigs(ctx context.Context) error {
 	}
 
 	if generalConfig.KubePrometheus != nil && generalConfig.KubePrometheus.Version != "" {
-		if err := validateKubePrometheusVersion(ctx,
+		if err := validateKubePrometheusVersion(
+			ctx,
 			generalConfig.KubePrometheus.Version,
 			generalConfig.Cluster.K8sVersion,
 		); err != nil {
@@ -504,7 +505,8 @@ func validateHCloudSingleNodePublic(ctx context.Context) error {
 		return errors.New(
 			"a single-node HCloud cluster has no control-plane load balancer, so " +
 				"cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint must be set to the api DNS " +
-				"name you will point at the control-plane node's public IP")
+				"name you will point at the control-plane node's public IP",
+		)
 	}
 
 	machineType := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.MachineType
@@ -515,7 +517,8 @@ func validateHCloudSingleNodePublic(ctx context.Context) error {
 	if specs.Memory < 8 {
 		return fmt.Errorf(
 			"a single-node HCloud cluster runs entirely on the one node, so its "+
-				"machineType needs >= 8 GB RAM; %q has %d GB", machineType, specs.Memory)
+				"machineType needs >= 8 GB RAM; %q has %d GB", machineType, specs.Memory,
+		)
 	}
 
 	return nil
@@ -550,6 +553,14 @@ func validateHetznerBareMetalConfig() error {
 
 func validateBareMetalConfig(ctx context.Context) error {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
+
+	// NOTE : The struct tag validation doesn't catch this - 'required' passes for an empty
+	//        (non-nil) slice, which is exactly what 'hosts: []' parses to.
+	if len(bareMetalConfig.ControlPlane.Hosts) == 0 {
+		return errors.New(
+			"no control-plane hosts found under cloud.bare-metal.controlPlane.hosts : at least one is required",
+		)
+	}
 
 	connector := kubeonessh.NewConnector(ctx)
 
@@ -613,7 +624,8 @@ func validateBareMetalHost(
 		sshAddresses = append(sshAddresses, *host.PrivateAddress)
 	}
 
-	slog.InfoContext(ctx, "Ensuring that the server meets the pre-requisites",
+	slog.InfoContext(
+		ctx, "Ensuring that the server meets the pre-requisites",
 		slog.Any("addresses", sshAddresses),
 	)
 
@@ -833,7 +845,8 @@ func validateKnownHostsEntries(ctx context.Context, entries []string) error {
 		if _, _, _, _, _, err := ssh.ParseKnownHosts([]byte(trimmed + "\n")); err != nil {
 			return fmt.Errorf("git.knownHosts entry %d (%q) is invalid: %w", i, trimmed, err)
 		}
-		slog.DebugContext(ctx, "git.knownHosts entry validated",
+		slog.DebugContext(
+			ctx, "git.knownHosts entry validated",
 			slog.Int("index", i),
 			slog.String("entry", trimmed),
 		)

@@ -231,7 +231,18 @@ cloud:
       endpoint:
         host: {{ .BareMetalEndpointHost }}
         port: {{ .BareMetalEndpointPort }}
-      hosts: []
+      hosts:
+{{- range .BareMetalControlPlaneHosts }}
+        - publicAddress: {{ . }}
+{{- end }}
+{{- if .BareMetalWorkerHosts }}
+    nodeGroups:
+      - name: {{ .BareMetalNodeGroupName }}
+        hosts:
+{{- range .BareMetalWorkerHosts }}
+          - publicAddress: {{ . }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- if eq .CloudProvider "local" }}
   local: {}
