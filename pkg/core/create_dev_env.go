@@ -31,6 +31,14 @@ type CreateDevEnvArgs struct {
 func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	bar := progress.FromCtx(ctx)
 
+	// Fail fast when Docker is missing : the K3D management cluster needs the daemon, and so
+	// does the containerized KubePrometheus build. Only a Bare Metal bootstrap with monitoring
+	// setup skipped goes Docker-free.
+	if (globals.CloudProviderName != constants.CloudProviderBareMetal) || !args.SkipMonitoringSetup {
+		err := utils.EnsureDockerDaemonReachable(ctx)
+		assert.AssertErrNil(ctx, err, "Docker is required for cluster bootstrap")
+	}
+
 	// Detect git authentication method.
 	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx)
 
