@@ -16,7 +16,7 @@ import (
 
 var DevenvCmd = &cobra.Command{
 	Use:   "devenv",
-	Short: "Manage local development environment (i.e. the management cluster)",
+	Short: "Manage the local development environment (i.e. the K3D management cluster)",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()

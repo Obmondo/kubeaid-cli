@@ -13,7 +13,7 @@ import (
 var RecoverCmd = &cobra.Command{
 	Use: "recover",
 
-	Short: "Recover a KubeAid managed Kubernetes cluster",
+	Short: "Recover a KubeAid managed K8s cluster (from a disaster recovery backup)",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.RecoverCluster(cmd.Context(),

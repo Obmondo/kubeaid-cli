@@ -12,7 +12,7 @@ import (
 var MainCmd = &cobra.Command{
 	Use: "main",
 
-	Short: "Delete a KubeAid managed cluster",
+	Short: "Delete the main KubeAid managed K8s cluster",
 
 	Run: func(cmd *cobra.Command, args []string) {
 		core.DeleteCluster(cmd.Context())

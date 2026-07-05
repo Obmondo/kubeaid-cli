@@ -18,7 +18,7 @@ import (
 
 var ClusterCmd = &cobra.Command{
 	Use:   "cluster",
-	Short: "Manage lifecycle of the KubeAid managed cluster",
+	Short: "Manage the lifecycle of a KubeAid managed K8s cluster",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
