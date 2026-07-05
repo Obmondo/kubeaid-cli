@@ -243,9 +243,40 @@ func applyCloudConfigToPromptedConfig(cloud *config.CloudConfig, cfg *PromptedCo
 			uintString(cloud.BareMetal.ControlPlane.Endpoint.Port),
 			cfg.BareMetalEndpointPort,
 		)
+		if len(cfg.BareMetalControlPlaneHosts) == 0 {
+			cfg.BareMetalControlPlaneHosts = bareMetalHostAddresses(cloud.BareMetal.ControlPlane.Hosts)
+		}
+		if len(cloud.BareMetal.NodeGroups) > 0 {
+			cfg.BareMetalNodeGroupName = firstNonEmpty(
+				cloud.BareMetal.NodeGroups[0].Name,
+				cfg.BareMetalNodeGroupName,
+			)
+		}
+		if len(cfg.BareMetalWorkerHosts) == 0 {
+			workerHosts := []*config.BareMetalHost{}
+			for _, nodeGroup := range cloud.BareMetal.NodeGroups {
+				workerHosts = append(workerHosts, nodeGroup.Hosts...)
+			}
+			cfg.BareMetalWorkerHosts = bareMetalHostAddresses(workerHosts)
+		}
 	case cloud.Local != nil:
 		cfg.CloudProvider = constants.CloudProviderLocal
 	}
+}
+
+// bareMetalHostAddresses flattens hosts back into the address list the prompt's add-loop
+// collects, preferring each host's public address.
+func bareMetalHostAddresses(hosts []*config.BareMetalHost) []string {
+	addresses := []string{}
+	for _, host := range hosts {
+		switch {
+		case host.PublicAddress != nil:
+			addresses = append(addresses, *host.PublicAddress)
+		case host.PrivateAddress != nil:
+			addresses = append(addresses, *host.PrivateAddress)
+		}
+	}
+	return addresses
 }
 
 func applyHetznerConfigToPromptedConfig(hetzner *config.HetznerConfig, cfg *PromptedConfig) {

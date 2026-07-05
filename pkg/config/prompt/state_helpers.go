@@ -47,7 +47,8 @@ func missingProviderPromptConfig(cfg *PromptedConfig) bool {
 	case constants.CloudProviderBareMetal:
 		return cfg.BareMetalSSHPort == "" ||
 			cfg.BareMetalEndpointHost == "" ||
-			cfg.BareMetalEndpointPort == ""
+			cfg.BareMetalEndpointPort == "" ||
+			len(cfg.BareMetalControlPlaneHosts) == 0
 	case constants.CloudProviderLocal:
 		return false
 	default:

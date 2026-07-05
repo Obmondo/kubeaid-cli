@@ -107,7 +107,8 @@ func runBareMetalPhase(cfg *PromptedConfig, sess *bareMetalSession, p bmPhase, c
 		goBack, err := promptPhaseTransition(
 			fmt.Sprintf("Control plane configured — %d server(s) accepted", len(cfg.HetznerBMCPServerIDs)),
 			"Continue to workers",
-			"← Back to vSwitch")
+			"← Back to vSwitch",
+		)
 		if err != nil {
 			return bmPhaseDone, err
 		}
@@ -131,7 +132,8 @@ func runBareMetalPhase(cfg *PromptedConfig, sess *bareMetalSession, p bmPhase, c
 		goBack, err := promptPhaseTransition(
 			fmt.Sprintf("Workers configured — %d server(s) accepted", len(cfg.HetznerBMNodeGroupServerIDs)),
 			"Continue to endpoint",
-			"← Back to control plane")
+			"← Back to control plane",
+		)
 		if err != nil {
 			return bmPhaseDone, err
 		}
@@ -216,7 +218,8 @@ func runHetznerHybridBareMetalForm(cfg *PromptedConfig) error {
 		goBack, err := promptPhaseTransition(
 			fmt.Sprintf("Workers configured — %d server(s) accepted", len(cfg.HetznerBMNodeGroupServerIDs)),
 			"Continue — finish bare-metal setup",
-			"← Back to vSwitch")
+			"← Back to vSwitch",
+		)
 		if err != nil {
 			return err
 		}
@@ -770,7 +773,7 @@ func renderServerInfo(info *robotServerInfo) string {
 // nodes, etc.).
 func promptWorkerNodeGroupName(cfg *PromptedConfig) error {
 	if cfg.HetznerBMNodeGroupName == "" {
-		cfg.HetznerBMNodeGroupName = "workers"
+		cfg.HetznerBMNodeGroupName = defaultWorkerNodeGroupName
 	}
 	return huh.NewForm(
 		huh.NewGroup(

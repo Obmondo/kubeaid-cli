@@ -1164,3 +1164,26 @@ func TestValidateACMEDNS01(t *testing.T) {
 		})
 	}
 }
+
+// The struct tag validation can't catch this ('required' passes for an empty
+// non-nil slice, which is what 'hosts: []' parses to) — so
+// validateBareMetalConfig must.
+func TestValidateBareMetalConfigRejectsZeroControlPlaneHosts(t *testing.T) {
+	originalGeneralConfig := config.ParsedGeneralConfig
+	t.Cleanup(func() { config.ParsedGeneralConfig = originalGeneralConfig })
+
+	config.ParsedGeneralConfig = &config.GeneralConfig{
+		Cloud: config.CloudConfig{
+			BareMetal: &config.BareMetalConfig{
+				ControlPlane: config.BareMetalControlPlane{
+					Hosts: []*config.BareMetalHost{},
+				},
+			},
+		},
+	}
+
+	err := validateBareMetalConfig(t.Context())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "control-plane hosts")
+}
