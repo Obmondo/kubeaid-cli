@@ -157,7 +157,13 @@ func validateK8sVersionHop(currentVersion, targetVersion string) error {
 
 	case target.LessThan(current):
 		return fmt.Errorf(
-			"downgrade from %s to %s is not supported", currentVersion, targetVersion,
+			"downgrade from %s to %s is not supported - kubeadm (and so KubeOne) can never "+
+				"downgrade a cluster, no matter how small the hop. From %s you can stay put, "+
+				"bump the patch within v%d.%d.x, or move up minor by minor until %s.x "+
+				"(the embedded KubeOne's ceiling)",
+			currentVersion, targetVersion, currentVersion,
+			current.Major(), current.Minor(),
+			constants.MaxKubeOneSupportedK8sVersion,
 		)
 
 	case target.Major() != current.Major():
