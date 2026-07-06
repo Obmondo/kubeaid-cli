@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto"
 	"encoding/pem"
+	"fmt"
 	"log/slog"
 	"net"
 	"os"
@@ -49,15 +50,13 @@ func hydrateSSHKeyPairConfigs() {
 			slog.String("public-key-file-path", openIDProviderSSHKeyPair.PublicKeyFilePath),
 		})
 
-		providedPublicKey, err := os.ReadFile(openIDProviderSSHKeyPair.PublicKeyFilePath)
-		assert.AssertErrNil(ctx, err, "Failed reading SSH public key file")
-
-		parsedProvidedPublicKey, err := ssh.ParsePublicKey(providedPublicKey)
-		assert.AssertErrNil(ctx, err, "Failed parsing provided SSH public")
-
-		providedPublicKeyFingerprint := ssh.FingerprintSHA256(parsedProvidedPublicKey)
+		publicKeyMatches, err := publicKeyFileMatchesFingerprint(
+			openIDProviderSSHKeyPair.PublicKeyFilePath,
+			openIDProviderSSHKeyPair.Fingerprint,
+		)
+		assert.AssertErrNil(ctx, err, "Failed validating provided SSH public key file")
 		assert.Assert(ctx,
-			(providedPublicKeyFingerprint == openIDProviderSSHKeyPair.Fingerprint),
+			publicKeyMatches,
 			"Provided SSH public key isn't derived from the SSH private key",
 			slog.String("private-key-file-path", openIDProviderSSHKeyPair.PrivateKeyFilePath),
 		)
@@ -177,4 +176,21 @@ func hydrateSSHKeyPairFromAgent(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	// PrivateKey stays empty — downstream consumers (Hetzner NAT
 	// gateway SSH client) detect this and route through the agent
 	// socket via os.Getenv(SSH_AUTH_SOCK).
+}
+
+// publicKeyFileMatchesFingerprint reports whether the SSH public key at
+// authorizedKeyFilePath (OpenSSH authorized_keys format) has the given
+// legacy-MD5 fingerprint.
+func publicKeyFileMatchesFingerprint(authorizedKeyFilePath, fingerprint string) (bool, error) {
+	publicKeyBytes, err := os.ReadFile(authorizedKeyFilePath)
+	if err != nil {
+		return false, fmt.Errorf("reading SSH public key file: %w", err)
+	}
+
+	parsedPublicKey, _, _, _, err := ssh.ParseAuthorizedKey(publicKeyBytes)
+	if err != nil {
+		return false, fmt.Errorf("parsing SSH public key file: %w", err)
+	}
+
+	return ssh.FingerprintLegacyMD5(parsedPublicKey) == fingerprint, nil
 }
