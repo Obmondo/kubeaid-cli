@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
 )
 
@@ -33,29 +34,45 @@ import (
 // title without a duration — useful for callers that don't have
 // a meaningful start time (tests, future workload-cluster paths).
 //
-// No-op when the cluster isn't a VPN cluster with managed Keycloak
-// — workload clusters and unmanaged-Keycloak setups don't need the
-// admin-login step (the operator already has Keycloak running) and
-// the credential the panel surfaces (keycloak-admin Secret) only
-// exists when kubeaid-cli rendered keycloakx itself.
+// Managed-Keycloak VPN clusters get the Keycloak-admin + NetBird
+// sign-in steps; every other cluster gets the general panel -
+// kubeconfig access, the GitOps loop, day-2 upgrades and the ArgoCD
+// dashboard - so no bootstrap ever ends without telling the
+// operator what to do next.
 //
 // Writes directly to stdout (not slog) so the box characters and
 // alignment survive — slog handlers would add timestamp prefixes
 // to each line and break the box. Called after bar.Finish(), so
 // there's no live spinner to clash with.
 func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Duration) {
+	lines := vpnClusterNextStepsLines(keycloakAdminPassword)
+	if lines == nil {
+		lines = generalNextStepsLines()
+	}
+
+	title := "Bootstrap complete — next steps"
+	if elapsed > 0 {
+		title = "Bootstrap complete in " + formatBootstrapDuration(elapsed) + " — next steps"
+	}
+	ui.PrintNextStepsBox(title, lines)
+}
+
+// vpnClusterNextStepsLines returns the managed-Keycloak VPN panel content, or nil when the
+// cluster isn't one (the credential it surfaces - the keycloak-admin Secret - only exists
+// when kubeaid-cli rendered keycloakx itself).
+func vpnClusterNextStepsLines(keycloakAdminPassword string) []string {
 	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
-		return
+		return nil
 	}
 	cluster := config.ParsedGeneralConfig.Cluster
 	if cluster.Keycloak == nil || cluster.NetBird == nil {
-		return
+		return nil
 	}
 	keycloakDNS := cluster.Keycloak.DNS
 	netbirdDNS := cluster.NetBird.DNS
 	realm := cluster.Keycloak.Realm
 	if keycloakDNS == "" || netbirdDNS == "" {
-		return
+		return nil
 	}
 
 	lines := []string{
@@ -64,7 +81,8 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 		"",
 	}
 	lines = append(lines, ui.KeycloakAdminLoginLines(keycloakDNS, realm, keycloakAdminPassword)...)
-	lines = append(lines,
+	lines = append(
+		lines,
 		"",
 		"  2. Join the NetBird mesh with that user",
 		"",
@@ -74,12 +92,35 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 		"                 (opens a browser for Keycloak OIDC sign-in on first run)",
 		"",
 	)
+	return lines
+}
 
-	title := "Bootstrap complete — next steps"
-	if elapsed > 0 {
-		title = "Bootstrap complete in " + formatBootstrapDuration(elapsed) + " — next steps"
+// generalNextStepsLines is the closing panel for every non-VPN cluster : how to talk to the
+// cluster, where its state lives, and how day-2 changes flow.
+func generalNextStepsLines() []string {
+	return []string{
+		"",
+		"  1. Talk to the cluster",
+		"",
+		"       export KUBECONFIG=" + constants.OutputPathMainClusterKubeconfig,
+		"       kubectl get nodes && kubectl get pods -A",
+		"",
+		"  2. Manage everything via GitOps",
+		"",
+		"       Cluster state lives in " + config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL,
+		"       Edit → PR → merge : ArgoCD reconciles it into the cluster",
+		"",
+		"  3. Day-2 Kubernetes upgrades",
+		"",
+		"       Bump cluster.k8sVersion in general.yaml, then run : kubeaid-cli cluster upgrade",
+		"",
+		"  4. ArgoCD dashboard",
+		"",
+		"       kubectl -n argocd port-forward svc/argocd-server 8080:443",
+		"       kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
+		"       Open https://localhost:8080  (user: admin)",
+		"",
 	}
-	ui.PrintNextStepsBox(title, lines)
 }
 
 // formatBootstrapDuration renders d as a short, human-friendly

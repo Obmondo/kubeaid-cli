@@ -73,7 +73,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create and setup the management cluster. The capi-cluster sync
 	// is folded into SetupCluster so it runs before the
 	// "Management cluster ready" box, not after it.
-	bar.Describe("Creating management cluster")
+	//
+	// The Bare Metal (KubeOne) provider skips the management cluster entirely - its phase
+	// only clones kubeaid-config and renders the KubeOne manifest.
+	devEnvPhaseTitle := "Creating management cluster"
+	if globals.CloudProviderName == constants.CloudProviderBareMetal {
+		devEnvPhaseTitle = "Preparing kubeaid-config"
+	}
+	bar.Describe(devEnvPhaseTitle)
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	bar.Describe("Provisioning main cluster")
@@ -367,6 +374,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	releaseNet()
 	assert.AssertErrNil(ctx, err, "Failed waiting for control-plane Node networking to be ready")
 	bar.Substep("Control-plane Node networking ready")
+	bar.Substep("Main cluster provisioned 🎉")
 
 	// Ensure that application workloads can be scheduled.
 	switch kubernetes.IsNodeGroupCountZero(ctx) {
@@ -414,6 +422,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		       them, by encrypting the underlying Kubernetes Secrets using the private key of the
 		       Sealed Secrets controller installed in the provisioned main cluster.
 	*/
+	bar.Describe("Setting up main cluster")
 	SetupCluster(ctx, SetupClusterArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
 		ClusterType:      constants.ClusterTypeMain,
