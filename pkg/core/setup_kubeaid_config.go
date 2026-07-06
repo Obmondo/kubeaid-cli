@@ -47,12 +47,33 @@ Does the following :
 
 	(3) Waits for those changes to get merged into the default branch.
 
+Exception : when using the Bare Metal provider and the main cluster hasn't been provisioned yet,
+only the KubeOne config file gets rendered - locally, skipping (2) and (3). KubeOne consumes that
+local file, and it gets committed together with the rest of the cluster's KubeAid config files
+after the main cluster has been provisioned - so the operator merges a single PR, instead of two.
+
 It expects the KubeAid Config repository to be already cloned in the temp directory.
 */
 func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	slog.InfoContext(ctx, "Setting up KubeAid config repo")
 
 	bar := progress.FromCtx(ctx)
+
+	clusterDir := utils.GetClusterDir()
+
+	// Determine whether this is part of setting up the main cluster.
+	settingUpMainCluster := (os.Getenv(constants.EnvNameKubeconfig) == constants.OutputPathMainClusterKubeconfig)
+
+	// We're using the Bare Metal provider, trying to provision the main cluster using KubeOne.
+	// KubeOne consumes the locally rendered config file, so nothing needs to be pushed yet.
+	if (globals.CloudProviderName == constants.CloudProviderBareMetal) &&
+		!settingUpMainCluster && !args.IsPartOfDisasterRecovery {
+
+		createOrUpdateKubeOneConfigFile(ctx, getTemplateValues(ctx), clusterDir)
+		bar.Substep("Rendered KubeOne config (single kubeaid-config PR comes after provisioning)")
+
+		return
+	}
 
 	repo, err := goGit.PlainOpen(utils.GetKubeAidConfigDir())
 	assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
@@ -75,7 +96,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	targetBranchName := defaultBranchName
 	if !args.SkipPRWorkflow {
 		// Create and checkout to a new branch.
-		newBranchName := fmt.Sprintf("kubeaid-%s-%d",
+		newBranchName := fmt.Sprintf(
+			"kubeaid-%s-%d",
 			config.ParsedGeneralConfig.Cluster.Name,
 			time.Now().Unix(),
 		)
@@ -84,15 +106,10 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		targetBranchName = newBranchName
 	}
 
-	clusterDir := utils.GetClusterDir()
-
 	// Determine whether the main cluster has already been provisioned.
 	mainClusterEndpoint, endpointErr := kubernetes.GetMainClusterEndpoint(ctx)
 	assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
 	mainClusterProvisioned := (mainClusterEndpoint != nil)
-
-	// Determine whether this is part of setting up the main cluster.
-	settingUpMainCluster := (os.Getenv(constants.EnvNameKubeconfig) == constants.OutputPathMainClusterKubeconfig)
 
 	switch {
 	// We're doing a disaster recovery. The only thing we need to consider is :
@@ -115,16 +132,11 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 				ciliumValuesFilePath,
 			})
 			err := yqCmd.ExecuteContext(ctx)
-			assert.AssertErrNil(ctx, err,
+			assert.AssertErrNil(
+				ctx, err,
 				"Failed updating main cluster's API server endpoint, in values-cilium.yaml file",
 			)
 		}
-
-	// We're using the Bare Metal provider, trying to provision the main cluster usig KubeOne.
-	// We just need the KubeOne config file.
-	case (globals.CloudProviderName == constants.CloudProviderBareMetal) && !settingUpMainCluster:
-		templateValues := getTemplateValues(ctx)
-		createOrUpdateKubeOneConfigFile(ctx, templateValues, clusterDir)
 
 	default:
 		templateValues := getTemplateValues(ctx)
@@ -142,7 +154,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		"(cluster/%s) : created / updated KubeAid config files",
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
-	commitHash := git.AddCommitAndPushChanges(ctx,
+	commitHash := git.AddCommitAndPushChanges(
+		ctx,
 		repo,
 		workTree,
 		targetBranchName,
@@ -173,7 +186,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		*/
 
 		// Wait until the user creates a PR and merges it to the default branch.
-		git.WaitUntilPRMerged(ctx,
+		git.WaitUntilPRMerged(
+			ctx,
 			repo,
 			defaultBranchName,
 			commitHash,
@@ -201,7 +215,8 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 	// pinned kubeaid version matches the local checkout). Order
 	// matters: render the templates FIRST, then run build.sh.
 	if !skipMonitoringSetup {
-		embeddedTemplateNames = append(embeddedTemplateNames,
+		embeddedTemplateNames = append(
+			embeddedTemplateNames,
 			constants.TemplateNameKubePrometheusArgoCDApp,
 		)
 	}
@@ -259,11 +274,13 @@ func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *Templa
 		})
 
 		err := utils.CreateIntermediateDirsForFile(destinationFilePath)
-		assert.AssertErrNil(ctxWithPath, err,
+		assert.AssertErrNil(
+			ctxWithPath, err,
 			"Failed creating intermediate dirs",
 		)
 
-		plaintextBytes := templates.ParseAndExecuteTemplate(ctxWithPath,
+		plaintextBytes := templates.ParseAndExecuteTemplate(
+			ctxWithPath,
 			&KubeaidConfigFileTemplates,
 			path.Join("templates/", embeddedTemplateName),
 			templateValues,
@@ -282,7 +299,8 @@ func createFileFromTemplate(ctx context.Context,
 	templateValues *TemplateValues,
 ) {
 	err := utils.CreateIntermediateDirsForFile(destinationFilePath)
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx, err,
 		"Failed creating intermediate dirs",
 		slog.String("path", destinationFilePath),
 	)
@@ -302,7 +320,8 @@ func createFileFromTemplate(ctx context.Context,
 
 	// Execute the corresponding template with the template values. Then write the execution result
 	// to that file.
-	content := templates.ParseAndExecuteTemplate(ctx,
+	content := templates.ParseAndExecuteTemplate(
+		ctx,
 		&KubeaidConfigFileTemplates,
 		path.Join("templates/", embeddedTemplateName),
 		templateValues,
@@ -338,11 +357,13 @@ func createFileFromTemplate(ctx context.Context,
 // end up owned by the operator on the host, not by root.
 func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
 	// Create the jsonnet vars file.
-	jsonnetVarsFilePath := fmt.Sprintf("%s/%s-vars.jsonnet",
+	jsonnetVarsFilePath := fmt.Sprintf(
+		"%s/%s-vars.jsonnet",
 		clusterDir,
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
-	createFileFromTemplate(ctx,
+	createFileFromTemplate(
+		ctx,
 		jsonnetVarsFilePath,
 		constants.TemplateNameKubePrometheusVars,
 		templateValues,
@@ -351,7 +372,8 @@ func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues 
 	// Create the kube-prometheus folder.
 	kubePrometheusDir := fmt.Sprintf("%s/kube-prometheus", clusterDir)
 	err := os.MkdirAll(kubePrometheusDir, 0o750)
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx, err,
 		"Failed creating intermediate paths",
 		slog.String("path", kubePrometheusDir),
 	)
