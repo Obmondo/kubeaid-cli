@@ -398,6 +398,17 @@ cloud:
       # Details about node-groups in Hetzner Bare Metal.
       bareMetal:
   bare-metal:
+    # Kubelet tuning applied to every host (control-plane and workers). Optional - omit the
+    # whole block for kubelet defaults. KubeOne rewrites kubelet flags only during node
+    # upgrades, so changes here take effect on the next 'kubeaid-cli cluster upgrade'.
+    # kubelet:
+    #   maxPods: 300
+    #   systemReserved:
+    #     memory: 256Mi
+    #   kubeReserved:
+    #     memory: 256Mi
+    #   evictionHard:
+    #     memory.available: 100Mi
     ssh:
       port: 22
       # PrivateKeyFilePath is the on-disk SSH private key

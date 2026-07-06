@@ -58,6 +58,30 @@ pending change in there (a host you added to a node-group, an SSH port
 change, …) rides along into the same `kubeone apply`. Keep unrelated
 `general.yaml` edits out of an upgrade if you don't want that.
 
+## Config-only changes: `cluster sync`
+
+For changes that don't bump the Kubernetes version — the bundled helm
+releases (e.g. Cilium), addons, a new host in a node-group — run:
+
+```bash
+kubeaid-cli cluster sync
+```
+
+1. Verifies the cluster already runs `cluster.k8sVersion` (a pending
+   version bump is refused — run `cluster upgrade` first).
+2. Re-renders and pushes the KubeOne manifest (same PR workflow,
+   `--skip-pr-workflow` works here too).
+3. Runs a plain `kubeone apply`: KubeOne's steady-state task set
+   reconciles helm releases and addons, joins newly added static
+   workers, renews soon-to-expire certificates and re-labels nodes.
+   It never cordons or drains in-version nodes, so sync is
+   non-disruptive and safe to rerun anytime.
+
+One exception: **kubelet tuning** (`cloud.bare-metal.kubelet`) is
+rewritten by KubeOne only during its per-node upgrade procedure, which
+sync deliberately never forces (it would cordon + drain every node).
+Those changes take effect on the next `cluster upgrade`.
+
 ## If a run fails
 
 Rerun `kubeaid-cli cluster upgrade`. The flow is idempotent:

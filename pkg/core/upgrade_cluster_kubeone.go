@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	goGit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
@@ -64,6 +66,19 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 		assert.AssertErrNil(ctx, err, "Kubernetes version upgrade rejected")
 	}
 
+	// Nothing to upgrade. Config-only changes (e.g. kubelet tuning) are 'cluster sync's job.
+	// When the live cluster is unreachable, fall through instead : a previous upgrade run may
+	// have died between the git push and 'kubeone apply', and rerunning the apply converges
+	// the hosts.
+	if alreadyAtTargetVersion && fromLiveCluster {
+		slog.InfoContext(
+			ctx,
+			"Cluster is already at the target Kubernetes version, nothing to upgrade. Non-version changes in general.yaml get applied by 'kubeaid-cli cluster sync'",
+			slog.String("version", targetVersion),
+		)
+		return
+	}
+
 	if fromLiveCluster {
 		assertAllNodesReady(ctx)
 	}
@@ -77,71 +92,18 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 	// (2) Re-render the KubeOne manifest from general.yaml and push it to the KubeAid Config
 	//     repository.
 
-	workTree, err := repo.Worktree()
-	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")
-
-	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
-
-	targetBranchName := defaultBranchName
-	if !args.SkipPRWorkflow {
-		newBranchName := fmt.Sprintf(
-			"kubeaid-%s-%d",
-			config.ParsedGeneralConfig.Cluster.Name,
-			time.Now().Unix(),
-		)
-		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
-
-		targetBranchName = newBranchName
-	}
-
-	createOrUpdateKubeOneConfigFile(ctx, getTemplateValues(ctx), utils.GetClusterDir())
-
 	commitMessage := fmt.Sprintf(
 		"(cluster/%s) : upgrading Kubernetes to %s",
 		config.ParsedGeneralConfig.Cluster.Name,
 		targetVersion,
 	)
-	commitHash := git.AddCommitAndPushChanges(
-		ctx,
-		repo,
-		workTree,
-		targetBranchName,
-		gitAuthMethod,
-		config.ParsedGeneralConfig.Cluster.Name,
-		commitMessage,
-		defaultBranchName,
-	)
-
-	// The cluster runs the target Kubernetes version already AND re-rendering changed nothing
-	// (ZeroHash) - there's genuinely nothing to converge. When the manifest DID change (e.g.
-	// kubelet tuning in general.yaml), proceed : 'kubeone apply' reconciles it onto the hosts.
-	if alreadyAtTargetVersion && fromLiveCluster && commitHash.IsZero() {
-		slog.InfoContext(
-			ctx,
-			"Cluster is already at the target Kubernetes version and the KubeOne manifest is unchanged, nothing to do",
-			slog.String("version", targetVersion),
-		)
-		return
-	}
-
-	// ZeroHash means the rendered manifest didn't change (a previous run already pushed it).
-	// There's nothing to merge then - skip straight to 'kubeone apply'.
-	if !commitHash.IsZero() && !args.SkipPRWorkflow {
-		git.WaitUntilPRMerged(
-			ctx,
-			repo,
-			defaultBranchName,
-			commitHash,
-			gitAuthMethod,
-			targetBranchName,
-		)
-	}
+	pushKubeOneManifestChanges(ctx, repo, gitAuthMethod, commitMessage, args.SkipPRWorkflow)
 
 	// (3) Run 'kubeone apply' against the updated manifest.
 
 	assertControlPlaneHostsNotHalfInitialized(ctx)
 	assertBareMetalHostsPackageStateHealthy(ctx)
-	runKubeOneApplyForUpgrade(ctx)
+	applyKubeOneManifest(ctx, "upgrade")
 
 	// (4) Wait until every node reports the target kubelet version and is Ready.
 
@@ -421,22 +383,82 @@ func bareMetalHostAddress(host *config.BareMetalHost) string {
 	}
 }
 
-// runKubeOneApplyForUpgrade runs 'kubeone apply' (in-process) against the freshly rendered
-// KubeOne manifest. Unlike during cluster provisioning, no --force-install : KubeOne detects
-// the version diff and performs the rolling upgrade.
-func runKubeOneApplyForUpgrade(ctx context.Context) {
+// pushKubeOneManifestChanges re-renders the KubeOne manifest from general.yaml in the
+// (already cloned) KubeAid Config repository, commits and pushes it, and - unless the PR
+// workflow is skipped - blocks until the change is merged into the default branch. Returns
+// whether the rendered manifest actually changed (false : a previous run already pushed this
+// exact render, so there's nothing to merge).
+func pushKubeOneManifestChanges(ctx context.Context,
+	repo *goGit.Repository,
+	gitAuthMethod transport.AuthMethod,
+	commitMessage string,
+	skipPRWorkflow bool,
+) bool {
+	workTree, err := repo.Worktree()
+	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")
+
+	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
+
+	targetBranchName := defaultBranchName
+	if !skipPRWorkflow {
+		newBranchName := fmt.Sprintf(
+			"kubeaid-%s-%d",
+			config.ParsedGeneralConfig.Cluster.Name,
+			time.Now().Unix(),
+		)
+		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+
+		targetBranchName = newBranchName
+	}
+
+	createOrUpdateKubeOneConfigFile(ctx, getTemplateValues(ctx), utils.GetClusterDir())
+
+	commitHash := git.AddCommitAndPushChanges(
+		ctx,
+		repo,
+		workTree,
+		targetBranchName,
+		gitAuthMethod,
+		config.ParsedGeneralConfig.Cluster.Name,
+		commitMessage,
+		defaultBranchName,
+	)
+	if commitHash.IsZero() {
+		return false
+	}
+
+	if !skipPRWorkflow {
+		git.WaitUntilPRMerged(
+			ctx,
+			repo,
+			defaultBranchName,
+			commitHash,
+			gitAuthMethod,
+			targetBranchName,
+		)
+	}
+
+	return true
+}
+
+// applyKubeOneManifest runs 'kubeone apply' (in-process) against the freshly rendered KubeOne
+// manifest. Unlike during cluster provisioning, no --force-install : KubeOne detects per-host
+// version diffs itself and performs the rolling upgrade. On in-version hosts it runs its
+// steady-state task set instead (helm releases, addons, joining new static workers,
+// certificate renewal) - never a cordon / drain.
+func applyKubeOneManifest(ctx context.Context, logLabel string) {
 	mainClusterName := config.ParsedGeneralConfig.Cluster.Name
 	kubeoneDir := path.Join(utils.GetClusterDir(), "kubeone")
 
-	slog.InfoContext(ctx, "Upgrading main cluster using Kubermatic KubeOne")
+	slog.InfoContext(ctx, "Applying KubeOne manifest onto the cluster hosts")
 
 	err := runKubeOne(
-		ctx, "upgrade",
+		ctx, logLabel,
 		"apply",
 		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
 		"--auto-approve",
 	)
-	assert.AssertErrNil(ctx, err, "Failed upgrading Kubernetes cluster using KubeOne")
+	assert.AssertErrNil(ctx, err, "Failed applying KubeOne manifest onto the cluster hosts")
 
 	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.
 	// We don't need it.

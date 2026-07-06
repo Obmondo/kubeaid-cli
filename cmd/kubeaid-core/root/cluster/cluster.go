@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster/delete"
+	clusterSync "github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster/sync"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster/upgrade"
 	configSetup "github.com/Obmondo/kubeaid-cli/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -48,6 +49,7 @@ func init() {
 	ClusterCmd.AddCommand(BootstrapCmd)
 	ClusterCmd.AddCommand(TestCmd)
 	ClusterCmd.AddCommand(upgrade.UpgradeCmd)
+	ClusterCmd.AddCommand(clusterSync.SyncCmd)
 	ClusterCmd.AddCommand(delete.DeleteCmd)
 	ClusterCmd.AddCommand(RecoverCmd)
 
