@@ -12,6 +12,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 type SyncKubeOneClusterArgs struct {
@@ -32,8 +33,14 @@ type SyncKubeOneClusterArgs struct {
 func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	targetVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
 
+	bar := progress.New("Syncing cluster with general.yaml")
+	defer bar.Finish()
+	ctx = progress.WithBar(ctx, bar)
+	bar.Describe("Syncing cluster with general.yaml")
+
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	bar.Substep("Cloned kubeaid-config repo")
 
 	// (1) Pre-flight.
 
@@ -53,9 +60,11 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	default:
 		assert.AssertErrNil(ctx, err, "Rejecting cluster.k8sVersion in general.yaml")
 	}
+	bar.Substep(fmt.Sprintf("Cluster is at Kubernetes %s", currentVersion))
 
 	if fromLiveCluster {
 		assertAllNodesReady(ctx)
+		bar.Substep("All nodes Ready")
 	}
 
 	if config.ParsedGeneralConfig.Cloud.BareMetal.Kubelet != nil {
@@ -63,6 +72,7 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 			ctx,
 			"Note : kubelet tuning (cloud.bare-metal.kubelet) is applied by KubeOne only during node upgrades - it takes effect on the next 'kubeaid-cli cluster upgrade', not on sync",
 		)
+		bar.Substep("Note : kubelet tuning applies on the next 'cluster upgrade', not on sync")
 	}
 
 	// (2) Re-render the KubeOne manifest from general.yaml and push it to the KubeAid Config
@@ -84,8 +94,11 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 
 	// (3) Run a plain 'kubeone apply' against the manifest.
 
+	bar.Describe("Reconciling cluster with KubeOne")
+
 	assertControlPlaneHostsNotHalfInitialized(ctx)
 	assertBareMetalHostsPackageStateHealthy(ctx)
+	bar.Substep("Bare Metal host preflights passed")
 
 	applyKubeOneManifest(ctx, "sync")
 
@@ -94,4 +107,5 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	waitForNodesAtKubeletVersion(ctx, targetVersion)
 
 	slog.InfoContext(ctx, "Cluster is in sync with general.yaml 🎉")
+	bar.Substep("Cluster in sync with general.yaml 🎉")
 }

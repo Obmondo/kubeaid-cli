@@ -29,6 +29,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 type UpgradeKubeOneClusterArgs struct {
@@ -45,10 +46,16 @@ var errK8sVersionAlreadyAtTarget = errors.New("cluster is already at the target 
 func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterArgs) {
 	targetVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
 
+	bar := progress.New("Upgrading cluster")
+	defer bar.Finish()
+	ctx = progress.WithBar(ctx, bar)
+	bar.Describe(fmt.Sprintf("Upgrading cluster to Kubernetes %s", targetVersion))
+
 	// Clone (or reuse) the KubeAid Config repository - the currently rendered KubeOne manifest
 	// in there doubles as the fallback source of the cluster's current Kubernetes version.
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	bar.Substep("Cloned kubeaid-config repo")
 
 	// (1) Pre-flight.
 
@@ -76,11 +83,15 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 			"Cluster is already at the target Kubernetes version, nothing to upgrade. Non-version changes in general.yaml get applied by 'kubeaid-cli cluster sync'",
 			slog.String("version", targetVersion),
 		)
+		bar.Substep(fmt.Sprintf("Cluster already at Kubernetes %s - nothing to upgrade", targetVersion))
+		bar.Substep("Non-version changes get applied by 'kubeaid-cli cluster sync'")
 		return
 	}
+	bar.Describe(fmt.Sprintf("Upgrading Kubernetes : %s → %s", currentVersion, targetVersion))
 
 	if fromLiveCluster {
 		assertAllNodesReady(ctx)
+		bar.Substep("All nodes Ready")
 	}
 
 	// CGroup v1 hosts cannot run Kubernetes versions beyond
@@ -103,6 +114,8 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 
 	assertControlPlaneHostsNotHalfInitialized(ctx)
 	assertBareMetalHostsPackageStateHealthy(ctx)
+	bar.Substep("Bare Metal host preflights passed")
+
 	applyKubeOneManifest(ctx, "upgrade")
 
 	// (4) Wait until every node reports the target kubelet version and is Ready.
@@ -114,6 +127,7 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 		"Cluster has been upgraded successfully 🎉🎉 !",
 		slog.String("kubernetes-version", targetVersion),
 	)
+	bar.Substep(fmt.Sprintf("Cluster upgraded to Kubernetes %s 🎉", targetVersion))
 }
 
 // validateK8sVersionHop enforces the KubeOne / kubeadm upgrade rules : the target version must
@@ -394,6 +408,8 @@ func pushKubeOneManifestChanges(ctx context.Context,
 	commitMessage string,
 	skipPRWorkflow bool,
 ) bool {
+	bar := progress.FromCtx(ctx)
+
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")
 
@@ -412,6 +428,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 	}
 
 	createOrUpdateKubeOneConfigFile(ctx, getTemplateValues(ctx), utils.GetClusterDir())
+	bar.Substep("Rendered KubeOne manifest")
 
 	commitHash := git.AddCommitAndPushChanges(
 		ctx,
@@ -424,10 +441,14 @@ func pushKubeOneManifestChanges(ctx context.Context,
 		defaultBranchName,
 	)
 	if commitHash.IsZero() {
+		bar.Substep("KubeOne manifest already up to date in kubeaid-config")
+
 		return false
 	}
+	bar.Substep("Pushed kubeaid-config branch")
 
 	if !skipPRWorkflow {
+		releasePRWait := bar.InProgress("Waiting for you to merge the PR")
 		git.WaitUntilPRMerged(
 			ctx,
 			repo,
@@ -436,6 +457,8 @@ func pushKubeOneManifestChanges(ctx context.Context,
 			gitAuthMethod,
 			targetBranchName,
 		)
+		releasePRWait()
+		bar.Substep("Confirmed PR merged")
 	}
 
 	return true
@@ -482,6 +505,8 @@ func applyKubeOneManifest(ctx context.Context, logLabel string) {
 		)
 		assert.AssertErrNil(ctx, err, "Failed moving KubeOne-generated kubeconfig")
 	}
+
+	progress.FromCtx(ctx).Substep("KubeOne apply completed")
 }
 
 // waitForNodesAtKubeletVersion polls the main cluster until every node is Ready and reports at
@@ -496,16 +521,23 @@ func waitForNodesAtKubeletVersion(ctx context.Context, targetVersion string) {
 
 	slog.InfoContext(ctx, "Waiting for all nodes to be Ready, at the target Kubernetes version")
 
+	bar := progress.FromCtx(ctx)
+	releaseWait := bar.InProgress("Waiting for every node to be Ready, at the target Kubernetes version")
+
 	timeoutCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
 	for {
 		if allNodesAtVersion(timeoutCtx, clusterClient, target) {
+			releaseWait()
+			bar.Substep("Every node Ready, at the target Kubernetes version")
+
 			return
 		}
 
 		select {
 		case <-timeoutCtx.Done():
+			releaseWait()
 			assert.Assert(
 				ctx, false,
 				"Timed out waiting for all nodes to be Ready at the target Kubernetes version. Rerun 'kubeaid-cli cluster upgrade' to resume",
