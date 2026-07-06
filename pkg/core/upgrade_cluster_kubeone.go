@@ -457,6 +457,9 @@ func runKubeOneApplyForUpgrade(ctx context.Context) {
 	// location, like during cluster provisioning.
 	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
 	if _, err := os.Stat(kubeoneGeneratedKubeconfigFilePath); err == nil {
+		err = utils.CreateIntermediateDirsForFile(constants.OutputPathMainClusterKubeconfig)
+		assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs for main cluster kubeconfig")
+
 		err = utils.MoveFile(
 			kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
 		)

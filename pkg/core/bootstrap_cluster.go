@@ -664,12 +664,17 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		       since those files exist on separate drives.
 	*/
 	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
+	// Nothing on the pure bare-metal path has created the outputs directory tree at this point
+	// (the CAPI / K3D paths create it much earlier).
+	err = utils.CreateIntermediateDirsForFile(constants.OutputPathMainClusterKubeconfig)
+	assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs for main cluster kubeconfig")
 	err = utils.MoveFile(
 		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
 	)
 	assert.AssertErrNil(ctx, err, "Failed moving KubeOne-generated kubeconfig")
 
-	slog.InfoContext(ctx,
+	slog.InfoContext(
+		ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
 		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
 	)
