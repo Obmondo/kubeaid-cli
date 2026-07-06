@@ -10,6 +10,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
 )
 
@@ -98,7 +99,7 @@ func vpnClusterNextStepsLines(keycloakAdminPassword string) []string {
 // generalNextStepsLines is the closing panel for every non-VPN cluster : how to talk to the
 // cluster, where its state lives, and how day-2 changes flow.
 func generalNextStepsLines() []string {
-	return []string{
+	lines := []string{
 		"",
 		"  1. Talk to the cluster",
 		"",
@@ -112,8 +113,20 @@ func generalNextStepsLines() []string {
 		"",
 		"  3. Day-2 changes",
 		"",
-		"       Bump cluster.k8sVersion in general.yaml, then run          : kubeaid-cli cluster upgrade",
-		"       Other changes (kubelet, helm releases, hosts), then run    : kubeaid-cli cluster sync",
+		"       Bump cluster.k8sVersion in general.yaml, then run : kubeaid-cli cluster upgrade",
+	}
+
+	// 'cluster sync' only exists for the Bare Metal (KubeOne) provider - on the others,
+	// merged kubeaid-config changes get reconciled by ArgoCD (step 2 above).
+	if globals.CloudProviderName == constants.CloudProviderBareMetal {
+		lines = append(
+			lines,
+			"       Other changes (kubelet, helm releases, hosts)     : kubeaid-cli cluster sync",
+		)
+	}
+
+	return append(
+		lines,
 		"",
 		"  4. ArgoCD dashboard",
 		"",
@@ -121,7 +134,7 @@ func generalNextStepsLines() []string {
 		"       kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d",
 		"       Open https://localhost:8080  (user: admin)",
 		"",
-	}
+	)
 }
 
 // formatBootstrapDuration renders d as a short, human-friendly
