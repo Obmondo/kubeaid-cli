@@ -144,7 +144,7 @@ func (e *ErrReleaseExistsNonDeployed) Error() string {
 // RecoverableByUpgrade reports whether `helm upgrade` can salvage the release:
 // failed/superseded yes; pending-*/uninstalling hold a lock it can't clear.
 func (e *ErrReleaseExistsNonDeployed) RecoverableByUpgrade() bool {
-	switch e.Status {
+	switch e.Status { //nolint:exhaustive // only failed/superseded are recoverable; every other status intentionally falls to false.
 	case release.StatusFailed, release.StatusSuperseded:
 		return true
 	default:
