@@ -116,11 +116,18 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 	assertBareMetalHostsPackageStateHealthy(ctx)
 	bar.Substep("Bare Metal host preflights passed")
 
+	// On a single-node cluster, pod-selecting PodDisruptionBudgets deadlock KubeOne's drain
+	// (nowhere for evicted pods to go). Remove them for the duration of the apply.
+	removedPDBs, stopPDBGuard := neutralizeSingleNodePDBs(ctx)
+
 	applyKubeOneManifest(ctx, "upgrade")
+	stopPDBGuard()
 
 	// (4) Wait until every node reports the target kubelet version and is Ready.
 
 	waitForNodesAtKubeletVersion(ctx, targetVersion)
+
+	restorePDBs(ctx, removedPDBs)
 
 	slog.InfoContext(
 		ctx,

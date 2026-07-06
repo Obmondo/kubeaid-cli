@@ -16,6 +16,7 @@ import (
 	appsV1 "k8s.io/api/apps/v1"
 	batchV1 "k8s.io/api/batch/v1"
 	coreV1 "k8s.io/api/core/v1"
+	policyV1 "k8s.io/api/policy/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	k8sAPIErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -69,6 +70,7 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 		{"Core v1", coreV1.AddToScheme},
 		{"Apps v1", appsV1.AddToScheme},
 		{"Batch v1", batchV1.AddToScheme},
+		{"Policy v1", policyV1.AddToScheme},
 		{"API Extensions v1", apiextensionsv1.AddToScheme},
 		{"ClusterAPI v1beta1", clusterAPIV1Beta1.AddToScheme},
 		{"KCP (Kubeadm Control plane Provider) v1beta1", kcpV1Beta1.AddToScheme},

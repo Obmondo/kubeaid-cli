@@ -93,6 +93,25 @@ Rerun `kubeaid-cli cluster upgrade`. The flow is idempotent:
   a half-upgraded cluster still validates as one hop away from the
   target.
 
+## Single-node clusters
+
+KubeOne cordons and drains each node during the upgrade. On a
+single-node cluster an evicted pod has nowhere to reschedule, so any
+PodDisruptionBudget selecting running pods deadlocks the drain — even
+`maxUnavailable: 1` (the first eviction consumes the budget, the
+replacement stays Pending on the cordoned node, and every further
+eviction is forbidden).
+
+`kubeaid-cli cluster upgrade` detects this: when the cluster has
+exactly one node, every pod-selecting PDB is listed and the run asks
+for consent before touching anything. On approval, the PDBs are
+removed, kept removed while the drain runs (ArgoCD self-heal
+recreates its PDBs within seconds otherwise), and restored afterwards
+— ArgoCD-managed PDBs come back via ArgoCD's own sync, the rest are
+re-created by the run itself. On decline (or when there's no TTY to
+ask on), the upgrade aborts and prints the exact `kubectl delete pdb`
+commands to run by hand before retrying.
+
 ## cgroup v2 (Kubernetes ≥ v1.35)
 
 Kubernetes v1.35 dropped cgroup v1 support — a kubelet beyond v1.34
