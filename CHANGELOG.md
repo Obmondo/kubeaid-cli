@@ -1,4 +1,33 @@
 - - -
+## v0.29.7 - 2026-07-06
+#### Features
+- (**bootstrap**) clearer phases and a next-steps panel for every cluster - (5202763) - Ashish Jaiswal
+- (**bootstrap**) fail fast on unhealthy Bare Metal hosts - (fe0df46) - Ashish Jaiswal
+- (**bootstrap**) stream KubeOne output to the run log - (a721aee) - Ashish Jaiswal
+- (**cli**) 'cluster sync' reconciles Bare Metal clusters via KubeOne - (397557e) - Ashish Jaiswal
+- (**config**) kubelet tuning for Bare Metal hosts via general.yaml - (4f34358) - Ashish Jaiswal
+- (**sync**) reconcile kubelet tuning after operator consent - (23c4bac) - Ashish Jaiswal
+- (**upgrade**) consent-gated PDB handling for single-node drains - (80b1210) - Ashish Jaiswal
+#### Bug Fixes
+- (**azure**) correct OpenID provider SSH public key validation - (a9b6cfc) - Ashish Jaiswal
+- (**bootstrap**) advertise 'cluster sync' only on Bare Metal - (a2349be) - Ashish Jaiswal
+- (**bootstrap**) single kubeaid-config PR on Bare Metal bootstrap - (a585ca1) - Ashish Jaiswal
+- (**bootstrap**) create the outputs dir before saving the kubeconfig - (4d8f57d) - Ashish Jaiswal
+- (**bootstrap**) skip management-cluster steps on the Bare Metal path - (0be5f88) - Ashish Jaiswal
+- (**bootstrap**) fail fast when the Docker daemon is unreachable - (300dc93) - Ashish Jaiswal
+- (**cli**) day-2 PRs carry the general.yaml copy too - (95e8f8a) - Ashish Jaiswal
+- (**cli**) show progress output for 'cluster upgrade' and 'cluster sync' - (5669e02) - Ashish Jaiswal
+- (**config**) collect Bare Metal hosts in the prompt; reject host-less configs at parse - (9ef6067) - Ashish Jaiswal
+- (**upgrade**) explain the valid targets when rejecting a downgrade - (6f44afe) - Ashish Jaiswal
+- (**upgrade**) reconcile manifest-only changes at the target version - (cb49be4) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**lint**) zero out the repo-wide golangci findings - (d4d62ac) - Ashish Jaiswal
+- (**lint**) make the NetBird token-choice switch exhaustive - (c0f1656) - Ashish Jaiswal
+#### Style
+- (**core**) put the first argument of multiline calls on its own line - (159f8dc) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.6 - 2026-07-05
 #### Features
 - <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**cluster**) make 'cluster upgrade' GitOps driven - no flags, no provider subcommands - (bd861eb) - Ashish Jaiswal
