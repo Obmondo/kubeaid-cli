@@ -59,25 +59,8 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 	)
 
 	err := validateK8sVersionHop(currentVersion, targetVersion)
-	switch {
-	case errors.Is(err, errK8sVersionAlreadyAtTarget) && fromLiveCluster:
-		slog.InfoContext(
-			ctx, "Cluster is already at the target Kubernetes version, nothing to do",
-			slog.String("version", targetVersion),
-		)
-		return
-
-	case errors.Is(err, errK8sVersionAlreadyAtTarget):
-		// The rendered manifest is already at the target version, but we couldn't read the live
-		// cluster - a previous run may have died between the git push and 'kubeone apply'.
-		// Proceed : 'kubeone apply' converges the cluster to the manifest and is a no-op when
-		// everything is already in place.
-		slog.WarnContext(
-			ctx,
-			"KubeOne manifest is already at the target Kubernetes version - proceeding with 'kubeone apply' to converge the cluster",
-		)
-
-	default:
+	alreadyAtTargetVersion := errors.Is(err, errK8sVersionAlreadyAtTarget)
+	if !alreadyAtTargetVersion {
 		assert.AssertErrNil(ctx, err, "Kubernetes version upgrade rejected")
 	}
 
@@ -128,6 +111,18 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 		commitMessage,
 		defaultBranchName,
 	)
+
+	// The cluster runs the target Kubernetes version already AND re-rendering changed nothing
+	// (ZeroHash) - there's genuinely nothing to converge. When the manifest DID change (e.g.
+	// kubelet tuning in general.yaml), proceed : 'kubeone apply' reconciles it onto the hosts.
+	if alreadyAtTargetVersion && fromLiveCluster && commitHash.IsZero() {
+		slog.InfoContext(
+			ctx,
+			"Cluster is already at the target Kubernetes version and the KubeOne manifest is unchanged, nothing to do",
+			slog.String("version", targetVersion),
+		)
+		return
+	}
 
 	// ZeroHash means the rendered manifest didn't change (a previous run already pushed it).
 	// There's nothing to merge then - skip straight to 'kubeone apply'.
