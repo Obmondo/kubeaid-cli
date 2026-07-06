@@ -144,6 +144,8 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 
 	// (3) Run 'kubeone apply' against the updated manifest.
 
+	assertControlPlaneHostsNotHalfInitialized(ctx)
+	assertBareMetalHostsPackageStateHealthy(ctx)
 	runKubeOneApplyForUpgrade(ctx)
 
 	// (4) Wait until every node reports the target kubelet version and is Ready.

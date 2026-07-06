@@ -607,6 +607,9 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 
 	kubeoneDir := path.Join(utils.GetClusterDir(), "kubeone")
 
+	assertControlPlaneHostsNotHalfInitialized(ctx)
+	assertBareMetalHostsPackageStateHealthy(ctx)
+
 	slog.InfoContext(ctx, "Provisioning main cluster using Kubermatic KubeOne")
 
 	// Run "kubeone apply".
