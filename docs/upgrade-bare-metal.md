@@ -77,10 +77,15 @@ kubeaid-cli cluster sync
    It never cordons or drains in-version nodes, so sync is
    non-disruptive and safe to rerun anytime.
 
-One exception: **kubelet tuning** (`cloud.bare-metal.kubelet`) is
-rewritten by KubeOne only during its per-node upgrade procedure, which
-sync deliberately never forces (it would cordon + drain every node).
-Those changes take effect on the next `cluster upgrade`.
+**Kubelet tuning** (`cloud.bare-metal.kubelet`) needs more: KubeOne
+rewrites kubelet flags only during its per-node upgrade procedure.
+Sync SSHes into every host, compares the flags in
+`/var/lib/kubelet/kubeadm-flags.env` against `general.yaml`, and when
+they differ shows the drift (`--max-pods : 300 → 250`) and asks for
+consent. On approval the apply runs with `--force-upgrade` — KubeOne
+cordons, drains and restarts one node at a time (the single-node PDB
+guard below applies here too). On decline — or with no TTY, e.g. CI —
+the kubelet changes stay pending and the plain apply still runs.
 
 ## If a run fails
 
@@ -102,7 +107,8 @@ PodDisruptionBudget selecting running pods deadlocks the drain — even
 replacement stays Pending on the cordoned node, and every further
 eviction is forbidden).
 
-`kubeaid-cli cluster upgrade` detects this: when the cluster has
+`kubeaid-cli cluster upgrade` — and `cluster sync`, when a consented
+kubelet reconcile forces the upgrade procedure — detects this: when the cluster has
 exactly one node, every pod-selecting PDB is listed and the run asks
 for consent before touching anything. On approval, the PDBs are
 removed, kept removed while the drain runs (ArgoCD self-heal

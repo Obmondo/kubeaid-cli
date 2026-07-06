@@ -120,7 +120,7 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 	// (nowhere for evicted pods to go). Remove them for the duration of the apply.
 	removedPDBs, stopPDBGuard := neutralizeSingleNodePDBs(ctx)
 
-	applyKubeOneManifest(ctx, "upgrade")
+	applyKubeOneManifest(ctx, "upgrade", false)
 	stopPDBGuard()
 
 	// (4) Wait until every node reports the target kubelet version and is Ready.
@@ -475,19 +475,28 @@ func pushKubeOneManifestChanges(ctx context.Context,
 // manifest. Unlike during cluster provisioning, no --force-install : KubeOne detects per-host
 // version diffs itself and performs the rolling upgrade. On in-version hosts it runs its
 // steady-state task set instead (helm releases, addons, joining new static workers,
-// certificate renewal) - never a cordon / drain.
-func applyKubeOneManifest(ctx context.Context, logLabel string) {
+// certificate renewal) - never a cordon / drain. forceUpgrade forces the upgrade tasks even
+// on in-version hosts (rolling cordon + drain + kubelet restart) - the only way KubeOne
+// rewrites kubelet flags without a version hop; callers gate it behind operator consent.
+func applyKubeOneManifest(ctx context.Context, logLabel string, forceUpgrade bool) {
 	mainClusterName := config.ParsedGeneralConfig.Cluster.Name
 	kubeoneDir := path.Join(utils.GetClusterDir(), "kubeone")
 
-	slog.InfoContext(ctx, "Applying KubeOne manifest onto the cluster hosts")
+	slog.InfoContext(
+		ctx, "Applying KubeOne manifest onto the cluster hosts",
+		slog.Bool("force-upgrade", forceUpgrade),
+	)
 
-	err := runKubeOne(
-		ctx, logLabel,
+	kubeoneArgs := []string{
 		"apply",
 		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
 		"--auto-approve",
-	)
+	}
+	if forceUpgrade {
+		kubeoneArgs = append(kubeoneArgs, "--force-upgrade")
+	}
+
+	err := runKubeOne(ctx, logLabel, kubeoneArgs...)
 	assert.AssertErrNil(ctx, err, "Failed applying KubeOne manifest onto the cluster hosts")
 
 	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.

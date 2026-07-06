@@ -21,8 +21,9 @@ var SyncCmd = &cobra.Command{
 
 	Args: cobra.NoArgs,
 
-	// GitOps driven : no flags. Desired state (helm releases, addons, hosts) is read from
-	// general.yaml; version changes are 'cluster upgrade's job.
+	// GitOps driven : no flags. Desired state (kubelet tuning, helm releases, addons, hosts)
+	// is read from general.yaml; version changes are 'cluster upgrade's job. Disruptive
+	// reconciles (kubelet flags need a rolling per-node procedure) ask for consent first.
 	Run: func(cmd *cobra.Command, args []string) {
 		switch globals.CloudProviderName {
 		case constants.CloudProviderBareMetal:
