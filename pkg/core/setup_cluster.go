@@ -156,12 +156,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		err := kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
 		assert.AssertErrNil(ctx, err, "Failed restoring sealed secrets private keys")
 
-		slog.InfoContext(ctx,
+		slog.InfoContext(
+			ctx,
 			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
 
-	case args.ClusterType == constants.ClusterTypeMain:
+	// The Bare Metal (KubeOne) provider never has a management cluster - sealed secrets get
+	// sealed against the main cluster's own controller, after it comes up.
+	case (args.ClusterType == constants.ClusterTypeMain) &&
+		(globals.CloudProviderName != constants.CloudProviderBareMetal):
 		releaseCopy := bar.InProgress("Seeding sealed-secrets keys from management cluster")
 		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
@@ -206,7 +210,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// parity check trivially passes (same set, same count). The
 	// Deployment-health check still earns its keep.
 	mgmtClientForHealthCheck := args.ClusterClient
-	if args.ClusterType == constants.ClusterTypeMain {
+	if (args.ClusterType == constants.ClusterTypeMain) &&
+		(globals.CloudProviderName != constants.CloudProviderBareMetal) {
 		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
 
