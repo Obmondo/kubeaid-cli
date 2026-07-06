@@ -59,7 +59,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		assert.AssertErrNil(ctx,
+		assert.AssertErrNil(
+			ctx,
 			hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx),
 			"Failed provisioning prerequisite Hetzner infrastructure",
 		)
@@ -202,7 +203,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 		// Create first Sealed Secrets backup.
 		releaseSS := bar.InProgress("Triggering Sealed Secrets backup CRONJob")
-		err = kubernetes.TriggerCRONJob(ctx,
+		err = kubernetes.TriggerCRONJob(
+			ctx,
 			types.NamespacedName{
 				Name:      constants.CRONJobNameBackupSealedSecrets,
 				Namespace: constants.NamespaceSealedSecrets,
@@ -232,7 +234,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// surface on first user login — long after kubeaid-cli has exited
 	// and DisableControlPlaneLBPublicInterface has cut off the easy
 	// debug path. No-op on non-VPN clusters.
-	assert.AssertErrNil(ctx,
+	assert.AssertErrNil(
+		ctx,
 		verifyVPNClusterEndpoints(ctx),
 		"VPN cluster endpoint verification failed",
 	)
@@ -263,7 +266,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		if globals.CloudProviderName == constants.CloudProviderHetzner {
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 			assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
-			assert.AssertErrNil(ctx,
+			assert.AssertErrNil(
+				ctx,
 				hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
 				"Failed disabling control-plane LB public interface",
 			)
@@ -293,13 +297,15 @@ func readKeycloakAdminPasswordForPanel(
 	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return ""
 	}
-	password, err := readSecretValue(ctx, clusterClient,
+	password, err := readSecretValue(
+		ctx, clusterClient,
 		constants.NamespaceKeycloak,
 		constants.SecretNameKeycloakAdmin,
 		constants.SecretKeyKeycloakPassword,
 	)
 	if err != nil {
-		slog.WarnContext(ctx,
+		slog.WarnContext(
+			ctx,
 			"Could not read Keycloak admin password for the next-steps panel; "+
 				"the panel will print the kubectl-fetch command as a fallback",
 			slog.Any("err", err),
@@ -339,7 +345,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
-	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
+	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(
+		ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
@@ -435,7 +442,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+		err = kubernetes.SyncArgoCDApp(
+			ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseAuto()
@@ -448,7 +456,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Hetzner 🥴).
 	if globals.CloudProviderName != constants.CloudProviderHetzner {
 		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+		err = kubernetes.SyncArgoCDApp(
+			ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseSnap()
@@ -509,7 +518,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	}
 	bar.Substep("Saved provisioned cluster kubeconfig")
 
-	slog.InfoContext(ctx,
+	slog.InfoContext(
+		ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
 		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
 	)
