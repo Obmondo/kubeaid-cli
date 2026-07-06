@@ -201,6 +201,7 @@ func TestCreateVSwitch(t *testing.T) {
 	}
 }
 
+//nolint:gocognit // table-driven test: the complexity is the case matrix plus per-case fake-Robot handlers, inherent to the test design.
 func TestAttachServersToVSwitch(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +241,7 @@ func TestAttachServersToVSwitch(t *testing.T) {
 					switch r.Method {
 					case http.MethodPost:
 						assert.Equal(t, "/vswitch/50/server", r.URL.Path)
+						r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 						require.NoError(t, r.ParseForm())
 						assert.ElementsMatch(t, []string{"100", "200"}, r.PostForm["server[]"])
 						w.WriteHeader(http.StatusCreated)
@@ -298,6 +300,7 @@ func TestAttachServersToVSwitch(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					switch r.Method {
 					case http.MethodPost:
+						r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 						require.NoError(t, r.ParseForm())
 						assert.Equal(t, []string{"100"}, r.PostForm["server[]"])
 						w.WriteHeader(http.StatusCreated)
@@ -320,6 +323,7 @@ func TestAttachServersToVSwitch(t *testing.T) {
 				return func(w http.ResponseWriter, r *http.Request) {
 					switch r.Method {
 					case http.MethodPost:
+						r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 						require.NoError(t, r.ParseForm())
 						assert.Equal(t, []string{"200"}, r.PostForm["server[]"])
 						w.WriteHeader(http.StatusCreated)

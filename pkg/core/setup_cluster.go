@@ -55,7 +55,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// against this fixed version, never walks default-branch
 		// history. One narrow fetch instead of pulling every ref + tag
 		// per re-run.
-		kubeAidRepo := gitUtils.CloneRepo(ctx,
+		kubeAidRepo := gitUtils.CloneRepo(
+			ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.URL,
 			args.GitAuthMethod,
 			gitUtils.CloneRepoOptions{
@@ -64,7 +65,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		)
 
 		// Hard reset to the KubeAid git ref (tag / branch) from the general config.
-		gitUtils.HardResetRepoToRef(ctx,
+		gitUtils.HardResetRepoToRef(
+			ctx,
 			kubeAidRepo,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
 		)
@@ -105,13 +107,15 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	//                       SealedSecret consumed by the chart's
 	//                       pre-install hook).
 	if config.VPNClusterEnabled() {
-		namespacesToBeCreated = append(namespacesToBeCreated,
+		namespacesToBeCreated = append(
+			namespacesToBeCreated,
 			constants.NamespaceCloudNativePG,
 			constants.NamespaceNetBird,
 		)
 	}
 	if config.ManagedKeycloakEnabled() {
-		namespacesToBeCreated = append(namespacesToBeCreated,
+		namespacesToBeCreated = append(
+			namespacesToBeCreated,
 			constants.NamespaceKeycloak,
 		)
 	}
@@ -152,12 +156,16 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		err := kubernetes.ReplaceForceFromDir(ctx, args.ClusterClient, sealedSecretsKeysDirPath)
 		assert.AssertErrNil(ctx, err, "Failed restoring sealed secrets private keys")
 
-		slog.InfoContext(ctx,
+		slog.InfoContext(
+			ctx,
 			"Restored Sealed Secrets controller private keys",
 			slog.String("dir-path", sealedSecretsKeysDirPath),
 		)
 
-	case args.ClusterType == constants.ClusterTypeMain:
+	// The Bare Metal (KubeOne) provider never has a management cluster - sealed secrets get
+	// sealed against the main cluster's own controller, after it comes up.
+	case (args.ClusterType == constants.ClusterTypeMain) &&
+		(globals.CloudProviderName != constants.CloudProviderBareMetal):
 		releaseCopy := bar.InProgress("Seeding sealed-secrets keys from management cluster")
 		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
@@ -165,7 +173,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		mgmtClient, mgmtErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfigPath)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed constructing management cluster client")
 
-		if err := kubernetes.CopySealedSecretsKeysFromManagement(ctx,
+		if err := kubernetes.CopySealedSecretsKeysFromManagement(
+			ctx,
 			mgmtClient, args.ClusterClient,
 		); err != nil {
 			releaseCopy()
@@ -201,7 +210,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// parity check trivially passes (same set, same count). The
 	// Deployment-health check still earns its keep.
 	mgmtClientForHealthCheck := args.ClusterClient
-	if args.ClusterType == constants.ClusterTypeMain {
+	if (args.ClusterType == constants.ClusterTypeMain) &&
+		(globals.CloudProviderName != constants.CloudProviderBareMetal) {
 		mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
 
@@ -211,7 +221,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	releaseHealth := bar.InProgress("Verifying Sealed Secrets controller health")
-	if err := kubernetes.EnsureSealedSecretsHealthy(ctx,
+	if err := kubernetes.EnsureSealedSecretsHealthy(
+		ctx,
 		mgmtClientForHealthCheck, args.ClusterClient,
 	); err != nil {
 		releaseHealth()
@@ -340,7 +351,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	if kubernetes.UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
 		releaseCAPIOp := bar.InProgress("Syncing cluster-api-operator ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(ctx, "cluster-api-operator",
+		err = kubernetes.SyncArgoCDApp(
+			ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseCAPIOp()
@@ -371,7 +383,8 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		kubernetes.UsingClusterAPI() &&
 		!kubernetes.IsClusterctlMoveExecuted(ctx) {
 		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app")
-		err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		err := kubernetes.SyncArgoCDApp(
+			ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseSync()
@@ -410,7 +423,8 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	releaseSync := bar.InProgress(
 		fmt.Sprintf("Syncing %s infrastructure-provider component", providerName),
 	)
-	err := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+	err := kubernetes.SyncArgoCDApp(
+		ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
 				Group: "operator.cluster.x-k8s.io",
@@ -471,14 +485,16 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	providerLabel := labels.SelectorFromSet(labels.Set{
 		"cluster.x-k8s.io/provider": fmt.Sprintf("infrastructure-%s", providerName),
 	})
-	err = wait.PollUntilContextCancel(ctx, 15*time.Second, true,
+	err = wait.PollUntilContextCancel(
+		ctx, 15*time.Second, true,
 		func(ctx context.Context) (bool, error) {
 			podList := &coreV1.PodList{}
 			if err := clusterClient.List(ctx, podList, &client.ListOptions{
 				Namespace:     capiClusterNamespace,
 				LabelSelector: providerLabel,
 			}); err != nil {
-				slog.WarnContext(ctx, "Listing infrastructure-provider pods failed; will retry",
+				slog.WarnContext(
+					ctx, "Listing infrastructure-provider pods failed; will retry",
 					slog.Any("err", err),
 				)
 				return false, nil
@@ -488,7 +504,8 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 					return true, nil
 				}
 			}
-			slog.InfoContext(ctx,
+			slog.InfoContext(
+				ctx,
 				"Still waiting for the infrastructure provider controller pod",
 				slog.Int("matching-pods", len(podList.Items)),
 			)
@@ -496,7 +513,8 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		},
 	)
 	releaseWait()
-	assert.AssertErrNil(ctx, err,
+	assert.AssertErrNil(
+		ctx, err,
 		"Failed waiting for the infrastructure provider component to come up",
 	)
 	bar.Substep(
@@ -544,7 +562,8 @@ func logInfrastructureProviderConditions(
 		obj.SetGroupVersionKind(gvk)
 		err := clusterClient.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, obj)
 		if err != nil {
-			slog.WarnContext(logCtx, "Polling InfrastructureProvider failed; will retry",
+			slog.WarnContext(
+				logCtx, "Polling InfrastructureProvider failed; will retry",
 				slog.Any("err", err),
 			)
 			continue
@@ -571,7 +590,8 @@ func logInfrastructureProviderConditions(
 			allReady = false
 			reason, _, _ := unstructured.NestedString(cond, "reason")
 			message, _, _ := unstructured.NestedString(cond, "message")
-			slog.WarnContext(logCtx, "InfrastructureProvider condition not ready",
+			slog.WarnContext(
+				logCtx, "InfrastructureProvider condition not ready",
 				slog.String("type", ctype),
 				slog.String("status", status),
 				slog.String("reason", reason),

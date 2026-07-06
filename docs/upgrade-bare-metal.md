@@ -58,6 +58,35 @@ pending change in there (a host you added to a node-group, an SSH port
 change, …) rides along into the same `kubeone apply`. Keep unrelated
 `general.yaml` edits out of an upgrade if you don't want that.
 
+## Config-only changes: `cluster sync`
+
+For changes that don't bump the Kubernetes version — the bundled helm
+releases (e.g. Cilium), addons, a new host in a node-group — run:
+
+```bash
+kubeaid-cli cluster sync
+```
+
+1. Verifies the cluster already runs `cluster.k8sVersion` (a pending
+   version bump is refused — run `cluster upgrade` first).
+2. Re-renders and pushes the KubeOne manifest (same PR workflow,
+   `--skip-pr-workflow` works here too).
+3. Runs a plain `kubeone apply`: KubeOne's steady-state task set
+   reconciles helm releases and addons, joins newly added static
+   workers, renews soon-to-expire certificates and re-labels nodes.
+   It never cordons or drains in-version nodes, so sync is
+   non-disruptive and safe to rerun anytime.
+
+**Kubelet tuning** (`cloud.bare-metal.kubelet`) needs more: KubeOne
+rewrites kubelet flags only during its per-node upgrade procedure.
+Sync SSHes into every host, compares the flags in
+`/var/lib/kubelet/kubeadm-flags.env` against `general.yaml`, and when
+they differ shows the drift (`--max-pods : 300 → 250`) and asks for
+consent. On approval the apply runs with `--force-upgrade` — KubeOne
+cordons, drains and restarts one node at a time (the single-node PDB
+guard below applies here too). On decline — or with no TTY, e.g. CI —
+the kubelet changes stay pending and the plain apply still runs.
+
 ## If a run fails
 
 Rerun `kubeaid-cli cluster upgrade`. The flow is idempotent:
@@ -68,6 +97,26 @@ Rerun `kubeaid-cli cluster upgrade`. The flow is idempotent:
 - The "current version" pre-flight uses the *lowest* kubelet version, so
   a half-upgraded cluster still validates as one hop away from the
   target.
+
+## Single-node clusters
+
+KubeOne cordons and drains each node during the upgrade. On a
+single-node cluster an evicted pod has nowhere to reschedule, so any
+PodDisruptionBudget selecting running pods deadlocks the drain — even
+`maxUnavailable: 1` (the first eviction consumes the budget, the
+replacement stays Pending on the cordoned node, and every further
+eviction is forbidden).
+
+`kubeaid-cli cluster upgrade` — and `cluster sync`, when a consented
+kubelet reconcile forces the upgrade procedure — detects this: when the cluster has
+exactly one node, every pod-selecting PDB is listed and the run asks
+for consent before touching anything. On approval, the PDBs are
+removed, kept removed while the drain runs (ArgoCD self-heal
+recreates its PDBs within seconds otherwise), and restored afterwards
+— ArgoCD-managed PDBs come back via ArgoCD's own sync, the rest are
+re-created by the run itself. On decline (or when there's no TTY to
+ask on), the upgrade aborts and prints the exact `kubectl delete pdb`
+commands to run by hand before retrying.
 
 ## cgroup v2 (Kubernetes ≥ v1.35)
 

@@ -32,6 +32,9 @@ controlPlane:
       {{- if $host.PrivateAddress }}
       privateAddress: {{ $host.PrivateAddress }}
       {{- end }}
+      {{- if $.BareMetalConfig.Kubelet }}
+      kubelet: {{- $.BareMetalConfig.Kubelet | toIndentYAML 2 | nindent 8 }}
+      {{- end }}
   {{- end }}
 
 clusterNetwork:
@@ -73,6 +76,9 @@ staticWorkers:
 
       labels: {{- $nodeGroup.Labels | toIndentYAML 2 | nindent 8 }}
       taints: {{- $nodeGroup.Taints | toIndentYAML 2 | nindent 8 }}
+      {{- if $.BareMetalConfig.Kubelet }}
+      kubelet: {{- $.BareMetalConfig.Kubelet | toIndentYAML 2 | nindent 8 }}
+      {{- end }}
   {{- end }}
   {{- end }}
 

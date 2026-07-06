@@ -116,9 +116,12 @@ func AwaitOperatorToken(
 		}
 		return true, nil
 
-	default: // netBirdTokenDefer
+	case netBirdTokenDefer:
 		printNetBirdSetupDeferred()
 		return false, nil
+
+	default:
+		return false, fmt.Errorf("unknown NetBird token choice: %d", choice)
 	}
 }
 

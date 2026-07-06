@@ -13,7 +13,6 @@ import (
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
-	kubeoneCmd "k8c.io/kubeone/pkg/cmd"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
@@ -59,7 +58,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		assert.AssertErrNil(ctx,
+		assert.AssertErrNil(
+			ctx,
 			hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx),
 			"Failed provisioning prerequisite Hetzner infrastructure",
 		)
@@ -73,7 +73,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// Create and setup the management cluster. The capi-cluster sync
 	// is folded into SetupCluster so it runs before the
 	// "Management cluster ready" box, not after it.
-	bar.Describe("Creating management cluster")
+	//
+	// The Bare Metal (KubeOne) provider skips the management cluster entirely - its phase
+	// only clones kubeaid-config and renders the KubeOne manifest.
+	devEnvPhaseTitle := "Creating management cluster"
+	if globals.CloudProviderName == constants.CloudProviderBareMetal {
+		devEnvPhaseTitle = "Preparing kubeaid-config"
+	}
+	bar.Describe(devEnvPhaseTitle)
 	CreateDevEnv(ctx, args.CreateDevEnvArgs)
 
 	bar.Describe("Provisioning main cluster")
@@ -202,7 +209,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 
 		// Create first Sealed Secrets backup.
 		releaseSS := bar.InProgress("Triggering Sealed Secrets backup CRONJob")
-		err = kubernetes.TriggerCRONJob(ctx,
+		err = kubernetes.TriggerCRONJob(
+			ctx,
 			types.NamespacedName{
 				Name:      constants.CRONJobNameBackupSealedSecrets,
 				Namespace: constants.NamespaceSealedSecrets,
@@ -232,7 +240,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// surface on first user login — long after kubeaid-cli has exited
 	// and DisableControlPlaneLBPublicInterface has cut off the easy
 	// debug path. No-op on non-VPN clusters.
-	assert.AssertErrNil(ctx,
+	assert.AssertErrNil(
+		ctx,
 		verifyVPNClusterEndpoints(ctx),
 		"VPN cluster endpoint verification failed",
 	)
@@ -263,7 +272,8 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		if globals.CloudProviderName == constants.CloudProviderHetzner {
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 			assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
-			assert.AssertErrNil(ctx,
+			assert.AssertErrNil(
+				ctx,
 				hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
 				"Failed disabling control-plane LB public interface",
 			)
@@ -293,13 +303,15 @@ func readKeycloakAdminPasswordForPanel(
 	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return ""
 	}
-	password, err := readSecretValue(ctx, clusterClient,
+	password, err := readSecretValue(
+		ctx, clusterClient,
 		constants.NamespaceKeycloak,
 		constants.SecretNameKeycloakAdmin,
 		constants.SecretKeyKeycloakPassword,
 	)
 	if err != nil {
-		slog.WarnContext(ctx,
+		slog.WarnContext(
+			ctx,
 			"Could not read Keycloak admin password for the next-steps panel; "+
 				"the panel will print the kubectl-fetch command as a fallback",
 			slog.Any("err", err),
@@ -339,7 +351,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
 	utils.MustSetEnv(constants.EnvNameKubeconfig, constants.OutputPathMainClusterKubeconfig)
-	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(ctx,
+	provisionedClusterClient, err := kubernetes.CreateKubernetesClient(
+		ctx,
 		constants.OutputPathMainClusterKubeconfig,
 	)
 	assert.AssertErrNil(ctx, err, "Failed constructing Kubernetes cluster client")
@@ -361,6 +374,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	releaseNet()
 	assert.AssertErrNil(ctx, err, "Failed waiting for control-plane Node networking to be ready")
 	bar.Substep("Control-plane Node networking ready")
+	bar.Substep("Main cluster provisioned 🎉")
 
 	// Ensure that application workloads can be scheduled.
 	switch kubernetes.IsNodeGroupCountZero(ctx) {
@@ -408,6 +422,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		       them, by encrypting the underlying Kubernetes Secrets using the private key of the
 		       Sealed Secrets controller installed in the provisioned main cluster.
 	*/
+	bar.Describe("Setting up main cluster")
 	SetupCluster(ctx, SetupClusterArgs{
 		CreateDevEnvArgs: args.CreateDevEnvArgs,
 		ClusterType:      constants.ClusterTypeMain,
@@ -435,7 +450,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppClusterAutoscaler,
+		err = kubernetes.SyncArgoCDApp(
+			ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseAuto()
@@ -448,7 +464,8 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Hetzner 🥴).
 	if globals.CloudProviderName != constants.CloudProviderHetzner {
 		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDExternalSnapshotter,
+		err = kubernetes.SyncArgoCDApp(
+			ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseSnap()
@@ -509,7 +526,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	}
 	bar.Substep("Saved provisioned cluster kubeconfig")
 
-	slog.InfoContext(ctx,
+	slog.InfoContext(
+		ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
 		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
 	)
@@ -598,11 +616,14 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 
 	kubeoneDir := path.Join(utils.GetClusterDir(), "kubeone")
 
+	assertControlPlaneHostsNotHalfInitialized(ctx)
+	assertBareMetalHostsPackageStateHealthy(ctx)
+
 	slog.InfoContext(ctx, "Provisioning main cluster using Kubermatic KubeOne")
 
 	// Run "kubeone apply".
-	kubeoneCmd := kubeoneCmd.NewRoot()
-	kubeoneCmd.SetArgs([]string{
+	err := runKubeOne(
+		ctx, "apply",
 		"apply",
 		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
 		"--auto-approve",
@@ -629,8 +650,7 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 			"--force-install" flag.
 		*/
 		"--force-install",
-	})
-	err := kubeoneCmd.ExecuteContext(ctx)
+	)
 	assert.AssertErrNil(ctx, err,
 		"Failed initializing Kubernetes cluster using KubeOne")
 
@@ -653,12 +673,17 @@ func provisionMainClusterUsingKubeOne(ctx context.Context) {
 		       since those files exist on separate drives.
 	*/
 	kubeoneGeneratedKubeconfigFilePath := fmt.Sprintf("%s-kubeconfig", mainClusterName)
+	// Nothing on the pure bare-metal path has created the outputs directory tree at this point
+	// (the CAPI / K3D paths create it much earlier).
+	err = utils.CreateIntermediateDirsForFile(constants.OutputPathMainClusterKubeconfig)
+	assert.AssertErrNil(ctx, err, "Failed creating intermediate dirs for main cluster kubeconfig")
 	err = utils.MoveFile(
 		kubeoneGeneratedKubeconfigFilePath, constants.OutputPathMainClusterKubeconfig,
 	)
 	assert.AssertErrNil(ctx, err, "Failed moving KubeOne-generated kubeconfig")
 
-	slog.InfoContext(ctx,
+	slog.InfoContext(
+		ctx,
 		"Main cluster has been provisioned successfully 🎉🎉 !",
 		slog.String("kubeconfig", constants.OutputPathMainClusterKubeconfig),
 	)

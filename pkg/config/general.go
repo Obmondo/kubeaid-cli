@@ -777,8 +777,20 @@ type (
 	BareMetalConfig struct {
 		SSH BareMetalSSHConfig `yaml:"ssh"`
 
+		// Kubelet tuning applied to every host (control-plane and workers).
+		Kubelet *BareMetalKubeletConfig `yaml:"kubelet"`
+
 		ControlPlane BareMetalControlPlane `yaml:"controlPlane" validate:"required"`
 		NodeGroups   []BareMetalNodeGroup  `yaml:"nodeGroups"`
+	}
+
+	// BareMetalKubeletConfig mirrors KubeOne's per-host KubeletConfig.
+	// REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1beta2/#kubeletconfig
+	BareMetalKubeletConfig struct {
+		SystemReserved map[string]string `yaml:"systemReserved,omitempty"`
+		KubeReserved   map[string]string `yaml:"kubeReserved,omitempty"`
+		EvictionHard   map[string]string `yaml:"evictionHard,omitempty"`
+		MaxPods        *int32            `yaml:"maxPods,omitempty"`
 	}
 
 	BareMetalSSHConfig struct {
