@@ -434,8 +434,12 @@ func pushKubeOneManifestChanges(ctx context.Context,
 		targetBranchName = newBranchName
 	}
 
-	createOrUpdateKubeOneConfigFile(ctx, getTemplateValues(ctx), utils.GetClusterDir())
-	bar.Substep("Rendered KubeOne manifest")
+	// Render the derived KubeOne manifest AND the general.yaml copy it derives from, so the
+	// pushed change carries the source of truth together with its effect.
+	templateValues := getTemplateValues(ctx)
+	createOrUpdateKubeOneConfigFile(ctx, templateValues, utils.GetClusterDir())
+	createOrUpdateGeneralConfigFile(ctx, templateValues, utils.GetClusterDir())
+	bar.Substep("Rendered KubeOne manifest and the kubeaid-cli.general.yaml copy")
 
 	commitHash := git.AddCommitAndPushChanges(
 		ctx,

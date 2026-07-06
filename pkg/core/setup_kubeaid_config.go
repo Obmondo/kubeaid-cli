@@ -250,6 +250,17 @@ func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *Templa
 	createFileFromTemplate(ctx, destinationFilePath, constants.KubeOneConfigTemlateName, templateValues)
 }
 
+// Creates / updates the cluster's kubeaid-cli.general.yaml copy in the KubeAid Config
+// repository - the source of truth the KubeOne manifest derives from, kept next to it so a
+// day-2 PR always carries both.
+func createOrUpdateGeneralConfigFile(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
+	destinationFilePath := path.Join(
+		clusterDir,
+		strings.TrimSuffix(constants.TemplateNameGeneralConfig, ".tmpl"),
+	)
+	createFileFromTemplate(ctx, destinationFilePath, constants.TemplateNameGeneralConfig, templateValues)
+}
+
 // Creates / updates all necessary Sealed Secrets files for the given cluster, in the user's KubeAid
 // config repository.
 //

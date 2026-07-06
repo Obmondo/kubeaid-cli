@@ -5,11 +5,15 @@ package constants
 
 const TemplateNameStoragePlanExecutor = "templates/storage-plan-executor.sh.tmpl"
 
+// TemplateNameGeneralConfig renders the operator's raw general.yaml into the cluster dir of
+// the KubeAid Config repository - the source of truth every other rendered file derives from.
+const TemplateNameGeneralConfig = "kubeaid-cli.general.yaml.tmpl"
+
 // Common template names.
 var (
 	CommonNonSecretTemplateNames = []string{
 		// For KubeAid Bootstrap Script general config.
-		"kubeaid-cli.general.yaml.tmpl",
+		TemplateNameGeneralConfig,
 
 		// For ArgoCD.
 		"argocd-apps/templates/argocd.yaml.tmpl",
