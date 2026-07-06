@@ -46,4 +46,11 @@ var (
 	VeleroUAMIClientID,
 	AzureStorageAccountAccessKey string
 	IsDebugModeEnabled bool
+
+	// LogFile is this run's log file under outputs/logs/, opened once in
+	// cmd/kubeaid-core/root/root.go. Writers other than the slog logger (e.g. captured KubeOne
+	// output) must reuse this handle - the file isn't opened in append mode, so a second file
+	// descriptor on the same path would overwrite it.
+	LogFile     io.Writer
+	LogFilePath string
 )

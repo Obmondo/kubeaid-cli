@@ -44,6 +44,9 @@ var RootCmd = &cobra.Command{
 			log.Fatalf("Failed opening log file : %v", err)
 		}
 
+		globals.LogFile = logFile
+		globals.LogFilePath = logFilePath
+
 		logger.CreateLogger(globals.IsDebugModeEnabled, []io.Writer{logFile, os.Stdout})
 	},
 

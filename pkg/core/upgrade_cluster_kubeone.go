@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	kubeoneCmd "k8c.io/kubeone/pkg/cmd"
 	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	coreV1 "k8s.io/api/core/v1"
@@ -434,13 +433,12 @@ func runKubeOneApplyForUpgrade(ctx context.Context) {
 
 	slog.InfoContext(ctx, "Upgrading main cluster using Kubermatic KubeOne")
 
-	kubeoneRootCmd := kubeoneCmd.NewRoot()
-	kubeoneRootCmd.SetArgs([]string{
+	err := runKubeOne(
+		ctx, "upgrade",
 		"apply",
 		"--manifest", fmt.Sprintf("%s/kubeone-cluster.yaml", kubeoneDir),
 		"--auto-approve",
-	})
-	err := kubeoneRootCmd.ExecuteContext(ctx)
+	)
 	assert.AssertErrNil(ctx, err, "Failed upgrading Kubernetes cluster using KubeOne")
 
 	// KubeOne backups the main cluster's PKI infrastructure in a .tar.gz file locally.
