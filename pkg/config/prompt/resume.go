@@ -391,7 +391,7 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		ProviderCredentials: !missingProviderPromptConfig(cfg),
 		GitSSH:              !missingGitSSH(cfg),
 		ObmondoSupport:      !missingObmondoSupportConfig(cfg),
-		NetBirdDNSZone:      cfg.NetBirdDNSZone != "",
+		NetBirdDNSZone:      netBirdStepDone(cfg),
 	}
 }
 

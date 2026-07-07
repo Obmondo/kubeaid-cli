@@ -10,19 +10,34 @@ type promptState struct {
 	Basics       bool `yaml:"basics"`
 	VPNKeycloak  bool `yaml:"vpnKeycloak"`
 	VPNEndpoints bool `yaml:"vpnEndpoints"`
-	// WorkloadLockdown gates the workload Host Firewall (CCNP) + NetBird
-	// collection step.
+	// WorkloadLockdown gates the workload Host Firewall (CCNP) step.
 	WorkloadLockdown    bool `yaml:"workloadLockdown"`
 	ProviderCredentials bool `yaml:"providerCredentials"`
 	GitSSH              bool `yaml:"gitSSH"`
 	ObmondoSupport      bool `yaml:"obmondoSupport"`
-	NetBirdDNSZone      bool `yaml:"netbirdDNSZone"`
+	// NetBirdDNSZone marks the NetBird step done: the vpn zone form, or the
+	// workload join gate (set even when a workload declines the mesh).
+	NetBirdDNSZone bool `yaml:"netbirdDNSZone"`
 }
 
 func missingBasics(cfg *PromptedConfig) bool {
 	return cfg.CloudProvider == "" ||
 		cfg.ClusterName == "" ||
 		cfg.ClusterType == ""
+}
+
+// netBirdStepDone reports whether the NetBird prompt step is complete for cfg.
+// VPN clusters need the required mesh zone. Workload clusters are done only when
+// the join gate's outputs agree — the Mgmt URL (dns) and mesh zone are both set
+// (joined) or both empty (declined). A legacy workload config with a zone but no
+// dns (the old unconditional-zone behaviour) is reported NOT done so the gate
+// re-opens and the operator supplies the Mgmt URL + key (or clears the zone) —
+// otherwise it renders a half netbird block that installs no operator.
+func netBirdStepDone(cfg *PromptedConfig) bool {
+	if cfg.ClusterType == constants.ClusterTypeVPN {
+		return cfg.NetBirdDNSZone != ""
+	}
+	return (cfg.NetBirdDNS != "") == (cfg.NetBirdDNSZone != "")
 }
 
 func missingVPNKeycloak(cfg *PromptedConfig) bool {
