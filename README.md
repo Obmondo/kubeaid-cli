@@ -32,7 +32,7 @@ How it provisions depends on the target:
 - **Generic bare metal** — **KubeOne** installs Kubernetes straight onto your hosts, with no K3D or Cluster API.
 - **Local** — the K3D cluster is simply the cluster itself.
 
-From there it is **GitOps**. The engine renders your `general.yaml` into manifests and commits them to a per-customer **KubeAid Config** repo that overrides only the genuine differences on top of the upstream [KubeAid](https://github.com/Obmondo/KubeAid) platform defaults; [ArgoCD](https://argo-cd.readthedocs.io/) on the target then reconciles the addon stack — Cilium, cert-manager, kube-prometheus, Rook-Ceph, Velero, Sealed Secrets, and more. For the full breakdown, see [`docs/architecture.md`](docs/architecture.md).
+From there it is **GitOps**. The engine renders your `general.yaml` into manifests and commits them to your own **KubeAid Config** repo that overrides only the genuine differences on top of the upstream [KubeAid](https://github.com/Obmondo/KubeAid) platform defaults; [ArgoCD](https://argo-cd.readthedocs.io/) on the target then reconciles the addon stack — Cilium, cert-manager, kube-prometheus, Rook-Ceph, Velero, Sealed Secrets, and more. For the full breakdown, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Features
 
