@@ -24,7 +24,9 @@ KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/
 
 ## Architecture
 
-KubeAid CLI is a **thin client**: it proxies `cluster` and `devenv` commands to a containerized **KubeAid Core** engine (`ghcr.io/obmondo/kubeaid-core`), so your machine only needs Docker and an SSH agent. The engine stands up a throwaway **K3D management cluster**, installs **Cluster API** there, and lets the matching provider — **CAPA** (AWS), **CAPZ** + Crossplane (Azure), **CAPH** (Hetzner cloud / bare-metal / hybrid), or **KubeOne** (generic bare metal) — provision your target cluster. Once the target control plane is up, `clusterctl move` **pivots** every Cluster API resource onto it; the cluster then manages itself and the K3D cluster is thrown away.
+KubeAid CLI is a **single self-contained binary** — it bundles Cluster API, ArgoCD, the templates, and the cloud SDKs and runs them in-process (there is no separate engine or container to pull). The only local requirements are **Docker** — used to run a local [K3D](https://k3d.io/) cluster (Kubernetes-in-Docker) — and an **SSH agent**.
+
+For the Cluster API clouds — **AWS** (CAPA), **Azure** (CAPZ + Crossplane), and **Hetzner** (CAPH) — it stands up a throwaway **K3D management cluster**, installs Cluster API there, provisions your target cluster, and then `clusterctl move` **pivots** every Cluster API resource onto the target so it self-manages and the K3D cluster is discarded. **Generic bare metal** is different: **KubeOne** installs Kubernetes straight onto your hosts, with no K3D or Cluster API. A **local** cluster is simply the K3D cluster itself.
 
 From there it is **GitOps**. The engine renders your `general.yaml` into manifests and commits them to a per-customer **KubeAid Config** repo that overrides only the genuine differences on top of the upstream [KubeAid](https://github.com/Obmondo/KubeAid) platform defaults; [ArgoCD](https://argo-cd.readthedocs.io/) on the target then reconciles the addon stack — Cilium, cert-manager, kube-prometheus, Rook-Ceph, Velero, Sealed Secrets, and more. For the full breakdown, see [`docs/architecture.md`](docs/architecture.md).
 
@@ -66,7 +68,7 @@ go install github.com/Obmondo/kubeaid-cli/cmd/kubeaid-cli@latest
 
 ## Prerequisites
 
-- **Docker** — must be installed and running (KubeAid Core runs as a container)
+- **Docker** — must be installed and running (used to run the local K3D cluster)
 - **SSH agent** — `ssh-agent` with your keys loaded (`SSH_AUTH_SOCK` must be set)
 
 ## Quick start
