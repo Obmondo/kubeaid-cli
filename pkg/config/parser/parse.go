@@ -156,6 +156,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	// Validate the general and secrets configs.
 	err = validateConfigs(ctx)
 	assert.AssertErrNil(ctx, err, "Config validation failed")
+
+	// SSH-level checks live outside config validation, so a broken server surfaces as what
+	// it is - a server problem, named per host - and not as a config error.
+	err = ValidateBareMetalServerPreRequisites(ctx)
+	assert.AssertErrNil(ctx, err, "Bare Metal server pre-requisite checks failed")
 }
 
 // If the user hasn't specified KubePrometheus version, select the latest

@@ -1182,7 +1182,7 @@ func TestValidateBareMetalConfigRejectsZeroControlPlaneHosts(t *testing.T) {
 		},
 	}
 
-	err := validateBareMetalConfig(t.Context())
+	err := validateBareMetalConfig()
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "control-plane hosts")
