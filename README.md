@@ -168,6 +168,7 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 - [Post-bootstrap checklist](docs/post-bootstrap.md) — what to do right after a cluster comes up
 - [Add a bare-metal worker](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (see also the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
 - [Upgrade a bare-metal cluster](docs/upgrade-bare-metal.md) — bump the Kubernetes version of a bare-metal (KubeOne) cluster
+- [Troubleshooting](docs/troubleshooting.md) — recovery paths for recurring bootstrap failures (Hetzner, Sealed Secrets, ArgoCD)
 
 **Identity and SSO**
 
