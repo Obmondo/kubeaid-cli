@@ -145,10 +145,10 @@ Every Kubernetes version you request is validated at bootstrap. It must:
 
 | KubeAid CLI | AWS · Azure · Hetzner (Cluster API) | Bare metal (KubeOne) |
 |---|---|---|
-| `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.32` – `v1.34` |
+| `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.33` – `v1.35` |
 
 - **Cluster API clouds** — `v1.30` up to the latest released minor.
-- **Bare metal** — fixed to `v1.32`–`v1.34` by **KubeOne v1.12**; the range moves when KubeOne is upgraded.
+- **Bare metal** — fixed to `v1.33`–`v1.35` by **KubeOne v1.13**; the range moves when KubeOne is upgraded.
 - **KubePrometheus** — matched to the Kubernetes version automatically, over `v1.32`–`v1.36` (`cgroup v1` support ends at `v1.35`).
 
 > **Maintainers:** update the table each release when the supported range, KubeOne version, or a pinned component changes.
@@ -164,22 +164,22 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 ## Documentation
 
-Day-to-day operator guides:
+**Day-to-day operator guides**
 
-- [`docs/post-bootstrap.md`](docs/post-bootstrap.md) — what to do right after a cluster comes up
-- [`docs/add-bare-metal-worker.md`](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (and the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
-- [`docs/upgrade-bare-metal.md`](docs/upgrade-bare-metal.md) — upgrade the Kubernetes version of a bare-metal (KubeOne) cluster
+- [Post-bootstrap checklist](docs/post-bootstrap.md) — what to do right after a cluster comes up
+- [Add a bare-metal worker](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (see also the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
+- [Upgrade a bare-metal cluster](docs/upgrade-bare-metal.md) — bump the Kubernetes version of a bare-metal (KubeOne) cluster
 
-Identity and SSO:
+**Identity and SSO**
 
-- [`docs/keycloak-bootstrap.md`](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
+- [Keycloak bootstrap](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
 
-Architecture and background:
+**Architecture and background**
 
-- [`docs/architecture.md`](docs/architecture.md) — how the CLI is put together
-- [`docs/netbird-vpn-architecture.md`](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
-- [`docs/hetzner-hcloud-vpn-cluster.md`](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
-- [`docs/bare-metal-provisioning.md`](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
+- [Architecture](docs/architecture.md) — how the CLI is put together
+- [NetBird VPN architecture](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
+- [Hetzner HCloud VPN cluster](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
+- [Bare-metal provisioning](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
 
 ## Development
 
@@ -217,8 +217,6 @@ Contributions are welcome.
 2. Follow Google's [Go style guide](https://google.github.io/styleguide/go/decisions); run `make lint` and `make format` before pushing (CI is strict).
 3. Write [Conventional Commits](https://www.conventionalcommits.org/) — releases are cut with [cocogitto](https://docs.cocogitto.io/).
 4. Open a pull request that references the issue and explains the *why*, not just the *what*.
-
-See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the local development setup.
 
 ## License
 
