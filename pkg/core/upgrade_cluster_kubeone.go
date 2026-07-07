@@ -156,14 +156,24 @@ func validateK8sVersionHop(currentVersion, targetVersion string) error {
 		return errK8sVersionAlreadyAtTarget
 
 	case target.LessThan(current):
+		// Spell out what IS valid from the running version, so the operator knows exactly
+		// how to fix general.yaml.
+		validTargets := fmt.Sprintf(
+			"%s (the running version) or a newer v%d.%d patch",
+			currentVersion, current.Major(), current.Minor(),
+		)
+		ceiling, ceilingErr := version.ParseGeneric(constants.MaxKubeOneSupportedK8sVersion)
+		if (ceilingErr == nil) && (current.Minor() < ceiling.Minor()) {
+			validTargets += fmt.Sprintf(
+				", or the next minor v%d.%d.x", current.Major(), current.Minor()+1,
+			)
+		}
+
 		return fmt.Errorf(
-			"downgrade from %s to %s is not supported - kubeadm (and so KubeOne) can never "+
-				"downgrade a cluster, no matter how small the hop. From %s you can stay put, "+
-				"bump the patch within v%d.%d.x, or move up minor by minor until %s.x "+
-				"(the embedded KubeOne's ceiling)",
-			currentVersion, targetVersion, currentVersion,
-			current.Major(), current.Minor(),
-			constants.MaxKubeOneSupportedK8sVersion,
+			"cluster.k8sVersion (%s) is behind the running cluster (%s), and Kubernetes can "+
+				"never be downgraded. Set cluster.k8sVersion in general.yaml to %s - if you "+
+				"truly need %s, re-installing the cluster with kubeaid-cli is much faster",
+			targetVersion, currentVersion, validTargets, targetVersion,
 		)
 
 	case target.Major() != current.Major():
@@ -445,7 +455,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 	templateValues := getTemplateValues(ctx)
 	createOrUpdateKubeOneConfigFile(ctx, templateValues, utils.GetClusterDir())
 	createOrUpdateGeneralConfigFile(ctx, templateValues, utils.GetClusterDir())
-	bar.Substep("Rendered KubeOne manifest and the kubeaid-cli.general.yaml copy")
+	bar.Substep("Rendered kubeone-cluster.yaml and kubeaid-cli.general.yaml")
 
 	commitHash := git.AddCommitAndPushChanges(
 		ctx,
