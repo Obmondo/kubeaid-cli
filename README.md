@@ -24,7 +24,7 @@ KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/
 
 ## Architecture
 
-KubeAid CLI is a **single self-contained binary** — it bundles Cluster API, ArgoCD, the templates, and the cloud SDKs and runs them in-process (there is no separate engine or container to pull). The only local requirements are **Docker** — used to run a local [K3D](https://k3d.io/) cluster (Kubernetes-in-Docker) — and an **SSH agent**.
+KubeAid CLI is a **single self-contained binary**. The only local requirements are **Docker** — used to run a local [K3D](https://k3d.io/) cluster — and an **SSH agent**.
 
 For the Cluster API clouds — **AWS** (CAPA), **Azure** (CAPZ + Crossplane), and **Hetzner** (CAPH) — it stands up a throwaway **K3D management cluster**, installs Cluster API there, provisions your target cluster, and then `clusterctl move` **pivots** every Cluster API resource onto the target so it self-manages and the K3D cluster is discarded. **Generic bare metal** is different: **KubeOne** installs Kubernetes straight onto your hosts, with no K3D or Cluster API. A **local** cluster is simply the K3D cluster itself.
 
