@@ -137,17 +137,21 @@ kubeaid-cli [command] [flags]
 
 ## Kubernetes version support
 
-The Kubernetes version you request is validated when the config is parsed: it must start with `v`, be a **released** version, be **within the supported range**, and **not past end-of-life**. End-of-life is checked against [endoflife.date](https://endoflife.date/kubernetes) data embedded in the binary (refresh it with `make fetch-k8s-eol`).
+Every Kubernetes version you request is validated at bootstrap. It must:
 
-| KubeAid CLI | Kubernetes (AWS / Azure / Hetzner) | Kubernetes (bare metal · KubeOne) |
+- **start with `v`** — for example `v1.34.0`;
+- be a **released** version that is **not past end-of-life** — end-of-life is checked against [endoflife.date](https://endoflife.date/kubernetes) data baked into the binary (refresh it with `make fetch-k8s-eol`);
+- be **within the range supported for your provider**:
+
+| KubeAid CLI | AWS · Azure · Hetzner (Cluster API) | Bare metal (KubeOne) |
 |---|---|---|
 | `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.32` – `v1.34` |
 
-- The **minimum** accepted version is `v1.30`; the **maximum** is the latest released minor. Any version past end-of-life is rejected regardless of the range.
-- **Bare-metal** clusters are provisioned by **KubeOne v1.12**, which fixes the range to `v1.32`–`v1.34`; this moves when KubeOne is upgraded.
-- The monitoring stack (KubePrometheus) is pinned per Kubernetes version via a built-in compatibility matrix covering `v1.32`–`v1.36`; note that `cgroup v1` support ends at `v1.35`.
+- **Cluster API clouds** — `v1.30` up to the latest released minor.
+- **Bare metal** — fixed to `v1.32`–`v1.34` by **KubeOne v1.12**; the range moves when KubeOne is upgraded.
+- **KubePrometheus** — matched to the Kubernetes version automatically, over `v1.32`–`v1.36` (`cgroup v1` support ends at `v1.35`).
 
-This matrix is maintained per release — update the row whenever the supported range, KubeOne version, or a pinned component changes.
+> **Maintainers:** update the table each release when the supported range, KubeOne version, or a pinned component changes.
 
 ## Configuration
 
