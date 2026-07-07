@@ -1,7 +1,7 @@
 # Hetzner k8s with NetBird-gated kube-api — architecture
 
 > Hetzner HCloud cluster (single-node or 3-node HA control plane) where `kube-apiserver:6443` is never exposed publicly.  
-> NetBird gates network access; Keycloak is the OIDC IdP; kube-apiserver consumes Keycloak natively via `--oidc-issuer-url`.  
+> NetBird gates network access; Keycloak is NetBird's SSO IdP; kube-apiserver is reached over the mesh via the netbird-operator clusterProxy — no OIDC on the apiserver.  
 > Outcome for end users: Teleport-style "session with role", built from off-the-shelf parts.
 
 See also: [architecture.md](./architecture.md) for the broader KubeAid CLI architecture.
@@ -13,8 +13,8 @@ The setup, at a glance:
 - **Cluster** — Hetzner HCloud Kubernetes. Either a single control-plane node, or a 3-node HA control plane.
 - **Public surface** — `kube-apiserver:6443` is sealed off from the public internet. It lives only on the NetBird WireGuard mesh.
 - **Network gate** — NetBird. The laptop must be on the mesh before kube-api is even reachable.
-- **Identity gate** — Keycloak. `kube-apiserver` runs with `--oidc-issuer-url` pointing at Keycloak, so it validates JWTs natively.
-- **kubectl flow** — once the laptop is on the mesh, `kubectl` talks to kube-api directly and presents an OIDC token from Keycloak. Stock Kubernetes OIDC, nothing custom.
+- **Identity gate** — NetBird + the clusterProxy. Mesh membership authenticates you; the netbird-operator clusterProxy impersonates your NetBird groups into Kubernetes RBAC. `kube-apiserver` does no JWT/OIDC validation.
+- **kubectl flow** — once the laptop is on the mesh, `kubectl` talks to the clusterProxy peer; there is no OIDC token — your mesh identity is the credential and the proxy impersonates you into RBAC.
 
 Topology notes:
 
@@ -23,8 +23,8 @@ Topology notes:
 - Workers always run the agent, in either topology.
 
 ### Already in this repo
-- HCloud control-plane LB is created with `PublicInterface: false` (`pkg/cloud/hetzner/loadbalancer.go:46`).
-- A `vpn` cluster type is defined in config (`pkg/config/general.go:106`) — this design wires it up so `kubeaid-cli bootstrap` with `cluster.type=vpn` provisions the NetBird/VPN server itself (Phase 0).
+- HCloud control-plane LB is created with `PublicInterface` parameterized (`PublicInterface: ptr.To(enablePublicInterface)`, `pkg/cloud/hetzner/loadbalancer.go:46`) — VPN clusters pass `false` to keep the LB private.
+- A `vpn` cluster type is defined in config (`pkg/config/general.go:130`) — this design wires it up so `kubeaid-cli bootstrap` with `cluster.type=vpn` provisions the NetBird/VPN server itself (Phase 0).
 
 ### Not yet present (this design adds)
 - NetBird
@@ -240,7 +240,7 @@ The same NetBird group name (`k8s-cluster-X-dev`) gates both layers — belt and
 Keycloak handles identity; k8s RBAC handles authorization. To give a user rights in only some namespaces, encode the namespace in the group name and bind it via a `RoleBinding` (namespace-scoped) rather than a `ClusterRoleBinding`.
 
 - **Group naming convention** (Keycloak + NetBird): `k8s-<cluster>-<namespace>-<role>` — e.g. `k8s-prod-payments-developer`, `k8s-prod-billing-readonly`.
-- **Bind in the target namespace:** a `RoleBinding` in `payments` referencing `oidc:k8s-prod-payments-developer` → ClusterRole `developer` grants only that namespace's rights to anyone in that group.
+- **Bind in the target namespace:** a `RoleBinding` in `payments` referencing the impersonated NetBird group `k8s-prod-payments-developer` → ClusterRole `developer` grants only that namespace's rights to anyone in that group.
 - **A user can be in multiple namespace groups** at once. k8s RBAC ORs the matches, so the user gets the union of rights.
 - **Revoking a single namespace** = removing the user from that one group. The other namespace memberships are untouched, no cluster-level change needed.
 
@@ -248,17 +248,17 @@ For cluster-wide roles (cluster-admin, view across everything), keep using `Clus
 
 ### Session lifetime — "X hours per login"
 
-Three Keycloak settings on the `kubernetes` OIDC client govern how long one login lasts:
+Keycloak governs only the **NetBird mesh** login (Keycloak is NetBird's SSO IdP). The token/session TTLs on Keycloak's NetBird SSO client decide how often a user must re-authenticate to **NetBird** — i.e. how often `netbird up` triggers a fresh browser SSO:
 
-| Setting | Recommended | Effect |
-|---|---|---|
-| Access token lifespan | 5 min | `kubelogin` silently refreshes the bearer at this cadence |
-| Client session max | 8h | Hard cap — re-auth via browser PKCE required after this |
-| SSO session idle | 30 min | Refresh fails after 30 min idle → forces re-auth earlier |
+| Setting | Effect |
+|---|---|
+| Access token lifespan | NetBird refreshes its mesh session token at this cadence |
+| Client session max | Hard cap — re-auth via browser SSO required after this |
+| SSO session idle | Refresh fails after this idle window → forces re-auth earlier |
 
-A developer logging in at 09:00 has unattended `kubectl` until 17:00. Walking away for 30+ minutes triggers re-auth sooner.
+Tune these to whatever mesh-session policy you want; the exact values are a NetBird/Keycloak SSO concern and don't touch kube-API access.
 
-**Per-cluster TTL** — one Keycloak OIDC client per cluster (`kubernetes-staging` 8h, `kubernetes-prod` 4h, etc.). Each cluster's `--oidc-client-id` flag and the kubeconfig stub written by `kubeaid-cli login` reference the matching client.
+**kube-API access has no separate session.** It lasts exactly as long as you are on the mesh *and* your NetBird group is still bound via `clusterProxy.rbac`. There is no OIDC token, no `kubelogin` refresh, and no per-cluster kube-API TTL on the kubectl path — drop off the mesh or lose the group binding and the clusterProxy stops impersonating you.
 
 For revoking access mid-session or for the next session, see **[Two enforcement points, one identity](#two-enforcement-points-one-identity)** above.
 
@@ -269,11 +269,11 @@ For revoking access mid-session or for the next session, see **[Two enforcement 
 - **NetBird/VPN Server is separate from the workload cluster.** Avoids the loop where you need cluster access to fix cluster access. If the workload cluster dies, you can still authenticate, debug, and re-bootstrap.
 - **Single public ingress.** Only the NetBird/VPN Server is reachable on the internet. Workload cluster has zero public attack surface beyond NetBird's WireGuard handshake on the relay.
 - **Bootstrap chicken-and-egg solved by cloud-init.** NetBird agent is installed and enrolled on each node *during boot* via a setup key. The laptop running kubeaid-cli is itself a NetBird peer, so the local k3d bootstrap cluster reaches the new master through the same mesh path kubectl will later use. No temporary public 6443 needed.
-- **Network and identity are decoupled but consistent.** Same group name in both systems. NetBird drops packets if you're not in the group; kube-apiserver returns 403 if your token does not carry the matching claim. Defense in depth.
+- **Network and identity are decoupled but consistent.** Same group name in both systems. NetBird drops packets if you're not in the group; kube-apiserver returns 403 if the clusterProxy is impersonating a NetBird group with no matching RBAC (no token or claim is involved). Defense in depth.
 
 ## Trade-offs accepted
 
-- **kube-api needs egress to Keycloak's JWKS** (one-time on startup, cached after). This goes out via Hetzner NAT egress to the public LB → Traefik → Keycloak. Acceptable.
-- **Token revocation latency** = OIDC token TTL (default 5 min). For instant cut, removing the user from the NetBird group also cuts network access immediately, so revocation is effectively instant in practice.
+- **NetBird Mgmt needs Keycloak for mesh SSO** (OIDC discovery / JWKS). kube-apiserver needs nothing from Keycloak — it does no OIDC, so there's no JWKS fetch on the kube-api path at all. Acceptable.
+- **Revocation is effectively instant.** Removing the user from the NetBird group both drops their mesh access and stops the clusterProxy impersonating their groups — there's no OIDC token TTL to wait out on the kube path.
 - **Single-control-plane topology trades availability for cost.** For the 1-node variant, a master reboot or NetBird-agent failure on that node makes kube-api unreachable until the agent and operator come back via systemd. Acceptable for non-prod / cost-sensitive use; pick the 3-node HA topology when that downtime is unacceptable. The HA path inherits the same network/auth shape — only the count of NetBird-enrolled control-plane VMs changes.
 

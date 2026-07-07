@@ -1,14 +1,37 @@
 # KubeAid CLI
 
 [![Release](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/Obmondo/kubeaid-cli)](https://goreportcard.com/report/github.com/Obmondo/kubeaid-cli)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-KubeAid CLI helps you operate [KubeAid](https://github.com/Obmondo/kubeaid) managed Kubernetes cluster lifecycle in a GitOps native way.
+KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/KubeAid)-managed Kubernetes clusters — bootstrap, upgrade, recover, test, and delete — across AWS, Azure, Hetzner, and bare metal, the GitOps-native way.
+
+## Table of contents
+
+- [Architecture](#architecture)
+- [Features](#features)
+- [Installation](#installation)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Cloud providers](#cloud-providers)
+- [Kubernetes version support](#kubernetes-version-support)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Architecture
 
-KubeAid CLI is a thin client that proxies `cluster` and `devenv` commands to a containerized **KubeAid Core** engine. It pulls the matching `ghcr.io/obmondo/kubeaid-core` image, sets up Docker networking, mounts config files and SSH keys, and streams output back to your terminal.
+KubeAid CLI is a **single self-contained binary**. The only local requirement is **Docker**, used to run a local [K3D](https://k3d.io/) cluster.
+
+How it provisions depends on the target:
+
+- **Cluster API clouds** — **AWS** (CAPA), **Azure** (CAPZ + Crossplane), and **Hetzner** (CAPH): it stands up a throwaway **K3D management cluster**, installs Cluster API there, provisions your target cluster, then `clusterctl move` **pivots** every Cluster API resource onto the target so it self-manages and the K3D cluster is discarded.
+- **Generic bare metal** — **KubeOne** installs Kubernetes straight onto your hosts, with no K3D or Cluster API.
+- **Local** — the K3D cluster is simply the cluster itself.
+
+From there it is **GitOps**. The engine renders your `general.yaml` into manifests and commits them to your own **KubeAid Config** repo that overrides only the genuine differences on top of the upstream [KubeAid](https://github.com/Obmondo/KubeAid) platform defaults; [ArgoCD](https://argo-cd.readthedocs.io/) on the target then reconciles the addon stack — Cilium, cert-manager, kube-prometheus, Rook-Ceph, Velero, Sealed Secrets, and more. For the full breakdown, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Features
 
@@ -48,8 +71,8 @@ go install github.com/Obmondo/kubeaid-cli/cmd/kubeaid-cli@latest
 
 ## Prerequisites
 
-- **Docker** — must be installed and running (KubeAid Core runs as a container)
-- **SSH agent** — `ssh-agent` with your keys loaded (`SSH_AUTH_SOCK` must be set)
+- **Docker** — must be installed and running (used to run the local K3D cluster)
+- **SSH access to your Git repos** — either an `ssh-agent` with your key loaded, or an unencrypted private key file (`privateKeyFilePath` in `general.yaml`); use the agent for passphrased or YubiKey-backed keys
 
 ## Quick start
 
@@ -103,11 +126,31 @@ kubeaid-cli [command] [flags]
 |---|---|---|---|---|
 | AWS | Yes | Yes | Yes | Yes |
 | Azure | Yes | Yes | Yes | Yes |
-| Hetzner Cloud | Yes | — | — | Yes |
-| Hetzner Bare Metal | Yes | — | — | Yes |
-| Hetzner Hybrid | Yes | — | — | Yes |
+| Hetzner Cloud | Yes | WIP | WIP | Yes |
+| Hetzner Bare Metal | Yes | WIP | WIP | Yes |
+| Hetzner Hybrid | Yes | WIP | WIP | Yes |
 | Bare Metal | Yes | Yes | — | Yes |
 | Local (K3D) | Yes | — | — | — |
+
+`WIP` — work in progress; landing soon, not yet generally available.
+
+## Kubernetes version support
+
+Every Kubernetes version you request is validated at bootstrap. It must:
+
+- **start with `v`** — for example `v1.34.0`;
+- be a **released** version that is **not past end-of-life** — end-of-life is checked against [endoflife.date](https://endoflife.date/kubernetes) data baked into the binary (refresh it with `make fetch-k8s-eol`);
+- be **within the range supported for your provider**:
+
+| KubeAid CLI | AWS · Azure · Hetzner (Cluster API) | Bare metal (KubeOne) |
+|---|---|---|
+| `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.33` – `v1.35` |
+
+- **Cluster API clouds** — `v1.30` up to the latest released minor.
+- **Bare metal** — fixed to `v1.33`–`v1.35` by **KubeOne v1.13**; the range moves when KubeOne is upgraded.
+- **KubePrometheus** — matched to the Kubernetes version automatically, over `v1.32`–`v1.36` (`cgroup v1` support ends at `v1.35`).
+
+> **Maintainers:** update the table each release when the supported range, KubeOne version, or a pinned component changes.
 
 ## Configuration
 
@@ -120,22 +163,23 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 ## Documentation
 
-Day-to-day operator guides:
+**Day-to-day operator guides**
 
-- [`docs/post-bootstrap.md`](docs/post-bootstrap.md) — what to do right after a cluster comes up
-- [`docs/add-bare-metal-worker.md`](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (and the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
-- [`docs/upgrade-bare-metal.md`](docs/upgrade-bare-metal.md) — upgrade the Kubernetes version of a bare-metal (KubeOne) cluster
+- [Post-bootstrap checklist](docs/post-bootstrap.md) — what to do right after a cluster comes up
+- [Add a bare-metal worker](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (see also the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
+- [Upgrade a bare-metal cluster](docs/upgrade-bare-metal.md) — bump the Kubernetes version of a bare-metal (KubeOne) cluster
+- [Troubleshooting](docs/troubleshooting.md) — recovery paths for recurring bootstrap failures (Hetzner, Sealed Secrets, ArgoCD)
 
-Identity and SSO:
+**Identity and SSO**
 
-- [`docs/keycloak-bootstrap.md`](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
+- [Keycloak bootstrap](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
 
-Architecture and background:
+**Architecture and background**
 
-- [`docs/architecture.md`](docs/architecture.md) — how the CLI is put together
-- [`docs/netbird-vpn-architecture.md`](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
-- [`docs/hetzner-hcloud-vpn-cluster.md`](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
-- [`docs/bare-metal-provisioning.md`](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
+- [Architecture](docs/architecture.md) — how the CLI is put together
+- [NetBird VPN architecture](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
+- [Hetzner HCloud VPN cluster](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
+- [Bare-metal provisioning](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
 
 ## Development
 
@@ -149,15 +193,30 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for setup instructions.
 ### Building
 
 ```sh
-# Build the CLI binary
+# Build the kubeaid-cli binary
 make build
 
-# Build the KubeAid Core container image
-make build-image
+# Build the kubeaid-storagectl binary (bare-metal storage helper)
+make build-storagectl
 
-# Run linter
+# Lint and format
 make lint
+make format
+
+# Run unit tests with coverage
+make test
 ```
+
+Run `make help` to list every target.
+
+## Contributing
+
+Contributions are welcome.
+
+1. Open an [issue](https://github.com/Obmondo/kubeaid-cli/issues) describing the bug or feature before starting substantial work.
+2. Follow Google's [Go style guide](https://google.github.io/styleguide/go/decisions); run `make lint` and `make format` before pushing (CI is strict).
+3. Write [Conventional Commits](https://www.conventionalcommits.org/) — releases are cut with [cocogitto](https://docs.cocogitto.io/).
+4. Open a pull request that references the issue and explains the *why*, not just the *what*.
 
 ## License
 

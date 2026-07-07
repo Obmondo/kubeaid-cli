@@ -68,7 +68,7 @@ The VPN cluster relies on several infrastructural elements. These elements are o
 
 ### B. NAT Gateway
 * **Purpose**: Since nodes are often placed in a private network without public IPv4, a NAT Gateway is required to provide outbound internet access (e.g., pulling container images).
-* **Code Reference (kubeaid-cli)**: `pkg/cloud/hetzner/server.go` -> `CreateNATGateway()`. Provisions a small `cax11` VM, configures `iptables` for `MASQUERADE`, and adds a `0.0.0.0/0` route via this server in the Hetzner Network.
+* **Code Reference (kubeaid-cli)**: `pkg/cloud/hetzner/server.go` -> `CreateNATGateway()`. Provisions a small `cpx22` VM (configurable via `cloud.hetzner.hcloud.natGatewayServerType`), configures `iptables` for `MASQUERADE`, and adds a `0.0.0.0/0` route via this server in the Hetzner Network.
 * **Helm Reference**: `argocd-helm-charts/capi-cluster/charts/hetzner/templates/KubeadmConfigTemplate.yaml`. Nodes run a `preKubeadmCommand` script (`/connect-nat-gateway.sh`) to route default traffic through the NAT Gateway.
 
 ### C. Single-Node Control Plane
@@ -104,7 +104,7 @@ cloud:
       privateKeyFilePath: ~/.ssh/id_ed25519
     hcloud:
       zone: eu-central
-      imageName: ubuntu-24.04
+      imageName: ubuntu-26.04
       hetznerNetwork:
         cidr: "10.0.0.0/16"
         hcloudServersSubnetCIDR: "10.0.0.0/24"

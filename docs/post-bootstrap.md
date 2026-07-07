@@ -19,10 +19,10 @@ By the time bootstrap returns, the cluster has:
 | Realm `<derived>` (e.g. `acme` for `acme.com`) | Keycloak | kubeaid-cli created it |
 | OIDC client `netbird-client` (public, device flow + PKCE) | Keycloak realm | kubeaid-cli |
 | OIDC client `netbird-backend` (confidential, service account) | Keycloak realm | kubeaid-cli |
-| OIDC client `kubernetes-<cluster>` (public, PKCE — for kubelogin) | Keycloak realm | kubeaid-cli |
+| OIDC client `kubernetes-<cluster>` (public, PKCE — legacy kubelogin client, no longer used for cluster access) | Keycloak realm | kubeaid-cli |
 | Client scope `api` (audience mapper → `netbird-client`) | Keycloak realm | kubeaid-cli |
 | Client scope `groups` (Group Membership mapper → `groups` claim) | Keycloak realm | kubeaid-cli |
-| kube-apiserver public LB | HCloud | **disabled** at finalize — reach the API through the NetBird mesh |
+| kube-apiserver public LB | HCloud | **disabled** at finalize — reach the API through the NetBird mesh (clusterProxy) |
 | Traefik ingress LB | HCloud | public — that's how operators reach the Keycloak / NetBird UIs |
 
 Nothing else is gated by the public kube-apiserver anymore, so once
@@ -75,17 +75,24 @@ Skip this if you have one or two users and want everyone to have
 everything. Come back to it the moment you need "this person can join
 the mesh but isn't a cluster admin".
 
-Both NetBird and kube-apiserver read group membership from the same JWT
-`groups` claim — the `groups` client scope kubeaid-cli already wired up
-makes sure every issued token carries it. So **one Keycloak group can
-drive both mesh access and kube-API RBAC** without you maintaining two
-sources of truth.
+Keycloak groups gate **who can join the NetBird mesh**: the `groups`
+client scope kubeaid-cli wired up puts a `groups` claim on every token,
+and NetBird Mgmt admits only tokens carrying an allowed group.
+
+The **kube-apiserver reads no groups claim — it runs no OIDC.** kubectl
+reaches it over the mesh through the netbird-operator **clusterProxy**,
+which authenticates you by your NetBird identity and impersonates your
+**NetBird** groups into Kubernetes RBAC (Step 4). A group still drives
+kube-API access, but the one that matters there is the NetBird group
+mapped in `cluster.netbird.clusterProxy.rbac` — not a Keycloak token the
+apiserver validates. (NetBird can sync its groups from the Keycloak
+`groups` claim, so the same names flow through.)
 
 1. Realm sidebar → **Groups** → **Create group**.
 2. Pick a name. Suggestions:
-   - `mesh-users` — anyone allowed to join NetBird.
-   - `cluster-admins` — full kube-apiserver cluster-admin.
-   - `cluster-viewers` — read-only kube-apiserver access.
+   - `mesh-users` — allowed to join the NetBird mesh.
+   - `cluster-admins` — mapped (via NetBird → clusterProxy) to kube `cluster-admin`.
+   - `cluster-viewers` — mapped to read-only kube access.
 3. **Users** → pick a user → **Groups** tab → **Join Group** → select the
    group.
 
@@ -101,27 +108,26 @@ To use these groups:
    tokens whose `groups` claim intersects that list — anyone else's
    `netbird up` is rejected by the management API.
 
-**For kube-apiserver RBAC**, write a `ClusterRoleBinding` (or
-`RoleBinding` for a single namespace) referencing the Keycloak group
-by name. Example: grant `cluster-admin` to anyone in `cluster-admins`:
+**For kube-API access**, the apiserver sees you as the **NetBird group**
+the clusterProxy impersonates (Step 4). Map that group to a ClusterRole
+in `cluster.netbird.clusterProxy.rbac` in `general.yaml` — the
+netbird-operator renders the matching binding:
 
 ```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: keycloak-cluster-admins
-subjects:
-  - kind: Group
-    name: cluster-admins        # matches the JWT `groups` claim
-    apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: ClusterRole
-  name: cluster-admin
-  apiGroup: rbac.authorization.k8s.io
+cluster:
+  netbird:
+    clusterProxy:
+      rbac:
+        - group: cluster-admins
+          clusterRole: cluster-admin
+        - group: cluster-viewers
+          clusterRole: view
 ```
 
-Apply it through kubeaid-config (the same way every other in-cluster
-manifest is managed); it'll sync along with the rest of the apps.
+(You can also hand-write a `ClusterRoleBinding` whose `subject.kind: Group`
+name equals the impersonated NetBird group and manage it through
+kubeaid-config — the group is the one the clusterProxy sets, not a
+Keycloak JWT claim.)
 
 ## Step 3 — Join the NetBird mesh
 
@@ -162,18 +168,21 @@ The same `netbird up` works on a server with no browser:
 ## Step 4 — Get kubectl working from the mesh
 
 The kube-apiserver's public IP is disabled by now (see the table at the
-top) so kubectl from your laptop won't reach it directly. The path:
+top), and it runs no OIDC — kubectl reaches it **over the NetBird mesh
+through the netbird-operator clusterProxy**, a mesh peer that proxies to
+the in-cluster apiserver and impersonates your NetBird identity.
 
 1. Make sure your laptop is on the NetBird mesh (Step 3).
-2. Use the kubeconfig kubeaid-cli wrote to `outputs/kubeconfigs/clusters/main.yaml`.
-   Its server URL is the cluster's API FQDN (e.g.
-   `https://api.vpn.<dns>:6443`); the DNS record points at the LB's
-   private IP, and the mesh routes you there.
-3. Configure the kubeconfig's user to use kubelogin against the
-   `kubernetes-<cluster>` Keycloak client. The exact config lives in
-   [hetzner-hcloud-vpn-cluster.md](./hetzner-hcloud-vpn-cluster.md).
-   First `kubectl` opens a browser, completes OIDC, caches the token —
-   subsequent commands are silent.
+2. Write the kubeconfig with NetBird's own CLI:
+
+   ```sh
+   netbird kubernetes write-kubeconfig <cluster-name>
+   ```
+
+   Its server points at the clusterProxy peer's mesh address — there is no
+   kubelogin, no browser, no OIDC token. Your **mesh membership is the
+   credential**; the clusterProxy impersonates your NetBird groups into
+   Kubernetes RBAC (mapped in Step 2 via `cluster.netbird.clusterProxy.rbac`).
 
 ## What's safe to forget
 
@@ -391,13 +400,13 @@ config tab → tick **OAuth 2.0 Device Authorization Grant** → Save.
 
 ### `kubectl` fails: "Unauthorized"
 
-You're authenticated but RBAC has no binding for your user / group.
-Either you skipped Step 2's RBAC YAML, or your Keycloak user isn't in
-the group the RoleBinding references. Easy check from a working
-admin context:
+Your NetBird identity has no RBAC binding. Either you skipped Step 2's
+`clusterProxy.rbac` mapping, or your NetBird group isn't bound to a
+ClusterRole. Check from a working admin context using the impersonated
+group (there is no `oidc:` identity — the apiserver runs no OIDC):
 
 ```
-kubectl auth can-i --list --as=oidc:<your-email>
+kubectl auth can-i --list --as-group=<your-netbird-group>
 ```
 
 ### `netbird up` succeeds but the peer doesn't see other peers

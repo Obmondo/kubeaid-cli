@@ -3,7 +3,7 @@
 > A GitOps-native, multi-cloud Kubernetes provisioning tool.
 > Go • ClusterAPI • ArgoCD • AWS / Azure / Hetzner / KubeOne
 
-**License:** AGPL-3.0 &nbsp;•&nbsp; **Container:** `ghcr.io/obmondo/kubeaid-core` &nbsp;•&nbsp; **Source:** [Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli)
+**License:** AGPL-3.0 &nbsp;•&nbsp; **Runtime:** single `kubeaid-cli` binary (+ Docker for K3D) &nbsp;•&nbsp; **Source:** [Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli)
 
 ---
 
@@ -27,7 +27,7 @@ If you only want to *use* the CLI, start at the [README](../README.md). This doc
 6. [Configuration system](#6-configuration-system)
 7. [Template engine](#7-template-engine)
 8. [GitOps with ArgoCD](#8-gitops-with-argocd)
-9. [Hetzner storage planning & OS install](#9-hetzner-storage-planning--os-install)
+9. [Secrets & identity flow](#9-secrets--identity-flow)
 10. [Cluster lifecycle](#10-cluster-lifecycle)
 11. [Codebase map](#11-codebase-map)
 12. [Development guide](#12-development-guide)
@@ -69,12 +69,11 @@ Five diagrams. Each zooms in on one concern; together they cover the whole syste
 flowchart LR
   subgraph U["User workstation"]
     CFG["general.yaml + secrets.yaml"]
-    THIN["kubeaid-cli (thin client)"]
+    CLI["kubeaid-cli (single binary, engine built in)"]
   end
 
-  subgraph CT["Docker: ghcr.io/obmondo/kubeaid-core"]
-    CORE["kubeaid-core (engine)"]
-    K3D["K3D management cluster"]
+  subgraph DK["Docker"]
+    K3D["K3D management cluster (CAPI clouds only)"]
   end
 
   subgraph CLOUD["Cloud / infra APIs"]
@@ -89,11 +88,11 @@ flowchart LR
     ARGO["ArgoCD on target cluster"]
   end
 
-  CFG --> THIN
-  THIN -- "docker run + volume mounts" --> CORE
-  CORE --> K3D
+  CFG --> CLI
+  CLI -- "creates + runs" --> K3D
   K3D -- "clusterctl / CAPI" --> CLOUD
-  CORE -- "render + git push" --> REPO
+  CLI -- "KubeOne: installs directly (no K3D)" --> BM
+  CLI -- "render + git push" --> REPO
   REPO -- "sync" --> ARGO
   ARGO -- "manages addons" --> CLOUD
 
@@ -101,8 +100,8 @@ flowchart LR
   classDef engine fill:#ecfeff,stroke:#0891b2,color:#083344;
   classDef cloud fill:#fef3c7,stroke:#d97706,color:#451a03;
   classDef gitops fill:#dcfce7,stroke:#16a34a,color:#052e16;
-  class CFG,THIN user;
-  class CORE,K3D engine;
+  class CFG,CLI user;
+  class K3D engine;
   class AWS,AZ,HZ,BM cloud;
   class REPO,ARGO gitops;
 ```
@@ -183,34 +182,33 @@ flowchart LR
 
 ---
 
-## 3. Two-binary model
+## 3. Binary model
 
-KubeAid ships three binaries with very different scopes. Only one is installed on the operator's machine; the rest run inside a container or directly on bare-metal hosts.
+`kubeaid-cli` is a **single self-contained binary**. `cmd/kubeaid-cli` embeds the `cmd/kubeaid-core` command tree and runs it in-process, so Cluster API, ArgoCD, templating, and the cloud SDKs are all compiled in — there is no separate engine process or container to pull. A second small binary, `kubeaid-storagectl`, runs on bare-metal hosts to apply storage plans.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
 flowchart TB
-  user(["Operator"]) --> cli["kubeaid-cli (cmd/kubeaid-cli)"]
-  cli -- "parses flags + mounts volumes" --> docker["Docker socket"]
-  docker --> core["kubeaid-core (cmd/kubeaid-core)"]
+  user(["Operator"]) --> cli["kubeaid-cli (single binary)"]
+  cli -- "embeds" --> core["cmd/kubeaid-core (engine)"]
   core --> pkgs{{"pkg/core · pkg/cloud · pkg/kubernetes · pkg/templates"}}
-  sctl["kubeaid-storagectl (cmd/kubeaid-storagectl)"] -. "runs on bare-metal host" .-> disks[("disks: OS / ZFS / Ceph")]
+  cli -. "runs a local K3D cluster (CAPI clouds)" .-> docker["Docker"]
+  sctl["kubeaid-storagectl (cmd/kubeaid-storagectl)"] -. "runs on each bare-metal host" .-> disks[("disks: OS / ZFS / Ceph")]
 
   classDef client fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b;
   classDef engine fill:#ecfeff,stroke:#0891b2,color:#083344;
   classDef util fill:#fdf4ff,stroke:#a21caf,color:#3b0764;
   class cli client;
   class core,pkgs engine;
-  class sctl,disks util;
+  class sctl,disks,docker util;
 ```
 
-| Binary                | Role                              | Where it runs             | Size   |
-| --------------------- | --------------------------------- | ------------------------- | ------ |
-| `kubeaid-cli`         | Thin front-end: parses CLI flags, mounts config/sockets, launches the engine container. | Operator workstation | small  |
-| `kubeaid-core`        | The actual engine: CAPI, ArgoCD, templates, cloud SDKs. | Inside the container image. | large  |
-| `kubeaid-storagectl`  | Applies storage plans (disk partition, ZFS pool, Ceph prep) | On each bare-metal host | small  |
+| Binary               | Role                                                                                          | Where it runs           |
+| -------------------- | --------------------------------------------------------------------------------------------- | ----------------------- |
+| `kubeaid-cli`        | The whole tool — parses config, renders manifests, drives Cluster API / KubeOne and ArgoCD. The `kubeaid-core` engine is compiled in. | Operator workstation    |
+| `kubeaid-storagectl` | Applies storage plans (disk partition, ZFS pool, Ceph prep).                                  | On each bare-metal host |
 
-The split exists so operators do not need to install Go, CAPI providers, `kubectl`, `clusterctl`, `helm`, or any SDK on their machine. They only need Docker and `kubeaid-cli`.
+Operators install only `kubeaid-cli`. Go, the CAPI providers, `kubectl`, `clusterctl`, and `helm` are vendored into the binary; **Docker** is required only to run a local [K3D](https://k3d.io/) cluster (Kubernetes-in-Docker) — and only for the Cluster API clouds, since the bare-metal (KubeOne) path installs directly onto the hosts.
 
 ---
 
@@ -479,7 +477,7 @@ flowchart TD
 
 ## 9. Secrets & identity flow
 
-One of the most important architectural properties of KubeAid CLI is that **no long-lived secret is ever committed to Git**. There are two parallel flows: user-provided secrets (API tokens, SSH keys, registry creds) go through Sealed Secrets; cloud access for in-cluster controllers goes through provider-native identity (Workload Identity on Azure, IRSA on AWS, Basic Auth on Hetzner Robot). Both flows converge at the target cluster without leaving plaintext material in the KubeAid Config repo.
+One of the most important architectural properties of KubeAid CLI is that **no long-lived secret is ever committed to Git**. There are two parallel flows: user-provided secrets (API tokens, SSH keys, registry creds) go through Sealed Secrets; cloud access for in-cluster controllers goes through provider-native identity (Workload Identity on Azure, kube2iam-brokered IAM roles on AWS, Basic Auth on Hetzner Robot). Both flows converge at the target cluster without leaving plaintext material in the KubeAid Config repo.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
@@ -502,7 +500,7 @@ flowchart LR
   subgraph TGT["Target cluster"]
     ssc["sealed-secrets controller"]
     k8s["native Secret (in namespace)"]
-    wi["Workload Identity / IRSA / Robot auth"]
+    wi["Workload Identity / kube2iam / Robot auth"]
   end
 
   sy --> parse
@@ -526,7 +524,7 @@ flowchart LR
 | Plane               | Source                          | Transit                                   | At rest in cluster         |
 | ------------------- | ------------------------------- | ----------------------------------------- | -------------------------- |
 | User secrets        | `secrets.yaml` on operator host | Encrypted by `kubeseal` → Git → ArgoCD    | `Secret` decrypted by controller |
-| Cloud identity (AWS) | CLI flags / env                | Used to bootstrap; then CAPA/IRSA takes over | IAM role assumed by pod identity |
+| Cloud identity (AWS) | CLI flags / env                | Used to bootstrap the CloudFormation IAM stack; then CAPA instance profiles + kube2iam take over | IAM role assumed via kube2iam pod annotation |
 | Cloud identity (Azure) | CLI flags / env              | Used to create CrossPlane + UAMI; then Workload Identity | Federated token, no secret stored |
 | Cloud identity (Hetzner) | `ROBOT_USER`/`ROBOT_PASSWORD` + `HCLOUD_TOKEN` | Mounted into kubeaid-core; wired to `hetzner-robot` addon via SealedSecret | Controller reads SealedSecret |
 
@@ -558,8 +556,8 @@ The shared primitives - create dev env, setup cluster, setup KubeAid Config - li
 ```text
 kubeaid-cli/
 ├── cmd/
-│   ├── kubeaid-cli/         # Thin client (docker run wrapper)
-│   ├── kubeaid-core/        # Engine entry point + Cobra commands
+│   ├── kubeaid-cli/         # Binary entry point (embeds kubeaid-core root)
+│   ├── kubeaid-core/        # Engine: Cobra command tree, compiled into kubeaid-cli
 │   └── kubeaid-storagectl/  # Bare-metal storage plan executor
 ├── pkg/
 │   ├── core/                # Lifecycle orchestration (bootstrap, upgrade, delete…)
@@ -602,24 +600,30 @@ All build targets live in the [Makefile](../Makefile). Version, commit, and buil
 
 | Target                     | Output                                                   |
 | -------------------------- | -------------------------------------------------------- |
-| `make build-cli`           | `./build/kubeaid-cli` (CGO-off, ready to ship)           |
-| `make build-kubeaid-core`  | `./build/kubeaid-core`                                   |
-| `make build-kubeaid-storagectl` | `./build/kubeaid-storagectl`                        |
-| `make build-image`         | Docker image `ghcr.io/obmondo/kubeaid-core:<version>`    |
-| `make run-container`       | Build image then run it with local mounts (dev loop)     |
+| `make build`               | `./build/kubeaid-cli` (CGO-off, ready to ship)           |
+| `make build-storagectl`    | `./build/kubeaid-storagectl`                             |
 | `make lint`                | `golangci-lint run ./...`                                |
 | `make format`              | `golangci-lint fmt` - imports, golines, etc.             |
+| `make test`                | Unit tests; writes `coverage.out`                        |
+| `make check-coverage`      | Enforce `testcoverage.yaml` thresholds                   |
 | `make addlicense`          | Adds AGPL-3 headers to any Go file that lacks one        |
 | `make run-generators`      | Regenerates config artifacts from the struct definitions |
+| `make fetch-k8s-eol`       | Refreshes embedded Kubernetes end-of-life data           |
+| `make management-cluster-delete` | Deletes the local K3D management cluster           |
 
 ### 12.2 Local dev loop
 
 ```bash
-# 1. Edit code.
-# 2. Rebuild the container once; thereafter your local source is mounted in.
-make build-image
-make run-container
-# 3. Iterate: edit → re-run command inside the container.
+# 1. Build the CLI.
+make build
+
+# 2. Generate a config, then bootstrap against it. The CLI pulls the matching
+#    kubeaid-core image and runs the engine in a container.
+./build/kubeaid-cli config generate --configs-directory ./outputs/configs/<cluster>/
+./build/kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<cluster>/
+
+# 3. Tear down the local management cluster when done.
+make management-cluster-delete
 ```
 
 ### 12.3 Coding standards
