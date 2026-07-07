@@ -74,7 +74,7 @@ func validateConfigs(ctx context.Context) error {
 	case constants.CloudProviderHetzner:
 		return validateHetznerConfig(ctx)
 	case constants.CloudProviderBareMetal:
-		return validateBareMetalConfig(ctx)
+		return validateBareMetalConfig()
 	case constants.CloudProviderLocal:
 		return nil
 	}
@@ -551,7 +551,7 @@ func validateHetznerBareMetalConfig() error {
 	return nil
 }
 
-func validateBareMetalConfig(ctx context.Context) error {
+func validateBareMetalConfig() error {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
 
 	// NOTE : The struct tag validation doesn't catch this - 'required' passes for an empty
@@ -562,18 +562,70 @@ func validateBareMetalConfig(ctx context.Context) error {
 		)
 	}
 
-	connector := kubeonessh.NewConnector(ctx)
-
-	for _, host := range bareMetalConfig.ControlPlane.Hosts {
-		if err := validateBareMetalHost(ctx, host, connector); err != nil {
+	for _, host := range allBareMetalHosts() {
+		if err := validateBareMetalHostAddresses(host); err != nil {
 			return err
 		}
 	}
+	return nil
+}
+
+// ValidateBareMetalServerPreRequisites SSHes into every Bare Metal host and verifies the
+// KubeOne pre-requisites : lowercase hostname, the Docker APT repository installed the way
+// KubeOne expects, and the socat / conntrack / pigz packages. Every failure names the server
+// it happened on. No-op for other providers.
+func ValidateBareMetalServerPreRequisites(ctx context.Context) error {
+	if globals.CloudProviderName != constants.CloudProviderBareMetal {
+		return nil
+	}
+
+	connector := kubeonessh.NewConnector(ctx)
+
+	for _, host := range allBareMetalHosts() {
+		if err := validateBareMetalServer(ctx, host, connector); err != nil {
+			return fmt.Errorf("server %s : %w", bareMetalHostDisplayAddress(host), err)
+		}
+	}
+	return nil
+}
+
+// allBareMetalHosts returns the control-plane hosts followed by every node-group host.
+func allBareMetalHosts() []*config.BareMetalHost {
+	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
+
+	hosts := []*config.BareMetalHost{}
+	hosts = append(hosts, bareMetalConfig.ControlPlane.Hosts...)
 	for _, nodeGroup := range bareMetalConfig.NodeGroups {
-		for _, host := range nodeGroup.Hosts {
-			if err := validateBareMetalHost(ctx, host, connector); err != nil {
-				return err
-			}
+		hosts = append(hosts, nodeGroup.Hosts...)
+	}
+	return hosts
+}
+
+// bareMetalHostDisplayAddress renders the host's identity for error messages.
+func bareMetalHostDisplayAddress(host *config.BareMetalHost) string {
+	switch {
+	case host.PublicAddress != nil:
+		return *host.PublicAddress
+	case host.PrivateAddress != nil:
+		return *host.PrivateAddress
+	default:
+		return "<no address>"
+	}
+}
+
+// validateBareMetalHostAddresses is the pure-config part : an address must be present, and a
+// provided private IP must parse.
+func validateBareMetalHostAddresses(host *config.BareMetalHost) error {
+	if host.PublicAddress == nil && host.PrivateAddress == nil {
+		return errors.New("neither public, nor private IP address provided for a Bare Metal host")
+	}
+
+	if host.PrivateAddress != nil {
+		if parsedPrivateIP := net.ParseIP(*host.PrivateAddress); parsedPrivateIP == nil {
+			return fmt.Errorf(
+				"invalid private IP address %q provided for Bare Metal host",
+				*host.PrivateAddress,
+			)
 		}
 	}
 	return nil
@@ -598,23 +650,10 @@ func validateNodeGroup(nodeGroup *config.NodeGroup) error {
 	return validateLabelsAndTaints(nodeGroup.Name, nodeGroup.Labels, nodeGroup.Taints)
 }
 
-func validateBareMetalHost(
+func validateBareMetalServer(
 	ctx context.Context, host *config.BareMetalHost, connector *kubeonessh.Connector,
 ) error {
 	bareMetalConfig := config.ParsedGeneralConfig.Cloud.BareMetal
-
-	if host.PublicAddress == nil && host.PrivateAddress == nil {
-		return errors.New("neither public, nor private IP address provided for a Bare Metal host")
-	}
-
-	if host.PrivateAddress != nil {
-		if parsedPrivateIP := net.ParseIP(*host.PrivateAddress); parsedPrivateIP == nil {
-			return fmt.Errorf(
-				"invalid private IP address %q provided for Bare Metal host",
-				*host.PrivateAddress,
-			)
-		}
-	}
 
 	var sshAddresses []string
 	if host.PublicAddress != nil {
@@ -707,10 +746,10 @@ And remove /etc/apt/sources.list.d/docker.sources and /etc/apt/keyrings/docker.a
 
 	packages := []string{"socat", "conntrack", "pigz"}
 	for _, p := range packages {
-		if _, _, _, err := connection.Exec(fmt.Sprintf("which %s &> /dev/null", p)); err != nil {
+		if _, _, _, err := connection.Exec(fmt.Sprintf("command -v %s >/dev/null 2>&1", p)); err != nil {
 			return fmt.Errorf(
-				"required package %q missing on server (need: %v): %w",
-				p, packages, err,
+				"required package %q is missing. Install it with : apt-get install -y %s",
+				p, strings.Join(packages, " "),
 			)
 		}
 	}
