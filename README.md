@@ -4,11 +4,29 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/Obmondo/kubeaid-cli)](https://goreportcard.com/report/github.com/Obmondo/kubeaid-cli)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-KubeAid CLI helps you operate [KubeAid](https://github.com/Obmondo/kubeaid) managed Kubernetes cluster lifecycle in a GitOps native way.
+KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/KubeAid)-managed Kubernetes clusters — bootstrap, upgrade, recover, test, and delete — across AWS, Azure, Hetzner, and bare metal, the GitOps-native way.
+
+## Table of contents
+
+- [Architecture](#architecture)
+- [Features](#features)
+- [Installation](#installation)
+- [Prerequisites](#prerequisites)
+- [Quick start](#quick-start)
+- [Usage](#usage)
+- [Cloud providers](#cloud-providers)
+- [Kubernetes version support](#kubernetes-version-support)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Architecture
 
-KubeAid CLI is a thin client that proxies `cluster` and `devenv` commands to a containerized **KubeAid Core** engine. It pulls the matching `ghcr.io/obmondo/kubeaid-core` image, sets up Docker networking, mounts config files and SSH keys, and streams output back to your terminal.
+KubeAid CLI is a **thin client**: it proxies `cluster` and `devenv` commands to a containerized **KubeAid Core** engine (`ghcr.io/obmondo/kubeaid-core`), so your machine only needs Docker and an SSH agent. The engine stands up a throwaway **K3D management cluster**, installs **Cluster API** there, and lets the matching provider — **CAPA** (AWS), **CAPZ** + Crossplane (Azure), **CAPH** (Hetzner cloud / bare-metal / hybrid), or **KubeOne** (generic bare metal) — provision your target cluster. Once the target control plane is up, `clusterctl move` **pivots** every Cluster API resource onto it; the cluster then manages itself and the K3D cluster is thrown away.
+
+From there it is **GitOps**. The engine renders your `general.yaml` into manifests and commits them to a per-customer **KubeAid Config** repo that overrides only the genuine differences on top of the upstream [KubeAid](https://github.com/Obmondo/KubeAid) platform defaults; [ArgoCD](https://argo-cd.readthedocs.io/) on the target then reconciles the addon stack — Cilium, cert-manager, kube-prometheus, Rook-Ceph, Velero, Sealed Secrets, and more. For the full breakdown, see [`docs/architecture.md`](docs/architecture.md).
 
 ## Features
 
@@ -103,11 +121,27 @@ kubeaid-cli [command] [flags]
 |---|---|---|---|---|
 | AWS | Yes | Yes | Yes | Yes |
 | Azure | Yes | Yes | Yes | Yes |
-| Hetzner Cloud | Yes | — | — | Yes |
-| Hetzner Bare Metal | Yes | — | — | Yes |
-| Hetzner Hybrid | Yes | — | — | Yes |
+| Hetzner Cloud | Yes | WIP | WIP | Yes |
+| Hetzner Bare Metal | Yes | WIP | WIP | Yes |
+| Hetzner Hybrid | Yes | WIP | WIP | Yes |
 | Bare Metal | Yes | Yes | — | Yes |
 | Local (K3D) | Yes | — | — | — |
+
+`WIP` — work in progress; landing soon, not yet generally available.
+
+## Kubernetes version support
+
+The Kubernetes version you request is validated when the config is parsed: it must start with `v`, be a **released** version, be **within the supported range**, and **not past end-of-life**. End-of-life is checked against [endoflife.date](https://endoflife.date/kubernetes) data embedded in the binary (refresh it with `make fetch-k8s-eol`).
+
+| KubeAid CLI | Kubernetes (AWS / Azure / Hetzner) | Kubernetes (bare metal · KubeOne) |
+|---|---|---|
+| `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.32` – `v1.34` |
+
+- The **minimum** accepted version is `v1.30`; the **maximum** is the latest released minor. Any version past end-of-life is rejected regardless of the range.
+- **Bare-metal** clusters are provisioned by **KubeOne v1.12**, which fixes the range to `v1.32`–`v1.34`; this moves when KubeOne is upgraded.
+- The monitoring stack (KubePrometheus) is pinned per Kubernetes version via a built-in compatibility matrix covering `v1.32`–`v1.36`; note that `cgroup v1` support ends at `v1.35`.
+
+This matrix is maintained per release — update the row whenever the supported range, KubeOne version, or a pinned component changes.
 
 ## Configuration
 
@@ -149,15 +183,32 @@ See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for setup instructions.
 ### Building
 
 ```sh
-# Build the CLI binary
+# Build the kubeaid-cli binary
 make build
 
-# Build the KubeAid Core container image
-make build-image
+# Build the kubeaid-storagectl binary (bare-metal storage helper)
+make build-storagectl
 
-# Run linter
+# Lint and format
 make lint
+make format
+
+# Run unit tests with coverage
+make test
 ```
+
+Run `make help` to list every target.
+
+## Contributing
+
+Contributions are welcome.
+
+1. Open an [issue](https://github.com/Obmondo/kubeaid-cli/issues) describing the bug or feature before starting substantial work.
+2. Follow Google's [Go style guide](https://google.github.io/styleguide/go/decisions); run `make lint` and `make format` before pushing (CI is strict).
+3. Write [Conventional Commits](https://www.conventionalcommits.org/) — releases are cut with [cocogitto](https://docs.cocogitto.io/).
+4. Open a pull request that references the issue and explains the *why*, not just the *what*.
+
+See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for the local development setup.
 
 ## License
 

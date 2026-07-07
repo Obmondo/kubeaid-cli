@@ -23,8 +23,8 @@ Topology notes:
 - Workers always run the agent, in either topology.
 
 ### Already in this repo
-- HCloud control-plane LB is created with `PublicInterface: false` (`pkg/cloud/hetzner/loadbalancer.go:46`).
-- A `vpn` cluster type is defined in config (`pkg/config/general.go:106`) — this design wires it up so `kubeaid-cli bootstrap` with `cluster.type=vpn` provisions the NetBird/VPN server itself (Phase 0).
+- HCloud control-plane LB is created with `PublicInterface` parameterized (`PublicInterface: ptr.To(enablePublicInterface)`, `pkg/cloud/hetzner/loadbalancer.go:46`) — VPN clusters pass `false` to keep the LB private.
+- A `vpn` cluster type is defined in config (`pkg/config/general.go:130`) — this design wires it up so `kubeaid-cli bootstrap` with `cluster.type=vpn` provisions the NetBird/VPN server itself (Phase 0).
 
 ### Not yet present (this design adds)
 - NetBird
@@ -258,7 +258,7 @@ Three Keycloak settings on the `kubernetes` OIDC client govern how long one logi
 
 A developer logging in at 09:00 has unattended `kubectl` until 17:00. Walking away for 30+ minutes triggers re-auth sooner.
 
-**Per-cluster TTL** — one Keycloak OIDC client per cluster (`kubernetes-staging` 8h, `kubernetes-prod` 4h, etc.). Each cluster's `--oidc-client-id` flag and the kubeconfig stub written by `kubeaid-cli login` reference the matching client.
+**Per-cluster TTL** — one Keycloak OIDC client per cluster (`kubernetes-staging` 8h, `kubernetes-prod` 4h, etc.). Each cluster's `--oidc-client-id` flag and the kubeconfig stub reference the matching client.
 
 For revoking access mid-session or for the next session, see **[Two enforcement points, one identity](#two-enforcement-points-one-identity)** above.
 

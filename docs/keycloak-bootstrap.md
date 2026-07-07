@@ -93,7 +93,7 @@ None of these are in the customer's `secrets.yaml` (which is local-only and hold
 
 ### Admin API access: port-forward, not public URL
 
-Matches `pkg/utils/kubernetes/argo.go`'s `NewArgoCDClient` pattern at lines 180–200 (which port-forwards to `argocd-server`). `kubeaid-cli` opens a port-forward to the keycloakx Service on port 8080 and points gocloak at `http://localhost:<forwarded-port>`. Avoids depending on Traefik / cert-manager / DNS being up during the bootstrap window — port-forward needs only the Keycloak Pod and Service. Keeps admin traffic off the public LB.
+Matches `pkg/utils/kubernetes/argo.go`'s `NewArgoCDClient` pattern at line 210 (which port-forwards to `argocd-server`). `kubeaid-cli` opens a port-forward to the keycloakx Service on port 8080 and points gocloak at `http://localhost:<forwarded-port>`. Avoids depending on Traefik / cert-manager / DNS being up during the bootstrap window — port-forward needs only the Keycloak Pod and Service. Keeps admin traffic off the public LB.
 
 The public `https://<keycloak-dns>/` URL stays in use for kubelogin and end-user browsers — it's just not in the `kubeaid-cli` admin path.
 
@@ -311,7 +311,7 @@ The plan is implemented entirely in this repo (`kubeaid-cli`); the `kubeaid` cha
 
 | Path | Purpose |
 |---|---|
-| `pkg/keycloak/` (new package) | gocloak-driven idempotent reconciler. One file per resource type — `realm.go`, `client_resource.go`, `scope.go`, `mapper.go`, `role.go` — plus top-level entry points `reconcile_netbird.go` and `reconcile_kubernetes_client.go`. `admin_secret.go` for the kubectl-fetch helper. |
+| `pkg/keycloak/` (new package) | gocloak-driven idempotent reconciler. One file per resource type — `realm.go`, `client_resource.go`, `scope.go`, `mapper.go`, `role.go` — plus top-level entry points `netbird.go` and `kubernetes.go`. |
 | `pkg/config/parser/keycloak.go` | `hydrateKeycloakDefaults()` (publicsuffix-based realm derivation) + `validateKeycloakConfig()` (`mode=managed` requires `cluster.type=vpn`). |
 | `pkg/core/templates/argocd-apps/templates/keycloakx.yaml.tmpl` | Conditional ArgoCD Application gated on `cluster.type=vpn AND cluster.keycloak.mode=managed`. |
 | `pkg/core/templates/argocd-apps/values-keycloakx.yaml.tmpl` | Per-cluster values (DNS, ingress, admin Secret name). |
@@ -321,9 +321,9 @@ The plan is implemented entirely in this repo (`kubeaid-cli`); the `kubeaid` cha
 | Path | Change |
 |---|---|
 | `pkg/config/general.go` | Add `KeycloakConfig` struct + `Cluster.Keycloak *KeycloakConfig` field. |
-| `pkg/config/parser/parse.go` | Call `hydrateKeycloakDefaults()` after `hydrateWithOIDCOptions()`; auto-derive `apiServer.oidc.issuerUrl` from `keycloak.dns + realm` when unset. |
-| `pkg/config/parser/oidc.go` | Render the AuthenticationConfiguration YAML body into `apiServer.files` instead of emitting `--oidc-*` flags; set `--authentication-config` in `apiServer.extraArgs`; mount via `apiServer.extraVolumes`. |
-| `pkg/config/parser/oidc_discovery.go` | Skip the pre-bootstrap probe when `keycloak.mode=managed` (the issuer doesn't exist yet). |
+| `pkg/config/parser/parse.go` | Call `hydrateKeycloakDefaults()`; auto-derive `apiServer.oidc.issuerUrl` from `keycloak.dns + realm` when unset. |
+| `pkg/config/parser/keycloak.go` | Render the AuthenticationConfiguration YAML body into `apiServer.files` instead of emitting `--oidc-*` flags; set `--authentication-config` in `apiServer.extraArgs`; mount via `apiServer.extraVolumes`. |
+| `pkg/config/parser/keycloak.go` | Skip the pre-bootstrap probe when `keycloak.mode=managed` (the issuer doesn't exist yet). |
 | `pkg/core/bootstrap_cluster.go` | After `SyncAllArgoCDApps`, when managed Keycloak is enabled: wait for keycloakx Healthy, port-forward, gocloak login, reconcile NetBird's resources, capture netbird-backend secret, write the consumer Secret, probe the new realm. |
 | `go.mod` | `github.com/Nerzal/gocloak/v13`, `golang.org/x/net/publicsuffix`. |
 
@@ -353,7 +353,7 @@ The work ships as a stack of small PRs:
 
 - [netbird-vpn-architecture.md](./netbird-vpn-architecture.md) — what NetBird + Keycloak give end users; this doc fills in *how* Keycloak is provisioned.
 - [config-reference.md](./config-reference.md) — schema reference (auto-generated; will include `cluster.keycloak` after Branch 1 lands).
-- `pkg/utils/kubernetes/argo.go:180-200` — port-forward pattern (`NewArgoCDClient`) we mirror for Keycloak admin access.
+- `pkg/utils/kubernetes/argo.go:210` — port-forward pattern (`NewArgoCDClient`) we mirror for Keycloak admin access.
 - `pkg/config/parser/audit_logging.go` — pattern for `apiServer.files` / `extraArgs` / `extraVolumes` delivery via CAPI; AuthenticationConfiguration follows the same path.
 - [`Nerzal/gocloak`](https://github.com/Nerzal/gocloak) — Go client for Keycloak admin API.
 - [`kubeaid/argocd-helm-charts/netbird/README.md`](https://github.com/Obmondo/KubeAid/blob/master/argocd-helm-charts/netbird/README.md) — Keycloak realm prerequisites for `mode=external`; lists the exact OIDC clients, scopes, mappers, and role grants the operator must create by hand.

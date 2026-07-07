@@ -36,17 +36,16 @@ cog bump --auto            # or --patch / --minor / --major / --version X.Y.Z
 
 2. **Bump** — writes the new version into `CHANGELOG.md`, creates the release commit (`chore(version): vX.Y.Z`), and creates the tag `vX.Y.Z`.
 
-3. **Post-bump hooks** — pushes the tag to both remotes: `origin` (Gitea) and `github` (the public mirror). The GitHub push is what fires `.github/workflows/release.yaml` to build binaries and container images.
+3. **Post-bump hooks** — pushes the tag to both remotes: `origin` (Gitea) and `github` (the public mirror). The GitHub push is what fires `.github/workflows/release.yaml` to build binaries.
 
 Merge commits are skipped when deriving the next version (`ignore_merge_commits = true` in `cog.toml`).
 
 ## What CI does on tag push
 
-Four jobs run in parallel from `.github/workflows/release.yaml`:
+Three jobs run in parallel from `.github/workflows/release.yaml`:
 
 | Job | Does |
 |---|---|
 | **Security scan** (`scan_sourcecode`) | Trivy scans the source tree. Findings are appended to the workflow run summary. |
 | **Release notes** (`create-release`) | Generates release notes from the tag range with `cog changelog --at <tag>`, then creates the GitHub release via `softprops/action-gh-release`. |
-| **Container images** (`build_kubeaid_core_per_arch` + `publish_kubeaid_core_manifest`) | Builds KubeAid Core natively on per-arch runners (`ubuntu-24.04` for amd64, `ubuntu-24.04-arm` for arm64), pushes each by digest, then stitches them into a multi-arch manifest at `ghcr.io/obmondo/kubeaid-core:<tag>`. |
 | **Binaries + packages** (`build_and_publish_kubeaid_cli_binaries`) | `goreleaser -f .goreleaser-github.yaml` produces `kubeaid-cli` and `kubeaid-storagectl` for darwin/linux × amd64/arm64, packages them as `.deb` / `.rpm` / `.apk` / `archlinux` via `nfpms`, and attaches everything to the release. |

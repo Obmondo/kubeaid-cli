@@ -11,10 +11,14 @@ Also, you must have Docker installed and running.
 
 Let's try to bootstrap a local K3D cluster!
 
-- Run `make sample-config-generate-local-dev`.
-  Sample general and secret config files will be generated for you in `outputs/configs/local`. Go through and adjust them accordingly.
+- Build the CLI: `make build`.
 
-- Run `make bootstrap-cluster-local-dev`.
+- Generate the sample config:
+  `./build/kubeaid-cli config generate --configs-directory ./outputs/configs/local/`.
+  General and secret config files are generated in `outputs/configs/local/` — go through and adjust them accordingly.
+
+- Bootstrap the cluster:
+  `./build/kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/local/`.
 
 ## Debugging cluster provisioning using ClusterAPI
 

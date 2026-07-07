@@ -117,20 +117,25 @@ this block automatically for Hetzner bare-metal clusters when
    are normalised to `/32` at render time.
 
 3. **World ingress** — `fromEntities: [world]` accepting the ports in
-   `publicPorts` (default: `80`, `443`, `6443`) plus port `22/TCP` only when
+   `publicPorts` (default: `80`, `443`) plus port `22/TCP` only when
    `allowSshFrom` is empty (empty list = SSH open to world). Also includes
    ICMP echo (`type 8, family IPv4`) for operational ping.
 
-### Why 6443 is in the default publicPorts
+### Why 6443 is restricted to `apiserverSourceCIDRs`, not world-public
 
 The kube-apiserver on bare-metal kubeaid clusters is intentionally
-**public + auth-gated**: CAPI's management cluster must reach it on the
+**reachable + auth-gated**: CAPI's management cluster must reach it on the
 public failover IP during bootstrap (before NetBird exists), and retrofitting
 a private kube-vip VIP onto a live cluster is not feasible without re-issuing
-apiserver certificates. Port 6443 is still protected by mTLS + RBAC; the host
+apiserver certificates. But 6443 is **never** in the world `publicPorts`
+default — it is exposed through a *separate* CCNP rule restricted to
+`apiserverSourceCIDRs` (the node public IPs), so only the nodes reach it, not
+the whole internet. Port 6443 is still protected by mTLS + RBAC; the host
 firewall's value is denying every *other* port (scanners, uninvited ingress),
-not hiding the apiserver. Locking 6443 to NetBird-only is a day-1 change
-(private-VIP set at provisioning time), out of scope for the default policy.
+not hiding the apiserver. Making it world-reachable requires the operator to
+explicitly add `6443` to `hostNetworkPolicy.publicPorts`; locking it down
+further (NetBird-only) is a day-1 change (private-VIP set at provisioning
+time), out of scope for the default policy.
 
 ## Override hooks (in `general.yaml`)
 
@@ -142,7 +147,7 @@ These live under `cloud.hetzner.bareMetal.firewall`.
 | `firewall.allowSshFrom` | `[]` | restrict inbound SSH (`22`) to these sources on every node; empty = allow from all. Each entry is an IPv4 address or CIDR (bare address ⇒ `/32`); hostnames are not accepted |
 
 The `firewall.allowPublic` field is not rendered into the Cilium CCNP — `publicPorts`
-is fixed at `[80, 443, 6443]` in the chart defaults. To expose additional ports
+is fixed at `[80, 443]` in the chart defaults. To expose additional ports
 publicly, add them directly to `hostNetworkPolicy.publicPorts` in the chart values
 overlay (`values-cilium.yaml` in the kubeaid-config repo).
 

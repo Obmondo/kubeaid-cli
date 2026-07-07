@@ -27,7 +27,7 @@ If you only want to *use* the CLI, start at the [README](../README.md). This doc
 6. [Configuration system](#6-configuration-system)
 7. [Template engine](#7-template-engine)
 8. [GitOps with ArgoCD](#8-gitops-with-argocd)
-9. [Hetzner storage planning & OS install](#9-hetzner-storage-planning--os-install)
+9. [Secrets & identity flow](#9-secrets--identity-flow)
 10. [Cluster lifecycle](#10-cluster-lifecycle)
 11. [Codebase map](#11-codebase-map)
 12. [Development guide](#12-development-guide)
@@ -479,7 +479,7 @@ flowchart TD
 
 ## 9. Secrets & identity flow
 
-One of the most important architectural properties of KubeAid CLI is that **no long-lived secret is ever committed to Git**. There are two parallel flows: user-provided secrets (API tokens, SSH keys, registry creds) go through Sealed Secrets; cloud access for in-cluster controllers goes through provider-native identity (Workload Identity on Azure, IRSA on AWS, Basic Auth on Hetzner Robot). Both flows converge at the target cluster without leaving plaintext material in the KubeAid Config repo.
+One of the most important architectural properties of KubeAid CLI is that **no long-lived secret is ever committed to Git**. There are two parallel flows: user-provided secrets (API tokens, SSH keys, registry creds) go through Sealed Secrets; cloud access for in-cluster controllers goes through provider-native identity (Workload Identity on Azure, kube2iam-brokered IAM roles on AWS, Basic Auth on Hetzner Robot). Both flows converge at the target cluster without leaving plaintext material in the KubeAid Config repo.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
@@ -502,7 +502,7 @@ flowchart LR
   subgraph TGT["Target cluster"]
     ssc["sealed-secrets controller"]
     k8s["native Secret (in namespace)"]
-    wi["Workload Identity / IRSA / Robot auth"]
+    wi["Workload Identity / kube2iam / Robot auth"]
   end
 
   sy --> parse
@@ -526,7 +526,7 @@ flowchart LR
 | Plane               | Source                          | Transit                                   | At rest in cluster         |
 | ------------------- | ------------------------------- | ----------------------------------------- | -------------------------- |
 | User secrets        | `secrets.yaml` on operator host | Encrypted by `kubeseal` → Git → ArgoCD    | `Secret` decrypted by controller |
-| Cloud identity (AWS) | CLI flags / env                | Used to bootstrap; then CAPA/IRSA takes over | IAM role assumed by pod identity |
+| Cloud identity (AWS) | CLI flags / env                | Used to bootstrap the CloudFormation IAM stack; then CAPA instance profiles + kube2iam take over | IAM role assumed via kube2iam pod annotation |
 | Cloud identity (Azure) | CLI flags / env              | Used to create CrossPlane + UAMI; then Workload Identity | Federated token, no secret stored |
 | Cloud identity (Hetzner) | `ROBOT_USER`/`ROBOT_PASSWORD` + `HCLOUD_TOKEN` | Mounted into kubeaid-core; wired to `hetzner-robot` addon via SealedSecret | Controller reads SealedSecret |
 
@@ -602,24 +602,30 @@ All build targets live in the [Makefile](../Makefile). Version, commit, and buil
 
 | Target                     | Output                                                   |
 | -------------------------- | -------------------------------------------------------- |
-| `make build-cli`           | `./build/kubeaid-cli` (CGO-off, ready to ship)           |
-| `make build-kubeaid-core`  | `./build/kubeaid-core`                                   |
-| `make build-kubeaid-storagectl` | `./build/kubeaid-storagectl`                        |
-| `make build-image`         | Docker image `ghcr.io/obmondo/kubeaid-core:<version>`    |
-| `make run-container`       | Build image then run it with local mounts (dev loop)     |
+| `make build`               | `./build/kubeaid-cli` (CGO-off, ready to ship)           |
+| `make build-storagectl`    | `./build/kubeaid-storagectl`                             |
 | `make lint`                | `golangci-lint run ./...`                                |
 | `make format`              | `golangci-lint fmt` - imports, golines, etc.             |
+| `make test`                | Unit tests; writes `coverage.out`                        |
+| `make check-coverage`      | Enforce `testcoverage.yaml` thresholds                   |
 | `make addlicense`          | Adds AGPL-3 headers to any Go file that lacks one        |
 | `make run-generators`      | Regenerates config artifacts from the struct definitions |
+| `make fetch-k8s-eol`       | Refreshes embedded Kubernetes end-of-life data           |
+| `make management-cluster-delete` | Deletes the local K3D management cluster           |
 
 ### 12.2 Local dev loop
 
 ```bash
-# 1. Edit code.
-# 2. Rebuild the container once; thereafter your local source is mounted in.
-make build-image
-make run-container
-# 3. Iterate: edit → re-run command inside the container.
+# 1. Build the CLI.
+make build
+
+# 2. Generate a config, then bootstrap against it. The CLI pulls the matching
+#    kubeaid-core image and runs the engine in a container.
+./build/kubeaid-cli config generate --configs-directory ./outputs/configs/<cluster>/
+./build/kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<cluster>/
+
+# 3. Tear down the local management cluster when done.
+make management-cluster-delete
 ```
 
 ### 12.3 Coding standards

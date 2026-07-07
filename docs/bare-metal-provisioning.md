@@ -30,7 +30,7 @@ the host first.
 
 `vg0` is not the whole disk. installimage only carves the EFI, `/boot` and
 `vg0` partitions, so the rest of the disk is left unpartitioned. OS
-upgrades reuse this path; `cluster_upgrade.go` just points `installImage`
+upgrades reuse this path; `upgrade_cluster.go` just points `installImage`
 at a new image.
 
 > **⚠️ `wipeDisks` and OS upgrades — data loss.** Because OS upgrades reuse the
