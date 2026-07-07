@@ -4,6 +4,44 @@ How Hetzner bare-metal nodes get their OS and disk layout. The last
 section is a proposed improvement; everything before it is how kubeaid-cli
 works today.
 
+## Overview
+
+Provisioning runs in two tools across three phases. kubeaid-cli only
+prepares the ground and picks the OS disks; CAPH does the real OS
+install; the node itself carves ZFS + Ceph on first boot.
+
+```mermaid
+flowchart TD
+  subgraph PRE["kubeaid-cli · prerequisite phase"]
+    ssh["Register SSH key with Robot"] --> install["InstallOSOnAllHBMS<br/>(throwaway base Ubuntu, 8-15 min/server)"]
+    install --> scan["GenerateStoragePlans<br/>SSH + lsblk scan → build plan"]
+    scan --> approve["Operator approves storage-layout box"]
+    approve --> label["Label node groups"]
+    scan -. "OS disk WWNs only" .-> hints["rootDeviceHints on HetznerBareMetalHost"]
+  end
+
+  label --> caph
+
+  subgraph CAPH["CAPH · real OS install"]
+    caph["installimage in Hetzner rescue system"]
+    hints -. "picks OS disks" .-> caph
+    caph --> os["Partitions 1-3: EFI + /boot + LVM vg0<br/>software RAID-1 across OS disks"]
+  end
+
+  os --> boot
+
+  subgraph NODE["Node · cloud-init preKubeadmCommand"]
+    boot["wget kubeaid-storagectl<br/>(pinned by global.kubeaidStoragectl.version)"]
+    boot --> exec["kubeaid-storagectl plan execute<br/>re-scans disks, recomputes plan"]
+    exec --> storage["ZFS pool 'primary' + Ceph OSD partitions<br/>on leftover space (before containerd)"]
+  end
+```
+
+> The storage plan kubeaid-cli builds in the prerequisite phase is
+> mostly informational — only the OS disk selection reaches CAPH (via
+> `rootDeviceHints`). The node recomputes its own ZFS/Ceph plan when
+> `kubeaid-storagectl` runs.
+
 ## OS install
 
 CAPH installs the OS on bare-metal nodes, not kubeaid-cli.

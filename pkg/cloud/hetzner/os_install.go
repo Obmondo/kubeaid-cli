@@ -116,9 +116,9 @@ func (h *Hetzner) installOSOnHBMS(
 	if err := h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
-	if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
-		return fmt.Errorf("server %s: %w", host.ServerID, err)
-	}
+	// if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
+	// 	return fmt.Errorf("server %s: %w", host.ServerID, err)
+	// }
 	if err := h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
