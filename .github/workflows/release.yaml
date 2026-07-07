@@ -25,6 +25,8 @@ jobs:
       - name: Run Trivy security scan against the sourcecode
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          scan-type: fs
+          scan-ref: .
           trivy-config: trivy.yaml
           output: security-scan-result.txt
           exit-code: 0
