@@ -1,4 +1,24 @@
 - - -
+## v0.29.8 - 2026-07-07
+#### Bug Fixes
+- (**ci**) run Trivy in filesystem mode so the release scan stops failing - (a0bec02) - Ashish Jaiswal
+- (**config**) name the server when its pre-requisite checks fail - (311f5b8) - Ashish Jaiswal
+- (**upgrade**) make the downgrade rejection actionable - (6b4fc8a) - Ashish Jaiswal
+#### Documentation
+- (**readme**) correct KubeOne range to v1.33-v1.35, readable doc links, de-dup DEVELOPMENT.md - (9f71ce1) - Ashish Jaiswal
+- (**readme**) restructure the Kubernetes version support section for readability - (a422452) - Ashish Jaiswal
+- (**readme**) 'your own' KubeAid Config repo, not 'per-customer' - (b378fab) - Ashish Jaiswal
+- (**readme**) SSH agent is optional (private key works too); bullet the per-target provisioning flow - (323c79f) - Ashish Jaiswal
+- (**readme**) trim implementation trivia from the architecture intro - (5c35eac) - Ashish Jaiswal
+- (**todo**) drop the removed-OIDC items (apiserver auth, groups-scope verify); fix title and a stale line ref - (2fc4a7e) - Ashish Jaiswal
+- add docs/troubleshooting.md from the TODO notes; link it in the README and drop the fulfilled TODO section - (1e8f447) - Ashish Jaiswal
+- finish OIDC->clusterProxy migration in netbird-vpn-architecture and keycloak-bootstrap - (2ebc47f) - Ashish Jaiswal
+- kube-apiserver access is via the NetBird clusterProxy, not OIDC; drop the sunset Go Report Card badge - (c279097) - Ashish Jaiswal
+- kubeaid-cli is a single binary; clarify K3D is CAPI-only - (2a0bef8) - Ashish Jaiswal
+- add Kubernetes version matrix, tidy README, fix stale references - (3495977) - Ashish Jaiswal
+
+- - -
+
 ## v0.29.7 - 2026-07-06
 #### Features
 - (**bootstrap**) clearer phases and a next-steps panel for every cluster - (5202763) - Ashish Jaiswal
