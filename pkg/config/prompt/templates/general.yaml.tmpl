@@ -39,11 +39,13 @@ cluster:
     realm: {{ .KeycloakRealm }}
 {{- end }}
 {{- end }}
+{{- if .NetBirdBlockEnabled }}
   netbird:
     {{- if .NetBirdDNS }}
     dns: {{ .NetBirdDNS }}
     {{- end }}
     dnsZone: {{ .NetBirdDNSZone }}
+{{- end }}
 {{- if .LockdownSet }}
   lockdown: {{ .LockdownValue }}
 {{- end }}

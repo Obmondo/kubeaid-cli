@@ -267,10 +267,11 @@ type (
 		DNS string `yaml:"dns" validate:"omitempty,fqdn"`
 
 		// DNSZone is the mesh DNS domain peers resolve under — NetBird
-		// Mgmt's --dns-domain, e.g. "demo.local". Defaults to
-		// "<cluster.name>.local" when empty (see parser.hydrateNetBirdDefaults).
-		// Used to create the DNS zone on NetBird and to drive --dns-domain on
-		// VPN clusters.
+		// Mgmt's --dns-domain, e.g. "mesh.acme.com". Operator-supplied, no
+		// default. Required for cluster.type=vpn and for workload clusters
+		// that join a mesh; absent on workload clusters that don't. Used to
+		// create the DNS zone on NetBird, to drive --dns-domain on VPN
+		// clusters, and to add the kubernetes.<dnsZone> apiserver cert SAN.
 		DNSZone string `yaml:"dnsZone" validate:"omitempty,fqdn|hostname_rfc1123"`
 
 		// StunDNS is the public hostname Coturn answers STUN queries

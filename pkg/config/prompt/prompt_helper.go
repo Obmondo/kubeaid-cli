@@ -45,20 +45,7 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 	}
 
 	if cfg.ClusterType == constants.ClusterTypeWorkload {
-		if cfg.LockdownValue() {
-			netbirdKey := "not set — bootstrap will ask"
-			if cfg.NetBirdAPIKey != "" {
-				netbirdKey = "provided"
-			}
-			lines = append(
-				lines,
-				"  Lockdown:      yes — Host Firewall (CCNP) after bootstrap",
-				fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
-				fmt.Sprintf("  NetBird key:   %s", netbirdKey),
-			)
-		} else {
-			lines = append(lines, "  Lockdown:      no")
-		}
+		lines = append(lines, workloadNetBirdSummaryLines(cfg)...)
 	}
 
 	if cfg.CloudProvider != constants.CloudProviderLocal {
@@ -79,6 +66,36 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 
 	fmt.Println()
 	printBox("Configuration Summary", lines)
+}
+
+// workloadNetBirdSummaryLines summarises a workload cluster's NetBird join and,
+// when it was asked (bare-metal on the mesh), the lockdown decision. A cluster
+// that declined the mesh gets a single "no" line and no lockdown line — the
+// Host Firewall is moot without a mesh to fall back to.
+func workloadNetBirdSummaryLines(cfg *PromptedConfig) []string {
+	if !cfg.NetBirdBlockEnabled() {
+		return []string{"  NetBird mesh:  no"}
+	}
+
+	netbirdKey := "not set — bootstrap will ask"
+	if cfg.NetBirdAPIKey != "" {
+		netbirdKey = "provided"
+	}
+	lines := []string{
+		"  NetBird mesh:  yes",
+		fmt.Sprintf("  NetBird DNS:   %s", cfg.NetBirdDNS),
+		fmt.Sprintf("  Mesh domain:   %s", cfg.NetBirdDNSZone),
+		fmt.Sprintf("  NetBird key:   %s", netbirdKey),
+	}
+	if cfg.LockdownSet() {
+		lockdown := "no"
+		if cfg.LockdownValue() {
+			lockdown = "yes — Host Firewall (CCNP) after bootstrap"
+		}
+		lines = append(lines, fmt.Sprintf("  Lockdown:      %s", lockdown))
+	}
+
+	return lines
 }
 
 // printBox renders lines inside a rounded-corner box with a title in the top border.

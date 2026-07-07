@@ -59,14 +59,15 @@ type PromptedConfig struct {
 	KeycloakRealm string
 
 	// NetBirdDNS is the NetBird Management endpoint. Set for VPN clusters
-	// (the host) and for workload clusters that lock down (the mesh they
-	// join). Rendered to cluster.netbird.dns.
+	// (the host) and for workload clusters that join a mesh. Rendered to
+	// cluster.netbird.dns.
 	NetBirdDNS string
 	ACMEEmail  string // VPN-only
 
-	// NetBirdDNSZone is the mesh DNS domain (NetBird --dns-domain), collected
-	// for both cluster types (vpn host + workload joiner). Defaults to
-	// "<cluster>.local"; written to cluster.netbird.dnsZone.
+	// NetBirdDNSZone is the mesh DNS domain (NetBird --dns-domain). Required
+	// for vpn clusters and for workload clusters that join a mesh; empty for
+	// workload clusters that declined (no cluster.netbird block rendered).
+	// Written to cluster.netbird.dnsZone.
 	NetBirdDNSZone string
 
 	// NetBirdBackendClientSecret is collected only when KeycloakMode
@@ -77,7 +78,7 @@ type PromptedConfig struct {
 	NetBirdBackendClientSecret string
 
 	// NetBirdAPIKey is the NetBird service-user PAT the netbird-operator
-	// authenticates with, collected when a workload cluster locks down.
+	// authenticates with, collected when a workload cluster joins a mesh.
 	// Rendered into secrets.yaml netbird.apiKey.
 	NetBirdAPIKey string
 
@@ -495,18 +496,58 @@ func (s *promptSession) collectClusterAuthIfNeeded() error {
 	return nil
 }
 
-// collectNetBirdDNSZoneIfNeeded asks for the mesh DNS zone (NetBird
-// --dns-domain) for every cluster type — vpn host and workload joiner alike.
-// The zone is used to create the DNS zone on NetBird and drives --dns-domain;
-// it is operator-supplied and required.
+// collectNetBirdDNSZoneIfNeeded collects the cluster's NetBird configuration.
+// VPN clusters host NetBird, so they always supply the required mesh DNS zone.
+// Workload clusters are first asked whether they join a mesh at all: on yes
+// they give the Management URL, mesh domain and operator API key; on no they
+// get no cluster.netbird block and no operator.
 func (s *promptSession) collectNetBirdDNSZoneIfNeeded() error {
-	if s.state.NetBirdDNSZone && s.cfg.NetBirdDNSZone != "" {
+	if s.cfg.ClusterType == constants.ClusterTypeWorkload {
+		return s.collectWorkloadNetBirdIfNeeded()
+	}
+	return s.collectVPNNetBirdZoneIfNeeded()
+}
+
+// collectVPNNetBirdZoneIfNeeded asks a VPN cluster for its required mesh DNS
+// zone (NetBird --dns-domain); the zone drives --dns-domain and the apiserver
+// cert SAN. Operator-supplied and required.
+func (s *promptSession) collectVPNNetBirdZoneIfNeeded() error {
+	if s.state.NetBirdDNSZone && netBirdStepDone(s.cfg) {
 		return nil
 	}
 
-	if err := runNetBirdDNSZoneForm(s.cfg); err != nil {
+	if err := runNetBirdZoneForm(s.cfg); err != nil {
 		return fmt.Errorf("collecting NetBird mesh DNS zone: %w", err)
 	}
+	s.state.NetBirdDNSZone = true
+
+	return nil
+}
+
+// collectWorkloadNetBirdIfNeeded gates a workload cluster's NetBird join. The
+// step is marked done even when the operator declines (fields left empty, no
+// cluster.netbird block) so a resumed session doesn't re-ask. netBirdStepDone
+// re-opens the gate for a legacy zone-only config (zone set, no Mgmt URL) so it
+// can't silently render a half netbird block that installs no operator.
+func (s *promptSession) collectWorkloadNetBirdIfNeeded() error {
+	if s.state.NetBirdDNSZone && netBirdStepDone(s.cfg) {
+		return nil
+	}
+
+	joined, err := runNetBirdJoinForm(s.cfg)
+	if err != nil {
+		return fmt.Errorf("collecting NetBird mesh join: %w", err)
+	}
+	if !joined {
+		// Clear any values carried in from a resume / edit-loop redo so the
+		// decline is authoritative — no cluster.netbird block is rendered.
+		s.cfg.NetBirdDNS, s.cfg.NetBirdDNSZone, s.cfg.NetBirdAPIKey = "", "", ""
+		s.state.NetBirdDNSZone = true
+		return nil
+	}
+	s.cfg.NetBirdDNS = strings.TrimSpace(s.cfg.NetBirdDNS)
+	s.cfg.NetBirdDNSZone = strings.TrimSpace(s.cfg.NetBirdDNSZone)
+	s.cfg.NetBirdAPIKey = strings.TrimSpace(s.cfg.NetBirdAPIKey)
 	s.state.NetBirdDNSZone = true
 
 	return nil
@@ -535,14 +576,21 @@ func (s *promptSession) collectVPNConfigIfNeeded() error {
 }
 
 // collectWorkloadLockdownIfNeeded asks workload Hetzner bare-metal / hybrid
-// clusters whether to apply the Host Firewall (CCNP) at bootstrap; on yes it
-// collects the NetBird Management DNS + service-user API key so mesh access
-// survives the lockdown. Other providers skip lockdown entirely.
+// clusters that joined a NetBird mesh whether to apply the Host Firewall (CCNP)
+// at bootstrap. The Mgmt DNS + API key were already collected by the NetBird
+// join form. Clusters not on a mesh, or on other providers, skip lockdown.
 func (s *promptSession) collectWorkloadLockdownIfNeeded() error {
 	if s.cfg.ClusterType != constants.ClusterTypeWorkload {
 		return nil
 	}
 	if s.state.WorkloadLockdown {
+		return nil
+	}
+	// Lockdown only matters on the mesh: the Host Firewall closes the public
+	// NIC and cluster access falls back to NetBird. A cluster that declined the
+	// mesh (no Mgmt endpoint) has nothing to fall back to.
+	if s.cfg.NetBirdDNS == "" {
+		s.state.WorkloadLockdown = true
 		return nil
 	}
 	if !hetznerUsesBareMetal(s.cfg.HetznerMode) {
@@ -553,8 +601,6 @@ func (s *promptSession) collectWorkloadLockdownIfNeeded() error {
 	if err := runLockdownForm(s.cfg); err != nil {
 		return fmt.Errorf("collecting lockdown config: %w", err)
 	}
-	s.cfg.NetBirdDNS = strings.TrimSpace(s.cfg.NetBirdDNS)
-	s.cfg.NetBirdAPIKey = strings.TrimSpace(s.cfg.NetBirdAPIKey)
 	s.state.WorkloadLockdown = true
 
 	return nil
@@ -603,8 +649,8 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 var runLockdownForm = runWorkloadLockdownForm
 
 // runWorkloadLockdownForm asks whether to lock the cluster down with the Host
-// Firewall (CCNP); on yes it collects the NetBird Management DNS + service-user
-// API token that keep mesh access working after lockdown.
+// Firewall (CCNP) at bootstrap. Mesh access (Mgmt DNS + API key) is collected
+// earlier by the NetBird join form, so this only records the lockdown choice.
 func runWorkloadLockdownForm(cfg *PromptedConfig) error {
 	lockdown := false
 	if err := huh.NewForm(
@@ -625,37 +671,8 @@ func runWorkloadLockdownForm(cfg *PromptedConfig) error {
 		return err
 	}
 	cfg.Lockdown = &lockdown
-	if !lockdown {
-		return nil
-	}
 
-	steps := fmt.Sprintf(
-		"kubeaid-cli needs your NetBird Management endpoint and a service-user\n"+
-			"API token so the netbird-operator can join this cluster to the mesh.\n\n"+
-			"Create the token in the NetBird dashboard:\n"+
-			"  https://<netbird-mgmt-dns>/  →  Team  →  Service Users  →  + Create Service User\n"+
-			"    Name:  k8s-operator        Role:  Admin\n"+
-			"  From the new user's row  →  ⋮  →  Tokens  →  + Generate Token\n"+
-			"    Name:  kubeaid-%s   Expiration:  the longest offered\n"+
-			"    (the token is shown only once — copy it)",
-		cfg.ClusterName,
-	)
-	return huh.NewForm(
-		huh.NewGroup(
-			huh.NewNote().
-				Title("NetBird operator API key").
-				Description(steps),
-			huh.NewInput().
-				Title("NetBird Management DNS (e.g. netbird.vpn.acme.com):").
-				Value(&cfg.NetBirdDNS).
-				Validate(nonEmpty),
-			huh.NewInput().
-				Title("NetBird service-user token:").
-				EchoMode(huh.EchoModePassword).
-				Value(&cfg.NetBirdAPIKey).
-				Validate(nonEmpty),
-		).Title("Host Firewall (CCNP) — NetBird access"),
-	).Run()
+	return nil
 }
 
 // LockdownSet reports whether cluster.lockdown should be rendered.
@@ -663,6 +680,14 @@ func (c PromptedConfig) LockdownSet() bool { return c.Lockdown != nil }
 
 // LockdownValue is the value for the rendered cluster.lockdown line.
 func (c PromptedConfig) LockdownValue() bool { return c.Lockdown != nil && *c.Lockdown }
+
+// NetBirdBlockEnabled reports whether to render the cluster.netbird block.
+// VPN clusters host NetBird by definition; workload clusters render it only
+// when they joined a mesh — the join form then set the mesh DNS zone. Mirrors
+// pkg/core/netbird's derive-from-config idiom (no separate enabled flag).
+func (c PromptedConfig) NetBirdBlockEnabled() bool {
+	return c.ClusterType == constants.ClusterTypeVPN || c.NetBirdDNSZone != ""
+}
 
 // printWorkloadNetBirdNextSteps prints the manual NetBird step left before
 // `kubeaid-cli bootstrap` on a locked-down workload cluster: configuring the
@@ -856,9 +881,41 @@ func runVPNEndpointsForm(cfg *PromptedConfig) error {
 	).Run()
 }
 
-// runNetBirdDNSZoneForm asks for the mesh DNS zone (NetBird --dns-domain),
-// shown for every cluster type. cfg.NetBirdDNSZone is pre-filled with the
-// "<cluster>.local" default so the input shows it; the user accepts or overrides.
+// runNetBirdZoneForm is the test seam for the VPN mesh DNS zone form.
+var runNetBirdZoneForm = runNetBirdDNSZoneForm
+
+// runNetBirdJoinForm is the test seam for the workload NetBird join gate.
+var runNetBirdJoinForm = runWorkloadNetBirdJoinForm
+
+// netBirdJoinDefault picks the join-gate confirm's default from cfg so an
+// edit-loop redo (runPromptLoop resets state but keeps cfg) preserves the
+// operator's earlier choice: previously joined (dns/zone set) → Yes, fresh or
+// previously declined → No.
+func netBirdJoinDefault(cfg *PromptedConfig) bool {
+	return cfg.NetBirdDNS != "" || cfg.NetBirdDNSZone != ""
+}
+
+// netBirdZoneValidator validates the mesh DNS zone (NetBird --dns-domain):
+// non-empty and distinct from the control-plane and Mgmt domains. NetBird
+// rejects a --dns-domain that collides with a real service domain (domain
+// mismatch), so it can't be the apiserver endpoint or the Mgmt domain.
+func netBirdZoneValidator(cfg *PromptedConfig) func(string) error {
+	return func(s string) error {
+		if err := nonEmpty(s); err != nil {
+			return err
+		}
+		switch s {
+		case cfg.ControlPlaneEndpoint:
+			return fmt.Errorf("must differ from the control-plane endpoint (%s)", cfg.ControlPlaneEndpoint)
+		case cfg.NetBirdDNS:
+			return fmt.Errorf("must differ from the NetBird Mgmt domain (%s)", cfg.NetBirdDNS)
+		}
+		return nil
+	}
+}
+
+// runNetBirdDNSZoneForm asks a VPN cluster for the required mesh DNS zone
+// (NetBird --dns-domain). Operator-supplied, no pre-filled default.
 func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 	return huh.NewForm(
 		huh.NewGroup(
@@ -866,23 +923,75 @@ func runNetBirdDNSZoneForm(cfg *PromptedConfig) error {
 				Title("Internal domain for apps on the VPN (e.g. mesh.acme.com):").
 				Description("Apps exposed over the VPN are reachable under this domain. Must differ from the control-plane and Mgmt domains.").
 				Value(&cfg.NetBirdDNSZone).
-				Validate(func(s string) error {
-					if err := nonEmpty(s); err != nil {
-						return err
-					}
-					// NetBird rejects a mesh --dns-domain that collides with a
-					// real service domain (domain mismatch), so it can't be the
-					// control-plane (apiserver) endpoint or the Mgmt domain.
-					switch s {
-					case cfg.ControlPlaneEndpoint:
-						return fmt.Errorf("must differ from the control-plane endpoint (%s)", cfg.ControlPlaneEndpoint)
-					case cfg.NetBirdDNS:
-						return fmt.Errorf("must differ from the NetBird Mgmt domain (%s)", cfg.NetBirdDNS)
-					}
-					return nil
-				}),
+				Validate(netBirdZoneValidator(cfg)),
 		).Title("NetBird — internal apps domain"),
 	).Run()
+}
+
+// runWorkloadNetBirdJoinForm asks whether a workload cluster joins a NetBird
+// mesh. On yes it collects the Management URL, the internal-apps mesh domain
+// (NetBird --dns-domain) and the operator's service-user API key — with the
+// same dashboard token-creation steps the lockdown form used to show. On no it
+// collects nothing: the cluster renders no cluster.netbird block and installs
+// no netbird-operator. Returns whether the cluster joined.
+func runWorkloadNetBirdJoinForm(cfg *PromptedConfig) (bool, error) {
+	joining := netBirdJoinDefault(cfg)
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("NetBird mesh").
+				Description("Join this cluster to an existing NetBird mesh so the\n"+
+					"netbird-operator can reach and expose it over the VPN.\n"+
+					"Skip this if the cluster isn't on a NetBird mesh."),
+			huh.NewConfirm().
+				Title("Is this cluster joining a NetBird mesh?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&joining),
+		),
+	).Run(); err != nil {
+		return false, err
+	}
+	if !joining {
+		return false, nil
+	}
+
+	steps := fmt.Sprintf(
+		"kubeaid-cli needs your NetBird Management endpoint and a service-user\n"+
+			"API token so the netbird-operator can join this cluster to the mesh.\n\n"+
+			"Create the token in the NetBird dashboard:\n"+
+			"  https://<netbird-mgmt-dns>/  →  Team  →  Service Users  →  + Create Service User\n"+
+			"    Name:  k8s-operator        Role:  Admin\n"+
+			"  From the new user's row  →  ⋮  →  Tokens  →  + Generate Token\n"+
+			"    Name:  kubeaid-%s   Expiration:  the longest offered\n"+
+			"    (the token is shown only once — copy it)",
+		cfg.ClusterName,
+	)
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("NetBird operator API key").
+				Description(steps),
+			huh.NewInput().
+				Title("NetBird Management URL (e.g. netbird.vpn.acme.com):").
+				Value(&cfg.NetBirdDNS).
+				Validate(nonEmpty),
+			huh.NewInput().
+				Title("Internal domain for apps on the mesh (e.g. mesh.acme.com):").
+				Description("Apps exposed over the VPN are reachable under this domain. Must differ from the Mgmt domain.").
+				Value(&cfg.NetBirdDNSZone).
+				Validate(netBirdZoneValidator(cfg)),
+			huh.NewInput().
+				Title("NetBird service-user token:").
+				EchoMode(huh.EchoModePassword).
+				Value(&cfg.NetBirdAPIKey).
+				Validate(nonEmpty),
+		).Title("NetBird — mesh join"),
+	).Run(); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // runGitSSHForm shows Step 4 — ArgoCD deploy key, config repo URL, and (when

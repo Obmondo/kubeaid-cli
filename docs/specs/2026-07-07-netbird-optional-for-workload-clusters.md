@@ -114,9 +114,12 @@ Unchanged positions; the netbird step just branches by cluster type:
 
 ### Enablement flag + rendering
 
-- Add `PromptedConfig.NetBirdEnabled *bool` (nil = not asked; mirrors the
-  existing `Lockdown *bool`), plus a `NetBirdBlockEnabled()` helper:
-  `ClusterType == vpn || (NetBirdEnabled != nil && *NetBirdEnabled)`.
+- `PromptedConfig.NetBirdBlockEnabled()` helper, **derived** (no new field):
+  `ClusterType == vpn || NetBirdDNSZone != ""`. This mirrors `pkg/core/netbird`'s
+  derive-from-config idiom (`OperatorEnabled()` keys off `dns != ""`) — the
+  join form sets the zone on "yes", leaves it empty on "no", so the zone's
+  presence is the enabled signal. Simpler than a separate `*bool`, and existing
+  render tests that set a zone stay green.
 - **general.yaml.tmpl**: wrap the whole `netbird:` block in
   `{{- if .NetBirdBlockEnabled }} … {{- end }}`. VPN and workload+yes render it;
   workload+no omits it.
@@ -125,22 +128,52 @@ Unchanged positions; the netbird step just branches by cluster type:
 
 ### Resume / state
 
-`state_helpers.go` gains a bool for the join step so a resumed session does not
-re-prompt after a recorded "no". The zone step's existing resume plumbing is
-folded into the new workload branch. Update the now-stale `NetBirdDNSZone`
-doc-comment (`prompt.go:67-70`, "Defaults to `<cluster>.local`") while in the
-area.
+The existing `promptState.NetBirdDNSZone` bool is reused as the "NetBird step
+done" flag for both cluster types — set even when a workload declines, so a
+resumed session (state file present) doesn't re-prompt.
+
+Completion is derived by `netBirdStepDone(cfg)` rather than a bare
+`NetBirdDNSZone != ""`, and this is the load-bearing detail. VPN: zone set.
+Workload: **Mgmt URL (`dns`) and mesh zone must agree** — both set (joined) or
+both empty (declined). This matters for a **legacy** workload config produced by
+the old unconditional-zone code, which set `dnsZone` but only ever set `dns`
+inside the Hetzner-BM lockdown branch — leaving zone-without-dns on every other
+provider. Without the agreement check, the resume fallback
+(`completedPromptStateFromValues`, used when config files exist but no state
+file) would mark such a config "done", skip the gate forever, and render a half
+`netbird` block (`NetBirdBlockEnabled` is zone-gated → true) that installs no
+operator (`OperatorEnabled` is `dns`-gated → false) — silently, since nothing
+validates the combination on workload clusters. `netBirdStepDone` reports the
+zone-only legacy state as **not done**, so the gate re-opens and the operator
+supplies the Mgmt URL + key (or clears the zone). It's used in both
+`completedPromptStateFromValues` and the collect guards (defending against a
+stale state file too).
+
+The join-gate confirm defaults via `netBirdJoinDefault(cfg)`
+(`dns != "" || dnsZone != ""`) rather than a hardcoded `true`, so the edit loop
+(`runPromptLoop` resets state but keeps cfg) re-shows the operator's previous
+choice instead of flipping a decline back to "Yes" — matching the cfg-derived
+default convention used elsewhere (e.g. `runVPNKeycloakForm`).
+
+Stale doc-comments in that area are corrected: `prompt.go` NetBird field
+comments, and the `general.go` `DNSZone` "`<cluster>.local` default" claim
+(`hydrateNetBirdDefaults` never defaulted it) — the latter regenerated into
+`docs/config-reference.md` via `make run-generators`.
 
 ## Testing
 
-- Prompt: table tests for the workload join gate (no ⇒ all three fields empty,
-  `NetBirdEnabled=false`; yes ⇒ all three set, `NetBirdEnabled=true`) using a
-  test seam like the existing `runLockdownForm` var.
-- Rendering: general.yaml assertions for workload+no (no `netbird:` block),
-  workload+yes (dns + dnsZone present), and vpn (unchanged).
-- Lockdown: only offered when joining a mesh; unchanged for VPN.
-- Update any testdata fixtures that assume the old unconditional workload
-  `netbird` block.
+- Prompt: table tests for the workload join gate via `runNetBirdJoinForm` /
+  `runNetBirdZoneForm` seams (decline ⇒ all three fields empty + step done;
+  join ⇒ fields collected + trimmed; vpn ⇒ zone form, not the gate).
+- Helper: `NetBirdBlockEnabled()` truth table (vpn, workload+zone,
+  workload-no-zone).
+- Rendering: general.yaml assertions for workload+no (no `netbird:`/`dnsZone:`),
+  plus the existing workload+netbird and vpn render tests stay green.
+- Lockdown: only offered when joining a mesh (skipped when `NetBirdDNS == ""`),
+  and the slimmed form sets only `Lockdown`; unchanged for VPN.
+- Summary: `workloadNetBirdSummaryLines()` cases (declined; joined without a
+  lockdown decision; joined + lockdown) so the summary reflects the mesh join
+  independent of lockdown.
 
 ## Out of scope
 
