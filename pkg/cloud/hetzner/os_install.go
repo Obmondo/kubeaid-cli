@@ -18,30 +18,20 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
-type (
-	ActivateHRobotLinuxInstallationResponseBody struct {
-		Linux struct {
-			Dist          string   `json:"dist"`
-			Lang          string   `json:"lang"`
-			Password      string   `json:"password"`
-			AuthorizedKey []string `json:"authorized_key"`
-			Active        bool     `json:"active"`
-		} `json:"linux"`
-	}
+type HRobotResetResponseBody struct {
+	Reset struct {
+		ServerIP string `json:"server_ip"`
+		Type     string `json:"type"`
+	} `json:"reset"`
+}
 
-	HRobotResetResponseBody struct {
-		Reset struct {
-			ServerIP string `json:"server_ip"`
-			Type     string `json:"type"`
-		} `json:"reset"`
-	}
-)
-
-// InstallOSOnAllHBMS installs Ubuntu on each HBMS in parallel. HBMS that are already
-// SSH-reachable are skipped (idempotency). Since each HBMS's OS installation takes ~8-12
-// minutes regardless of others, processing them in parallel bounds total wall-clock time to
-// that of the slowest single host.
-func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
+// BootAllHBMSIntoRescue boots each HBMS into the Hetzner rescue system in
+// parallel, so kubeaid-cli can SSH in and scan disks for the storage plan.
+// It does NOT install an OS — CAPH does the real installimage run later.
+// HBMS already SSH-reachable are skipped (idempotency). A rescue boot is a
+// hardware reset into a ramdisk Debian (1-2 min), so running the hosts in
+// parallel bounds total wall-clock time to that of the slowest single host.
+func (h *Hetzner) BootAllHBMSIntoRescue(ctx context.Context) error {
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 	fingerprint := hetznerConfig.SSHKeyPair.Fingerprint
@@ -59,9 +49,8 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 		return nil
 	}
 
-	slog.InfoContext(ctx, "Installing OS on Hetzner Bare Metal servers in parallel",
+	slog.InfoContext(ctx, "Booting Hetzner bare-metal servers into rescue system in parallel",
 		slog.Int("servers", len(hosts)),
-		slog.String("distribution", constants.HBMSInstallDistributionLatestUbuntu),
 	)
 
 	var (
@@ -73,7 +62,7 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 		wg.Add(1)
 		go func(host *config.HetznerBareMetalHost) {
 			defer wg.Done()
-			if err := h.installOSOnHBMS(ctx, host, fingerprint, privateKey); err != nil {
+			if err := h.bootHBMSIntoRescue(ctx, host, fingerprint, privateKey); err != nil {
 				mu.Lock()
 				errs = append(errs, err)
 				mu.Unlock()
@@ -83,16 +72,17 @@ func (h *Hetzner) InstallOSOnAllHBMS(ctx context.Context) error {
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return fmt.Errorf("OS installation failed on %d Hetzner bare-metal server(s): %v", len(errs), errs)
+		return fmt.Errorf("rescue boot failed on %d Hetzner bare-metal server(s): %v", len(errs), errs)
 	}
 
 	slog.InfoContext(ctx, "All Hetzner Bare Metal servers are ready")
 	return nil
 }
 
-// installOSOnHBMS runs the full install flow for a single HBMS: idempotency check, activate
-// Linux install via HRobot, hardware reset via HRobot, and wait for SSH reachability.
-func (h *Hetzner) installOSOnHBMS(
+// bootHBMSIntoRescue runs the rescue-boot flow for a single HBMS: idempotency
+// check, arm the rescue system via HRobot (with the Robot SSH key selected),
+// hardware reset so the host boots into rescue, and wait for SSH reachability.
+func (h *Hetzner) bootHBMSIntoRescue(
 	ctx context.Context,
 	host *config.HetznerBareMetalHost,
 	fingerprint, privateKey string,
@@ -107,51 +97,52 @@ func (h *Hetzner) installOSOnHBMS(
 	}
 
 	if h.isHBMSReachable(hbmsCtx, address, privateKey) {
-		slog.InfoContext(hbmsCtx, "Hetzner bare-metal server already reachable via SSH, skipping OS installation")
+		slog.InfoContext(hbmsCtx, "Hetzner bare-metal server already reachable via SSH, skipping rescue boot")
 		return nil
 	}
 
-	slog.InfoContext(hbmsCtx, "Installing OS on Hetzner bare-metal server")
+	slog.InfoContext(hbmsCtx, "Booting Hetzner bare-metal server into rescue system")
 
-	if err := h.activateHRobotLinuxInstallation(hbmsCtx, host.ServerID, fingerprint); err != nil {
+	// Arm the rescue system, then hardware-reset the host so it actually boots
+	// into it — rescue is only armed for the next boot, so the reset is
+	// required, not optional.
+	if err := h.activateHRobotRescue(hbmsCtx, host.ServerID, fingerprint); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
-	// if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
-	// 	return fmt.Errorf("server %s: %w", host.ServerID, err)
-	// }
+	if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
+		return fmt.Errorf("server %s: %w", host.ServerID, err)
+	}
 	if err := h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
 
-	slog.InfoContext(hbmsCtx, "OS installation completed, Hetzner bare-metal server is reachable")
+	slog.InfoContext(hbmsCtx, "Hetzner bare-metal server booted into rescue system and reachable")
 	return nil
 }
 
-// activateHRobotLinuxInstallation activates a Linux installation for the given HBMS via the
-// HRobot API, pinned to the latest Ubuntu LTS for security patch currency. The installation
-// is queued and executed on the next boot.
-func (h *Hetzner) activateHRobotLinuxInstallation(
+// activateHRobotRescue arms the Linux rescue system for the given HBMS via the
+// HRobot API, authorising the supplied Robot SSH-key fingerprint so kubeaid-cli
+// can SSH in key-only (no password). Rescue is armed for the next boot; the
+// caller must hardware-reset the host to actually enter it.
+func (h *Hetzner) activateHRobotRescue(
 	ctx context.Context,
 	serverID, fingerprint string,
 ) error {
-	distribution := constants.HBMSInstallDistributionLatestUbuntu
-
 	response, err := h.robotClient.NewRequest().
 		SetFormDataFromValues(url.Values{
-			"dist":             []string{distribution},
-			"lang":             []string{"en"},
+			"os":               []string{constants.HRobotRescueOSLinux},
 			"authorized_key[]": []string{fingerprint},
 		}).
-		Post(fmt.Sprintf("/boot/%s/linux", serverID))
+		Post(fmt.Sprintf("/boot/%s/rescue", serverID))
 	if err != nil {
-		return fmt.Errorf("activating Linux installation for server %s: %w", serverID, err)
+		return fmt.Errorf("activating rescue system for server %s: %w", serverID, err)
 	}
 	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("activating Linux installation for server %s: unexpected status %d", serverID, response.StatusCode())
+		return fmt.Errorf("activating rescue system for server %s: unexpected status %d", serverID, response.StatusCode())
 	}
 
-	slog.InfoContext(ctx, "Activated Linux installation",
-		slog.String("distribution", distribution),
+	slog.InfoContext(ctx, "Armed rescue system",
+		slog.String("os", constants.HRobotRescueOSLinux),
 	)
 	return nil
 }
@@ -174,12 +165,12 @@ func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
 	return nil
 }
 
-// waitForHBMSReachable polls via SSH until the HBMS becomes reachable after OS installation.
+// waitForHBMSReachable polls via SSH until the HBMS becomes reachable after the rescue boot.
 func (h *Hetzner) waitForHBMSReachable(
 	ctx context.Context,
 	serverID, address, privateKey string,
 ) error {
-	deadline := time.Now().Add(constants.HBMSOSInstallationMaxWaitTime)
+	deadline := time.Now().Add(constants.HBMSRescueBootMaxWaitTime)
 
 	for {
 		if h.isHBMSReachable(ctx, address, privateKey) {
@@ -187,13 +178,13 @@ func (h *Hetzner) waitForHBMSReachable(
 		}
 
 		if !time.Now().Before(deadline) {
-			return fmt.Errorf("timed out waiting for Hetzner bare-metal server %s to become reachable (max wait %v)", serverID, constants.HBMSOSInstallationMaxWaitTime)
+			return fmt.Errorf("timed out waiting for Hetzner bare-metal server %s to become reachable (max wait %v)", serverID, constants.HBMSRescueBootMaxWaitTime)
 		}
 
-		slog.InfoContext(ctx, "Hetzner bare-metal server not yet reachable after OS installation, will retry...",
-			slog.Duration("interval", constants.HBMSOSInstallationPollInterval),
+		slog.InfoContext(ctx, "Hetzner bare-metal server not yet reachable after rescue boot, will retry...",
+			slog.Duration("interval", constants.HBMSRescueBootPollInterval),
 		)
-		time.Sleep(constants.HBMSOSInstallationPollInterval)
+		time.Sleep(constants.HBMSRescueBootPollInterval)
 	}
 }
 
