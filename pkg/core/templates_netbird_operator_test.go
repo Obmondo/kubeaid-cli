@@ -101,6 +101,7 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 
 		router := subMap(t, parsed, "networkRouter")
 		assert.Equal(t, true, router["enabled"])
+		assert.Equal(t, "acme-prod", router["name"], "networkRouter.name tracks the cluster name")
 		assert.Equal(t, "mesh.acme.com", router["dnsZone"])
 		assert.EqualValues(t, 1, router["replicas"])
 
@@ -153,6 +154,7 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 
 	t.Run("router enabled, no managementURL or clusterProxy: only top-level networkRouter/networkResources render", func(t *testing.T) {
 		tv := &TemplateValues{
+			ClusterConfig:          config.ClusterConfig{Name: "acme-prod"},
 			NetBirdOperatorEnabled: true,
 			NetBird: &config.NetBirdConfig{
 				DNSZone: "mesh.acme.com",
@@ -170,6 +172,7 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 
 		router := subMap(t, parsed, "networkRouter")
 		assert.Equal(t, true, router["enabled"])
+		assert.Equal(t, "acme-prod", router["name"], "networkRouter.name tracks the cluster name")
 		assert.Equal(t, "mesh.acme.com", router["dnsZone"])
 		assert.EqualValues(t, 1, router["replicas"])
 

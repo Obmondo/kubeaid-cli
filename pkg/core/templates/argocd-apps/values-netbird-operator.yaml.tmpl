@@ -15,7 +15,9 @@ CR) when the router or proxy is enabled; only the mesh DNS zone must
 pre-exist in NetBird (see printNetBirdOperatorInstructions).
 
 The router + traefik-internal resource render when a mesh DNS zone is set.
-ClusterProxy is named after cluster.name.
+Both the NetworkRouter (networkRouter.name) and the ClusterProxy are named
+after cluster.name — unique per cluster so neither collides with another
+cluster's on a shared NetBird Management.
 */ -}}
 {{- if .NetBirdOperatorEnabled }}
 {{- if .NetBirdManagementURL }}
@@ -28,6 +30,7 @@ group: {{ .NetBirdClusterGroup | quote }}
 {{- if .NetBirdRouterEnabled }}
 networkRouter:
   enabled: true
+  name: {{ .ClusterConfig.Name | quote }}
   dnsZone: {{ .NetBird.DNSZone | quote }}
   replicas: 1
 networkResources:
