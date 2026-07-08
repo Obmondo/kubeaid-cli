@@ -226,24 +226,25 @@ const (
 
 	HCloudLBTypeLB11 = "lb11"
 
-	// Hetzner Bare Metal Server (HBMS) OS installation via Hetzner Robot (HRobot).
+	// Hetzner Bare Metal Server (HBMS) rescue-boot via Hetzner Robot (HRobot).
 	HRobotResetTypeHardware = "hw"
-	// Pinned to the latest Ubuntu LTS so that every new HBMS receives current security patches.
-	// Bump this constant when a newer LTS becomes available in the HRobot catalogue.
-	HBMSInstallDistributionLatestUbuntu = "Ubuntu 24.04 LTS base"
-	HBMSOSInstallationPollInterval      = 20 * time.Second
-	// HBMSOSInstallationMaxWaitTime is the per-server upper bound the
-	// post-reset SSH probe waits for the freshly-installed OS to come
-	// up. Hetzner installimage takes 8-15 min on normal hardware
-	// (1-3 min reset → rescue boot, 5-10 min partition + debootstrap
-	// + first-boot package install, 1-2 min first boot + sshd up).
-	// 20 min absorbs the slow tail (HDD instead of NVMe, apt mirror
-	// in a busier DC, wipeDisks=true triggering secure-erase before
-	// partitioning) with margin to spare — dying mid-bootstrap is
-	// worse than waiting another few minutes on an install that
-	// eventually completes. Don't unbump without a corresponding
-	// investigation note.
-	HBMSOSInstallationMaxWaitTime = 20 * time.Minute
+	// HRobotRescueOSLinux is the `os` value POSTed to /boot/{id}/rescue to
+	// arm the Linux rescue system. kubeaid-cli only needs the server
+	// SSH-reachable so it can scan disks (lsblk) for the storage plan; CAPH
+	// does the real OS install later. Rescue is a full Debian environment
+	// with lsblk already present and boots in 1-2 min instead of the 8-15 min
+	// a throwaway installimage run costs.
+	HRobotRescueOSLinux        = "linux"
+	HBMSRescueBootPollInterval = 20 * time.Second
+	// HBMSRescueBootMaxWaitTime is the per-server upper bound the post-reset
+	// SSH probe waits for the rescue system to come up. A rescue boot is just
+	// a hardware reset (1-3 min) into a ramdisk Debian that starts sshd — far
+	// faster than an installimage run. 20 min is kept as a generous ceiling
+	// that absorbs the slow tail (POST reset queued behind Robot API
+	// throttling, a sluggish BMC, or a host mid-POST) with margin to spare —
+	// dying while a reset is still pending is worse than waiting a few extra
+	// minutes. Don't unbump without a corresponding investigation note.
+	HBMSRescueBootMaxWaitTime = 5 * time.Minute
 
 	// Attaching bare-metal servers to a vSwitch is asynchronous on
 	// Hetzner's side. POST /vswitch/{id}/server takes an array of

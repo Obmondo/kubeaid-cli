@@ -28,7 +28,7 @@ func newTestHetznerWithRobotServer(handler http.Handler) (*Hetzner, *httptest.Se
 	}, server
 }
 
-func TestActivateHRobotLinuxInstallation(t *testing.T) {
+func TestActivateHRobotRescue(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -44,9 +44,8 @@ func TestActivateHRobotLinuxInstallation(t *testing.T) {
 			serverID:    "12345",
 			fingerprint: "ab:cd:ef",
 			status:      http.StatusOK,
-			body: `{"linux":{"dist":"` + constants.HBMSInstallDistributionLatestUbuntu + `",` +
-				`"lang":"en","active":true,"password":"testpw",` +
-				`"authorized_key":["ab:cd:ef"],"host_key":[]}}`,
+			body: `{"rescue":{"server_ip":"1.2.3.4","os":"linux",` +
+				`"active":true,"password":"testpw","authorized_key":["ab:cd:ef"],"host_key":[]}}`,
 			wantErr: false,
 		},
 		{
@@ -82,7 +81,7 @@ func TestActivateHRobotLinuxInstallation(t *testing.T) {
 			defer server.Close()
 
 			ctx := context.Background()
-			err := h.activateHRobotLinuxInstallation(ctx, tc.serverID, tc.fingerprint)
+			err := h.activateHRobotRescue(ctx, tc.serverID, tc.fingerprint)
 
 			if tc.wantErr {
 				assert.Error(t, err)
@@ -90,13 +89,10 @@ func TestActivateHRobotLinuxInstallation(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, "/boot/12345/linux", capturedPath)
-			assert.Equal(t,
-				[]string{constants.HBMSInstallDistributionLatestUbuntu},
-				capturedFormValues["dist"],
-			)
+			assert.Equal(t, "/boot/12345/rescue", capturedPath)
+			assert.Equal(t, []string{constants.HRobotRescueOSLinux}, capturedFormValues["os"])
+			assert.NotContains(t, capturedFormValues, "dist")
 			assert.NotContains(t, capturedFormValues, "arch")
-			assert.Equal(t, []string{"en"}, capturedFormValues["lang"])
 			assert.Equal(t, []string{"ab:cd:ef"}, capturedFormValues["authorized_key[]"])
 		})
 	}

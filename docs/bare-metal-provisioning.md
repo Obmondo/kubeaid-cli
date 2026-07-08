@@ -1,8 +1,46 @@
 # Bare-metal provisioning
 
 How Hetzner bare-metal nodes get their OS and disk layout. The last
-section is a proposed improvement; everything before it is how kubeaid-cli
-works today.
+section is a proposed further improvement; everything before it is how
+kubeaid-cli works today.
+
+## Overview
+
+Provisioning runs in two tools across three phases. kubeaid-cli only
+prepares the ground and picks the OS disks; CAPH does the real OS
+install; the node itself carves ZFS + Ceph on first boot.
+
+```mermaid
+flowchart TD
+  subgraph PRE["kubeaid-cli · prerequisite phase"]
+    ssh["Register SSH key with Robot"] --> install["BootAllHBMSIntoRescue<br/>(rescue boot for disk scan, 1-2 min/server)"]
+    install --> scan["GenerateStoragePlans<br/>SSH + lsblk scan → build plan"]
+    scan --> approve["Operator approves storage-layout box"]
+    approve --> label["Label node groups"]
+    scan -. "OS disk WWNs only" .-> hints["rootDeviceHints on HetznerBareMetalHost"]
+  end
+
+  label --> caph
+
+  subgraph CAPH["CAPH · real OS install"]
+    caph["installimage in Hetzner rescue system"]
+    hints -. "picks OS disks" .-> caph
+    caph --> os["Partitions 1-3: EFI + /boot + LVM vg0<br/>software RAID-1 across OS disks"]
+  end
+
+  os --> boot
+
+  subgraph NODE["Node · cloud-init preKubeadmCommand"]
+    boot["wget kubeaid-storagectl<br/>(pinned by global.kubeaidStoragectl.version)"]
+    boot --> exec["kubeaid-storagectl plan execute<br/>re-scans disks, recomputes plan"]
+    exec --> storage["ZFS pool 'primary' + Ceph OSD partitions<br/>on leftover space (before containerd)"]
+  end
+```
+
+> The storage plan kubeaid-cli builds in the prerequisite phase is
+> mostly informational — only the OS disk selection reaches CAPH (via
+> `rootDeviceHints`). The node recomputes its own ZFS/Ceph plan when
+> `kubeaid-storagectl` runs.
 
 ## OS install
 
@@ -75,25 +113,34 @@ kubeaid-cli writes the OS disks' WWNs into each `HetznerBareMetalHost`'s
 For bare-metal, `ProvisionPrerequisiteInfrastructure` does four things:
 
 1. Register the SSH key with Hetzner Robot.
-2. `InstallOSOnAllHBMS`: for each server, skip it if it is already
-   SSH-reachable, otherwise install a base Ubuntu (Robot's one-shot Linux
-   install) and wait for it to come up.
+2. `BootAllHBMSIntoRescue`: for each server, skip it if it is already
+   SSH-reachable, otherwise arm the Hetzner rescue system (selecting the
+   Robot SSH key so kubeaid-cli can SSH in key-only) and hardware-reset
+   the host so it boots into rescue, then wait for it to come up.
 3. `GenerateStoragePlans`: SSH into each server, scan its disks, build the
    storage plan, and show the operator the approval box.
 4. Label the node groups.
 
-## The throwaway double-install
+## Why rescue, not a full install
 
-Step 2 is wasteful. It runs a full OS install, 8 to 15 minutes per server,
-only to get the server SSH-reachable so step 3 can scan its disks. CAPH
-then installs the OS again. Every bare-metal server ends up installed
-twice.
+Step 2 only needs the server SSH-reachable so step 3 can run `lsblk`. The
+Hetzner rescue system does that in 1-2 minutes: a hardware reset into a
+ramdisk Debian with `lsblk` already present (and `apt` if some tool is
+missing). It replaces what used to be a throwaway 8-15 minute base-Ubuntu
+install whose only purpose was reachability — CAPH reinstalls the OS
+afterwards regardless, so that install was pure waste. Rescue is armed for
+the next boot only, so the reset is required, not optional.
 
-The skip check, `isHBMSReachable`, is also cluster-blind. A server still
+The scan is read-only: `lsblk` reads disk sizes, WWNs and disk type, so it
+does not matter whether kubeaid-cli SSH'd into rescue or into an installed
+OS — `GenerateStoragePlans` is identical either way, and CAPH still does
+the real install afterwards.
+
+The skip check, `isHBMSReachable`, is cluster-blind. A server still
 running another cluster's OS answers SSH and gets skipped, so the scan
 runs against whatever is on it. That is harmless in practice, since
 `lsblk` reports the disks correctly either way and CAPH wipes and
-reinstalls anyway. The install itself is still pure waste.
+reinstalls anyway.
 
 ## Recovering from a `CheckDisk failed` permanent error
 
@@ -154,31 +201,14 @@ a kubeaid-cli re-run won't clobber them.
 
 ## Possible improvement
 
-The throwaway install only exists to make an unreachable server SSH-able
-so we can run `lsblk` on it. The Hetzner rescue system does that far
-faster: it is a full Debian environment with `lsblk` already present, and
-apt is there if some tool is missing.
+Rescue-scan (above) already removed the throwaway install. It still scans
+each host live over SSH, which needs the rescue boot + reset round-trip.
 
-So step 2 can boot rescue instead of installing an OS:
-
-```
-for each server:
-  SSH reachable   -> scan it now
-  not reachable   -> boot it into rescue, then scan
-```
-
-The scan is read-only: `lsblk` reads disk sizes, WWNs and disk type. So
-`GenerateStoragePlans` does not change at all. It does not care whether it
-SSH'd into rescue or into an installed OS. Nothing is installed in the
-prerequisite phase, and CAPH still does the real install afterwards. This
-replaces an 8-15 minute install with a 1-2 minute rescue boot, and the
-only code that changes is the "not reachable" branch of
-`InstallOSOnAllHBMS`.
-
-There is a heavier alternative. CAPH inspects each `HetznerBareMetalHost`
-and lists its disks under `HardwareDetails`, so kubeaid-cli could read
-that and skip scanning altogether. But `HardwareDetails` is only filled in
-after the host is registered and CAPH has run, so kubeaid-cli would have
-to create the `HetznerBareMetalHost` objects before building the storage
-plan, which reorders the bootstrap. Rescue-scan needs none of that, so it
-is the better first step.
+A heavier alternative would skip scanning altogether: CAPH inspects each
+`HetznerBareMetalHost` and lists its disks under `HardwareDetails`, so
+kubeaid-cli could read that instead of booting rescue and running `lsblk`.
+But `HardwareDetails` is only filled in after the host is registered and
+CAPH has run, so kubeaid-cli would have to create the
+`HetznerBareMetalHost` objects before building the storage plan, which
+reorders the bootstrap. Rescue-scan needs none of that, which is why it
+was the first step taken.

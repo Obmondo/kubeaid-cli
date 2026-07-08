@@ -83,8 +83,8 @@ func realSSHOpen(ctx context.Context, address, privateKey string) (executor.Inte
 // open — one wins the slot, the second finds the cached entry on
 // retry. For different hosts, the second caller still waits behind
 // the first under the same mutex; that's OK because the parallel
-// InstallOSOnAllHBMS goroutines stagger naturally (TCP probes
-// complete at different real-world times as each OS install
+// BootAllHBMSIntoRescue goroutines stagger naturally (TCP probes
+// complete at different real-world times as each rescue boot
 // finishes), and the per-host open is fast (single TCP+KEX, a few
 // hundred ms at most). Holding a coarse lock is simpler than
 // per-host mutexes and the contention is negligible.

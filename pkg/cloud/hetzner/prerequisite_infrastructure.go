@@ -40,23 +40,24 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		}
 		bar.Substep("Registered Hetzner Bare Metal SSH key")
 
-		// OS install is the longest single step in the bare-metal
-		// path: 8-12 minutes per server in parallel. Surface a
-		// transient "installing…" line under the spinner so the
-		// operator can see why the bar's been sitting at the same
-		// step for several minutes; the count is rendered up front
-		// so they have a sense of the wall-clock floor.
+		// Booting into rescue is the longest single step in the
+		// bare-metal prerequisite path, but far shorter than a full
+		// install: a hardware reset into a ramdisk Debian, 1-2 min
+		// per server in parallel. Surface a transient line under the
+		// spinner so the operator can see why the bar's been sitting
+		// at the same step; the count is rendered up front so they
+		// have a sense of the wall-clock floor.
 		bmHostCount := countBareMetalHosts(hetznerConfig)
 		releaseInstall := bar.InProgress(fmt.Sprintf(
-			"Installing OS on %d bare-metal server(s) (~8-15 min per server typical, up to 20 min, in parallel)",
+			"Booting %d bare-metal server(s) into rescue (~1-2 min per server, in parallel)",
 			bmHostCount,
 		))
-		err := h.InstallOSOnAllHBMS(ctx)
+		err := h.BootAllHBMSIntoRescue(ctx)
 		releaseInstall()
 		if err != nil {
-			return fmt.Errorf("installing OS on Hetzner bare-metal servers: %w", err)
+			return fmt.Errorf("booting Hetzner bare-metal servers into rescue: %w", err)
 		}
-		bar.Substep(fmt.Sprintf("Installed OS on %d bare-metal server(s)", bmHostCount))
+		bar.Substep(fmt.Sprintf("Booted %d bare-metal server(s) into rescue", bmHostCount))
 
 		if err := h.GenerateStoragePlans(ctx, hetznerConfig); err != nil {
 			return fmt.Errorf("generating storage plans: %w", err)
