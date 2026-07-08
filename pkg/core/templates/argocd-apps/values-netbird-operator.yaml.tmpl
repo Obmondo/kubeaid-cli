@@ -1,20 +1,29 @@
 {{- /*
 The kubeaid chart wraps the upstream operator: `netbird-operator:` is the
-subchart; networkRouter / networkResources / clusterProxy are top-level
-wrapper values — hence the differing indentation.
+subchart; group / networkRouter / networkResources / clusterProxy are
+top-level wrapper values — hence the differing indentation.
 
 managementURL: cluster.netbird.dns (VPN) or netbird.<base> (workload);
 omitted when underivable — the operator would fall back to NetBird Cloud.
 The API token flows via the netbird-mgmt-api-key Secret, not values.
 
-The router + traefik-internal resource render when a mesh DNS zone is set;
-the zone and k8s-<cluster> group must already exist in NetBird (see
-printNetBirdOperatorInstructions). ClusterProxy is named after cluster.name.
+group is the shared cluster group (k8s-<cluster>): the ClusterProxy and the
+traefik-internal networkResource both join it — the resource omits its own
+`groups` to inherit it — so one NetBird policy on the group grants the
+kube-API proxy plus exposed Services. The chart provisions the group (Group
+CR) when the router or proxy is enabled; only the mesh DNS zone must
+pre-exist in NetBird (see printNetBirdOperatorInstructions).
+
+The router + traefik-internal resource render when a mesh DNS zone is set.
+ClusterProxy is named after cluster.name.
 */ -}}
 {{- if .NetBirdOperatorEnabled }}
 {{- if .NetBirdManagementURL }}
 netbird-operator:
   managementURL: {{ .NetBirdManagementURL | quote }}
+{{- end }}
+{{- if or .NetBirdRouterEnabled .NetBirdClusterProxyEnabled }}
+group: {{ .NetBirdClusterGroup | quote }}
 {{- end }}
 {{- if .NetBirdRouterEnabled }}
 networkRouter:
@@ -25,8 +34,6 @@ networkResources:
   - name: traefik-internal
     namespace: traefik
     service: traefik-internal
-    groups:
-      - {{ .NetBirdInternalIngressGroup | quote }}
 {{- end }}
 {{- if .NetBirdClusterProxyEnabled }}
 clusterProxy:

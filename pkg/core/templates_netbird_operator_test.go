@@ -47,29 +47,15 @@ func subMap(t *testing.T, m map[string]any, key string) map[string]any {
 	return sub
 }
 
-// stringSlice asserts v is a []any of strings (as produced by
-// sigs.k8s.io/yaml unmarshalling into map[string]any) and returns it as
-// a plain []string for comparison.
-func stringSlice(t *testing.T, v any) []string {
-	t.Helper()
-
-	raw, ok := v.([]any)
-	require.True(t, ok, "expected a slice, got %T", v)
-
-	out := make([]string, len(raw))
-	for i, e := range raw {
-		s, ok := e.(string)
-		require.True(t, ok, "expected element %d to be a string, got %T", i, e)
-		out[i] = s
-	}
-	return out
-}
-
 // TestNetBirdOperatorValuesTemplate covers values-netbird-operator.yaml.tmpl's
 // current shape: the whole overlay is gated on NetBirdOperatorEnabled, but
-// networkRouter / networkResources / clusterProxy render as TOP-LEVEL keys
-// (siblings of netbird-operator:, not nested under it) — only managementURL
-// nests under netbird-operator:, and only when it's non-empty.
+// group / networkRouter / networkResources / clusterProxy render as TOP-LEVEL
+// keys (siblings of netbird-operator:, not nested under it) — only
+// managementURL nests under netbird-operator:, and only when it's non-empty.
+//
+// group is the shared cluster group, emitted whenever the router or proxy is
+// enabled; the traefik-internal networkResource carries no groups of its own
+// so it inherits group, and the ClusterProxy joins it chart-side.
 //
 // Fixtures mirror getTemplateValues' invariants: NetBirdRouterEnabled=true
 // implies NetBird != nil (dnsZone comes from .NetBird.DNSZone), and
@@ -91,19 +77,23 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 					},
 				},
 			},
-			NetBirdRouterEnabled:        true,
-			NetBirdClusterProxyEnabled:  true,
-			NetBirdInternalIngressGroup: "k8s-acme-prod",
+			NetBirdRouterEnabled:       true,
+			NetBirdClusterProxyEnabled: true,
+			NetBirdClusterGroup:        "k8s-acme-prod",
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
 
-		// networkRouter, networkResources, and clusterProxy are top-level
-		// siblings of netbird-operator — NOT nested under it.
-		require.Len(t, parsed, 4)
-		for _, key := range []string{"netbird-operator", "networkRouter", "networkResources", "clusterProxy"} {
+		// group, networkRouter, networkResources, and clusterProxy are
+		// top-level siblings of netbird-operator — NOT nested under it.
+		require.Len(t, parsed, 5)
+		for _, key := range []string{"netbird-operator", "group", "networkRouter", "networkResources", "clusterProxy"} {
 			assert.Contains(t, parsed, key)
 		}
+
+		// The shared cluster group both the ClusterProxy and the
+		// traefik-internal resource join.
+		assert.Equal(t, "k8s-acme-prod", parsed["group"])
 
 		op := subMap(t, parsed, "netbird-operator")
 		require.Len(t, op, 1, "netbird-operator only carries managementURL now")
@@ -122,7 +112,8 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 		assert.Equal(t, "traefik-internal", res["name"])
 		assert.Equal(t, "traefik", res["namespace"])
 		assert.Equal(t, "traefik-internal", res["service"])
-		assert.Equal(t, []string{"k8s-acme-prod"}, stringSlice(t, res["groups"]))
+		_, hasGroups := res["groups"]
+		assert.False(t, hasGroups, "traefik-internal carries no groups of its own — it inherits the shared top-level group")
 
 		proxy := subMap(t, parsed, "clusterProxy")
 		assert.Equal(t, true, proxy["enabled"])
@@ -166,15 +157,16 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 			NetBird: &config.NetBirdConfig{
 				DNSZone: "mesh.acme.com",
 			},
-			NetBirdRouterEnabled:        true,
-			NetBirdInternalIngressGroup: "k8s-acme-prod",
+			NetBirdRouterEnabled: true,
+			NetBirdClusterGroup:  "k8s-acme-prod",
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
 
-		require.Len(t, parsed, 2)
+		require.Len(t, parsed, 3)
 		assert.NotContains(t, parsed, "netbird-operator", "empty managementURL means no netbird-operator: key at all")
 		assert.NotContains(t, parsed, "clusterProxy")
+		assert.Equal(t, "k8s-acme-prod", parsed["group"])
 
 		router := subMap(t, parsed, "networkRouter")
 		assert.Equal(t, true, router["enabled"])
@@ -186,7 +178,8 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 		require.Len(t, resourcesRaw, 1)
 		res, ok := resourcesRaw[0].(map[string]any)
 		require.True(t, ok)
-		assert.Equal(t, []string{"k8s-acme-prod"}, stringSlice(t, res["groups"]))
+		_, hasGroups := res["groups"]
+		assert.False(t, hasGroups, "traefik-internal inherits the shared top-level group, not its own")
 	})
 
 	t.Run("clusterProxy enabled alone: only top-level clusterProxy renders", func(t *testing.T) {
@@ -199,14 +192,16 @@ func TestNetBirdOperatorValuesTemplate(t *testing.T) {
 				},
 			},
 			NetBirdClusterProxyEnabled: true,
+			NetBirdClusterGroup:        "k8s-acme-prod",
 		}
 
 		_, parsed := renderNetBirdOperatorValues(t, tv)
 
-		require.Len(t, parsed, 1)
+		require.Len(t, parsed, 2)
 		assert.NotContains(t, parsed, "netbird-operator")
 		assert.NotContains(t, parsed, "networkRouter")
 		assert.NotContains(t, parsed, "networkResources")
+		assert.Equal(t, "k8s-acme-prod", parsed["group"], "the ClusterProxy joins the shared cluster group")
 
 		proxy := subMap(t, parsed, "clusterProxy")
 		assert.Equal(t, true, proxy["enabled"])

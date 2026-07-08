@@ -190,10 +190,14 @@ type TemplateValues struct {
 	// dnsZoneRef. The chart hard-requires the zone, so the router is only
 	// emitted when we have one.
 	NetBirdRouterEnabled bool
-	// NetBirdInternalIngressGroup is the NetBird group the traefik-internal
-	// networkResource is bound to (k8s-<cluster.name>); the operator creates
-	// it in the NetBird dashboard during bootstrap.
-	NetBirdInternalIngressGroup string
+	// NetBirdClusterGroup is the shared NetBird group for this cluster
+	// (k8s-<cluster.name>), rendered as the operator chart's top-level
+	// `group:`. The ClusterProxy peer and the traefik-internal
+	// networkResource both join it, so one NetBird policy targeting the
+	// group grants access to the cluster's kube-API proxy and exposed
+	// Services. The chart provisions the group (Group CR) — it no longer
+	// has to pre-exist in the dashboard.
+	NetBirdClusterGroup string
 
 	// NetBirdAPIKey is secrets.yaml's netbird.apiKey (a Mgmt
 	// service-user access token), sealed into the
@@ -306,11 +310,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		NetBirdManagementURL: netbirdMgmtURL,
 		NetBirdAPIKey:        corenetbird.APIKey(),
 
-		NetBird:                     netbirdCfg,
-		NetBirdClusterProxyEnabled:  netbirdProxyEnabled,
-		NetBirdOperatorEnabled:      corenetbird.OperatorEnabled(),
-		NetBirdRouterEnabled:        netbirdRouterEnabled,
-		NetBirdInternalIngressGroup: "k8s-" + config.ParsedGeneralConfig.Cluster.Name,
+		NetBird:                    netbirdCfg,
+		NetBirdClusterProxyEnabled: netbirdProxyEnabled,
+		NetBirdOperatorEnabled:     corenetbird.OperatorEnabled(),
+		NetBirdRouterEnabled:       netbirdRouterEnabled,
+		NetBirdClusterGroup:        "k8s-" + config.ParsedGeneralConfig.Cluster.Name,
 
 		CloudflareAPIToken: cloudflareAPIToken(),
 
