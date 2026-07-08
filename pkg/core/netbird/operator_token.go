@@ -368,16 +368,15 @@ func waitForNetBirdOperatorSecret(
 func printNetBirdOperatorInstructions(netbirdDNS string) {
 	dashboardURL := "https://" + netbirdDNS + "/"
 
-	// The network router references an existing NetBird DNS zone and the
-	// traefik-internal networkResource references a group — both are
-	// dashboard-side (kubeaid-cli only points at them by name), so the
-	// operator has to create them here too.
+	// The network router references an EXISTING NetBird DNS zone by name
+	// (dnsZoneRef) — the operator never creates the zone, so it still has to
+	// be made by hand here. The shared cluster group is no longer listed:
+	// the netbird-operator chart provisions it via a Group CR.
 	cluster := config.ParsedGeneralConfig.Cluster
 	meshDNSZone := ""
 	if cluster.NetBird != nil {
 		meshDNSZone = cluster.NetBird.DNSZone
 	}
-	internalGroup := "k8s-" + cluster.Name
 
 	lines := []string{
 		"",
@@ -398,20 +397,16 @@ func printNetBirdOperatorInstructions(netbirdDNS string) {
 	}
 
 	// Only shown when a mesh DNS zone is set — that's when kubeaid-cli renders
-	// the network router + traefik-internal networkResource that need them.
+	// the network router + traefik-internal networkResource that reference it.
 	//
-	// TODO : create the zone + groups via the Mgmt API once the PAT is in hand
-	// (the operator only references them, it never creates them) — see
-	// docs/TODO.md "Create the mesh DNS zone + groups via the Mgmt API".
+	// TODO : create the mesh DNS zone via the Mgmt API once the PAT is in hand
+	// (the operator only references the zone, it never creates it) — see
+	// docs/TODO.md "Create the mesh DNS zone via the Mgmt API".
 	if meshDNSZone != "" {
 		lines = append(lines,
 			"    4. Sidebar  →  Networks  →  DNS zones  →  + create a DNS zone:",
 			"          Domain:  "+meshDNSZone,
 			"          (the network router publishes exposed Services under it)",
-			"    5. Sidebar  →  Team  →  Groups  →  + create a group:",
-			"          Name:  "+internalGroup,
-			"          (the internal Traefik is exposed to this group — add a",
-			"           NetBird policy granting your peers access to it)",
 		)
 	}
 
