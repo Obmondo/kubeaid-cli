@@ -5,6 +5,12 @@
 {{- $preCreatedLB := (and .HetznerConfig (not .HCloudSingleNodePublic) (or (eq .ClusterConfig.Type "vpn") (and (eq .ClusterConfig.Type "workload") .HetznerConfig.HCloudVPNCluster))) -}}
 global:
   clusterName: {{ .ClusterConfig.Name }}
+  {{- /* Names HCloud MachineTemplates after a hash of their spec, so a changed
+       machineType rotates the name and ClusterAPI rolls the machines. CAPI
+       compares only the template's name, never its contents, so with the fixed
+       legacy name an instance-type change never rolls. Changing only replicas
+       leaves the name alone, and the control plane scales out instead. */}}
+  machineTemplateRotation: {{ .ClusterConfig.MachineTemplateRotation }}
   {{- if .ObmondoConfig }}
   customerid: {{ .ObmondoConfig.CustomerID }}
   {{- end }}

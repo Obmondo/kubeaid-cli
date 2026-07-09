@@ -52,9 +52,13 @@ var (
 		"argocd-apps/templates/cluster-api-operator.yaml.tmpl",
 		"argocd-apps/values-cluster-api-operator.yaml.tmpl",
 		"argocd-apps/templates/capi-cluster.yaml.tmpl",
-		"argocd-apps/values-capi-cluster.yaml.tmpl",
+		TemplateNameCapiClusterValues,
 	}
 )
+
+// Rendered by `cluster sync` on its own, to reconcile a running cloud cluster onto
+// general.yaml without re-rendering every other kubeaid-config file.
+const TemplateNameCapiClusterValues = "argocd-apps/values-capi-cluster.yaml.tmpl"
 
 // AWS specific template names.
 var (

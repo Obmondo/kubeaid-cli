@@ -206,11 +206,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -353,6 +353,7 @@ REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1b
 | name | `string` |  | Name of the Kubernetes cluster.<br><br>We don't allow using dots in the cluster name, since it can cause issues with tools like<br>ClusterAPI and Cilium : which use the cluster name to generate other configurations.<br> |
 | k8sVersion | `string` |  | Kubernetes version (>= 1.30.0).<br> |
 | enableAuditLogging | `bool` | True | Whether you would like to enable Kubernetes Audit Logging out of the box.<br>Suitable Kubernetes API configurations will be done for you automatically. And they can be<br>changed using the apiSever struct field.<br> |
+| machineTemplateRotation | `bool` | False | MachineTemplateRotation names the capi-cluster chart's HCloud MachineTemplates<br>after a hash of their spec, so that changing a machineType rotates the name.<br><br>ClusterAPI decides whether a Machine is up to date by comparing the name of<br>the template it was cloned from against the name its owner references — it<br>never compares the template's contents. Without rotation, a machineType change<br>therefore never rolls the cluster: it applies silently to machines created<br>later, leaving a control plane with mixed instance types.<br><br>Enabling this on an existing cluster renames the template even when its spec<br>is unchanged, which rolls the control plane once. Scale to at least 3<br>control-plane replicas first, so etcd keeps quorum while the machines are<br>replaced one at a time.<br><br>Hetzner HCloud only — bare-metal workers are Machine objects, not<br>MachineDeployments, and their templates keep the fixed legacy names.<br> |
 | acmeEmail | `string` |  | ACMEEmail is the contact email used to register with the ACME<br>CA (Let's Encrypt) when cert-manager's ClusterIssuer is<br>rendered. Required when cluster.keycloak.mode=managed (the<br>keycloakx and netbird-mgmt Ingresses both need TLS certs);<br>optional otherwise. Used as Issuer.spec.acme.email.<br> |
 | acmeDNS01 | [`ACMEDNS01Config`](#acmedns01config) |  | ACMEDNS01 switches the rendered ClusterIssuer's solver from<br>the HTTP-01 default to DNS-01. Required for the split-horizon<br>mesh pattern: NetBird-exposed services use real public DNS<br>names (e.g. argocd.staging.acme.com) that only resolve inside<br>the mesh — Let's Encrypt can never reach them over HTTP, but<br>proves ownership via a TXT record on the public zone instead.<br>Requires cluster.acmeEmail plus the provider credential in<br>secrets.yaml (acme.cloudflareApiToken).<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
@@ -456,11 +457,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 

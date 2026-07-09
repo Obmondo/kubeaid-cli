@@ -49,6 +49,14 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 		utils.MustSetEnv(constants.EnvNameKubeconfig, mgmtKubeconfig)
 	}
 
+	// Rolling the control plane is not undoable : make the operator name the cluster the
+	// kubeconfig's current-context resolved to, before any machine is replaced.
+	confirmErr := confirmLiveClusterContext(nil,
+		utils.MustGetEnv(constants.EnvNameKubeconfig),
+		"upgrade the cluster, replacing its machines",
+	)
+	assert.AssertErrNil(ctx, confirmErr, "Refusing to upgrade")
+
 	// Construct the Kubernetes cluster client.
 	clusterClient, err := kubernetes.CreateKubernetesClient(ctx,
 		utils.MustGetEnv(constants.EnvNameKubeconfig),
@@ -211,6 +219,18 @@ func upgradeControlPlane(ctx context.Context,
 		machineTemplateName     = kubeadmControlPlaneName
 	)
 
+	// Under MachineTemplate name rotation the chart names the template after a hash of its
+	// spec, so a new image already renders a differently-named object. There is nothing to
+	// delete and recreate — `<cluster>-control-plane` does not exist. Syncing the whole app
+	// creates the new template and repoints the KubeadmControlPlane at it, which is what
+	// makes ClusterAPI roll.
+	if config.ParsedGeneralConfig.Cluster.MachineTemplateRotation {
+		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, nil)
+		assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app for control plane upgrade")
+
+		return
+	}
+
 	// When the user wants an OS upgrade,
 	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource
 	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
@@ -265,6 +285,16 @@ func upgradeNodeGroup(ctx context.Context,
 		kubeadmConfigTemplateName = machineDeploymentName
 		machineTemplateName       = machineDeploymentName
 	)
+
+	// Under MachineTemplate name rotation the template is named after a hash of its spec, so
+	// `<cluster>-<node-group>` does not exist to be deleted. Syncing the whole app creates the
+	// newly-named template and repoints the MachineDeployment at it, which rolls the nodes.
+	if config.ParsedGeneralConfig.Cluster.MachineTemplateRotation {
+		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster, nil)
+		assert.AssertErrNil(ctx, syncErr, "Failed syncing capi-cluster ArgoCD app for node group upgrade")
+
+		return
+	}
 
 	// When the user wants to do an OS upgrade,
 	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource

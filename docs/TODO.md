@@ -168,67 +168,29 @@ kubeaid-cli with the offending path, same shape as the parser's
 existing `validate` errors. Defer until we hit the next case from a
 different field; the regions one is fixed at source.
 
-### Day-2 `cluster sync` for cloud instance-type changes (AWS / Azure / hcloud)
+### Day-2 `cluster sync` for cloud instance-type changes (AWS / Azure)
 
-Changing a machine `instanceType` (control-plane or a node group) in
-general.yaml has no day-2 propagation for a running cloud cluster.
-`cluster sync` hard-refuses every non-bare-metal provider
-(`cmd/kubeaid-core/root/cluster/sync/sync.go` — "only needed for the Bare
-Metal (KubeOne) provider"), and `cluster upgrade` only patches
-`.global.kubernetes.version` + the machine image
-(`pkg/core/upgrade_cluster.go`, `pkg/cloud/*/cluster_upgrade.go`) — it never
-re-renders `instanceType`. Only `bootstrap` re-renders the full
-`values-capi-cluster.yaml`. So today you re-run bootstrap or hand-edit the
-rendered values file.
+hcloud is done — see `docs/specs/2026-07-09-machinetemplate-rotation-day2-sync.md`.
 
-Goal: extend `cluster sync` to AWS/Azure/hcloud so an `instanceType` change
-in general.yaml reconciles onto the live cluster — with a kubeone-style
-inline diff + double approval, because this runs on live clusters and rolls
-nodes.
+The delete+recreate plan this section used to carry was wrong, and worth recording
+why: ClusterAPI decides a Machine is up to date by comparing the *name* of the
+template it was cloned from against the name its owner references
+(`matchesTemplateClonedFrom` for KCP, `MachineTemplateUpToDate` for MachineDeployments).
+It never compares the template's contents. Recreating a template under its old name
+therefore rolls nothing, and the new instanceType applies silently to machines
+created later. `cluster upgrade` only appeared to work because the Kubernetes version
+change was doing the rolling.
 
-Flow (reuses existing primitives):
+The fix shipped for hcloud is to name MachineTemplates after a hash of their spec, so
+a changed instanceType rotates the name and CAPI rolls normally — pure GitOps, no
+client-go surgery. It is gated on `cluster.machineTemplateRotation` because adopting
+it renames the template once, which costs one control-plane roll.
 
-1. Re-render config from general.yaml → new `values-capi-cluster.yaml` (+ the
-   verbatim `kubeaid-cli.general.yaml` copy) via `getTemplateValues` +
-   `createOrUpdateNonSecretFiles` (`pkg/core/setup_kubeaid_config.go`).
-2. **Inline diff** of the re-rendered files → confirm (approval #1). NEW —
-   there is no inline diff/plan today; the only diff is the forge PR diff.
-3. Create PR → `git.WaitUntilPRMerged` (approval #2 = the merge).
-4. **Delete+recreate** the affected MachineTemplate(s) with the new
-   `instanceType`. Required because MachineTemplate specs are immutable and
-   the capi-cluster chart (kubeaid repo) names them with FIXED names
-   (`<cluster>-control-plane`, `<cluster>-md-0`, `<cluster>-system` /
-   `-user`) — so a plain ArgoCD sync of a new instanceType is rejected by the
-   API server, and CAPI wouldn't roll anyway (the template ref name is
-   unchanged). Generalize the existing `CloudProvider.UpdateMachineTemplate`
-   (`pkg/cloud/cloud_provider.go:29`; AWS/Azure impls in
-   `pkg/cloud/*/cluster_upgrade.go`) from *image* → *instanceType*. hcloud
-   needs an impl too. This is exactly what `cluster upgrade` already does for
-   the image.
-5. Sync the `capi-cluster` ArgoCD app
-   (`SyncArgoCDApp(constants.ArgoCDAppCapiCluster)`).
-6. **Watch** the KubeadmControlPlane (and MachineDeployments) roll — reuse
-   `renderCAPIStatusTable` / the machine-wait logic (`pkg/utils/kubernetes/
-   clusterapi.go`). A CP-template change makes the KCP auto-roll; an
-   MD-template change needs `clusterctl RolloutRestart` (as upgrade does).
+Remaining: AWS and Azure name their MachineTemplates the same fixed way
+(`charts/aws/templates/AWSMachineTemplate.yaml:4`,
+`charts/azure/templates/AzureMachineTemplate.yaml:4`) and have the same silent no-op.
+`cluster sync` still refuses both providers. Porting the `_helpers.tpl` name/spec
+helpers is mechanical; the CLI side already generalises (`planCapiValuesSync` reads
+only the rendered values, and would need each provider's values paths added).
 
-Also add the same inline-diff + double-approval gate to `cluster upgrade` —
-it has the PR-merge gate today but no inline diff.
-
-Open scoping questions (decide before building):
-
-- Both control-plane and worker instance types (CP change → KCP roll, node
-  group change → that MachineDeployment rolls)? Assume yes.
-- v1 = instance-type only, or also fold in the *mutable* changes (replicas,
-  add/remove node groups) that sync cleanly with NO template recreate? Those
-  are the easy, fully-GitOps path (PR + sync + watch, no delete+recreate);
-  instance-type is the one field needing the recreate.
-
-Alternative to the CLI-driven delete+recreate: make the capi-cluster chart
-name MachineTemplates by a spec hash (`-md-0-<hash>`) so a new instanceType
-→ new template name → ArgoCD creates it and CAPI rolls naturally (pure
-GitOps, no client-go surgery). That's a kubeaid-repo chart change affecting
-every cluster's rollout behaviour, so it's a separate PR — noted as the
-cleaner long-term end-state if we're willing to touch the chart.
-
-Design captured 2026-07-08 from a brainstorming session; not yet built.
+Also still open: `cluster upgrade` has the PR-merge gate but no inline diff.

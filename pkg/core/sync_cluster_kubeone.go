@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
@@ -45,6 +47,17 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	defer bar.Finish()
 	ctx = progress.WithBar(ctx, bar)
 	bar.Describe("Syncing cluster with general.yaml")
+
+	// This reconciles a live cluster : cordons, drains and restarts kubelet on its nodes.
+	// Nothing in kubeaid-cli selects a kubeconfig context, so make the operator confirm which
+	// cluster the current-context resolved to. Skipped when there is no kubeconfig yet — then
+	// there is no live cluster to act on, and the manifest is the only source of truth.
+	if _, err := os.Stat(constants.OutputPathMainClusterKubeconfig); err == nil {
+		confirmErr := confirmLiveClusterContext(bar, constants.OutputPathMainClusterKubeconfig,
+			"reconcile the cluster's KubeOne manifest and kubelet flags onto general.yaml",
+		)
+		assert.AssertErrNil(ctx, confirmErr, "Refusing to sync")
+	}
 
 	gitAuthMethod := git.GetGitAuthMethod(ctx)
 	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)

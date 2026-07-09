@@ -250,6 +250,20 @@ func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *Templa
 	createFileFromTemplate(ctx, destinationFilePath, constants.KubeOneConfigTemlateName, templateValues)
 }
 
+// Creates / updates the values-capi-cluster.yaml file, which the capi-cluster ArgoCD App
+// renders the cluster's ClusterAPI resources from. Rendered on its own by `cluster sync`,
+// so a day-2 reconcile touches the ClusterAPI values and nothing else.
+func createOrUpdateCapiClusterValuesFile(ctx context.Context,
+	templateValues *TemplateValues,
+	clusterDir string,
+) {
+	destinationFilePath := path.Join(
+		clusterDir,
+		strings.TrimSuffix(constants.TemplateNameCapiClusterValues, ".tmpl"),
+	)
+	createFileFromTemplate(ctx, destinationFilePath, constants.TemplateNameCapiClusterValues, templateValues)
+}
+
 // Creates / updates the cluster's kubeaid-cli.general.yaml copy in the KubeAid Config
 // repository - the source of truth the KubeOne manifest derives from, kept next to it so a
 // day-2 PR always carries both.
