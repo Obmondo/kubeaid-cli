@@ -99,11 +99,17 @@ func vpnClusterNextStepsLines(keycloakAdminPassword string) []string {
 // generalNextStepsLines is the closing panel for every non-VPN cluster : how to talk to the
 // cluster, where its state lives, and how day-2 changes flow.
 func generalNextStepsLines() []string {
+	// For the local provider the k3d cluster is both management and main, so the kubeconfig path is the management-cluster one
+	kubeconfigPath := constants.OutputPathMainClusterKubeconfig
+	if globals.CloudProviderName == constants.CloudProviderLocal {
+		kubeconfigPath = constants.OutputPathManagementClusterHostKubeconfig
+	}
+
 	lines := []string{
 		"",
 		"  1. Talk to the cluster",
 		"",
-		"       export KUBECONFIG=" + constants.OutputPathMainClusterKubeconfig,
+		"       export KUBECONFIG=" + kubeconfigPath,
 		"       kubectl get nodes && kubectl get pods -A",
 		"",
 		"  2. Manage everything via GitOps",

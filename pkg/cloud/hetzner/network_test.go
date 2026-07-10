@@ -99,6 +99,16 @@ func TestCreateNetwork(t *testing.T) {
 		t.Cleanup(func() { config.ParsedGeneralConfig = saved })
 		config.ParsedGeneralConfig = &config.GeneralConfig{
 			Cluster: config.ClusterConfig{Name: "test-cluster"},
+			Cloud: config.CloudConfig{
+				Hetzner: &config.HetznerConfig{
+					HCloud: &config.HCloudConfig{
+						HetznerNetwork: config.HetznerNetworkConfig{
+							CIDR:                    "10.0.0.0/16",
+							HCloudServersSubnetCIDR: "10.0.1.0/24",
+						},
+					},
+				},
+			},
 		}
 	}
 
