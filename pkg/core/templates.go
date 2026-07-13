@@ -190,15 +190,6 @@ type TemplateValues struct {
 	// dnsZoneRef. The chart hard-requires the zone, so the router is only
 	// emitted when we have one.
 	NetBirdRouterEnabled bool
-	// NetBirdClusterGroup is the shared NetBird group for this cluster
-	// (k8s-<cluster.name>), rendered as the operator chart's top-level
-	// `group:`. The ClusterProxy peer and the traefik-internal
-	// networkResource both join it, so one NetBird policy targeting the
-	// group grants access to the cluster's kube-API proxy and exposed
-	// Services. The chart provisions the group (Group CR) — it no longer
-	// has to pre-exist in the dashboard.
-	NetBirdClusterGroup string
-
 	// NetBirdAPIKey is secrets.yaml's netbird.apiKey (a Mgmt
 	// service-user access token), sealed into the
 	// netbird/netbird-mgmt-api-key Secret the operator reads.
@@ -314,7 +305,6 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		NetBirdClusterProxyEnabled: netbirdProxyEnabled,
 		NetBirdOperatorEnabled:     corenetbird.OperatorEnabled(),
 		NetBirdRouterEnabled:       netbirdRouterEnabled,
-		NetBirdClusterGroup:        "k8s-" + config.ParsedGeneralConfig.Cluster.Name,
 
 		CloudflareAPIToken: cloudflareAPIToken(),
 
