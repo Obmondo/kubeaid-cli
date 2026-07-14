@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -582,33 +583,45 @@ func (s *StoragePlans) GetApproval(ctx context.Context) {
 }
 
 /*
-By alikeness, I mean, the 2 disks across which the ZFS pool will be running, must be the same
-across all the nodes in the node-group. This makes the command to create a ZFS pool to be the same
-across the nodes, for e.g. :
+By alikeness, I mean, the disks across which the ZFS pool will be running, must be of the same
+count and type (SSD / HDD / NVMe) across all the nodes in the node-group.
 
-	zpool create primary mirror /dev/nvme0n1 /dev/nvme1n1
-
-For all the nodes in a node-group, we have a single KubeadmControlPlane / KubeadmConfig resource.
-And the ZFS pool creation command goes in the postKubeadm section of that resource. So, it must be
-same for all the nodes.
+All the nodes in a node-group share a single KubeadmControlPlane / KubeadmConfig resource, whose
+preKubeadm section runs the same `kubeaid-storagectl plan execute --os-size ... --zfs-pool-size ...`
+command on every node. Each node recomputes its own storage plan locally, so device names (sdc vs
+sdd) are free to differ between nodes — the kernel assigns them from port enumeration order, which
+isn't stable across otherwise identical machines. What must match is the resulting pool's shape:
+a mirror across 2 SSDs on one node and across 2 HDDs on another would give the node-group wildly
+different storage performance while being labelled identically.
 */
-func AreStoragePlansAlike(storagePlans []*StoragePlan) bool {
-	var referenceDisks []*Disk
-	for i, storagePlan := range storagePlans {
-		if i == 0 {
-			referenceDisks = storagePlan.ZFS
-			continue
-		}
+func CheckStoragePlansAlike(storagePlans []*StoragePlan) error {
+	if len(storagePlans) == 0 {
+		return nil
+	}
 
-		if len(storagePlan.ZFS) != len(referenceDisks) {
-			return false
-		}
-		for j, disk := range storagePlan.ZFS {
-			if referenceDisks[j].Name != disk.Name {
-				return false
-			}
+	reference := zfsDiskTypes(storagePlans[0])
+	for _, storagePlan := range storagePlans[1:] {
+		current := zfsDiskTypes(storagePlan)
+		if !slices.Equal(current, reference) {
+			return fmt.Errorf(
+				"server %s allocates the ZFS pool on %v, but server %s allocates it on %v",
+				storagePlan.ServerID, current,
+				storagePlans[0].ServerID, reference,
+			)
 		}
 	}
 
-	return true
+	return nil
+}
+
+// zfsDiskTypes returns the sorted disk types (SSD / HDD / NVMe) backing the
+// plan's ZFS pool. Sorted so CheckStoragePlansAlike compares them as a
+// multiset — allocation order within a plan carries no meaning.
+func zfsDiskTypes(storagePlan *StoragePlan) []string {
+	types := make([]string, 0, len(storagePlan.ZFS))
+	for _, disk := range storagePlan.ZFS {
+		types = append(types, disk.Type)
+	}
+	sort.Strings(types)
+	return types
 }
