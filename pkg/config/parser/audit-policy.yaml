@@ -1,13 +1,79 @@
 apiVersion: audit.k8s.io/v1
 kind: Policy
-# Don't generate audit events for all requests in the RequestReceived stage.
 omitStages:
   - "RequestReceived"
 rules:
-  # Log events with metadata (requesting user, timestamp, resource, verb, etc.) but not request or
-  # response body.
+  # Drop high-frequency system control plane identities
+  - level: None
+    users:
+      - "system:kube-controller-manager"
+      - "system:kube-scheduler"
+      - "system:apiserver"
+    verbs: ["get", "list", "watch"]
+
+  # Drop kube-proxy watches
+  - level: None
+    users: ["system:kube-proxy"]
+    verbs: ["watch"]
+
+  # Always log node identity secret access — before the broad node drop rule
   - level: Metadata
-    # Long-running requests like watches that fall under this rule will not generate an audit event
-    # in RequestReceived stage. We will omit those logs.
-    omitStages:
-      - "RequestReceived"
+    userGroups: ["system:nodes"]
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["secrets"]
+
+  # Drop node group reads (scoped to reads only — mutations still fall through)
+  - level: None
+    userGroups: ["system:nodes"]
+    verbs: ["get", "list", "watch"]
+
+  # Always log secret reads at Metadata, before the kube-system drop below.
+  # Otherwise a kube-system service account reading Secrets — a common
+  # lateral-movement / privilege-escalation path — would go unaudited.
+  - level: Metadata
+    verbs: ["get", "list", "watch"]
+    resources:
+      - group: ""
+        resources: ["secrets"]
+
+  # Drop kube-system SA read traffic (ArgoCD, cert-manager, Cilium etc.)
+  - level: None
+    userGroups: ["system:serviceaccounts:kube-system"]
+    verbs: ["get", "list", "watch"]
+
+  # Drop health/metrics endpoints
+  - level: None
+    nonResourceURLs:
+      - "/healthz*"
+      - "/readyz*"
+      - "/metrics"
+
+  # Never write secret bodies, no matter the verb
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
+
+  # Full detail for resources that matter most for security review
+  - level: RequestResponse
+    resources:
+      - group: "rbac.authorization.k8s.io"
+      - group: "networking.k8s.io"
+        resources: ["networkpolicies"]
+      - group: ""
+        resources: ["pods/exec", "pods/attach", "pods/portforward"]
+
+  # Request body for PV/PVC changes
+  - level: Request
+    resources:
+      - group: ""
+        resources: ["persistentvolumes", "persistentvolumeclaims"]
+
+  # Request body for general mutations
+  - level: Request
+    verbs: ["create", "update", "patch", "delete", "deletecollection"]
+
+  # Catch-all
+  - level: Metadata
