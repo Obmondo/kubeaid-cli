@@ -59,8 +59,8 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			host.WWNs = collectAndSortWWNs(sp.OS)
 		}
 
-		if !storageplan.AreStoragePlansAlike(storagePlans) {
-			return fmt.Errorf("control-plane storage plans aren't alike")
+		if err := storageplan.CheckStoragePlansAlike(storagePlans); err != nil {
+			return fmt.Errorf("control-plane storage plans aren't alike: %w", err)
 		}
 
 		allStoragePlans["control-plane"] = storagePlans
@@ -96,8 +96,8 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 			host.WWNs = collectAndSortWWNs(sp.OS)
 		}
 
-		if !storageplan.AreStoragePlansAlike(storagePlans) {
-			return fmt.Errorf("node-group %s storage plans aren't alike", nodeGroup.Name)
+		if err := storageplan.CheckStoragePlansAlike(storagePlans); err != nil {
+			return fmt.Errorf("node-group %s storage plans aren't alike: %w", nodeGroup.Name, err)
 		}
 
 		allStoragePlans[nodeGroup.Name] = storagePlans

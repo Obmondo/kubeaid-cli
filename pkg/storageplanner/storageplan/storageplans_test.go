@@ -14,84 +14,107 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
-func TestAreStoragePlansAlike(t *testing.T) {
-	mkPlan := func(zfsDiskNames ...string) *StoragePlan {
-		disks := make([]*Disk, len(zfsDiskNames))
-		for i, name := range zfsDiskNames {
-			disks[i] = &Disk{Name: name}
+func TestCheckStoragePlansAlike(t *testing.T) {
+	mkPlan := func(serverID string, zfsDiskTypes ...string) *StoragePlan {
+		disks := make([]*Disk, len(zfsDiskTypes))
+		for i, diskType := range zfsDiskTypes {
+			disks[i] = &Disk{Type: diskType}
 		}
-		return &StoragePlan{ZFS: disks}
+		return &StoragePlan{ServerID: serverID, ZFS: disks}
 	}
 
 	tests := []struct {
-		name  string
-		plans []*StoragePlan
-		want  bool
+		name      string
+		plans     []*StoragePlan
+		wantAlike bool
 	}{
 		{
-			name:  "empty input",
-			plans: nil,
-			want:  true,
+			name:      "empty input",
+			plans:     nil,
+			wantAlike: true,
 		},
 		{
-			name:  "single plan",
-			plans: []*StoragePlan{mkPlan("nvme0n1", "nvme1n1")},
-			want:  true,
+			name:      "single plan",
+			plans:     []*StoragePlan{mkPlan("100", constants.DiskTypeNVMe, constants.DiskTypeNVMe)},
+			wantAlike: true,
 		},
 		{
-			name: "all plans share the same ZFS disks",
+			name: "all plans share the same ZFS disk types",
 			plans: []*StoragePlan{
-				mkPlan("nvme0n1", "nvme1n1"),
-				mkPlan("nvme0n1", "nvme1n1"),
-				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("100", constants.DiskTypeNVMe, constants.DiskTypeNVMe),
+				mkPlan("101", constants.DiskTypeNVMe, constants.DiskTypeNVMe),
+				mkPlan("102", constants.DiskTypeNVMe, constants.DiskTypeNVMe),
 			},
-			want: true,
+			wantAlike: true,
 		},
 		{
-			name: "first disk diverges",
+			// The SATA-port-ordering case: the same 2 SSDs enumerate at
+			// different device names on each node. Names carry no meaning —
+			// every node runs `kubeaid-storagectl plan execute` and picks
+			// its own devices — so these plans are alike.
+			name: "same disk types at different device names are alike",
 			plans: []*StoragePlan{
-				mkPlan("nvme0n1", "nvme1n1"),
-				mkPlan("sda", "sdb"),
+				{ServerID: "100", ZFS: []*Disk{
+					{Name: "sdb", Type: constants.DiskTypeSSD},
+					{Name: "sdd", Type: constants.DiskTypeSSD},
+				}},
+				{ServerID: "101", ZFS: []*Disk{
+					{Name: "sdb", Type: constants.DiskTypeSSD},
+					{Name: "sdc", Type: constants.DiskTypeSSD},
+				}},
 			},
-			want: false,
+			wantAlike: true,
 		},
 		{
-			name: "second disk diverges",
+			name: "disk type diverges",
 			plans: []*StoragePlan{
-				mkPlan("sda", "sdb"),
-				mkPlan("sda", "sdc"),
+				mkPlan("100", constants.DiskTypeSSD, constants.DiskTypeSSD),
+				mkPlan("101", constants.DiskTypeHDD, constants.DiskTypeHDD),
 			},
-			want: false,
+			wantAlike: false,
+		},
+		{
+			name: "mixed-type pool diverges from uniform pool",
+			plans: []*StoragePlan{
+				mkPlan("100", constants.DiskTypeSSD, constants.DiskTypeSSD),
+				mkPlan("101", constants.DiskTypeSSD, constants.DiskTypeHDD),
+			},
+			wantAlike: false,
 		},
 		{
 			name: "later plan has more ZFS disks than the first",
 			plans: []*StoragePlan{
-				mkPlan("nvme0n1"),
-				mkPlan("nvme0n1", "nvme1n1"),
+				mkPlan("100", constants.DiskTypeNVMe),
+				mkPlan("101", constants.DiskTypeNVMe, constants.DiskTypeNVMe),
 			},
-			want: false,
+			wantAlike: false,
 		},
 		{
 			name: "later plan has fewer ZFS disks than the first",
 			plans: []*StoragePlan{
-				mkPlan("nvme0n1", "nvme1n1"),
-				mkPlan("nvme0n1"),
+				mkPlan("100", constants.DiskTypeNVMe, constants.DiskTypeNVMe),
+				mkPlan("101", constants.DiskTypeNVMe),
 			},
-			want: false,
+			wantAlike: false,
 		},
 		{
 			name: "all plans have no ZFS disks",
 			plans: []*StoragePlan{
-				mkPlan(),
-				mkPlan(),
+				mkPlan("100"),
+				mkPlan("101"),
 			},
-			want: true,
+			wantAlike: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, AreStoragePlansAlike(tc.plans))
+			err := CheckStoragePlansAlike(tc.plans)
+			if tc.wantAlike {
+				assert.NoError(t, err)
+			} else {
+				assert.Error(t, err)
+			}
 		})
 	}
 }
