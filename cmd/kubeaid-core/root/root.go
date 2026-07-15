@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/backup"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/config"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/devenv"
@@ -62,6 +63,7 @@ func init() {
 
 	// Subcommands.
 	RootCmd.AddCommand(config.ConfigCmd)
+	RootCmd.AddCommand(backup.BackupCmd)
 	RootCmd.AddCommand(devenv.DevenvCmd)
 	RootCmd.AddCommand(cluster.ClusterCmd)
 	RootCmd.AddCommand(version.VersionCommand)
