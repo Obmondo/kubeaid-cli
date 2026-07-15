@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 // errKeyCaptured is a sentinel returned from the host-key callback
@@ -20,6 +22,18 @@ import (
 // SSH agent loaded, prompt for a YubiKey touch on what should be a
 // no-op probe).
 var errKeyCaptured = errors.New("host key captured")
+
+// scanSSHHostKeyFunc is the production host-key scanner. Tests may
+// replace it to avoid live network calls.
+var scanSSHHostKeyFunc = scanSSHHostKey
+
+// defaultSSHPorts maps forge hostnames to their SSH port when the
+// Git URL is scp-style (git@host:path) and carries no explicit port.
+// Self-hosted forges that listen on a non-default SSH port must be
+// listed here so keyscan targets the daemon ArgoCD will actually use.
+var defaultSSHPorts = map[string]int{
+	"gitea.obmondo.com": 2223,
+}
 
 // scanSSHHostKey opens a TCP/SSH handshake to host:port, captures
 // the server's offered host key, and formats it as a known_hosts
@@ -101,9 +115,9 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 		cfg.KubeaidConfigForkURL,
 	}
 
-	seen := map[string]bool{}
+	seen := knownHostScanKeysFromEntries(cfg.GitKnownHosts)
 	for _, raw := range candidates {
-		host, port, err := parseHostPortFromGitURL(raw)
+		host, port, err := hostPortFromGitURL(raw)
 		if err != nil || host == "" {
 			// HTTPS URL, empty, or unparseable — skip silently.
 			// HTTPS doesn't need known_hosts; unparseable inputs
@@ -119,52 +133,113 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 		}
 		seen[dedupeKey] = true
 
-		line, err := scanSSHHostKey(host, port)
+		line, err := scanSSHHostKeyFunc(host, port)
 		if err != nil {
 			fmt.Printf("  ⚠ Could not fetch SSH host key for %s: %v\n", dedupeKey, err)
 			fmt.Printf("    Add the line manually to git.knownHosts in general.yaml.\n")
 			continue
 		}
-		cfg.GitKnownHosts = append(cfg.GitKnownHosts, line)
+		cfg.GitKnownHosts = replaceKnownHostsForHostname(cfg.GitKnownHosts, host)
+		cfg.GitKnownHosts = appendUniqueKnownHost(cfg.GitKnownHosts, line)
 		fmt.Printf("  Captured SSH host key for %s\n", dedupeKey)
 	}
 }
 
-// parseHostPortFromGitURL extracts host + port from a Git URL.
+// hostPortFromGitURL extracts host + port from a Git URL.
 // Returns ("", 0, nil) for HTTPS URLs (no SSH host to scan).
-func parseHostPortFromGitURL(rawURL string) (host string, port int, err error) {
+func hostPortFromGitURL(rawURL string) (host string, port int, err error) {
 	rawURL = strings.TrimSpace(rawURL)
-
-	// scheme://[user@]host[:port]/...
-	if strings.Contains(rawURL, "://") {
-		if strings.HasPrefix(rawURL, "https://") || strings.HasPrefix(rawURL, "http://") {
-			return "", 0, nil
-		}
-		// strip scheme
-		afterScheme := rawURL[strings.Index(rawURL, "://")+3:]
-		// strip user@
-		if at := strings.Index(afterScheme, "@"); at >= 0 {
-			afterScheme = afterScheme[at+1:]
-		}
-		// take everything before first /
-		hostPort := afterScheme
-		if slash := strings.Index(afterScheme, "/"); slash >= 0 {
-			hostPort = afterScheme[:slash]
-		}
-		if h, p, err := net.SplitHostPort(hostPort); err == nil {
-			pn, _ := strconv.Atoi(p)
-			return h, pn, nil
-		}
-		return hostPort, 22, nil
+	if giturl.IsHTTP(rawURL) {
+		return "", 0, nil
+	}
+	if !giturl.IsSSH(rawURL) {
+		return "", 0, fmt.Errorf("unrecognized git URL form: %q", rawURL)
 	}
 
-	// scp-style: [user@]host:path  (always SSH, default port)
-	rest := rawURL
-	if at := strings.Index(rest, "@"); at >= 0 {
-		rest = rest[at+1:]
+	parsed, err := giturl.Parse(rawURL)
+	if err != nil {
+		return "", 0, err
 	}
-	if colon := strings.Index(rest, ":"); colon >= 0 {
-		return rest[:colon], 22, nil
+
+	host, port = splitHostPort(parsed.Host)
+	if port == 22 {
+		if override, ok := defaultSSHPorts[host]; ok {
+			port = override
+		}
 	}
-	return "", 0, fmt.Errorf("unrecognized git URL form: %q", rawURL)
+	return host, port, nil
+}
+
+func splitHostPort(hostPort string) (host string, port int) {
+	if h, portStr, err := net.SplitHostPort(hostPort); err == nil {
+		p, convErr := strconv.Atoi(portStr)
+		if convErr != nil || p == 0 {
+			return h, 22
+		}
+		return h, p
+	}
+	return hostPort, 22
+}
+
+func knownHostScanKeysFromEntries(entries []string) map[string]bool {
+	seen := map[string]bool{}
+	for _, line := range entries {
+		host, port, ok := hostPortFromKnownHostsLine(line)
+		if !ok {
+			continue
+		}
+		seen[fmt.Sprintf("%s:%d", host, port)] = true
+	}
+	return seen
+}
+
+func hostPortFromKnownHostsLine(line string) (host string, port int, ok bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", 0, false
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return "", 0, false
+	}
+
+	hostField := fields[0]
+	if strings.HasPrefix(hostField, "[") {
+		trimmed := strings.TrimPrefix(hostField, "[")
+		hostPart, portPart, found := strings.Cut(trimmed, "]:")
+		if !found || hostPart == "" || portPart == "" {
+			return "", 0, false
+		}
+		parsedPort, err := strconv.Atoi(portPart)
+		if err != nil {
+			return "", 0, false
+		}
+		return hostPart, parsedPort, true
+	}
+
+	return hostField, 22, true
+}
+
+func replaceKnownHostsForHostname(entries []string, hostname string) []string {
+	if hostname == "" {
+		return entries
+	}
+	out := make([]string, 0, len(entries))
+	for _, line := range entries {
+		host, _, ok := hostPortFromKnownHostsLine(line)
+		if ok && host == hostname {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+func appendUniqueKnownHost(entries []string, line string) []string {
+	for _, existing := range entries {
+		if existing == line {
+			return entries
+		}
+	}
+	return append(entries, line)
 }
