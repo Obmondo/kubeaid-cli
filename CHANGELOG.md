@@ -1,4 +1,21 @@
 - - -
+## v0.30.0 - 2026-07-16
+#### Features
+- (**config**) make NetBird optional for workload clusters - (f049b43) - Ashish Jaiswal
+- (**hetzner**) boot bare-metal servers into rescue instead of full OS install - (ec1be3f) - Archisman
+- (**netbird**) emit clusterName + flat groups for the operator chart - (e3ae4fd) - Ashish Jaiswal
+- (**netbird**) name the NetworkRouter after the cluster - (0a47359) - Ashish Jaiswal
+- (**netbird**) match operator values to the shared-group chart structure - (f02faeb) - Ashish Jaiswal
+- update kubeconfig path for local provider - (71cf1a3) - Shubham Gupta
+#### Bug Fixes
+- compare ZFS disk types instead of device names in alikeness check - (89db15d) - aman
+#### Documentation
+- (**spec**) make NetBird optional for workload clusters (prompt gate) - (3de317e) - Ashish Jaiswal
+- (**todo**) capture day-2 cloud instance-type sync design - (101ea81) - Ashish Jaiswal
+- add a diagram to the disk layout setup docs - (bc4c68d) - Archisman
+
+- - -
+
 ## v0.29.8 - 2026-07-07
 #### Bug Fixes
 - (**ci**) run Trivy in filesystem mode so the release scan stops failing - (a0bec02) - Ashish Jaiswal

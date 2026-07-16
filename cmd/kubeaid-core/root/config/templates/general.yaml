@@ -154,6 +154,10 @@ cluster:
       # RBAC binds NetBird groups to cluster roles via the proxy's
       # identity impersonation.
       rbac:
+    # Groups are extra NetBird groups this cluster OWNS (chart: groups), beyond
+    # the derived k8s-<cluster> and k8s-<cluster>-access. Declare a group from ONE
+    # cluster only — a duplicate wedges that operator on HTTP 409.
+    groups:
   # Other than the root user, addtional users that you would like to be created in each node.
   # NOTE : Currently, we can't register additional SSH key-pairs against the root user.
   additionalUsers:

@@ -138,11 +138,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
 | sshKeyName | `string` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AWSConfig
 
@@ -206,11 +206,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 |-------|------|---------|-------------|
 | vmSize | `string` |  |  |
 | diskSizeGB | `uint32` |  |  |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -456,11 +456,11 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
-| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
-| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
+| maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -757,6 +757,7 @@ applies to any cluster on the mesh. cluster.type is the gate.</p>
 | turnDNS | `string` |  | TurnDNS is the public hostname Coturn answers TURN queries<br>on, e.g. "turn.vpn.acme.com". Optional: derived as<br>"turn.<base>" by the same logic as StunDNS.<br> |
 | turnUser | `string` | netbird | TurnUser is the static username Coturn / NetBird Mgmt agree<br>on for TURN authentication. The matching password is<br>generated and persisted in the Secret. Optional, defaults<br>to "netbird".<br> |
 | clusterProxy | [`NetBirdClusterProxyConfig`](#netbirdclusterproxyconfig) |  | ClusterProxy configures the netbird-operator's kube-apiserver<br>proxy (operator >= 0.7.0): a mesh peer that proxies kubectl to<br>the in-cluster apiserver, impersonating the caller's NetBird<br>identity. Omit the block to leave it disabled.<br> |
+| groups | []`string` |  | Groups are extra NetBird groups this cluster OWNS (chart: groups), beyond<br>the derived k8s-<cluster> and k8s-<cluster>-access. Declare a group from ONE<br>cluster only — a duplicate wedges that operator on HTTP 409.<br> |
 
 ## NetBirdCredentials
 
