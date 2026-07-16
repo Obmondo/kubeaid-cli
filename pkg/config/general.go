@@ -297,6 +297,11 @@ type (
 		// the in-cluster apiserver, impersonating the caller's NetBird
 		// identity. Omit the block to leave it disabled.
 		ClusterProxy *NetBirdClusterProxyConfig `yaml:"clusterProxy"`
+
+		// Groups are extra NetBird groups this cluster OWNS (chart: groups), beyond
+		// the derived k8s-<cluster> and k8s-<cluster>-access. Declare a group from ONE
+		// cluster only — a duplicate wedges that operator on HTTP 409.
+		Groups []string `yaml:"groups" validate:"omitempty,dive,required"`
 	}
 
 	// NetBirdClusterProxyConfig configures the netbird-operator kube-apiserver
