@@ -19,8 +19,9 @@ pre_bump_hooks = [
 ]
 
 post_bump_hooks = [
+  # origin is the GitHub repo.
   "git push origin main {{version_tag}}",
-  "git push github main {{version_tag}}",
+  "git push gitea main {{version_tag}}",
 ]
 
 ignore_merge_commits = true
