@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/huh"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
@@ -27,13 +28,9 @@ var errKeyCaptured = errors.New("host key captured")
 // replace it to avoid live network calls.
 var scanSSHHostKeyFunc = scanSSHHostKey
 
-// defaultSSHPorts maps forge hostnames to their SSH port when the
-// Git URL is scp-style (git@host:path) and carries no explicit port.
-// Self-hosted forges that listen on a non-default SSH port must be
-// listed here so keyscan targets the daemon ArgoCD will actually use.
-var defaultSSHPorts = map[string]int{
-	"gitea.obmondo.com": 2223,
-}
+// askSSHPortFunc prompts for the SSH port when a Git URL does not
+// encode one (scp-style). Tests may replace it.
+var askSSHPortFunc = askSSHPort
 
 // scanSSHHostKey opens a TCP/SSH handshake to host:port, captures
 // the server's offered host key, and formats it as a known_hosts
@@ -117,7 +114,7 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 
 	seen := knownHostScanKeysFromEntries(cfg.GitKnownHosts)
 	for _, raw := range candidates {
-		host, port, err := hostPortFromGitURL(raw)
+		host, port, portExplicit, err := hostPortFromGitURL(raw)
 		if err != nil || host == "" {
 			// HTTPS URL, empty, or unparseable — skip silently.
 			// HTTPS doesn't need known_hosts; unparseable inputs
@@ -127,6 +124,24 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 		if commonGitHosts[host] {
 			continue
 		}
+
+		// scp-style URLs never carry a port. Ask so any self-hosted
+		// forge (Gitea/GitLab/Forgejo on a non-default SSH port)
+		// keyscans the daemon ArgoCD will dial — no vendor hostname
+		// allowlist. Prefill from an existing knownHosts entry for
+		// this host when resuming.
+		if !portExplicit {
+			defaultPort := port
+			if existing, ok := portFromKnownHostsForHost(cfg.GitKnownHosts, host); ok {
+				defaultPort = existing
+			}
+			port, err = askSSHPortFunc(host, defaultPort)
+			if err != nil {
+				fmt.Printf("  ⚠ Skipping SSH host-key scan for %s: %v\n", host, err)
+				continue
+			}
+		}
+
 		dedupeKey := fmt.Sprintf("%s:%d", host, port)
 		if seen[dedupeKey] {
 			continue
@@ -136,7 +151,7 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 		line, err := scanSSHHostKeyFunc(host, port)
 		if err != nil {
 			fmt.Printf("  ⚠ Could not fetch SSH host key for %s: %v\n", dedupeKey, err)
-			fmt.Printf("    Add the line manually to git.knownHosts in general.yaml.\n")
+			fmt.Printf("    Prefer ssh://git@%s:%d/org/repo.git, or add the known_hosts line manually.\n", host, port)
 			continue
 		}
 		cfg.GitKnownHosts = replaceKnownHostsForHostname(cfg.GitKnownHosts, host)
@@ -146,39 +161,68 @@ func populateGitKnownHosts(cfg *PromptedConfig) {
 }
 
 // hostPortFromGitURL extracts host + port from a Git URL.
-// Returns ("", 0, nil) for HTTPS URLs (no SSH host to scan).
-func hostPortFromGitURL(rawURL string) (host string, port int, err error) {
+// Returns ("", 0, false, nil) for HTTPS URLs (no SSH host to scan).
+// portExplicit is true when the URL encoded a port (ssh://host:PORT/...).
+// scp-style git@host:path never encodes a port, so port is 22 and
+// portExplicit is false.
+func hostPortFromGitURL(rawURL string) (host string, port int, portExplicit bool, err error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if giturl.IsHTTP(rawURL) {
-		return "", 0, nil
+		return "", 0, false, nil
 	}
 	if !giturl.IsSSH(rawURL) {
-		return "", 0, fmt.Errorf("unrecognized git URL form: %q", rawURL)
+		return "", 0, false, fmt.Errorf("unrecognized git URL form: %q", rawURL)
 	}
 
 	parsed, err := giturl.Parse(rawURL)
 	if err != nil {
-		return "", 0, err
+		return "", 0, false, err
 	}
 
-	host, port = splitHostPort(parsed.Host)
-	if port == 22 {
-		if override, ok := defaultSSHPorts[host]; ok {
-			port = override
-		}
-	}
-	return host, port, nil
+	host, port, portExplicit = splitHostPort(parsed.Host)
+	return host, port, portExplicit, nil
 }
 
-func splitHostPort(hostPort string) (host string, port int) {
+func splitHostPort(hostPort string) (host string, port int, explicit bool) {
 	if h, portStr, err := net.SplitHostPort(hostPort); err == nil {
 		p, convErr := strconv.Atoi(portStr)
 		if convErr != nil || p == 0 {
-			return h, 22
+			return h, 22, false
 		}
-		return h, p
+		return h, p, true
 	}
-	return hostPort, 22
+	return hostPort, 22, false
+}
+
+// askSSHPort asks which TCP port the forge's SSH daemon listens on.
+// Used only when the Git URL is scp-style (no encoded port).
+func askSSHPort(host string, defaultPort int) (int, error) {
+	portStr := strconv.Itoa(defaultPort)
+	err := huh.NewInput().
+		Title(fmt.Sprintf("SSH port for %s:", host)).
+		Description("scp-style URLs (git@host:path) have no port. Use 22 for standard SSH, or your forge's SSH port. Prefer ssh://git@host:PORT/org/repo.git to skip this question.").
+		Value(&portStr).
+		Validate(validateSSHPort).
+		Run()
+	if err != nil {
+		return 0, err
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(portStr))
+	if err != nil {
+		return 0, err
+	}
+	return port, nil
+}
+
+func validateSSHPort(s string) error {
+	port, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return errors.New("must be a TCP port number (1-65535)")
+	}
+	if port < 1 || port > 65535 {
+		return errors.New("must be a TCP port number (1-65535)")
+	}
+	return nil
 }
 
 func knownHostScanKeysFromEntries(entries []string) map[string]bool {
@@ -191,6 +235,16 @@ func knownHostScanKeysFromEntries(entries []string) map[string]bool {
 		seen[fmt.Sprintf("%s:%d", host, port)] = true
 	}
 	return seen
+}
+
+func portFromKnownHostsForHost(entries []string, hostname string) (int, bool) {
+	for _, line := range entries {
+		host, port, ok := hostPortFromKnownHostsLine(line)
+		if ok && host == hostname {
+			return port, true
+		}
+	}
+	return 0, false
 }
 
 func hostPortFromKnownHostsLine(line string) (host string, port int, ok bool) {
