@@ -32,6 +32,8 @@ const (
 const (
 	FlagNameDebug = "debug"
 
+	FlagNameOutput = "output"
+
 	FlagNameKubeAidVersion = "kubeaid-version"
 
 	FlagNameManagementClusterName = "management-cluster-name"

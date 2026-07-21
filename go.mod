@@ -60,6 +60,7 @@ require (
 	k8s.io/client-go v0.35.1
 	k8s.io/cloud-provider v0.35.0
 	k8s.io/klog/v2 v2.130.1
+	k8s.io/kubectl v0.35.1
 	k8s.io/kubernetes v1.33.11
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/cluster-api v1.11.10
@@ -470,7 +471,6 @@ require (
 	k8s.io/kube-aggregator v0.35.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20250910181357-589584f1c912 // indirect
 	k8s.io/kube-proxy v0.35.0 // indirect
-	k8s.io/kubectl v0.35.1 // indirect
 	k8s.io/kubelet v0.35.0 // indirect
 	kubevirt.io/api v1.3.1 // indirect
 	kubevirt.io/containerized-data-importer-api v1.60.3 // indirect

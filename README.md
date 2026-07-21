@@ -36,6 +36,7 @@ From there it is **GitOps**. The engine renders your `general.yaml` into manifes
 ## Features
 
 - **Cluster lifecycle management** — bootstrap, upgrade, recover, test, and delete Kubernetes clusters
+- **Backup status reporting** — `backup status` shows CNPG and Velero backup health at a glance, see [`docs/backup-status.md`](docs/backup-status.md)
 - **Development environments** — spin up local K3D-based dev clusters
 - **Multi-cloud support** — AWS, Azure, Hetzner (cloud, bare-metal, hybrid), and generic bare-metal
 - **GitOps native** — integrates with ArgoCD, KubeAid Config repos, and sealed secrets
@@ -166,6 +167,7 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 **Day-to-day operator guides**
 
 - [Post-bootstrap checklist](docs/post-bootstrap.md) — what to do right after a cluster comes up
+- [Backup status](docs/backup-status.md) — check CNPG and Velero backup health via backup-exporter
 - [Add a bare-metal worker](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (see also the [manual git-only flow](docs/add-bare-metal-worker-manual.md))
 - [Upgrade a bare-metal cluster](docs/upgrade-bare-metal.md) — bump the Kubernetes version of a bare-metal (KubeOne) cluster
 - [Troubleshooting](docs/troubleshooting.md) — recovery paths for recurring bootstrap failures (Hetzner, Sealed Secrets, ArgoCD)
