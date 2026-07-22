@@ -1,4 +1,15 @@
 - - -
+## v0.31.0 - 2026-07-22
+#### Features
+- add backup status - (6a619dd) - Ashish Jaiswal
+#### Bug Fixes
+- (**backup**) look in monitoring first, and clarify the report - (9c968b3) - Ashish Jaiswal
+- (**cog**) push releases to the gitea remote, not the nonexistent github one - (cf46a7b) - Ashish Jaiswal
+#### Continuous Integration
+- add GitHub Actions workflow - (7af1e11) - Sanskar Bhushan
+
+- - -
+
 ## v0.30.0 - 2026-07-16
 #### Features
 - (**config**) make NetBird optional for workload clusters - (f049b43) - Ashish Jaiswal
