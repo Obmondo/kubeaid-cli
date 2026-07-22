@@ -132,6 +132,19 @@ func TestCreateKubernetesClient(t *testing.T) {
 	}
 }
 
+// TestCreateRESTConfig covers the error path: a $KUBECONFIG pointing at a nonexistent file
+// must fail with a clear wrapped error rather than clientcmd's raw one. No t.Parallel() here -
+// it mutates the process-wide KUBECONFIG env var via t.Setenv, which Go's testing package
+// disallows once a test tree has gone parallel.
+func TestCreateRESTConfig(t *testing.T) {
+	kubeconfigPath := filepath.Join(t.TempDir(), "does-not-exist.yaml")
+	t.Setenv("KUBECONFIG", kubeconfigPath)
+
+	_, err := CreateRESTConfig(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed loading kubeconfig")
+}
+
 func TestPingKubernetesCluster(t *testing.T) {
 	t.Parallel()
 

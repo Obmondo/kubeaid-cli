@@ -257,11 +257,21 @@ func getLowestNodeKubeletVersion(ctx context.Context) (string, bool) {
 	return lowestRaw, lowest != nil
 }
 
+// checkMainClusterKubeconfigExists errors clearly when the main cluster's kubeconfig is
+// missing (cluster not yet provisioned), instead of letting callers fail on whatever
+// lower-level error clientcmd produces for a nonexistent file.
+func checkMainClusterKubeconfigExists() error {
+	if _, err := os.Stat(constants.OutputPathMainClusterKubeconfig); err != nil {
+		return fmt.Errorf("main cluster kubeconfig not found: %w", err)
+	}
+	return nil
+}
+
 // getMainClusterClient constructs a Kubernetes client for the main cluster, from the kubeconfig
 // KubeOne generated during cluster provisioning.
 func getMainClusterClient(ctx context.Context) (client.Client, error) {
-	if _, err := os.Stat(constants.OutputPathMainClusterKubeconfig); err != nil {
-		return nil, fmt.Errorf("main cluster kubeconfig not found: %w", err)
+	if err := checkMainClusterKubeconfigExists(); err != nil {
+		return nil, err
 	}
 	return kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig)
 }

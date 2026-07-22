@@ -22,6 +22,8 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	k8sclientset "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
@@ -93,6 +95,38 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 
 	err = pingKubernetesClusterFn(ctx, clusterClient)
 	return clusterClient, err
+}
+
+// CreateRESTConfig loads the standard kubectl config rules ($KUBECONFIG, else ~/.kube/config)
+// for the current context. The lower-level counterpart to CreateClientset, for callers that
+// need the raw *rest.Config itself (e.g. to build a pods/portforward dialer).
+func CreateRESTConfig(_ context.Context) (*restclient.Config, error) {
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		clientcmd.NewDefaultClientConfigLoadingRules(),
+		&clientcmd.ConfigOverrides{},
+	).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed loading kubeconfig (KUBECONFIG or ~/.kube/config): %w", err)
+	}
+	return config, nil
+}
+
+// CreateClientset builds a typed client-go Clientset from CreateRESTConfig. Needed alongside
+// CreateKubernetesClient: the controller-runtime client it returns has no equivalent to the
+// typed clientset's pods/portforward subresource call. Returns the k8sclientset.Interface (not
+// the concrete *Clientset) so callers can substitute k8s.io/client-go/kubernetes/fake in
+// tests.
+func CreateClientset(ctx context.Context) (k8sclientset.Interface, error) {
+	config, err := CreateRESTConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := k8sclientset.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating kubernetes clientset from kubeconfig: %w", err)
+	}
+	return clientset, nil
 }
 
 // CreateUnstructuredClient creates a Kubernetes client suitable for working with
