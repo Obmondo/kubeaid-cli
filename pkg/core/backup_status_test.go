@@ -6,6 +6,7 @@ package core
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -17,10 +18,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	coreV1 "k8s.io/api/core/v1"
+	apiErrors "k8s.io/apimachinery/pkg/api/errors"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 	restclient "k8s.io/client-go/rest"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func floatPtr(f float64) *float64                { return &f }
@@ -102,7 +106,7 @@ func TestFormatLatestAge(t *testing.T) {
 			name:        "normal age is humanized and adjusted for elapsed collection time",
 			resource:    backupResource{LatestBackupAgeSeconds: floatPtr(3 * 3600)},
 			collectedAt: timePtr(collectedAt),
-			expected:    "3h10m", // 3h at collection + 10m elapsed since = 3h10m
+			expected:    "3h 10m", // 3h at collection + 10m elapsed since
 		},
 		{
 			name:        "non-nil age but nil collected_at renders as - (can't safely adjust)",
@@ -115,6 +119,31 @@ func TestFormatLatestAge(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			assert.Equal(t, tc.expected, formatLatestAge(tc.resource, tc.collectedAt, now))
+		})
+	}
+}
+
+func TestFormatAge(t *testing.T) {
+	testCases := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		{name: "sub-minute keeps seconds", duration: 45 * time.Second, expected: "45s"},
+		{name: "negative clamps to zero", duration: -3 * time.Second, expected: "0s"},
+		{name: "a minute drops seconds", duration: 90 * time.Second, expected: "1m"},
+		{name: "under an hour is minutes", duration: 45 * time.Minute, expected: "45m"},
+		{name: "the case kubectl renders as 177m", duration: 177 * time.Minute, expected: "2h 57m"},
+		{name: "a whole hour drops the minutes", duration: time.Hour, expected: "1h"},
+		{name: "13h stays 13h", duration: 13 * time.Hour, expected: "13h"},
+		{name: "just under a day", duration: 23*time.Hour + 59*time.Minute, expected: "23h 59m"},
+		{name: "a day drops the hours", duration: 24 * time.Hour, expected: "1d"},
+		{name: "days carry hours, never minutes", duration: 3*24*time.Hour + 4*time.Hour + 30*time.Minute, expected: "3d 4h"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, formatAge(tc.duration))
 		})
 	}
 }
@@ -147,7 +176,7 @@ func TestFormatCollectorHeader(t *testing.T) {
 				{Operator: "cnpg", CollectedAt: timePtr(now.Add(-87 * time.Minute))},
 				{Operator: "velero", CollectedAt: timePtr(now.Add(-87 * time.Minute))},
 			},
-			expected: "collected 87m ago: cnpg | velero",
+			expected: "collected 1h 27m ago: cnpg | velero",
 		},
 		{
 			name: "differing ages are reported per operator",
@@ -155,7 +184,7 @@ func TestFormatCollectorHeader(t *testing.T) {
 				{Operator: "cnpg", CollectedAt: timePtr(now.Add(-87 * time.Minute))},
 				{Operator: "velero", CollectedAt: timePtr(now.Add(-5 * time.Minute))},
 			},
-			expected: "collected: cnpg 87m ago | velero 5m ago",
+			expected: "collected: cnpg 1h 27m ago | velero 5m ago",
 		},
 		{
 			name: "a collector that never ran is named beside one that has",
@@ -183,28 +212,67 @@ func TestFormatCollectorHeader(t *testing.T) {
 }
 
 func TestCountByStatus(t *testing.T) {
-	resources := []backupResource{
-		{Status: backupStatusHealthy},
-		{Status: backupStatusHealthy},
-		{Status: backupStatusExceedsRPO},
-		{Status: backupStatusNoBackup},
-		{Status: backupStatusNoBackup},
-		{Status: backupStatusNoBackup},
-	}
+	t.Run("each resource counts once, under its worst stream status", func(t *testing.T) {
+		resources := []backupResource{
+			// A missing logical backup and a failed wal check on one cluster is one resource
+			// in trouble, not one no_backup plus one collector_error.
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusNoBackup},
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "wal", Status: backupStatusCollectorError},
+			{Namespace: "demo", ResourceName: "uploads", ResourceType: "pvc", Stream: "volume", Status: backupStatusHealthy},
+			{Namespace: "other", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusExceedsRPO},
+		}
 
-	counts := countByStatus(resources)
+		counts, total := countByStatus(resources)
 
-	assert.Equal(t, map[string]int{
-		backupStatusHealthy:    2,
-		backupStatusExceedsRPO: 1,
-		backupStatusNoBackup:   3,
-	}, counts)
+		assert.Equal(t, 3, total)
+		assert.Equal(t, map[string]int{
+			backupStatusNoBackup:   1,
+			backupStatusHealthy:    1,
+			backupStatusExceedsRPO: 1,
+		}, counts)
+	})
+
+	t.Run("a healthy stream never masks a failing one", func(t *testing.T) {
+		resources := []backupResource{
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "wal", Status: backupStatusHealthy},
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusNoBackup},
+		}
+
+		counts, total := countByStatus(resources)
+
+		assert.Equal(t, 1, total)
+		assert.Equal(t, map[string]int{backupStatusNoBackup: 1}, counts)
+	})
+
+	t.Run("resources sharing a name in different namespaces stay separate", func(t *testing.T) {
+		resources := []backupResource{
+			{Namespace: "demo-a", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusHealthy},
+			{Namespace: "demo-b", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusHealthy},
+		}
+
+		counts, total := countByStatus(resources)
+
+		assert.Equal(t, 2, total)
+		assert.Equal(t, map[string]int{backupStatusHealthy: 2}, counts)
+	})
+
+	t.Run("an unrecognized status outranks every known one", func(t *testing.T) {
+		resources := []backupResource{
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "logical", Status: backupStatusHealthy},
+			{Namespace: "demo", ResourceName: "pgsql", ResourceType: "cnpg_cluster", Stream: "wal", Status: "some_new_status"},
+		}
+
+		counts, _ := countByStatus(resources)
+
+		assert.Equal(t, map[string]int{"some_new_status": 1}, counts)
+	})
 }
 
 func TestFormatStatusSummary(t *testing.T) {
 	testCases := []struct {
 		name     string
 		counts   map[string]int
+		total    int
 		expected string
 	}{
 		{
@@ -213,13 +281,20 @@ func TestFormatStatusSummary(t *testing.T) {
 			expected: "no resources reported",
 		},
 		{
+			name:     "a single resource reads singular",
+			counts:   map[string]int{backupStatusHealthy: 1},
+			total:    1,
+			expected: "1 resource: 1 healthy",
+		},
+		{
 			name: "known statuses render in canonical order regardless of map order",
 			counts: map[string]int{
 				backupStatusNoBackup:   2,
 				backupStatusHealthy:    12,
 				backupStatusExceedsRPO: 1,
 			},
-			expected: "12 healthy, 1 exceeds_rpo, 2 no_backup",
+			total:    15,
+			expected: "15 resources: 12 healthy, 1 exceeds_rpo, 2 no_backup",
 		},
 		{
 			name: "all five known statuses",
@@ -230,7 +305,8 @@ func TestFormatStatusSummary(t *testing.T) {
 				backupStatusCollectorError: 1,
 				backupStatusUnknown:        1,
 			},
-			expected: "1 healthy, 1 exceeds_rpo, 1 no_backup, 1 collector_error, 1 unknown",
+			total:    5,
+			expected: "5 resources: 1 healthy, 1 exceeds_rpo, 1 no_backup, 1 collector_error, 1 unknown",
 		},
 		{
 			name: "unrecognized status is appended sorted, not dropped",
@@ -239,13 +315,14 @@ func TestFormatStatusSummary(t *testing.T) {
 				"weird_status":      1,
 				"another_status":    1,
 			},
-			expected: "1 healthy, 1 another_status, 1 weird_status",
+			total:    3,
+			expected: "3 resources: 1 healthy, 1 another_status, 1 weird_status",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, formatStatusSummary(tc.counts))
+			assert.Equal(t, tc.expected, formatStatusSummary(tc.counts, tc.total))
 		})
 	}
 }
@@ -339,6 +416,56 @@ func TestBackupResponseJSONDecoding(t *testing.T) {
 // TestFormatStatus covers the easy-to-regress edge case: error_type is omitempty on the wire,
 // so a collector_error resource routinely decodes with an empty ErrorType, and the STATUS cell
 // must fall through to the bare status rather than leaving a dangling " ()".
+func TestFormatMethod(t *testing.T) {
+	testCases := []struct {
+		name     string
+		resource backupResource
+		expected string
+	}{
+		{
+			name:     "Velero's own name is carried through verbatim",
+			resource: backupResource{Operator: "velero", Stream: "volume", Method: "PodVolumeBackup"},
+			expected: "PodVolumeBackup",
+		},
+		{
+			name:     "acronyms are not reshaped",
+			resource: backupResource{Operator: "velero", Stream: "volume", Method: "CSISnapshot"},
+			expected: "CSISnapshot",
+		},
+		{
+			name:     "CNPG's logical backup is taken by a CronJob",
+			resource: backupResource{Operator: "cnpg", Stream: "logical"},
+			expected: "CronJob",
+		},
+		{
+			name:     "CNPG's wal archive is taken by barman-cloud",
+			resource: backupResource{Operator: "cnpg", Stream: "wal"},
+			expected: "Barman",
+		},
+		{
+			name:     "a reported method wins over the derived one",
+			resource: backupResource{Operator: "cnpg", Stream: "logical", Method: "SomethingElse"},
+			expected: "SomethingElse",
+		},
+		{
+			name:     "an unrecognized CNPG stream has no method to name",
+			resource: backupResource{Operator: "cnpg", Stream: "something_new"},
+			expected: "-",
+		},
+		{
+			name:     "another operator's stream is not given a CNPG mechanism",
+			resource: backupResource{Operator: "mongodb", Stream: "logical"},
+			expected: "-",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, formatMethod(tc.resource))
+		})
+	}
+}
+
 func TestFormatStatus(t *testing.T) {
 	testCases := []struct {
 		name     string
@@ -419,12 +546,19 @@ func TestAnyMethod(t *testing.T) {
 			expected:  false,
 		},
 		{
-			name: "all resources have an empty Method",
+			name: "all resources have an empty Method and no mechanism to derive",
 			resources: []backupResource{
 				{Namespace: "backup", ResourceName: "app-a"},
 				{Namespace: "backup", ResourceName: "app-b"},
 			},
 			expected: false,
+		},
+		{
+			name: "a CNPG row's mechanism counts, though it reports no Method",
+			resources: []backupResource{
+				{Namespace: "backup", ResourceName: "app-a", Operator: "cnpg", Stream: "wal"},
+			},
+			expected: true,
 		},
 		{
 			name: "one resource has a non-empty Method",
@@ -459,7 +593,7 @@ func TestRenderResourceTable(t *testing.T) {
 
 	t.Run("omits the METHOD header when no resource carries a method", func(t *testing.T) {
 		resources := []backupResource{
-			{Namespace: "backup", ResourceName: "app-a", Operator: "cnpg", Stream: "logical", Status: backupStatusHealthy},
+			{Namespace: "backup", ResourceName: "app-a", Operator: "mongodb", Stream: "logical", Status: backupStatusHealthy},
 		}
 		out := renderResourceTable(resources, map[string]*time.Time{}, now)
 		assert.NotContains(t, out, "METHOD")
@@ -631,21 +765,61 @@ func TestFindBackupExporterService(t *testing.T) {
 		assert.Equal(t, "backup-exporter", svc.Name)
 	})
 
-	t.Run("two matching services in different namespaces returns an error naming both", func(t *testing.T) {
-		serviceInBackupNamespace := &coreV1.Service{
-			ObjectMeta: metaV1.ObjectMeta{
-				Name:      "backup-exporter",
-				Namespace: "backup",
-				Labels:    map[string]string{backupExporterLabelKey: backupExporterLabelValue},
-			},
-		}
-		clientset := fake.NewSimpleClientset(unlabeledService, backupExporterServiceFixture(), serviceInBackupNamespace)
+	t.Run("the default namespace wins over a match elsewhere", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(
+			unlabeledService,
+			backupExporterServiceFixture(),
+			labeledServiceIn("backup"),
+		)
+
+		svc, err := findBackupExporterService(context.Background(), clientset)
+		require.NoError(t, err)
+		assert.Equal(t, backupExporterDefaultNamespace, svc.Namespace,
+			"a second exporter elsewhere must not make the default-namespace one ambiguous")
+	})
+
+	t.Run("a single service outside the default namespace is found by the fallback", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(unlabeledService, labeledServiceIn("backup"))
+
+		svc, err := findBackupExporterService(context.Background(), clientset)
+		require.NoError(t, err)
+		assert.Equal(t, "backup", svc.Namespace)
+	})
+
+	t.Run("the fallback runs when the default namespace is refused", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(labeledServiceIn("backup"))
+		clientset.PrependReactor("list", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
+			if action.GetNamespace() == backupExporterDefaultNamespace {
+				return true, nil, apiErrors.NewForbidden(coreV1.Resource("services"), "", errors.New("no namespaced access"))
+			}
+
+			return false, nil, nil
+		})
+
+		svc, err := findBackupExporterService(context.Background(), clientset)
+		require.NoError(t, err)
+		assert.Equal(t, "backup", svc.Namespace)
+	})
+
+	t.Run("two matching services, neither in the default namespace, returns an error naming both", func(t *testing.T) {
+		clientset := fake.NewSimpleClientset(unlabeledService, labeledServiceIn("backup"), labeledServiceIn("velero"))
 
 		_, err := findBackupExporterService(context.Background(), clientset)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "monitoring")
-		assert.Contains(t, err.Error(), "backup")
+		assert.Contains(t, err.Error(), "backup/backup-exporter")
+		assert.Contains(t, err.Error(), "velero/backup-exporter")
 	})
+}
+
+// labeledServiceIn returns a Service carrying backup-exporter's chart label in namespace.
+func labeledServiceIn(namespace string) *coreV1.Service {
+	return &coreV1.Service{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      "backup-exporter",
+			Namespace: namespace,
+			Labels:    map[string]string{backupExporterLabelKey: backupExporterLabelValue},
+		},
+	}
 }
 
 // readyPodFixture returns a Pod carrying podLabels, Running with a Ready=True condition - the

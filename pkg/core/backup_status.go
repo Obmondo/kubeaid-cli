@@ -19,7 +19,6 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	k8sclientset "k8s.io/client-go/kubernetes"
@@ -63,6 +62,10 @@ const (
 	backupExporterServicePortName = "http"
 	backupExporterAPIPath         = "/api/v1/backups"
 )
+
+// backupExporterDefaultNamespace is where the KubeAid chart installs backup-exporter, and so
+// where its Service is looked for first.
+const backupExporterDefaultNamespace = "monitoring"
 
 // portForwardReadyTimeout bounds how long fetchViaPortForward waits for the tunnel to come up
 // before giving up - a dial that never resolves (e.g. a proxy silently dropping the upgrade)
@@ -145,13 +148,50 @@ func BackupStatus(ctx context.Context, outputFormat string) {
 	fmt.Print(renderBackupStatus(response, time.Now())) //nolint:forbidigo // operator-facing terminal output
 }
 
-// findBackupExporterService locates backup-exporter's Service by label across every
-// namespace. Errors when none or more than one match, naming the namespaces found so the
-// operator knows what to look at. Returns the full Service (not just its namespace/name) so
-// callers needing .Spec.Selector or .Spec.Ports - port-forwarding does - don't need a second
-// List/Get round trip, and RBAC stays to `list` on services rather than also needing `get`.
+// findBackupExporterService locates backup-exporter's Service by label, looking in
+// backupExporterDefaultNamespace first and falling back to every namespace when that comes up
+// empty or is refused - so a chart installed elsewhere is still found, while the common case
+// needs no cluster-wide list permission. The fallback errors when none or more than one match,
+// naming what it found. Returns the full Service (not just its namespace/name) so callers
+// needing .Spec.Selector or .Spec.Ports - port-forwarding does - don't need a second List/Get
+// round trip, and RBAC stays to `list` on services rather than also needing `get`.
 func findBackupExporterService(ctx context.Context, clientset k8sclientset.Interface) (*coreV1.Service, error) {
-	services, err := clientset.CoreV1().Services(metaV1.NamespaceAll).List(ctx, metaV1.ListOptions{
+	if services, err := listBackupExporterServices(ctx, clientset, backupExporterDefaultNamespace); err == nil && len(services) == 1 {
+		return &services[0], nil
+	}
+
+	services, err := listBackupExporterServices(ctx, clientset, metaV1.NamespaceAll)
+	if err != nil {
+		return nil, err
+	}
+
+	switch len(services) {
+	case 0:
+		return nil, fmt.Errorf(
+			"no backup-exporter service found (label %s=%s) in any namespace; is the backup-exporter chart installed?",
+			backupExporterLabelKey, backupExporterLabelValue)
+
+	case 1:
+		return &services[0], nil
+
+	default:
+		found := make([]string, 0, len(services))
+		for _, svc := range services {
+			found = append(found, svc.Namespace+"/"+svc.Name)
+		}
+		sort.Strings(found)
+
+		return nil, fmt.Errorf(
+			"found %d backup-exporter services (label %s=%s) and none in %s, expected exactly 1: %s",
+			len(services), backupExporterLabelKey, backupExporterLabelValue,
+			backupExporterDefaultNamespace, strings.Join(found, ", "))
+	}
+}
+
+// listBackupExporterServices lists the Services carrying backup-exporter's chart label in one
+// namespace, or in every namespace when namespace is metaV1.NamespaceAll.
+func listBackupExporterServices(ctx context.Context, clientset k8sclientset.Interface, namespace string) ([]coreV1.Service, error) {
+	services, err := clientset.CoreV1().Services(namespace).List(ctx, metaV1.ListOptions{
 		LabelSelector: backupExporterLabelKey + "=" + backupExporterLabelValue,
 	})
 	if err != nil {
@@ -159,26 +199,7 @@ func findBackupExporterService(ctx context.Context, clientset k8sclientset.Inter
 			backupExporterLabelKey, backupExporterLabelValue, err)
 	}
 
-	switch len(services.Items) {
-	case 0:
-		return nil, fmt.Errorf(
-			"no backup-exporter service found (label %s=%s) in any namespace; is the backup-exporter chart installed?",
-			backupExporterLabelKey, backupExporterLabelValue)
-
-	case 1:
-		svc := services.Items[0]
-		return &svc, nil
-
-	default:
-		namespaces := make([]string, 0, len(services.Items))
-		for _, svc := range services.Items {
-			namespaces = append(namespaces, svc.Namespace)
-		}
-		sort.Strings(namespaces)
-		return nil, fmt.Errorf(
-			"found %d backup-exporter services (label %s=%s), expected exactly 1: namespaces %s",
-			len(services.Items), backupExporterLabelKey, backupExporterLabelValue, strings.Join(namespaces, ", "))
-	}
+	return services.Items, nil
 }
 
 // fetchBackupStatus returns the raw GET /api/v1/backups response body, reached by port-forwarding
@@ -464,7 +485,81 @@ func formatLatestAge(r backupResource, collectedAt *time.Time, now time.Time) st
 	if age == nil {
 		return "-"
 	}
-	return duration.HumanDuration(*age)
+
+	return formatAge(*age)
+}
+
+// formatAge renders a backup age the way an operator reads a clock: at most two units, largest
+// first, a zero trailing unit elided - "45s", "45m", "2h 57m", "13h", "3d 4h". Follows
+// formatBootstrapDuration's style rather than k8s' duration.HumanDuration, which renders
+// everything under three hours as raw minutes ("177m").
+func formatAge(d time.Duration) string {
+	d = d.Round(time.Second)
+	if d < 0 {
+		d = 0
+	}
+
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", d/time.Second)
+
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", d/time.Minute)
+
+	case d < hoursPerDay*time.Hour:
+		if m := (d % time.Hour) / time.Minute; m > 0 {
+			return fmt.Sprintf("%dh %dm", d/time.Hour, m)
+		}
+
+		return fmt.Sprintf("%dh", d/time.Hour)
+
+	default:
+		if h := (d % (hoursPerDay * time.Hour)) / time.Hour; h > 0 {
+			return fmt.Sprintf("%dd %dh", d/(hoursPerDay*time.Hour), h)
+		}
+
+		return fmt.Sprintf("%dd", d/(hoursPerDay*time.Hour))
+	}
+}
+
+// hoursPerDay is the day boundary formatAge switches units at.
+const hoursPerDay = 24
+
+// backupOperatorCNPG is the operator name CNPG rows carry, the one whose streams are renamed
+// for display.
+const backupOperatorCNPG = "cnpg"
+
+// cnpgMethodByStream names the mechanism behind each CNPG stream, which the exporter itself does
+// not report: the logical backup is taken by a CronJob, the WAL archive by the barman-cloud
+// plugin declared in the Cluster CR. Spelled the way each names itself, as Velero's methods are.
+var cnpgMethodByStream = map[string]string{
+	"logical": "CronJob",
+	"wal":     "Barman",
+}
+
+// resourceMethod returns how a resource's backup is taken, or "" when nothing names it. Velero
+// reports its own method; CNPG reports none, so the mechanism behind the stream stands in. A CNPG
+// stream added later yields "" rather than a guessed mechanism.
+func resourceMethod(r backupResource) string {
+	if r.Method != "" {
+		return r.Method
+	}
+
+	if r.Operator == backupOperatorCNPG {
+		return cnpgMethodByStream[r.Stream]
+	}
+
+	return ""
+}
+
+// formatMethod renders a resource's METHOD cell, carrying Velero's own method names through
+// verbatim ("PodVolumeBackup", "CSISnapshot") so they match what Velero's CRs and docs call them.
+func formatMethod(r backupResource) string {
+	if method := resourceMethod(r); method != "" {
+		return method
+	}
+
+	return "-"
 }
 
 // formatStatus renders a resource's STATUS cell, folding error_type into collector_error rows
@@ -504,7 +599,7 @@ func formatCollectorHeader(collectors []backupCollector, now time.Time) string {
 	for _, c := range collectors {
 		age := collectorNeverCollected
 		if c.CollectedAt != nil {
-			age = duration.HumanDuration(now.Sub(*c.CollectedAt)) + " ago"
+			age = formatAge(now.Sub(*c.CollectedAt)) + " ago"
 		}
 		if len(ages) > 0 && age != ages[0] {
 			shared = false
@@ -540,19 +635,59 @@ var statusOrder = []string{
 	backupStatusUnknown,
 }
 
-// countByStatus tallies resources per reported status.
-func countByStatus(resources []backupResource) map[string]int {
-	counts := make(map[string]int, len(resources))
-	for _, r := range resources {
-		counts[r.Status]++
-	}
-	return counts
+// statusSeverity ranks statuses worst first, for folding a resource's per-stream rows into the
+// single status the summary counts it under.
+var statusSeverity = []string{
+	backupStatusNoBackup,
+	backupStatusExceedsRPO,
+	backupStatusCollectorError,
+	backupStatusUnknown,
+	backupStatusHealthy,
 }
 
-// formatStatusSummary renders counts as "N healthy, M exceeds_rpo, ...", ordered by
+// severityRank places a status in statusSeverity, lower being worse. A status not listed there
+// (schema drift) ranks worst of all, so a new status is never quietly folded under a healthier
+// one.
+func severityRank(status string) int {
+	for i, s := range statusSeverity {
+		if s == status {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// resourceKey identifies the resource a row reports on; rows sharing it differ only by stream.
+func resourceKey(r backupResource) string {
+	return r.Namespace + "/" + r.ResourceName + "/" + r.ResourceType
+}
+
+// countByStatus tallies resources - not rows - per status, each counted once under its worst
+// stream status, and returns the resource total alongside. A CNPG cluster with no logical backup
+// and a failed wal check is one no_backup resource, not one no_backup plus one collector_error:
+// summing per-stream rows double-counts the same resource under several statuses.
+func countByStatus(resources []backupResource) (map[string]int, int) {
+	worst := make(map[string]string, len(resources))
+	for _, r := range resources {
+		key := resourceKey(r)
+		if current, seen := worst[key]; !seen || severityRank(r.Status) < severityRank(current) {
+			worst[key] = r.Status
+		}
+	}
+
+	counts := make(map[string]int, len(worst))
+	for _, status := range worst {
+		counts[status]++
+	}
+
+	return counts, len(worst)
+}
+
+// formatStatusSummary renders counts as "12 resources: 8 healthy, 4 no_backup", ordered by
 // statusOrder with any status outside it (schema drift) sorted after - every count is shown,
 // none dropped silently.
-func formatStatusSummary(counts map[string]int) string {
+func formatStatusSummary(counts map[string]int, total int) string {
 	known := make(map[string]bool, len(statusOrder))
 	parts := make([]string, 0, len(counts))
 	for _, s := range statusOrder {
@@ -576,7 +711,13 @@ func formatStatusSummary(counts map[string]int) string {
 	if len(parts) == 0 {
 		return "no resources reported"
 	}
-	return strings.Join(parts, ", ")
+
+	noun := "resources"
+	if total == 1 {
+		noun = "resource"
+	}
+
+	return fmt.Sprintf("%d %s: %s", total, noun, strings.Join(parts, ", "))
 }
 
 // sortResources orders resources by namespace then resource name (the display contract),
@@ -601,14 +742,15 @@ func sortResources(resources []backupResource) {
 	})
 }
 
-// anyMethod reports whether any resource carries a backup method, so the Velero-only METHOD
-// column can be omitted entirely when every row would leave it blank.
+// anyMethod reports whether any resource has a method to show, so the METHOD column can be
+// omitted entirely when every row would leave it blank.
 func anyMethod(resources []backupResource) bool {
 	for _, r := range resources {
-		if r.Method != "" {
+		if resourceMethod(r) != "" {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -636,11 +778,7 @@ func renderResourceTable(resources []backupResource, collectedAt map[string]*tim
 	for _, r := range sorted {
 		row := []string{r.Namespace, r.ResourceName, r.ResourceType, r.Stream}
 		if showMethod {
-			method := r.Method
-			if method == "" {
-				method = "-"
-			}
-			row = append(row, method)
+			row = append(row, formatMethod(r))
 		}
 		row = append(row, formatLatestAge(r, collectedAt[r.Operator], now), formatStatus(r))
 
