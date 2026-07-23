@@ -1,4 +1,10 @@
 - - -
+## v0.31.1 - 2026-07-23
+#### Features
+- (**sync**) gate the whole run behind an upfront confirmation - (31e208c) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.0 - 2026-07-22
 #### Features
 - add backup status - (6a619dd) - Ashish Jaiswal
