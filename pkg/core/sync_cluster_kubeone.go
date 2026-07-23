@@ -24,6 +24,8 @@ import (
 
 type SyncKubeOneClusterArgs struct {
 	SkipPRWorkflow bool
+	// Yes skips the upfront confirmation gate, for unattended runs.
+	Yes bool
 }
 
 // SyncClusterUsingKubeOne reconciles a Bare Metal (KubeOne provisioned) cluster with
@@ -38,6 +40,10 @@ type SyncKubeOneClusterArgs struct {
 // hosts' kubelet flags differ from general.yaml, sync shows the drift and asks for consent -
 // on approval the apply is forced (--force-upgrade), rolling the nodes one at a time; on
 // decline (or without a TTY) the kubelet changes stay pending and the plain apply still runs.
+//
+// The whole run is gated behind one upfront confirmation - an accidentally issued sync
+// touches nothing, not even a PR. --yes skips that gate for unattended runs; the disruptive
+// steps above keep their own prompts.
 func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	targetVersion := config.ParsedGeneralConfig.Cluster.K8sVersion
 
@@ -75,7 +81,13 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 		bar.Substep("All nodes Ready")
 	}
 
-	// (2) Re-render the KubeOne manifest from general.yaml and push it to the KubeAid Config
+	// (2) Ask before touching anything - a casually issued 'cluster sync' must stay harmless.
+
+	if !args.Yes {
+		confirmClusterSync(ctx, bar, currentVersion)
+	}
+
+	// (3) Re-render the KubeOne manifest from general.yaml and push it to the KubeAid Config
 	//     repository.
 
 	commitMessage := fmt.Sprintf(
@@ -92,7 +104,7 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 		)
 	}
 
-	// (3) Reconcile the hosts.
+	// (4) Reconcile the hosts.
 
 	bar.Describe("Reconciling cluster with KubeOne")
 
@@ -128,7 +140,7 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	applyKubeOneManifest(ctx, "sync", forceUpgrade)
 	stopPDBGuard()
 
-	// (4) Wait until every node is Ready.
+	// (5) Wait until every node is Ready.
 
 	waitForNodesAtKubeletVersion(ctx, targetVersion)
 
@@ -257,6 +269,50 @@ func parseKubeadmFlagsEnv(content string) map[string]string {
 	}
 
 	return flags
+}
+
+// confirmClusterSync shows what the sync is about to do and asks for an explicit yes, before
+// anything is pushed or applied. Declining aborts; so does having no TTY to ask on -
+// unattended runs opt in with --yes.
+func confirmClusterSync(ctx context.Context, bar *progress.Bar, currentVersion string) {
+	clusterName := config.ParsedGeneralConfig.Cluster.Name
+
+	description := fmt.Sprintf(
+		"Cluster : %s (Kubernetes %s)\n\n"+
+			"A sync will :\n"+
+			"  1. Re-render the KubeOne manifest from general.yaml and push it to KubeAid Config\n"+
+			"  2. Run 'kubeone apply' : reconcile helm releases and addons, join newly added\n"+
+			"     hosts, renew soon-to-expire certificates\n\n"+
+			"Disruptive steps keep their own prompts : drifted kubelet flags only get rolled\n"+
+			"out after a separate consent, never silently.",
+		clusterName, currentVersion,
+	)
+
+	proceed := false
+
+	bar.Pause()
+	defer bar.Resume()
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("Sync cluster with general.yaml").
+				Description(description),
+			huh.NewConfirm().
+				Title(fmt.Sprintf("Sync cluster %s now?", clusterName)).
+				Affirmative("Yes, sync it").
+				Negative("No, abort").
+				Value(&proceed),
+		),
+	).Run()
+	assert.AssertErrNil(ctx, err,
+		"Couldn't ask for sync confirmation (no TTY?). Pass --yes to run 'cluster sync' unattended",
+	)
+
+	assert.Assert(ctx, proceed,
+		"Sync declined - nothing was pushed or applied. "+
+			"Rerun when ready, or pass --yes to skip this prompt",
+	)
 }
 
 // confirmKubeletReconcile asks the operator for consent to reconcile the drifted kubelet

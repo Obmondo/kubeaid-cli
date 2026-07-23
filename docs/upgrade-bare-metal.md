@@ -67,6 +67,12 @@ releases (e.g. Cilium), addons, a new host in a node-group — run:
 kubeaid-cli cluster sync
 ```
 
+Sync first shows what it's about to do and asks for one confirmation —
+until you answer yes it touches nothing, not even a PR, so an
+accidentally issued `sync` is harmless. Pass `--yes` (`-y`) for
+unattended runs; disruptive steps below keep their own, separate
+prompts.
+
 1. Verifies the cluster already runs `cluster.k8sVersion` (a pending
    version bump is refused — run `cluster upgrade` first).
 2. Re-renders and pushes the KubeOne manifest (same PR workflow,
