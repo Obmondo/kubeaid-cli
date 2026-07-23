@@ -21,14 +21,17 @@ var SyncCmd = &cobra.Command{
 
 	Args: cobra.NoArgs,
 
-	// GitOps driven : no flags. Desired state (kubelet tuning, helm releases, addons, hosts)
-	// is read from general.yaml; version changes are 'cluster upgrade's job. Disruptive
-	// reconciles (kubelet flags need a rolling per-node procedure) ask for consent first.
+	// GitOps driven : no desired-state flags. Everything (kubelet tuning, helm releases,
+	// addons, hosts) is read from general.yaml; version changes are 'cluster upgrade's job.
+	// One upfront confirmation gates the whole run (--yes skips it, for unattended runs);
+	// disruptive reconciles (kubelet flags need a rolling per-node procedure) ask again
+	// separately.
 	Run: func(cmd *cobra.Command, args []string) {
 		switch globals.CloudProviderName {
 		case constants.CloudProviderBareMetal:
 			core.SyncClusterUsingKubeOne(cmd.Context(), core.SyncKubeOneClusterArgs{
 				SkipPRWorkflow: skipPRWorkflow,
+				Yes:            yes,
 			})
 
 		default:
@@ -40,7 +43,10 @@ var SyncCmd = &cobra.Command{
 	},
 }
 
-var skipPRWorkflow bool
+var (
+	skipPRWorkflow bool
+	yes            bool
+)
 
 func init() {
 	// Flags.
@@ -49,5 +55,11 @@ func init() {
 		BoolVar(
 			&skipPRWorkflow, constants.FlagNameSkipPRWorkflow, false,
 			"Skip the PR workflow and let KubeAid Bootstrap Script push changes directly to the default branch",
+		)
+
+	SyncCmd.PersistentFlags().
+		BoolVarP(
+			&yes, constants.FlagNameYes, "y", false,
+			"Skip the upfront confirmation prompt; disruptive steps still ask separately",
 		)
 }

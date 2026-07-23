@@ -52,6 +52,7 @@ const (
 	FlagNameSkipMonitoringSetup = "skip-monitoring-setup"
 	FlagNameSkipPRWorkflow      = "skip-pr-workflow"
 	FlagNameSkipClusterctlMove  = "skip-clusterctl-move"
+	FlagNameYes                 = "yes"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"
