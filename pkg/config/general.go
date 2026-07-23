@@ -143,6 +143,24 @@ type (
 		// changed using the apiSever struct field.
 		EnableAuditLogging bool `yaml:"enableAuditLogging" default:"True"`
 
+		// MachineTemplateRotation names the capi-cluster chart's HCloud MachineTemplates
+		// after a hash of their spec, so that changing a machineType rotates the name.
+		//
+		// ClusterAPI decides whether a Machine is up to date by comparing the name of
+		// the template it was cloned from against the name its owner references — it
+		// never compares the template's contents. Without rotation, a machineType change
+		// therefore never rolls the cluster: it applies silently to machines created
+		// later, leaving a control plane with mixed instance types.
+		//
+		// Enabling this on an existing cluster renames the template even when its spec
+		// is unchanged, which rolls the control plane once. Scale to at least 3
+		// control-plane replicas first, so etcd keeps quorum while the machines are
+		// replaced one at a time.
+		//
+		// Hetzner HCloud only — bare-metal workers are Machine objects, not
+		// MachineDeployments, and their templates keep the fixed legacy names.
+		MachineTemplateRotation bool `yaml:"machineTemplateRotation" default:"False"`
+
 		// ACMEEmail is the contact email used to register with the ACME
 		// CA (Let's Encrypt) when cert-manager's ClusterIssuer is
 		// rendered. Required when cluster.keycloak.mode=managed (the

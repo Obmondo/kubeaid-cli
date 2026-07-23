@@ -31,9 +31,18 @@ var SyncCmd = &cobra.Command{
 				SkipPRWorkflow: skipPRWorkflow,
 			})
 
+		// ArgoCD reconciles whatever is merged into kubeaid-config, but only `bootstrap`
+		// ever re-renders values-capi-cluster.yaml from general.yaml. So a machineType or
+		// control-plane replicas edit never reaches a provisioned ClusterAPI cluster on its
+		// own : re-render it, and let ArgoCD carry it the rest of the way.
+		case constants.CloudProviderHetzner:
+			core.SyncCAPICluster(cmd.Context(), core.SyncCAPIClusterArgs{
+				SkipPRWorkflow: skipPRWorkflow,
+			})
+
 		default:
 			assert.Assert(cmd.Context(), false, fmt.Sprintf(
-				"'cluster sync' is only needed for the Bare Metal (KubeOne) provider - on %s, merged kubeaid-config changes get reconciled by ArgoCD",
+				"'cluster sync' does not support %s yet - re-run 'cluster bootstrap' to re-render values-capi-cluster.yaml",
 				globals.CloudProviderName,
 			))
 		}

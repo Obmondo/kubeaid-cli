@@ -39,6 +39,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/mikefarah/yq/v4 v4.50.1
 	github.com/muesli/termenv v0.16.0
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/sagikazarmark/slog-shim v0.1.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
@@ -362,7 +363,6 @@ require (
 	github.com/pjbgf/sha1cd v0.5.0 // indirect
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.67.4 // indirect
