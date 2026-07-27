@@ -1,4 +1,14 @@
 - - -
+## v0.31.2 - 2026-07-27
+#### Features
+- address the prompt and bootstrap papercuts from issue #21 - (a7aad2a) - Ashish Jaiswal
+#### Bug Fixes
+- (**lint**) check fmt.Fprintln returns in renderResourceTable - (6b1dd64) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**k8s-eol**) refresh embedded endoflife.date snapshot - (1ccc2de) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.1 - 2026-07-23
 #### Features
 - (**sync**) gate the whole run behind an upfront confirmation - (31e208c) - Ashish Jaiswal
