@@ -773,7 +773,10 @@ func renderResourceTable(resources []backupResource, collectedAt map[string]*tim
 	var b strings.Builder
 
 	w := tabwriter.NewWriter(&b, tabwriterMinWidth, tabwriterTabWidth, tabwriterPadding, ' ', 0)
-	fmt.Fprintln(w, strings.Join(headers, "\t"))
+	// Writes to a strings.Builder-backed tabwriter never fail; the Flush
+	// below carries the same note. Discard the error explicitly to satisfy
+	// errcheck.
+	_, _ = fmt.Fprintln(w, strings.Join(headers, "\t"))
 
 	for _, r := range sorted {
 		row := []string{r.Namespace, r.ResourceName, r.ResourceType, r.Stream}
@@ -782,7 +785,7 @@ func renderResourceTable(resources []backupResource, collectedAt map[string]*tim
 		}
 		row = append(row, formatLatestAge(r, collectedAt[r.Operator], now), formatStatus(r))
 
-		fmt.Fprintln(w, strings.Join(row, "\t"))
+		_, _ = fmt.Fprintln(w, strings.Join(row, "\t"))
 	}
 
 	// Flush only fails when the underlying writer does, and a strings.Builder never does.
