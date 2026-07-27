@@ -42,11 +42,15 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	defer bar.Finish()
 	ctx = progress.WithBar(ctx, bar)
 
-	// Workload + NetBird: bail early if the operator isn't on the mesh,
-	// so a connectivity failure surfaces here instead of half-a-spinner
-	// into provisioning. No-op on VPN / non-NetBird clusters.
-	assert.AssertErrNil(ctx, requireOperatorOnNetBird(ctx),
-		"NetBird preflight failed")
+	// No NetBird preflight here: the control-plane endpoint is public
+	// for the whole bootstrap. Hetzner clusters bring the LB up with
+	// its public interface enabled (preCreateControlPlaneLB) — a re-run
+	// re-enables it — and only DisableControlPlaneLBPublicInterface, the
+	// very last step, flips it private-via-mesh, and only for VPN /
+	// VPN-connected clusters. So the operator's laptop reaches the
+	// apiserver publicly throughout provisioning whether or not they're
+	// on the mesh; the post-bootstrap panel prints the `netbird up`
+	// connect line for day-2 access.
 
 	// When using Hetzner, ensure that prerequisite infrastructure is provisioned.
 	// NOTE : Though HCloud has an official Terraform provider which can be imported into a

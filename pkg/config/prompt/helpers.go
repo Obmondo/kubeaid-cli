@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"text/template"
@@ -87,6 +88,39 @@ func nonEmpty(s string) error {
 	return nil
 }
 
+// clusterName validates the cluster name typed at the Step 1 prompt.
+//
+// Mirrors parser.validateClusterName (dots are rejected — the name is
+// spliced into DNS labels like the NetBird peer FQDN `k8s-<name>` and
+// into HCloud / Robot resource names) and adds the RFC-1123 label
+// rules CAPI enforces on the Cluster object, so a bad name fails here
+// instead of three prompts later at parse time.
+func clusterName(s string) error {
+	if err := nonEmpty(s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+
+	if strings.Contains(s, ".") {
+		return errors.New("cluster name cannot contain dots — use '-' instead (e.g. kam-acme-com)")
+	}
+
+	const maxClusterNameLen = 63
+	if len(s) > maxClusterNameLen {
+		return fmt.Errorf("cluster name must be at most %d characters", maxClusterNameLen)
+	}
+
+	if !rfc1123Label.MatchString(s) {
+		return errors.New("cluster name must be lowercase alphanumeric or '-', and start and end with an alphanumeric character")
+	}
+
+	return nil
+}
+
+// rfc1123Label matches a single DNS-1123 label — the shape Kubernetes
+// requires of the CAPI Cluster object's name.
+var rfc1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
 // sshGitURL validates that s is a non-empty SSH-form Git URL.
 // Accepts the two common SSH forms (scp-like git@host:path and
 // rfc-3986 ssh://...) and rejects http(s):// — used in the
@@ -131,6 +165,13 @@ func cidrv4(s string) error {
 	return nil
 }
 
+// minHetznerVLANID / maxHetznerVLANID bound the VLAN IDs Hetzner's
+// vSwitch webservice accepts (inclusive).
+const (
+	minHetznerVLANID = 4000
+	maxHetznerVLANID = 4091
+)
+
 // hetznerVLANID validates a Hetzner vSwitch VLAN ID — the webservice
 // only accepts 4000-4091 (inclusive). Anything outside is rejected at
 // prompt time so the operator catches a typo before bootstrap.
@@ -142,9 +183,8 @@ func hetznerVLANID(s string) error {
 	if err != nil {
 		return errors.New("must be numeric")
 	}
-	const minVLAN, maxVLAN = 4000, 4091
-	if n < minVLAN || n > maxVLAN {
-		return fmt.Errorf("hetzner vSwitch VLAN ID must be in %d-%d", minVLAN, maxVLAN)
+	if n < minHetznerVLANID || n > maxHetznerVLANID {
+		return fmt.Errorf("hetzner vSwitch VLAN ID must be in %d-%d", minHetznerVLANID, maxHetznerVLANID)
 	}
 	return nil
 }

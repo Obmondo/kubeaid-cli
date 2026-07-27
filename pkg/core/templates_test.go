@@ -4,17 +4,12 @@
 package core
 
 import (
-	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
 )
 
 // withFreshGeneralConfig swaps ParsedGeneralConfig for the duration of fn
@@ -28,16 +23,6 @@ func withFreshGeneralConfig(t *testing.T, fn func()) {
 	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
 
 	fn()
-}
-
-// withStubbedNetBirdStatus temporarily replaces fetchNetBirdStatus
-// with stub for tests that exercise requireOperatorOnNetBird's gates
-// without shelling out to a real netbird binary. Restored on cleanup.
-func withStubbedNetBirdStatus(t *testing.T, stub func(ctx context.Context) (*netbird.Status, error)) {
-	t.Helper()
-	orig := fetchNetBirdStatus
-	fetchNetBirdStatus = stub
-	t.Cleanup(func() { fetchNetBirdStatus = orig })
 }
 
 // withFreshGlobals snapshots and clears the package-level globals for
@@ -130,101 +115,6 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 			})
 		})
 	}
-}
-
-func TestRequireOperatorOnNetBird(t *testing.T) {
-	netbirdBlock := &config.NetBirdConfig{DNS: "netbird.vpn.acme.com"}
-
-	t.Run("no-op for VPN cluster", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeVPN
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			// fetchNetBirdStatus must not be called — leave it
-			// pointing at the real shell-out; if the gate falls
-			// through it will fail loudly.
-			require.NoError(t, requireOperatorOnNetBird(context.Background()))
-		})
-	})
-
-	t.Run("no-op for workload without netbird.dns", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = nil
-			require.NoError(t, requireOperatorOnNetBird(context.Background()))
-		})
-	})
-
-	t.Run("workload + netbird.dns + daemon on the matching mesh: passes", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
-				return &netbird.Status{
-					DaemonStatus: netbird.DaemonStatusConnected,
-					Management:   netbird.ManagementInfo{URL: "https://netbird.vpn.acme.com:443"},
-				}, nil
-			})
-			require.NoError(t, requireOperatorOnNetBird(context.Background()))
-		})
-	})
-
-	t.Run("workload + netbird.dns + daemon on a different mesh: fails", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
-				// Daemon is Connected — but to the wrong NetBird server.
-				return &netbird.Status{
-					DaemonStatus: netbird.DaemonStatusConnected,
-					Management:   netbird.ManagementInfo{URL: "https://netbird.someoneelse.io:443"},
-				}, nil
-			})
-			err := requireOperatorOnNetBird(context.Background())
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "netbird.someoneelse.io") // the wrong mesh
-			assert.Contains(t, err.Error(), "netbird.vpn.acme.com")   // the expected mesh
-			assert.Contains(t, err.Error(), "netbird up --management-url")
-		})
-	})
-
-	t.Run("workload + daemon reports no management URL: passes (cannot verify)", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
-				return &netbird.Status{DaemonStatus: netbird.DaemonStatusConnected}, nil
-			})
-			require.NoError(t, requireOperatorOnNetBird(context.Background()))
-		})
-	})
-
-	t.Run("workload + daemon disconnected: fails with actionable hint", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
-				return &netbird.Status{DaemonStatus: "Disconnected"}, nil
-			})
-			err := requireOperatorOnNetBird(context.Background())
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "netbird up")
-			assert.Contains(t, err.Error(), netbirdBlock.DNS)
-		})
-	})
-
-	t.Run("workload + daemon binary missing: fails with install hint", func(t *testing.T) {
-		withFreshGeneralConfig(t, func() {
-			config.ParsedGeneralConfig.Cluster.Type = constants.ClusterTypeWorkload
-			config.ParsedGeneralConfig.Cluster.NetBird = netbirdBlock
-			withStubbedNetBirdStatus(t, func(_ context.Context) (*netbird.Status, error) {
-				return nil, errors.New("exec: \"netbird\": executable file not found in $PATH")
-			})
-			err := requireOperatorOnNetBird(context.Background())
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "netbird.io")
-			assert.Contains(t, err.Error(), netbirdBlock.DNS)
-		})
-	})
 }
 
 func TestStoragectlVersion(t *testing.T) {

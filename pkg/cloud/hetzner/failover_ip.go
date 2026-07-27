@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-resty/resty/v2"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -43,7 +44,7 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) error {
 
 	failoverIP := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.Host
 
-	activeServerIP, err := h.getActiveServerIP(failoverIP)
+	activeServerIP, err := h.getActiveServerIP(ctx, failoverIP)
 	if err != nil {
 		return fmt.Errorf("getting active server IP for failover IP: %w", err)
 	}
@@ -79,13 +80,14 @@ type (
 	}
 )
 
-func (h *Hetzner) getActiveServerIP(failoverIP string) (string, error) {
-	response, err := h.robotClient.NewRequest().Get("/failover/" + failoverIP)
+func (h *Hetzner) getActiveServerIP(ctx context.Context, failoverIP string) (string, error) {
+	response, err := h.robotClient.NewRequest().SetContext(ctx).Get("/failover/" + failoverIP)
 	if err != nil {
 		return "", fmt.Errorf("requesting failover IP details: %w", err)
 	}
 	if response.StatusCode() != http.StatusOK {
-		return "", fmt.Errorf("unexpected status %d when getting failover IP details", response.StatusCode())
+		return "", fmt.Errorf("unexpected status %d when getting failover IP details: %s",
+			response.StatusCode(), hRobotErrorMessage(response.Body()))
 	}
 
 	var unmarshalledResponse GetFailoverIPDetailsResponse
@@ -174,23 +176,113 @@ func getInitMasterNodeIP(ctx context.Context) (string, error) {
 	return initMasterNodeIP, nil
 }
 
+// pointFailoverIPTo switches failoverIP to targetServerIP.
+//
+// The switch takes 90-110s inside Robot, which makes the POST's own
+// response unreliable as a success signal: the client can time out
+// mid-switch, and a request issued while a switch is still being
+// applied comes back 409. Neither means the switch failed. So the POST
+// is treated as "best-effort kick" and the actual gate is
+// waitForFailoverIP — GET /failover/{ip} until it reports the target
+// as its active server.
+//
+// Only an unambiguous rejection (4xx that isn't 409, 5xx after the
+// client's own retries) fails fast without polling.
 func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServerIP string) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 		slog.String("server-ip", targetServerIP),
 	})
 
-	response, err := h.robotClient.NewRequest().
+	slog.InfoContext(ctx, "Pointing the Failover IP to the given server IP (Hetzner takes 90-110s to switch)")
+
+	response, err := h.failoverClient().NewRequest().
+		SetContext(ctx).
 		SetFormData(map[string]string{
 			"active_server_ip": targetServerIP,
 		}).
 		Post("/failover/" + failoverIP)
-	if err != nil {
-		return fmt.Errorf("posting failover IP switch request: %w", err)
-	}
-	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("unexpected status %d when pointing failover IP to server %s", response.StatusCode(), targetServerIP)
+
+	switch {
+	case err != nil:
+		// Transport error or client-side timeout. Robot may well have
+		// accepted the switch — verify where the IP points before
+		// calling this a failure.
+		slog.WarnContext(ctx, "Failover IP switch request did not complete cleanly; verifying against Robot",
+			slog.Any("error", err),
+		)
+
+	case response.StatusCode() == http.StatusOK:
+		slog.InfoContext(ctx, "Robot accepted the Failover IP switch")
+
+	case response.StatusCode() == http.StatusConflict:
+		// FAILOVER_ALREADY_ROUTED ("it's already there") and
+		// FAILOVER_LOCKED ("a switch is in flight") are both answered
+		// by the same poll. Any other 409 gets polled too — if the IP
+		// does end up on the target, the bootstrap has what it needs.
+		slog.WarnContext(ctx, "Robot returned 409 for the Failover IP switch; verifying where the IP actually points",
+			slog.String("robot-error-code", hRobotErrorCode(response.Body())),
+			slog.String("robot-error-message", hRobotErrorMessage(response.Body())),
+		)
+
+	default:
+		return fmt.Errorf("unexpected status %d when pointing failover IP to server %s: %s",
+			response.StatusCode(), targetServerIP, hRobotErrorMessage(response.Body()))
 	}
 
-	slog.InfoContext(ctx, "Successfully pointed the Failover IP to the given server IP")
-	return nil
+	return h.waitForFailoverIP(ctx, failoverIP, targetServerIP)
+}
+
+// waitForFailoverIP polls Robot until failoverIP reports targetServerIP
+// as its active server. This is the real success gate for a switch —
+// see pointFailoverIPTo.
+func (h *Hetzner) waitForFailoverIP(ctx context.Context, failoverIP, targetServerIP string) error {
+	maxWait := h.failoverMaxWait
+	if maxWait <= 0 {
+		maxWait = constants.HRobotFailoverMaxWaitTime
+	}
+	deadline := time.Now().Add(maxWait)
+
+	for {
+		var reason error
+
+		activeServerIP, err := h.getActiveServerIP(ctx, failoverIP)
+		switch {
+		case err != nil:
+			reason = err
+
+		case activeServerIP == targetServerIP:
+			slog.InfoContext(ctx, "Successfully pointed the Failover IP to the given server IP")
+			return nil
+
+		default:
+			reason = fmt.Errorf("failover IP still points to %q", activeServerIP)
+		}
+
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return fmt.Errorf("aborted while waiting for failover IP %s to point to %s (%v): %w",
+				failoverIP, targetServerIP, reason, ctxErr)
+		}
+
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("timed out after %v waiting for failover IP %s to point to %s: %w",
+				maxWait, failoverIP, targetServerIP, reason)
+		}
+
+		slog.InfoContext(ctx, "Waiting for the Failover IP switch to complete...",
+			slog.Duration("interval", constants.HRobotFailoverPollInterval),
+			slog.Any("reason", reason),
+		)
+		h.sleepFunc(constants.HRobotFailoverPollInterval)
+	}
+}
+
+// failoverClient returns the Robot client to use for the failover
+// switch POST — a long-timeout, no-retry clone of the shared one.
+// Falls back to the shared client when the long-timeout one wasn't
+// built (tests construct Hetzner directly).
+func (h *Hetzner) failoverClient() *resty.Client {
+	if h.robotFailoverClient != nil {
+		return h.robotFailoverClient
+	}
+	return h.robotClient
 }

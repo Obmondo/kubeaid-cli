@@ -196,6 +196,12 @@ type PromptedConfig struct {
 	HetznerVSwitchVLANID     string
 	HetznerVSwitchSubnetCIDR string
 
+	// HetznerBMKnownVSwitches is the cached Robot vSwitch inventory,
+	// fetched the first time the vSwitch phase runs. Drives the
+	// "reuse an existing vSwitch" picker and the next-free VLAN ID
+	// default. Transient — not rendered into general.yaml.
+	HetznerBMKnownVSwitches []robotVSwitch
+
 	// Bare Metal (generic, not Hetzner). Hosts are collected one at a time by
 	// the add-loop in provider_baremetal.go, same flow as the Hetzner
 	// bare-metal prompt.
@@ -752,8 +758,9 @@ func runBasicsForm(cfg *PromptedConfig) error {
 				Value(&cfg.CloudProvider),
 			huh.NewInput().
 				Title("Cluster name:").
+				Description("Lowercase letters, digits and '-'. No dots — the name becomes a DNS label (NetBird peer k8s-<name>, HCloud / Robot resource names).").
 				Value(&cfg.ClusterName).
-				Validate(nonEmpty),
+				Validate(clusterName),
 		).Title("Cluster basics").Description("Step 1/4"),
 		clusterKindGroup,
 	).Run()
