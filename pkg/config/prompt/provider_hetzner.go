@@ -21,6 +21,21 @@ const (
 	defaultHetznerRegion      = "hel1"
 )
 
+// hcloudAPITokenHelp is shown under the "Cloud API token" prompt.
+// Required in every Hetzner mode (see the apiTokenGroup comment), and
+// the console path to mint one is not discoverable from the prompt, so
+// spell it out instead of making the operator go hunting.
+const hcloudAPITokenHelp = `Create one at https://console.hetzner.cloud → your project →
+Security → API tokens → "Generate API token" (permission: Read & Write).
+The token is shown only once. Required in every mode — CAPH validates it
+at controller startup, even for pure bare-metal.`
+
+// robotCredentialsHelp is shown under the Robot username prompt. The
+// Robot *web service* user is a separate credential from the Robot
+// login — operators routinely try the latter and get a 401.
+const robotCredentialsHelp = `Hetzner Robot → top-right menu → "Settings" → "Web service and app settings":
+set a web-service user + password there. This is NOT your Robot login.`
+
 func newHetznerProvider() *hetznerPrompter {
 	return &hetznerPrompter{}
 }
@@ -104,6 +119,7 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 	robotGroup := huh.NewGroup(
 		huh.NewInput().
 			Title("Robot username:").
+			Description(robotCredentialsHelp).
 			EchoMode(huh.EchoModePassword).
 			Value(&cfg.HetznerRobotUser).
 			Validate(nonEmpty),
@@ -156,6 +172,7 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 	apiTokenGroup := huh.NewGroup(
 		huh.NewInput().
 			Title("Cloud API token:").
+			Description(hcloudAPITokenHelp).
 			EchoMode(huh.EchoModePassword).
 			Value(&cfg.HetznerAPIToken).
 			Validate(nonEmpty),

@@ -268,6 +268,19 @@ const (
 	// tail can be slow; 10 min leaves ample margin without hanging the
 	// bootstrap forever if Robot never brings a server to "ready".
 	HBMSVSwitchAttachMaxWaitTime = 10 * time.Minute
+
+	// Switching a Failover IP takes 90-110s server-side (see
+	// https://docs.hetzner.com/robot/dedicated-server/ip/failover/),
+	// so POST /failover/{ip} holds the connection open far past the
+	// shared 20s Robot client timeout. A client-side abort there is
+	// not harmless: Robot has already accepted the switch, and the
+	// retry lands on a 409 while it is still being applied — the
+	// "unexpected status 409" the bootstrap used to die on.
+	HRobotFailoverSwitchTimeout = 3 * time.Minute
+	HRobotFailoverPollInterval  = 15 * time.Second
+	// 5 min covers the 90-110s switch plus a queued second switch
+	// (Robot serialises them per IP) without hanging the bootstrap.
+	HRobotFailoverMaxWaitTime = 5 * time.Minute
 )
 
 // HCloudNATGatewayLocations is the ordered list of HCloud locations

@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
@@ -305,4 +306,16 @@ func hRobotErrorCode(body []byte) string {
 		return ""
 	}
 	return errorResponseBody.Error.Code
+}
+
+// hRobotErrorMessage extracts the human-readable Robot error message,
+// falling back to the raw body so a non-envelope response still tells
+// the operator something. A bare status code does not.
+func hRobotErrorMessage(body []byte) string {
+	errorResponseBody := new(hRobotErrorResponseBody)
+	if err := json.Unmarshal(body, errorResponseBody); err == nil &&
+		errorResponseBody.Error.Message != "" {
+		return errorResponseBody.Error.Message
+	}
+	return strings.TrimSpace(string(body))
 }

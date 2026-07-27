@@ -354,18 +354,51 @@ func validateRobotCredentials(cfg *PromptedConfig) func(string) error {
 }
 
 // promptVSwitchConfig collects the vSwitch resource details kubeaid-cli
-// passes to CreateVSwitch. Defaults are sensible-but-overridable —
-// the operator typically wants the cluster-name-prefixed defaults
-// unless they're joining an existing vSwitch.
+// passes to CreateVSwitch.
+//
+// The account's existing vSwitches are read from Robot first, so the
+// operator picks one from a list (name + VLAN ID filled in for them)
+// instead of retyping a VLAN ID they have to look up in the Robot
+// console. Creating a new one defaults to the lowest free VLAN ID in
+// Hetzner's 4000-4091 range — reusing a taken ID under a different
+// name is what CreateVSwitch hard-fails on at bootstrap.
+//
+// A failed fetch (bad creds, Robot down) degrades to the pre-existing
+// type-it-yourself flow rather than blocking the prompt.
 func promptVSwitchConfig(cfg *PromptedConfig) error {
+	existing := fetchVSwitchesWithSpinner(cfg)
+
+	reuse, err := promptVSwitchReuse(cfg, existing)
+	if err != nil {
+		return err
+	}
+
 	if cfg.HetznerVSwitchName == "" {
 		cfg.HetznerVSwitchName = cfg.ClusterName + "-vswitch"
 	}
 	if cfg.HetznerVSwitchVLANID == "" {
-		cfg.HetznerVSwitchVLANID = "4000"
+		cfg.HetznerVSwitchVLANID = nextFreeVLANID(existing)
 	}
 	if cfg.HetznerVSwitchSubnetCIDR == "" {
 		cfg.HetznerVSwitchSubnetCIDR = defaultHetznerVSwitchSubnetCIDR
+	}
+
+	subnetField := huh.NewInput().
+		Title("vSwitch subnet CIDR (worker private IPs must live here):").
+		Value(&cfg.HetznerVSwitchSubnetCIDR).
+		Validate(cidrv4)
+
+	// Reusing an existing vSwitch — Robot already told us its name and
+	// VLAN ID, so the subnet is the only open question left.
+	if reuse {
+		return huh.NewForm(
+			huh.NewGroup(subnetField).
+				Title("Hetzner Bare Metal — vSwitch network").
+				Description(fmt.Sprintf(
+					"Reusing vSwitch %q (VLAN %s) from your Robot account.",
+					cfg.HetznerVSwitchName, cfg.HetznerVSwitchVLANID,
+				)),
+		).Run()
 	}
 
 	return huh.NewForm(
@@ -377,14 +410,168 @@ func promptVSwitchConfig(cfg *PromptedConfig) error {
 				Validate(nonEmpty),
 			huh.NewInput().
 				Title("vSwitch VLAN ID (4000-4091):").
+				Description(vlanIDHelp(existing)).
 				Value(&cfg.HetznerVSwitchVLANID).
-				Validate(hetznerVLANID),
-			huh.NewInput().
-				Title("vSwitch subnet CIDR (worker private IPs must live here):").
-				Value(&cfg.HetznerVSwitchSubnetCIDR).
-				Validate(cidrv4),
+				Validate(vlanIDFree(cfg, existing)),
+			subnetField,
 		).Title("Hetzner Bare Metal — vSwitch network"),
 	).Run()
+}
+
+// vSwitchCreateNewOption is the sentinel select entry that means "none
+// of the existing vSwitches — I want a new one".
+const vSwitchCreateNewOption = "__create_new__"
+
+// promptVSwitchReuse shows the existing-vSwitch picker and reports
+// whether the operator chose to reuse one (in which case cfg's name +
+// VLAN ID have been overwritten from Robot). Returns false without
+// prompting when the account has no vSwitches or the fetch failed —
+// there is nothing to pick from.
+func promptVSwitchReuse(cfg *PromptedConfig, existing []robotVSwitch) (bool, error) {
+	if len(existing) == 0 {
+		return false, nil
+	}
+
+	// Options are keyed by Robot's vSwitch ID, not by name — Robot
+	// does not enforce unique names, and picking the wrong one here
+	// would silently join the cluster to someone else's VLAN.
+	options := make([]huh.Option[string], 0, len(existing)+1)
+	for _, vSwitch := range existing {
+		options = append(options, huh.NewOption(
+			fmt.Sprintf("%s (VLAN %d)", vSwitch.Name, vSwitch.VLANID),
+			strconv.Itoa(vSwitch.ID),
+		))
+	}
+	options = append(options, huh.NewOption(
+		"Create a new vSwitch", vSwitchCreateNewOption,
+	))
+
+	// Pre-select whatever the operator picked last time round the
+	// phase loop; a fresh run lands on "Create a new vSwitch".
+	choice := vSwitchCreateNewOption
+	for _, vSwitch := range existing {
+		if vSwitch.Name == cfg.HetznerVSwitchName &&
+			strconv.Itoa(vSwitch.VLANID) == cfg.HetznerVSwitchVLANID {
+			choice = strconv.Itoa(vSwitch.ID)
+			break
+		}
+	}
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("vSwitch:").
+				Description("Existing vSwitches in your Hetzner Robot account. Reusing one takes its VLAN ID as-is.").
+				Options(options...).
+				Value(&choice),
+		).Title("Hetzner Bare Metal — vSwitch network"),
+	).Run()
+	if err != nil {
+		return false, err
+	}
+
+	if choice == vSwitchCreateNewOption {
+		return false, nil
+	}
+
+	for _, vSwitch := range existing {
+		if strconv.Itoa(vSwitch.ID) != choice {
+			continue
+		}
+		cfg.HetznerVSwitchName = vSwitch.Name
+		cfg.HetznerVSwitchVLANID = strconv.Itoa(vSwitch.VLANID)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// vlanIDHelp lists the VLAN IDs already taken in the account, so the
+// operator can see why the suggested default is what it is.
+func vlanIDHelp(existing []robotVSwitch) string {
+	if len(existing) == 0 {
+		return "Hetzner only accepts 4000-4091."
+	}
+
+	taken := make([]string, 0, len(existing))
+	for _, vSwitch := range existing {
+		taken = append(taken, strconv.Itoa(vSwitch.VLANID))
+	}
+	return "Hetzner only accepts 4000-4091. Already in use: " + strings.Join(taken, ", ") + "."
+}
+
+// vlanIDFree returns a validator that rejects a VLAN ID already taken
+// by a *differently named* vSwitch. That combination is exactly what
+// CreateVSwitch refuses at bootstrap ("a different VSwitch %q with the
+// same VLANID exists"), so catching it here saves a full run.
+func vlanIDFree(cfg *PromptedConfig, existing []robotVSwitch) func(string) error {
+	return func(s string) error {
+		if err := hetznerVLANID(s); err != nil {
+			return err
+		}
+
+		vlanID, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil {
+			return errors.New("must be numeric")
+		}
+
+		for _, vSwitch := range existing {
+			if vSwitch.VLANID != vlanID || vSwitch.Name == strings.TrimSpace(cfg.HetznerVSwitchName) {
+				continue
+			}
+			return fmt.Errorf("VLAN %d is already used by vSwitch %q — pick another (free: %s)",
+				vlanID, vSwitch.Name, nextFreeVLANID(existing))
+		}
+
+		return nil
+	}
+}
+
+// nextFreeVLANID returns the lowest VLAN ID in Hetzner's 4000-4091
+// range not taken by one of the given vSwitches. Falls back to the
+// bottom of the range when every ID is taken — the operator still gets
+// an editable field, and Robot rejects the duplicate with its own
+// error.
+func nextFreeVLANID(existing []robotVSwitch) string {
+	taken := make(map[int]bool, len(existing))
+	for _, vSwitch := range existing {
+		taken[vSwitch.VLANID] = true
+	}
+
+	for vlanID := minHetznerVLANID; vlanID <= maxHetznerVLANID; vlanID++ {
+		if !taken[vlanID] {
+			return strconv.Itoa(vlanID)
+		}
+	}
+
+	return strconv.Itoa(minHetznerVLANID)
+}
+
+// fetchVSwitchesWithSpinner returns the account's Robot vSwitches,
+// cached on cfg so the phase loop's second pass doesn't re-hit Robot.
+// Errors degrade to nil — the vSwitch prompt then behaves exactly as
+// it did before the picker existed.
+func fetchVSwitchesWithSpinner(cfg *PromptedConfig) []robotVSwitch {
+	if len(cfg.HetznerBMKnownVSwitches) > 0 {
+		return cfg.HetznerBMKnownVSwitches
+	}
+
+	var (
+		vSwitches []robotVSwitch
+		err       error
+	)
+	_ = spinner.New().
+		Title("  Fetching your Hetzner Robot vSwitches ...").
+		Action(func() {
+			vSwitches, err = robotVSwitchListLookup(cfg.HetznerRobotUser, cfg.HetznerRobotPassword)
+		}).
+		Run()
+	if err != nil {
+		return nil
+	}
+
+	cfg.HetznerBMKnownVSwitches = vSwitches
+	return vSwitches
 }
 
 // role describes which phase of the add-loop is running. Affects
@@ -989,6 +1176,62 @@ var (
 	robotLookupOverride robotServerLookup
 	robotListOverride   func() ([]string, error)
 )
+
+// robotVSwitch is the subset of a Hetzner Robot GET /vswitch entry the
+// prompt needs — enough to offer the vSwitch for reuse and to know
+// which VLAN IDs are already spoken for.
+type robotVSwitch struct {
+	ID     int    `json:"id"`
+	Name   string `json:"name"`
+	VLANID int    `json:"vlan"`
+	// Cancelled vSwitches are being torn down; CreateVSwitch refuses
+	// to adopt one, so they're filtered out of the picker.
+	Cancelled bool `json:"cancelled"`
+}
+
+// robotVSwitchListOverride is unset in production; tests set it to
+// short-circuit the Robot client construction.
+var robotVSwitchListOverride func() ([]robotVSwitch, error)
+
+// robotVSwitchListLookup is the test-overridable indirection around
+// robotClientVSwitchList, mirroring robotListLookup.
+func robotVSwitchListLookup(user, password string) ([]robotVSwitch, error) {
+	if robotVSwitchListOverride != nil {
+		return robotVSwitchListOverride()
+	}
+	return robotClientVSwitchList(newRobotClient(user, password))
+}
+
+// robotClientVSwitchList performs GET /vswitch against Robot. Unlike
+// GET /server, the entries are flat (no per-item wrapper key).
+// Cancelled vSwitches are dropped — offering one for reuse would just
+// move the failure to bootstrap.
+func robotClientVSwitchList(client *resty.Client) ([]robotVSwitch, error) {
+	resp, err := client.R().Get("/vswitch")
+	if err != nil {
+		return nil, fmt.Errorf("network error contacting Robot webservice: %w", err)
+	}
+	if resp.StatusCode() == http.StatusUnauthorized {
+		return nil, errors.New("robot username/password rejected (401)")
+	}
+	if resp.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("unexpected Robot status %d", resp.StatusCode())
+	}
+
+	var entries []robotVSwitch
+	if err := json.Unmarshal(resp.Body(), &entries); err != nil {
+		return nil, fmt.Errorf("decoding Robot vSwitch list response: %w", err)
+	}
+
+	vSwitches := make([]robotVSwitch, 0, len(entries))
+	for _, entry := range entries {
+		if entry.Cancelled {
+			continue
+		}
+		vSwitches = append(vSwitches, entry)
+	}
+	return vSwitches, nil
+}
 
 // robotListResponse is the wire shape of Hetzner Robot's GET /server
 // — an array of {server: {...}} objects (note the outer array, not

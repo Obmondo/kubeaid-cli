@@ -6,10 +6,8 @@ package core
 import (
 	"context"
 	"embed"
-	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
@@ -19,7 +17,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	corenetbird "github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
@@ -716,69 +713,6 @@ func cloudflareAPIToken() string {
 		return ""
 	}
 	return creds.CloudflareAPIToken
-}
-
-// fetchNetBirdStatus is the test seam for requireOperatorOnNetBird —
-// tests assign it before exercising the gate to avoid shelling out
-// to a real `netbird` binary. Defaults to the real status fetcher.
-var fetchNetBirdStatus = netbird.FetchStatus
-
-// requireOperatorOnNetBird hard-fails the bootstrap when the
-// operator's laptop isn't connected to the NetBird mesh AND the
-// cluster about to be bootstrapped joins one (workload cluster with
-// cluster.netbird.dns set — its apiserver / Management is reachable
-// only through the mesh).
-//
-// Skipped when:
-//   - cluster.type != workload (VPN clusters provision their own mesh)
-//   - cluster.netbird.dns is unset (no mesh to reach)
-//
-// Returns an error suitable for assert.AssertErrNil — callers
-// surface it to the bootstrap pipeline so the failure happens before
-// any infrastructure is touched.
-func requireOperatorOnNetBird(ctx context.Context) error {
-	cluster := config.ParsedGeneralConfig.Cluster
-	if cluster.Type != constants.ClusterTypeWorkload ||
-		cluster.NetBird == nil || cluster.NetBird.DNS == "" {
-		return nil
-	}
-	mgmtDNS := cluster.NetBird.DNS
-
-	status, err := fetchNetBirdStatus(ctx)
-	if err != nil {
-		return fmt.Errorf(
-			"querying NetBird daemon: %w — install netbird from "+
-				"https://netbird.io and run `netbird up` against %s before "+
-				"running `kubeaid-cli bootstrap` (this cluster's Management at "+
-				"%s is only reachable through the mesh)",
-			err, mgmtDNS, mgmtDNS,
-		)
-	}
-
-	if status.DaemonStatus != netbird.DaemonStatusConnected {
-		return fmt.Errorf(
-			"NetBird daemon status is %q, not %q — run `netbird up` to "+
-				"connect to the mesh; this cluster's Management at %s is "+
-				"only reachable through NetBird",
-			status.DaemonStatus, netbird.DaemonStatusConnected, mgmtDNS,
-		)
-	}
-
-	// The daemon reports "Connected" — but to which mesh? Compare the
-	// daemon's management host against cluster.netbird.dns. Skipped (not
-	// failed) when the daemon reports no parseable URL: a hard pre-flight
-	// gate must not block a valid bootstrap on a guess.
-	actualHost := status.Management.Host()
-	if actualHost != "" && !strings.EqualFold(mgmtDNS, actualHost) {
-		return fmt.Errorf(
-			"NetBird daemon is connected to the %q mesh, but this cluster's "+
-				"Management is %s — run `netbird up --management-url https://%s` "+
-				"to switch to the correct mesh before running `kubeaid-cli bootstrap`",
-			actualHost, mgmtDNS, mgmtDNS,
-		)
-	}
-
-	return nil
 }
 
 // hetznerBareMetalFirewallEnabled reports whether the Cilium host-firewall

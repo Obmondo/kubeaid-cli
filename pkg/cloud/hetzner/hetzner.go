@@ -61,6 +61,10 @@ type floatingIPClient interface {
 type Hetzner struct {
 	hcloudClient *hcloud.Client
 	robotClient  *resty.Client
+	// robotFailoverClient is the same Robot API with a timeout long
+	// enough to hold a Failover IP switch open (90-110s) and retries
+	// off. See newRobotFailoverRestyClient.
+	robotFailoverClient *resty.Client
 
 	serverTypeClient   serverTypeClient
 	networkClient      networkClient
@@ -75,6 +79,11 @@ type Hetzner struct {
 	sshPool *sshConnPool
 
 	sleepFunc func(time.Duration)
+
+	// failoverMaxWait bounds waitForFailoverIP's poll loop. Zero means
+	// constants.HRobotFailoverMaxWaitTime; tests shrink it so the
+	// give-up path doesn't cost five real minutes.
+	failoverMaxWait time.Duration
 }
 
 func NewHetznerCloudProvider() cloud.CloudProvider {
@@ -101,6 +110,10 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	if config.UsingHetznerBareMetal() {
 		robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
 		hetznerClient.robotClient = newRobotRestyClient(
+			robotWebServiceUserCredentials.User,
+			robotWebServiceUserCredentials.Password,
+		)
+		hetznerClient.robotFailoverClient = newRobotFailoverRestyClient(
 			robotWebServiceUserCredentials.User,
 			robotWebServiceUserCredentials.Password,
 		)
@@ -144,6 +157,23 @@ func newRobotRestyClient(robotUser, robotPassword string) *resty.Client {
 				response.StatusCode() == http.StatusTooManyRequests ||
 				response.StatusCode() >= http.StatusInternalServerError
 		})
+}
+
+// newRobotFailoverRestyClient builds the Robot client used for the
+// Failover IP switch POST.
+//
+// Two deliberate departures from the shared client:
+//
+//   - Timeout long enough to outlast the 90-110s switch. The shared
+//     20s guarantees a client-side abort mid-switch.
+//   - No retries. The POST is not idempotent in practice — the first
+//     request has usually been accepted by the time the client gives
+//     up, so a retry just collects a 409 while Robot applies it.
+//     pointFailoverIPTo verifies the outcome by polling instead.
+func newRobotFailoverRestyClient(robotUser, robotPassword string) *resty.Client {
+	return newRobotRestyClient(robotUser, robotPassword).
+		SetTimeout(constants.HRobotFailoverSwitchTimeout).
+		SetRetryCount(0)
 }
 
 func (*Hetzner) SetupDisasterRecovery(_ context.Context) error {
