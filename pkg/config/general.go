@@ -6,8 +6,8 @@ package config
 import (
 	coreV1 "k8s.io/api/core/v1"
 
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 )
 
 var (
@@ -104,7 +104,7 @@ type (
 	KubeAidForkConfig struct {
 		// KubeAid repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL *giturl.ParsedURL
+		ParsedURL *repourl.Parsed
 
 		// KubeAid git ref (tag / branch / commit).
 		Version string `yaml:"version"`
@@ -114,7 +114,7 @@ type (
 	KubeaidConfigForkConfig struct {
 		// KubeAid Config repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL *giturl.ParsedURL
+		ParsedURL *repourl.Parsed
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
 		// Config files for this cluster will be contained.

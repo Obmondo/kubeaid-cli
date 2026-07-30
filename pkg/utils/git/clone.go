@@ -15,8 +15,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -63,7 +63,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 
 	// For HTTPs URLs, no auth is needed (public repos only).
 	// If the clone fails, the repo is likely private and requires an SSH URL.
-	if giturl.IsHTTP(url) {
+	if repourl.UsingHTTPBasedProtocol(url) {
 		authMethod = nil
 	}
 
@@ -97,7 +97,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 	// Clone the repo.
 	slog.InfoContext(ctx, "Cloning repo")
 
-	releaseTouch := requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repo, authMethod)
+	releaseTouch := requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repository, authMethod)
 	defer releaseTouch()
 
 	var repo *goGit.Repository
@@ -121,7 +121,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 		})
 	}
 
-	if giturl.IsHTTP(url) &&
+	if repourl.UsingHTTPBasedProtocol(url) &&
 		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
 		slog.ErrorContext(ctx,
 			"HTTPS clone failed: private repo detected, switch to SSH URL",

@@ -17,7 +17,7 @@ import (
 
 	configpkg "github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
 // KubeaidIsSSH reports whether KubeaidForkURL is an SSH-form Git URL.
@@ -25,7 +25,7 @@ import (
 // ArgoCD deploy key block — HTTPS public forks need no key, SSH
 // forks (private) do.
 func (c *PromptedConfig) KubeaidIsSSH() bool {
-	return giturl.IsSSH(c.KubeaidForkURL)
+	return repourl.UsingSSHBasedProtocol(c.KubeaidForkURL)
 }
 
 var (
