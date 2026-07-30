@@ -32,7 +32,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -229,7 +229,7 @@ func validateKubeAidForkVersion(ctx context.Context, kubeAidFork config.KubeAidF
 			version,
 		)
 	}
-	if giturl.IsHTTP(kubeAidFork.URL) {
+	if repourl.UsingHTTPBasedProtocol(kubeAidFork.URL) {
 		if err := probeKubeAidForkVersionExists(ctx, kubeAidFork.URL, version); err != nil {
 			return err
 		}

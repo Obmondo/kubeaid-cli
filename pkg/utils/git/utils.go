@@ -16,8 +16,8 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
@@ -30,9 +30,9 @@ const (
 // will be cloned: <TempDir>/<host>/<owner>/<repo>. Uses HostName so
 // non-default SSH ports (e.g. ":2223") don't leak the colon into the
 // path — tools like docker's -v <src>:<dst> volume spec choke on it.
-func GetRepoDir(parsedURL *giturl.ParsedURL) string {
+func GetRepoDir(parsedURL *repourl.Parsed) string {
 	return path.Join(constants.TempDirectory,
-		parsedURL.HostName(), parsedURL.Owner, parsedURL.Repo,
+		parsedURL.HostName(), parsedURL.Owner, parsedURL.Repository,
 	)
 }
 
@@ -81,11 +81,11 @@ func originShortName(repo *goGit.Repository) string {
 	if err != nil || remote == nil || len(remote.Config().URLs) == 0 {
 		return "repo"
 	}
-	parsed, err := giturl.Parse(remote.Config().URLs[0])
+	parsed, err := repourl.Parse(remote.Config().URLs[0])
 	if err != nil {
 		return "repo"
 	}
-	return parsed.Owner + "/" + parsed.Repo
+	return parsed.Owner + "/" + parsed.Repository
 }
 
 // BuildPRCompareURL returns a clickable "create PR" URL for the given
@@ -115,19 +115,19 @@ func BuildPRCompareURL(repo *goGit.Repository, defaultBranch, featureBranch stri
 		panic("BuildPRCompareURL: origin remote has no URLs")
 	}
 	originURL := remote.Config().URLs[0]
-	parsed, err := giturl.Parse(originURL)
+	parsed, err := repourl.Parse(originURL)
 	if err != nil {
 		panic("BuildPRCompareURL: parse origin URL " + originURL + ": " + err.Error())
 	}
-	base := strings.TrimSuffix(parsed.HTTPCloneURL(), ".git")
+	base := strings.TrimSuffix(parsed.AsHTTPsURL(), ".git")
 	return base + "/compare/" + defaultBranch + "..." + featureBranch
 }
 
-// ParseURL is a thin wrapper over giturl.Parse, kept here so callers
+// ParseURL is a thin wrapper over repourl.NewURL, kept here so callers
 // in the git package can use the shorter `git.ParseURL` name and to
 // preserve the previous package layout.
-func ParseURL(url string) (*giturl.ParsedURL, error) {
-	return giturl.Parse(url)
+func ParseURL(url string) (*repourl.Parsed, error) {
+	return repourl.Parse(url)
 }
 
 // GetDefaultBranchName returns the default branch of the 'origin' remote.

@@ -24,7 +24,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
 // ── installSealedSecretsWithFactory ──────────────────────────────────────────
@@ -33,10 +33,10 @@ import (
 func TestInstallSealedSecretsWithFactory(t *testing.T) {
 	orig := config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL
 	t.Cleanup(func() { config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = orig })
-	config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = &giturl.ParsedURL{
-		Host:  "github.com",
-		Owner: "Obmondo",
-		Repo:  "KubeAid",
+	config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = &repourl.Parsed{
+		Host:       "github.com",
+		Owner:      "Obmondo",
+		Repository: "KubeAid",
 	}
 
 	tests := []struct {

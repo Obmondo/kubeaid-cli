@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
 func TestGetRepoDir(t *testing.T) {
@@ -61,7 +61,7 @@ func TestGetRepoDir(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			parsed, err := giturl.Parse(tc.url)
+			parsed, err := repourl.Parse(tc.url)
 			require.NoError(t, err)
 
 			got := GetRepoDir(parsed)
@@ -184,7 +184,7 @@ func TestParseURL(t *testing.T) {
 
 			assert.Equal(t, tc.wantHost, parsed.HostName())
 			assert.Equal(t, tc.wantOwner, parsed.Owner)
-			assert.Equal(t, tc.wantRepo, parsed.Repo)
+			assert.Equal(t, tc.wantRepo, parsed.Repository)
 		})
 	}
 }

@@ -40,6 +40,7 @@ require (
 	github.com/mikefarah/yq/v4 v4.50.1
 	github.com/muesli/termenv v0.16.0
 	github.com/sagikazarmark/slog-shim v0.1.0
+	github.com/samber/oops v1.23.0
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/siderolabs/talos/pkg/machinery v1.10.5
 	github.com/spf13/cobra v1.10.2
@@ -347,6 +348,7 @@ require (
 	github.com/nikolaydubina/treemap v1.2.5 // indirect
 	github.com/nutanix-cloud-native/prism-go-client v0.5.1 // indirect
 	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/onsi/gomega v1.39.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -377,7 +379,7 @@ require (
 	github.com/rubenv/sql-migrate v1.8.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sagikazarmark/locafero v0.7.0 // indirect
-	github.com/samber/lo v1.52.0 // indirect
+	github.com/samber/lo v1.53.0 // indirect
 	github.com/sanathkr/go-yaml v0.0.0-20170819195128-ed9d249f429b // indirect
 	github.com/sanathkr/yaml v0.0.0-20170819201035-0056894fa522 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect

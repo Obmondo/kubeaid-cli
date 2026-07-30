@@ -17,7 +17,7 @@ import (
 
 	"golang.org/x/net/publicsuffix"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/giturl"
+	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
@@ -130,7 +130,7 @@ func sshGitURL(s string) error {
 	if err := nonEmpty(s); err != nil {
 		return err
 	}
-	if giturl.IsHTTP(strings.TrimSpace(s)) {
+	if repourl.UsingHTTPBasedProtocol(strings.TrimSpace(s)) {
 		return errors.New("must be SSH form (e.g. git@github.com:org/repo.git)")
 	}
 	return nil
