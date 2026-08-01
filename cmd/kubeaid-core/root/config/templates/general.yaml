@@ -350,6 +350,12 @@ cloud:
       # Details about the VSwitch which'll be used to connect the Hetzner Bare Metal servers with
       # the Hetzner Network.
       vSwitch:
+        # VLANID is the Hetzner vSwitch VLAN ID. Hetzner's webservice only
+        # accepts 4000-4091 (inclusive) — matches
+        # pkg/config/validate.{Min,Max}HetznerVLANID, enforced again here
+        # (not just at prompt time) so a config from outside the prompt
+        # (hand-written, or rendered by the Obmondo API) still fails fast
+        # instead of erroring against Hetzner's API mid-bootstrap.
         vlanID:
         name:
         # SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.
