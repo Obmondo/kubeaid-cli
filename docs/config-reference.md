@@ -820,12 +820,12 @@ KeycloakCredentials.</p>
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| aws | [`AWSCredentials`](#awscredentials) |  |  |
-| azure | [`AzureCredentials`](#azurecredentials) |  |  |
-| hetzner | [`HetznerCredentials`](#hetznercredentials) |  |  |
-| keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
-| netbird | [`NetBirdCredentials`](#netbirdcredentials) |  |  |
-| acme | [`ACMECredentials`](#acmecredentials) |  |  |
+| aws | [`AWSCredentials`](#awscredentials) |  | AWS credentials, for the AWS cloud provider.<br> |
+| azure | [`AzureCredentials`](#azurecredentials) |  | Azure credentials, for the Azure cloud provider.<br> |
+| hetzner | [`HetznerCredentials`](#hetznercredentials) |  | Hetzner credentials (HCloud API token, Robot user/password),<br>for the Hetzner cloud provider.<br> |
+| keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  | Keycloak secrets, for a VPN cluster's Keycloak instance.<br> |
+| netbird | [`NetBirdCredentials`](#netbirdcredentials) |  | NetBird secrets, for a cluster's NetBird mesh components.<br> |
+| acme | [`ACMECredentials`](#acmecredentials) |  | ACME secrets, for the DNS-01 ClusterIssuer solver.<br> |
 
 ## UserConfig
 

@@ -5,12 +5,24 @@ package config
 
 type (
 	SecretsConfig struct {
-		AWS      *AWSCredentials      `yaml:"aws"`
-		Azure    *AzureCredentials    `yaml:"azure"`
-		Hetzner  *HetznerCredentials  `yaml:"hetzner"`
+		// AWS credentials, for the AWS cloud provider.
+		AWS *AWSCredentials `yaml:"aws"`
+
+		// Azure credentials, for the Azure cloud provider.
+		Azure *AzureCredentials `yaml:"azure"`
+
+		// Hetzner credentials (HCloud API token, Robot user/password),
+		// for the Hetzner cloud provider.
+		Hetzner *HetznerCredentials `yaml:"hetzner"`
+
+		// Keycloak secrets, for a VPN cluster's Keycloak instance.
 		Keycloak *KeycloakCredentials `yaml:"keycloak"`
-		NetBird  *NetBirdCredentials  `yaml:"netbird"`
-		ACME     *ACMECredentials     `yaml:"acme"`
+
+		// NetBird secrets, for a cluster's NetBird mesh components.
+		NetBird *NetBirdCredentials `yaml:"netbird"`
+
+		// ACME secrets, for the DNS-01 ClusterIssuer solver.
+		ACME *ACMECredentials `yaml:"acme"`
 	}
 
 	// ACMECredentials carries the DNS-provider secrets the cert-manager
