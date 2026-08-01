@@ -51,7 +51,4 @@ func main() {
 
 	// Generate config reference markdown file.
 	generateConfigReference(ctx, &gatheredStructs)
-
-	// Generate the add-cluster web form's JSON schema.
-	generateFormSpec(ctx, &gatheredStructs)
 }

@@ -17,5 +17,4 @@ var ConfigFilesDirectory string
 func init() {
 	// Subcommands.
 	ConfigCmd.AddCommand(GenerateCmd)
-	ConfigCmd.AddCommand(SchemaCmd)
 }
