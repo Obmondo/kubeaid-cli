@@ -99,3 +99,19 @@ jobs:
 
       - name: Verify embedded K8s EOL snapshot
         run: make check-k8s-eol
+
+  check-generators-fresh:
+    runs-on: ubuntu-24.04-htzhel1-ax42-a
+    needs: [go-build]
+    steps:
+      - name: Checkout code
+        uses: https://gitea.obmondo.com/Obmondo/checkout@v6.0.2
+
+      - name: Setup Go
+        uses: https://gitea.obmondo.com/Obmondo/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify generated config artifacts are up to date
+        run: make check-generators

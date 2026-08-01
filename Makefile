@@ -61,6 +61,18 @@ run-generators: ## Generate config artifacts
 	@go run ./tools/generators/cmd \
 		./pkg/config/general.go ./pkg/config/secrets.go
 
+.PHONY: check-generators
+check-generators: run-generators ## Check that generated config artifacts (incl. pkg/config/schema/formspec.json) are up to date
+	@if ! git diff --quiet -- docs/config-reference.md cmd/kubeaid-core/root/config/templates pkg/config/schema/formspec.json; then \
+		echo ""; \
+		echo "Generated config artifacts are out of date relative to pkg/config/general.go / secrets.go."; \
+		echo "Run 'make run-generators' locally and commit the refreshed files."; \
+		echo ""; \
+		git --no-pager diff -- docs/config-reference.md cmd/kubeaid-core/root/config/templates pkg/config/schema/formspec.json; \
+		exit 1; \
+	fi
+	@echo "Generated config artifacts are up to date"
+
 .PHONY: fetch-k8s-eol
 fetch-k8s-eol: ## Refresh embedded K8s EOL data from endoflife.date
 	@./tools/generators/cmd/fetch-k8s-eol.sh

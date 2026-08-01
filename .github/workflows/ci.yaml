@@ -134,3 +134,29 @@ jobs:
 
       - name: Verify embedded K8s EOL snapshot
         run: make check-k8s-eol
+
+  check-generators-fresh:
+    runs-on: ubuntu-latest
+    needs: [go-build]
+    container:
+      image: golang:1.26.1-bookworm
+    env:
+      GOCACHE: /root/.cache/go-build
+      GOMODCACHE: /go/pkg/mod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Trust checkout directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Restore Go cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: go-Linux-1.26.1-${{ hashFiles('go.sum') }}
+
+      - name: Verify generated config artifacts are up to date
+        run: make check-generators
