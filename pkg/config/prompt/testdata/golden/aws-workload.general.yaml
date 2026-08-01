@@ -1,0 +1,41 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 31.0.4
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory: 
+
+cluster:
+  type: workload
+  name: aws-acme
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  netbird:
+    dns: netbird.vpn.acme.com
+    dnsZone: aws-acme.local
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  aws:
+    region: eu-west-1
+    sshKeyName: aws-acme
+    bastionEnabled: true
+    controlPlane:
+      loadBalancerScheme: internet-facing
+      replicas: 3
+      instanceType: t3.medium
+      ami:
+        id: ami-0123456789abcdef0
+

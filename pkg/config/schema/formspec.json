@@ -1,0 +1,2142 @@
+{
+  "version": "",
+  "sections": [
+    {
+      "key": "git",
+      "title": "Git server specific details",
+      "fields": [
+        {
+          "path": [
+            "git",
+            "caBundlePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "git",
+            "sshUsername"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "git",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "SSH username."
+        },
+        {
+          "path": [
+            "git",
+            "knownHosts"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Additional SSH known hosts.\nMerged with known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.)"
+        },
+        {
+          "path": [
+            "git",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "git",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        }
+      ]
+    },
+    {
+      "key": "forkURLs",
+      "title": "KubeAid and KubeAid Config repository specific details",
+      "fields": [
+        {
+          "path": [
+            "forkURLs",
+            "kubeaid",
+            "url"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "KubeAid repository SSH URL."
+        },
+        {
+          "path": [
+            "forkURLs",
+            "kubeaid",
+            "version"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "KubeAid git ref (tag / branch / commit)."
+        },
+        {
+          "path": [
+            "forkURLs",
+            "kubeaidConfig",
+            "url"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "KubeAid Config repository SSH URL."
+        },
+        {
+          "path": [
+            "forkURLs",
+            "kubeaidConfig",
+            "directory"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid\nConfig files for this cluster will be contained.\n\nWhen not specified, the directory name will default to the cluster name.\n\nSo, suppose your cluster name is 'staging'. Then, the directory name will default to\n'staging'. Or you can customize it to something like 'staging.qa'."
+        }
+      ]
+    },
+    {
+      "key": "cluster",
+      "title": "Kubernetes specific details",
+      "fields": [
+        {
+          "path": [
+            "cluster",
+            "type"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "workload",
+          "enum": [
+            "vpn",
+            "workload"
+          ],
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cluster",
+            "name"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Name of the Kubernetes cluster.\n\nWe don't allow using dots in the cluster name, since it can cause issues with tools like\nClusterAPI and Cilium : which use the cluster name to generate other configurations."
+        },
+        {
+          "path": [
+            "cluster",
+            "k8sVersion"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Kubernetes version (\u003e= 1.30.0)."
+        },
+        {
+          "path": [
+            "cluster",
+            "enableAuditLogging"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "True",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Whether you would like to enable Kubernetes Audit Logging out of the box.\nSuitable Kubernetes API configurations will be done for you automatically. And they can be\nchanged using the apiSever struct field."
+        },
+        {
+          "path": [
+            "cluster",
+            "acmeEmail"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "ACMEEmail is the contact email used to register with the ACME\nCA (Let's Encrypt) when cert-manager's ClusterIssuer is\nrendered. Required when cluster.keycloak.mode=managed (the\nkeycloakx and netbird-mgmt Ingresses both need TLS certs);\noptional otherwise. Used as Issuer.spec.acme.email."
+        },
+        {
+          "path": [
+            "cluster",
+            "acmeDNS01",
+            "provider"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "cloudflare",
+          "enum": [
+            "cloudflare"
+          ],
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cluster",
+            "acmeDNS01",
+            "dnsZones"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "DNSZones limits which zones this solver answers challenges\nfor (cert-manager's selector.dnsZones). Empty matches every\nDNS-01 order — fine when this is the only solver."
+        },
+        {
+          "path": [
+            "cluster",
+            "apiServer",
+            "extraArgs"
+          ],
+          "type": "map[string]string",
+          "tier": "",
+          "required": false,
+          "default": "{}",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cluster",
+            "apiServer",
+            "extraVolumes"
+          ],
+          "type": "[]HostPathMountConfig",
+          "tier": "",
+          "required": false,
+          "default": "[]",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cluster",
+            "apiServer",
+            "files"
+          ],
+          "type": "[]FileConfig",
+          "tier": "",
+          "required": false,
+          "default": "[]",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cluster",
+            "lockdown"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Lockdown pre-answers the end-of-bootstrap Host Firewall (CCNP)\nstep. nil = ask interactively (legacy behavior); true = apply\nwithout prompting (CI-safe); false = skip the step."
+        },
+        {
+          "path": [
+            "cluster",
+            "keycloak",
+            "mode"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": [
+            "managed",
+            "external"
+          ],
+          "appliesWhen": {
+            "cluster.type": [
+              "vpn"
+            ]
+          },
+          "doc": "Mode is \"managed\" (kubeaid-cli installs Keycloak via the\nkeycloakx Helm chart on this cluster — VPN clusters only)\nor \"external\" (Keycloak is already running elsewhere;\nsupply DNS only). Workload clusters must use external."
+        },
+        {
+          "path": [
+            "cluster",
+            "keycloak",
+            "dns"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cluster.type": [
+              "vpn"
+            ]
+          },
+          "doc": "DNS is the public hostname Keycloak is reachable at, e.g.\n\"keycloak.vpn.acme.com\". Required. Used to derive the OIDC\nissuer URL the apiserver and kubelogin trust, and (when\nRealm is unset) to default the realm name."
+        },
+        {
+          "path": [
+            "cluster",
+            "keycloak",
+            "realm"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cluster.type": [
+              "vpn"
+            ]
+          },
+          "doc": "Realm is the Keycloak realm name. Optional — when empty,\nkubeaid-cli derives it from DNS via\n`golang.org/x/net/publicsuffix.EffectiveTLDPlusOne` and the\nfirst dot-separated segment of the result. Examples:\n  keycloak.vpn.acme.com  → \"acme\"\n  keycloak.foo.co.uk     → \"foo\"\nSet this explicitly to override the derivation."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "dns"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "DNS is the public hostname NetBird Management is reachable at,\ne.g. \"netbird.vpn.acme.com\". Required only for cluster.type=vpn\n(enforced in parser/keycloak.go); unused on workload clusters."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "dnsZone"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "DNSZone is the mesh DNS domain peers resolve under — NetBird\nMgmt's --dns-domain, e.g. \"mesh.acme.com\". Operator-supplied, no\ndefault. Required for cluster.type=vpn and for workload clusters\nthat join a mesh; absent on workload clusters that don't. Used to\ncreate the DNS zone on NetBird, to drive --dns-domain on VPN\nclusters, and to add the kubernetes.\u003cdnsZone\u003e apiserver cert SAN."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "stunDNS"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "StunDNS is the public hostname Coturn answers STUN queries\non, e.g. \"stun.vpn.acme.com\". Optional: kubeaid-cli derives\nit as \"stun.\u003cbase\u003e\" where base is DNS with the leading\n\"netbird.\" stripped (so netbird.vpn.acme.com → stun.vpn.acme.com).\nOverride only when STUN is exposed on a non-standard FQDN."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "turnDNS"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "TurnDNS is the public hostname Coturn answers TURN queries\non, e.g. \"turn.vpn.acme.com\". Optional: derived as\n\"turn.\u003cbase\u003e\" by the same logic as StunDNS."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "turnUser"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "netbird",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "TurnUser is the static username Coturn / NetBird Mgmt agree\non for TURN authentication. The matching password is\ngenerated and persisted in the Secret. Optional, defaults\nto \"netbird\"."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "clusterProxy",
+            "enabled"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Enabled toggles the cluster proxy."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "clusterProxy",
+            "rbac"
+          ],
+          "type": "[]NetBirdClusterProxyRBACConfig",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "RBAC binds NetBird groups to cluster roles via the proxy's\nidentity impersonation."
+        },
+        {
+          "path": [
+            "cluster",
+            "netbird",
+            "groups"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Groups are extra NetBird groups this cluster OWNS (chart: groups), beyond\nthe derived k8s-\u003ccluster\u003e and k8s-\u003ccluster\u003e-access. Declare a group from ONE\ncluster only — a duplicate wedges that operator on HTTP 409."
+        },
+        {
+          "path": [
+            "cluster",
+            "additionalUsers"
+          ],
+          "type": "[]UserConfig",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Other than the root user, addtional users that you would like to be created in each node.\nNOTE : Currently, we can't register additional SSH key-pairs against the root user."
+        },
+        {
+          "path": [
+            "cluster",
+            "argoCD",
+            "deployKeys",
+            "kubeaid",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "cluster",
+            "argoCD",
+            "deployKeys",
+            "kubeaid",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        },
+        {
+          "path": [
+            "cluster",
+            "argoCD",
+            "deployKeys",
+            "kubeaidConfig",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "cluster",
+            "argoCD",
+            "deployKeys",
+            "kubeaidConfig",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        }
+      ]
+    },
+    {
+      "key": "cloud",
+      "title": "Cloud provider specific details",
+      "fields": [
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "region"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "sshKeyName"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "vpcID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "bastionEnabled"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "True",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "controlPlane",
+            "loadBalancerScheme"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "internet-facing",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "controlPlane",
+            "replicas"
+          ],
+          "type": "uint32",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "controlPlane",
+            "instanceType"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "controlPlane",
+            "ami",
+            "id"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "aws",
+            "nodeGroups"
+          ],
+          "type": "[]AWSAutoScalableNodeGroup",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "tenantID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "subscriptionID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "aadApplication",
+            "principalID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "location"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "storageAccount"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "workloadIdentity",
+            "openIDProviderSSHKeyPair",
+            "publicKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "workloadIdentity",
+            "openIDProviderSSHKeyPair",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "workloadIdentity",
+            "openIDProviderSSHKeyPair",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "sshPublicKey"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "canonicalUbuntuImage",
+            "offer"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "canonicalUbuntuImage",
+            "sku"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "controlPlane",
+            "loadBalancerType"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "Public",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "controlPlane",
+            "diskSizeGB"
+          ],
+          "type": "uint32",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "controlPlane",
+            "vmSize"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "controlPlane",
+            "replicas"
+          ],
+          "type": "uint32",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "azure",
+            "nodeGroups"
+          ],
+          "type": "[]AzureAutoScalableNodeGroup",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "mode"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "hcloud",
+          "enum": [
+            "bare-metal",
+            "hcloud",
+            "hybrid"
+          ],
+          "appliesWhen": null,
+          "doc": "The Hetzner mode to use :\n\n\t\t\t  (1) hcloud : Both the control-plane and the nodegroups will be in HCloud.\n\n\t\t\t  (2) bare-metal : Both the control-plane and the nodegroups will be in Hetzner Bare Metal.\n\n\t\t\t  (3) hybrid : The control-plane will be in HCloud, and each node-group can be either in\n\t\t\t               HCloud or Hetzner Bare Metal."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloudVPNCluster",
+            "name"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "sshKeyPair",
+            "name"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "sshKeyPair",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "sshKeyPair",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloud",
+            "zone"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloud",
+            "imageName"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "ubuntu-26.04",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloud",
+            "natGatewayServerType"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "cpx22",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": "NATGatewayServerType is the HCloud server type for the NAT gateway\nthat fronts the private network during bootstrap. cpx22 is a small,\ncost-optimised x86 box — ample for NAT. Override it if cpx22 is out\nof stock / not offered in your locations, or you need more throughput\n(`hcloud server-type list` shows what's available)."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloud",
+            "hetznerNetwork",
+            "cidr"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "hcloud",
+            "hetznerNetwork",
+            "hcloudServersSubnetCIDR"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "wipeDisks"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "false",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "installImage",
+            "imagePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "/root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "installImage",
+            "vg0",
+            "size"
+          ],
+          "type": "int",
+          "tier": "",
+          "required": true,
+          "default": "80",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "installImage",
+            "vg0",
+            "rootVolumeSize"
+          ],
+          "type": "int",
+          "tier": "",
+          "required": true,
+          "default": "50",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "firewall",
+            "enabled"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "Enabled gates whether kubeaid-cli renders the Cilium host-firewall\nCiliumClusterwideNetworkPolicy at all. Defaults to true; set false to\nopt out — e.g. a separate upstream L3 firewall appliance already fronts\nthe cluster. A pointer so an explicit \"enabled: false\" is distinguishable\nfrom unset and honoured."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "firewall",
+            "allowSshFrom"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "AllowSSHFrom restricts inbound SSH (22/tcp) on every bare-metal node to\nthese sources. Rendered as a fromCIDR rule in the CCNP. Empty (the\ndefault) allows SSH from anywhere — matching the bare-metal posture where\nnodes are not NetBird peers and have no mesh fallback path. Each entry is\nan IPv4 address or CIDR (e.g. \"203.0.113.4\" or \"203.0.113.0/24\"); a bare\naddress is treated as /32."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "firewall",
+            "allowPublic"
+          ],
+          "type": "[]FirewallPort",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "AllowPublic is a legacy field from the (removed) Hetzner Robot firewall.\nIt is parsed and validated but NOT rendered into the Cilium host-firewall\npolicy — parser.validateHetznerConfig only logs a warning when it is set.\nThe policy's world-facing ports come from hostNetworkPolicy.publicPorts\n(chart default [80, 443]); 6443 is never world-public — it is a separate\nrule restricted to hostNetworkPolicy.apiserverSourceCIDRs (the node IPs).\nTo open extra ports to the world, add them to hostNetworkPolicy.publicPorts\nin the cilium chart values overlay, not here."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "zfs",
+            "size"
+          ],
+          "type": "int",
+          "tier": "",
+          "required": true,
+          "default": "220",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "ZFS pool size (in GB), on each node in the corresponding node-group.\nMust be \u003e= 200 GB : reserving 100 GB for container images, 50 GB for pod logs and 50 GB for\npod ephemeral volumes.\nOn top of that, if you want x GB of node-local storage for your workloads (like Redis),\nthe ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "vSwitch",
+            "vlanID"
+          ],
+          "type": "int",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "VLANID is the Hetzner vSwitch VLAN ID. Hetzner's webservice only\naccepts 4000-4091 (inclusive) — matches\npkg/config/validate.{Min,Max}HetznerVLANID, enforced again here\n(not just at prompt time) so a config from outside the prompt\n(hand-written, or rendered by the Obmondo API) still fails fast\ninstead of erroring against Hetzner's API mid-bootstrap."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "vSwitch",
+            "name"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "bareMetal",
+            "vSwitch",
+            "subnetCIDRBlock"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "SubnetCIDRBlock is the vSwitch subnet attached to the Hetzner Network.\nThe IP written here doubles as the subnet's gateway (net.ParseCIDR's\nfirst return), so \"10.0.1.0/24\" yields gateway 10.0.1.0 — write the IP\nyou want as the gateway, not just any address in the range."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "hcloud",
+            "machineType"
+          ],
+          "type": "string",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "hcloud",
+            "replicas"
+          ],
+          "type": "uint",
+          "tier": "basic",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "hcloud",
+            "loadBalancer",
+            "enabled"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "hcloud",
+            "loadBalancer",
+            "region"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "hcloud",
+            "loadBalancer",
+            "endpoint"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": "Endpoint is the FQDN clients use to reach kube-apiserver\n(CAPI's controlPlaneEndpoint.host, kubeadm cert SAN,\nkubeconfig server URL). Optional: when omitted, the LB\nprivate IP is used as the control-plane endpoint directly\n(no public interface, no DNS wait). When set, the LB gets\na public interface during bootstrap and kubeaid-cli waits\nfor the operator's DNS A-record to land before continuing.\nDNS resolution is the operator's responsibility."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "bareMetal",
+            "endpoint",
+            "isFailoverIP"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "bareMetal",
+            "endpoint",
+            "host"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "bareMetal",
+            "bareMetalHosts"
+          ],
+          "type": "[]HetznerBareMetalHost",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "bareMetal",
+            "zfs",
+            "size"
+          ],
+          "type": "int",
+          "tier": "",
+          "required": true,
+          "default": "220",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal"
+            ]
+          },
+          "doc": "ZFS pool size (in GB), on each node in the corresponding node-group.\nMust be \u003e= 200 GB : reserving 100 GB for container images, 50 GB for pod logs and 50 GB for\npod ephemeral volumes.\nOn top of that, if you want x GB of node-local storage for your workloads (like Redis),\nthe ZFS pool size will be (200 + 2x) GB, keeping in mind that RAIDZ-1 is enabled."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "regions"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Regions is the list of Hetzner regions (lower-case IDs: \"fsn1\", \"hel1\", \"ash\", ...)\nthe CAPH chart constrains control-plane placement to. At least one is required."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "controlPlane",
+            "extraCertSANs,omitempty"
+          ],
+          "type": "[]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "ExtraCertSANs are additional DNS names added to the apiserver's\nTLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,\nhybrid). The chart merges these with endpoint.host into kubeadm's\napiServer.certSANs. Use for any additional hostnames clients reach\nthe apiserver under."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "nodeGroups",
+            "hcloud"
+          ],
+          "type": "[]HCloudAutoScalableNodeGroup",
+          "tier": "basic",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "hcloud",
+              "hybrid"
+            ]
+          },
+          "doc": "Details about node-groups in HCloud."
+        },
+        {
+          "path": [
+            "cloud",
+            "hetzner",
+            "nodeGroups",
+            "bareMetal"
+          ],
+          "type": "[]HetznerBareMetalNodeGroup",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": "Details about node-groups in Hetzner Bare Metal."
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "ssh",
+            "port"
+          ],
+          "type": "uint",
+          "tier": "",
+          "required": true,
+          "default": "22",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "ssh",
+            "privateKeyFilePath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "PrivateKeyFilePath is the on-disk SSH private key\nkubeaid-cli reads to derive PublicKey + Fingerprint and\n(for cloud-side SSH connections like the Hetzner NAT\ngateway setup) to authenticate the SSH session. Required\nwhen UseSSHAgent is false; ignored when UseSSHAgent is\ntrue (the agent owns the private key — yubikey case —\nso there's nothing on disk to point at). Cross-field\nvalidation in pkg/config/parser/validate.go enforces\n\"exactly one is set\"."
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "ssh",
+            "useSSHAgent"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "UseSSHAgent flips the SSH key sourcing from \"read a file\nfrom PrivateKeyFilePath\" to \"dial $SSH_AUTH_SOCK and ask\nthe agent for its loaded identities\". The first identity\nsupplies PublicKey + Fingerprint; the SSH client (kubeone)\nsigns through the agent socket so yubikey-resident\nprivate keys never need to be exported."
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "kubelet",
+            "systemReserved,omitempty"
+          ],
+          "type": "map[string]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "kubelet",
+            "kubeReserved,omitempty"
+          ],
+          "type": "map[string]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "kubelet",
+            "evictionHard,omitempty"
+          ],
+          "type": "map[string]string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "kubelet",
+            "maxPods,omitempty"
+          ],
+          "type": "int32",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "controlPlane",
+            "endpoint",
+            "host"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "controlPlane",
+            "endpoint",
+            "port"
+          ],
+          "type": "uint",
+          "tier": "",
+          "required": true,
+          "default": "6443",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "controlPlane",
+            "hosts"
+          ],
+          "type": "[]BareMetalHost",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "bare-metal",
+            "nodeGroups"
+          ],
+          "type": "[]BareMetalNodeGroup",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "disasterRecovery",
+            "veleroBackupsBucketName"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "cloud",
+            "disasterRecovery",
+            "sealedSecretsBackupsBucketName"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "key": "kubePrometheus",
+      "title": "Kube Prometheus installation specific details",
+      "fields": [
+        {
+          "path": [
+            "kubePrometheus",
+            "version"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "kubePrometheus",
+            "grafanaURL"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "key": "kubeaidStoragectl",
+      "title": "KubeaidStoragectl pins the kubeaid-storagectl release tag",
+      "fields": [
+        {
+          "path": [
+            "kubeaidStoragectl",
+            "version"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Version is the GitHub release tag of kubeaid-storagectl —\nrendered into the chart as `global.kubeaidStoragectl.version`\nand used to build the `releases/download/\u003cversion\u003e/` URL the\nnode's preKubeadm wget hits. Empty string is treated as \"not\nset\" and falls back to kubeaid-cli's own version, same as\nomitting the parent block."
+        }
+      ]
+    },
+    {
+      "key": "obmondo",
+      "title": "Obmondo customer specific details",
+      "fields": [
+        {
+          "path": [
+            "obmondo",
+            "customerID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "obmondo",
+            "monitoring"
+          ],
+          "type": "bool",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "obmondo",
+            "certPath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Path to the mTLS client cert issued by Obmondo. Required when\nMonitoring is true — kubeaid-agent uses it to authenticate to the\nObmondo API, and kube-prometheus's Alertmanager uses it to push\nalerts to Obmondo's alert-receiver endpoint."
+        },
+        {
+          "path": [
+            "obmondo",
+            "keyPath"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "Path to the private key paired with CertPath. Required when\nMonitoring is true."
+        }
+      ]
+    },
+    {
+      "key": "aws",
+      "title": "Aws",
+      "fields": [
+        {
+          "path": [
+            "aws",
+            "accessKeyID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "aws",
+            "secretAccessKey"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "aws",
+            "sessionToken"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "key": "azure",
+      "title": "Azure",
+      "fields": [
+        {
+          "path": [
+            "azure",
+            "clientID"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        },
+        {
+          "path": [
+            "azure",
+            "clientSecret"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "key": "hetzner",
+      "title": "Hetzner",
+      "fields": [
+        {
+          "path": [
+            "hetzner",
+            "apiToken"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "APIToken is the HCloud Cloud-API token. Required for every Hetzner mode."
+        },
+        {
+          "path": [
+            "hetzner",
+            "robot",
+            "user"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        },
+        {
+          "path": [
+            "hetzner",
+            "robot",
+            "password"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": true,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cloud.hetzner.mode": [
+              "bare-metal",
+              "hybrid"
+            ]
+          },
+          "doc": ""
+        }
+      ]
+    },
+    {
+      "key": "keycloak",
+      "title": "Keycloak",
+      "fields": [
+        {
+          "path": [
+            "keycloak",
+            "adminPassword"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "AdminPassword is templated into the keycloak-admin\nSealedSecret's KEYCLOAK_PASSWORD key. Required when\ncluster.keycloak.mode is \"managed\"; ignored otherwise.\nFillMissingSecrets generates a value here on first run if\nthe field is empty."
+        },
+        {
+          "path": [
+            "keycloak",
+            "netBirdBackendClientSecret"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": {
+            "cluster.keycloak.mode": [
+              "external"
+            ]
+          },
+          "doc": "NetBirdBackendClientSecret is the confidential-client\nsecret for the netbird-backend OIDC client. In external\nmode the operator creates the client in their Keycloak\nand supplies the resulting secret here. In managed mode\nFillMissingSecrets generates it, the realm reconciler\ncreates the Keycloak client with this exact value, and\nthe netbird SealedSecret is templated with the same\nvalue — single source of truth either way."
+        }
+      ]
+    },
+    {
+      "key": "netbird",
+      "title": "Netbird",
+      "fields": [
+        {
+          "path": [
+            "netbird",
+            "datastoreEncryptionKey"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "DatastoreEncryptionKey is the AES key NetBird Mgmt uses\nto encrypt its data store. base64(32 random bytes); the\nchart base64-decodes it back to 32 raw bytes for\nAES-256."
+        },
+        {
+          "path": [
+            "netbird",
+            "relayPassword"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "RelayPassword is the shared secret between NetBird Mgmt\nand the in-cluster Relay deployment. Alphanumeric so it\nflows cleanly through Helm values + envFrom."
+        },
+        {
+          "path": [
+            "netbird",
+            "turnPassword"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "TurnPassword is the credential the NetBird agents use to\nauthenticate with Coturn (TURN server). Same value is\ntemplated into both the netbird Secret (Mgmt-side) and\nthe netbird-turn-credentials Secret (Coturn-side) — the\ntwo MUST match or relayed TURN auth fails."
+        },
+        {
+          "path": [
+            "netbird",
+            "apiKey"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "APIKey is a NetBird Management service-user access token\n(nbp_…) the netbird-operator authenticates to the Mgmt\nAPI with — minting setup keys for routing peers, managing\ngroups / networks / policies. Created manually in the\nNetBird dashboard: Team → Service Users → create →\ngenerate access token (a service user, not a personal\nPAT, so it survives offboarding). NOT auto-generated by\nFillMissingSecrets — only the Mgmt dashboard can mint it.\nRendered into the netbird/netbird-mgmt-api-key\nSealedSecret whose NB_API_KEY the operator Deployment\nreads (the chart's default secret ref). When blank,\nthe SealedSecret is skipped and bootstrap pauses at\nnetbird.AwaitOperatorToken with instructions instead."
+        }
+      ]
+    },
+    {
+      "key": "acme",
+      "title": "Acme",
+      "fields": [
+        {
+          "path": [
+            "acme",
+            "cloudflareApiToken"
+          ],
+          "type": "string",
+          "tier": "",
+          "required": false,
+          "default": "",
+          "enum": null,
+          "appliesWhen": null,
+          "doc": "CloudflareAPIToken is a Cloudflare API token with Zone:Read +\nDNS:Edit on the zones the solver manages (the TXT challenge\nrecords). Sealed into the cert-manager/cloudflare-api-token\nSecret the ClusterIssuer references."
+        }
+      ]
+    }
+  ]
+}

@@ -84,8 +84,16 @@ func (structs *Structs) Sorted() []*Struct {
 }
 
 // For each struct, we remove the embedded struct fields, and add the corresponding promoted fields.
+//
+// Iterates structs.Sorted rather than structs.All directly: a struct that
+// both embeds another and is itself embedded elsewhere (e.g.
+// AutoScalableNodeGroup, embedded by AzureAutoScalableNodeGroup) resolves
+// differently depending on whether it has already been mutated by this
+// same loop when a later struct promotes its fields — map iteration order
+// is randomized per run, so that dependency must go through a
+// deterministic order instead.
 func (structs *Structs) ResolveEmbeddedStructFields() {
-	for _, s := range structs.All {
+	for _, s := range structs.Sorted() {
 		for j, f := range s.Fields {
 			if f.Embedded {
 				promotedFields := structs.getFields(f.Name)

@@ -1,0 +1,33 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 31.0.4
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory: 
+
+cluster:
+  type: workload
+  name: local-dev
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  local: {}
+
+obmondo:
+  monitoring: true
+  certPath: /etc/obmondo/client.crt
+  keyPath: /etc/obmondo/client.key

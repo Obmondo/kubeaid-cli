@@ -50,7 +50,7 @@ type (
 		// creates the Keycloak client with this exact value, and
 		// the netbird SealedSecret is templated with the same
 		// value — single source of truth either way.
-		NetBirdBackendClientSecret string `yaml:"netBirdBackendClientSecret"`
+		NetBirdBackendClientSecret string `yaml:"netBirdBackendClientSecret" when:"cluster.keycloak.mode=external"`
 	}
 
 	// NetBirdCredentials carries the random secrets NetBird's
@@ -110,7 +110,7 @@ type (
 		//
 		//nolint:gosec // This struct intentionally models user-provided Hetzner credentials.
 		APIToken string                   `yaml:"apiToken"`
-		Robot    *HetznerRobotCredentials `yaml:"robot"`
+		Robot    *HetznerRobotCredentials `yaml:"robot" when:"cloud.hetzner.mode=bare-metal|hybrid"`
 	}
 
 	HetznerRobotCredentials struct {
