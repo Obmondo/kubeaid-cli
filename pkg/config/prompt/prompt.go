@@ -1122,15 +1122,50 @@ func runConfirm() (bool, error) {
 	return confirmed, nil
 }
 
+// Render executes the general.yaml and secrets.yaml templates against cfg
+// and returns the rendered bytes. Pure — no filesystem or network access —
+// so it is safe to call from contexts that must not touch disk, such as
+// the Obmondo API rendering a preview or a one-time download. writeConfigFiles
+// is a thin caller of Render for the CLI's own disk-writing path; the two
+// must stay byte-identical (see render_golden_test.go).
+//
+// Returns an error (never panics) on a nil cfg — unlike the CLI's own
+// call sites, which always build cfg first, an external caller such as
+// the Obmondo API can reach this with a malformed request, and Render
+// runs inside a long-lived server process where a panic would take down
+// more than the one request.
+func Render(cfg *PromptedConfig) (general []byte, secrets []byte, err error) {
+	if cfg == nil {
+		return nil, nil, errors.New("cfg is nil")
+	}
+
+	general, err = renderTemplate("general.yaml", generalConfigTemplate, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("rendering general config: %w", err)
+	}
+
+	secrets, err = renderTemplate("secrets.yaml", secretsConfigTemplate, cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("rendering secrets config: %w", err)
+	}
+
+	return general, secrets, nil
+}
+
 // writeConfigFiles renders the config templates with prompted values and writes them to disk.
 func writeConfigFiles(configsDirectory string, cfg *PromptedConfig) error {
+	general, secrets, err := Render(cfg)
+	if err != nil {
+		return err
+	}
+
 	generalPath := path.Join(configsDirectory, "general.yaml")
-	if err := writeTemplatedFile(generalPath, generalConfigTemplate, cfg, 0o600); err != nil {
+	if err := writeFile(generalPath, general, 0o600); err != nil {
 		return fmt.Errorf("writing general config: %w", err)
 	}
 
 	secretsPath := path.Join(configsDirectory, "secrets.yaml")
-	if err := writeTemplatedFile(secretsPath, secretsConfigTemplate, cfg, 0o600); err != nil {
+	if err := writeFile(secretsPath, secrets, 0o600); err != nil {
 		return fmt.Errorf("writing secrets config: %w", err)
 	}
 

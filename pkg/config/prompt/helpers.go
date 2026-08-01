@@ -4,20 +4,16 @@
 package prompt
 
 import (
-	"errors"
+	"bytes"
 	"fmt"
-	"net"
-	"net/url"
 	"os"
 	"path"
-	"regexp"
-	"strconv"
 	"strings"
 	"text/template"
 
 	"golang.org/x/net/publicsuffix"
 
-	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
@@ -78,187 +74,73 @@ func deriveACMEEmailFromDNS(host string) string {
 	return "ops@" + etldPlusOne
 }
 
-// errRequired is returned by the nonEmpty validator when the input is empty.
-var errRequired = errors.New("value is required")
+// errRequired is prompt's name for validate.ErrRequired — the file-path
+// validators in prompt_helper.go return it directly for a blank input,
+// same as validate.NonEmpty does.
+var errRequired = validate.ErrRequired
 
-func nonEmpty(s string) error {
-	if strings.TrimSpace(s) == "" {
-		return errRequired
-	}
-	return nil
-}
-
-// clusterName validates the cluster name typed at the Step 1 prompt.
-//
-// Mirrors parser.validateClusterName (dots are rejected — the name is
-// spliced into DNS labels like the NetBird peer FQDN `k8s-<name>` and
-// into HCloud / Robot resource names) and adds the RFC-1123 label
-// rules CAPI enforces on the Cluster object, so a bad name fails here
-// instead of three prompts later at parse time.
-func clusterName(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
-	}
-	s = strings.TrimSpace(s)
-
-	if strings.Contains(s, ".") {
-		return errors.New("cluster name cannot contain dots — use '-' instead (e.g. kam-acme-com)")
-	}
-
-	const maxClusterNameLen = 63
-	if len(s) > maxClusterNameLen {
-		return fmt.Errorf("cluster name must be at most %d characters", maxClusterNameLen)
-	}
-
-	if !rfc1123Label.MatchString(s) {
-		return errors.New("cluster name must be lowercase alphanumeric or '-', and start and end with an alphanumeric character")
-	}
-
-	return nil
-}
-
-// rfc1123Label matches a single DNS-1123 label — the shape Kubernetes
-// requires of the CAPI Cluster object's name.
-var rfc1123Label = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
-
-// sshGitURL validates that s is a non-empty SSH-form Git URL.
-// Accepts the two common SSH forms (scp-like git@host:path and
-// rfc-3986 ssh://...) and rejects http(s):// — used in the
-// "private SSH KubeAid fork" path where HTTPS would defeat the
-// reason for asking the question.
-func sshGitURL(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
-	}
-	if repourl.UsingHTTPBasedProtocol(strings.TrimSpace(s)) {
-		return errors.New("must be SSH form (e.g. git@github.com:org/repo.git)")
-	}
-	return nil
-}
-
-// ipv4 validates that s is a non-empty IPv4 address.
-// Used for Hetzner bare-metal control-plane host private IPs and the
-// API server endpoint host, both of which must resolve at parse time
-// (validator tags `ipv4` / `ip`).
-func ipv4(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
-	}
-	parsed := net.ParseIP(strings.TrimSpace(s))
-	if parsed == nil || parsed.To4() == nil {
-		return errors.New("must be a valid IPv4 address (e.g. 10.0.0.5)")
-	}
-	return nil
-}
-
-// cidrv4 validates that s parses as an IPv4 CIDR (e.g. 10.0.1.0/24).
-// Used for the Hetzner vSwitch subnet block — server private IPs
-// must live within this range, and Hetzner rejects malformed CIDRs.
-func cidrv4(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
-	}
-	_, _, err := net.ParseCIDR(strings.TrimSpace(s))
-	if err != nil {
-		return errors.New("must be a valid IPv4 CIDR (e.g. 10.0.1.0/24)")
-	}
-	return nil
-}
-
-// minHetznerVLANID / maxHetznerVLANID bound the VLAN IDs Hetzner's
-// vSwitch webservice accepts (inclusive).
+// minHetznerVLANID / maxHetznerVLANID are prompt's names for
+// pkg/config/validate's exported VLAN ID bounds, kept for the vSwitch
+// add-loop's "next free VLAN ID" scan in provider_hetzner_baremetal.go.
 const (
-	minHetznerVLANID = 4000
-	maxHetznerVLANID = 4091
+	minHetznerVLANID = validate.MinHetznerVLANID
+	maxHetznerVLANID = validate.MaxHetznerVLANID
 )
 
-// hetznerVLANID validates a Hetzner vSwitch VLAN ID — the webservice
-// only accepts 4000-4091 (inclusive). Anything outside is rejected at
-// prompt time so the operator catches a typo before bootstrap.
-func hetznerVLANID(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(s))
+// nonEmpty / clusterName / sshGitURL / ipv4 / cidrv4 / hetznerVLANID /
+// ipv4InSubnet / httpsURL are prompt's names for pkg/config/validate's
+// exported field validators, kept so every huh Validate(...) call site in
+// this package is unchanged. See that package for the validation rules —
+// the Obmondo API imports it directly to enforce the same rules in the
+// browser.
+var (
+	nonEmpty      = validate.NonEmpty
+	clusterName   = validate.ClusterName
+	sshGitURL     = validate.SSHGitURL
+	ipv4          = validate.IPv4
+	cidrv4        = validate.CIDRv4
+	hetznerVLANID = validate.HetznerVLANID
+	ipv4InSubnet  = validate.IPv4InSubnet
+	httpsURL      = validate.HTTPSURL
+)
+
+// renderTemplate executes a Go template string against data and returns the
+// rendered bytes. name identifies the template in parse/execution error
+// messages. Pure — no filesystem or network access.
+func renderTemplate(name string, tmplStr string, data any) ([]byte, error) {
+	tmpl, err := template.New(name).Parse(tmplStr)
 	if err != nil {
-		return errors.New("must be numeric")
-	}
-	if n < minHetznerVLANID || n > maxHetznerVLANID {
-		return fmt.Errorf("hetzner vSwitch VLAN ID must be in %d-%d", minHetznerVLANID, maxHetznerVLANID)
-	}
-	return nil
-}
-
-// ipv4InSubnet returns a validator that requires s to be a valid
-// IPv4 inside cidr. cidr is captured at validator-build time; an
-// empty cidr disables the containment check (validator falls back to
-// plain ipv4) so the prompt still works when vSwitch wasn't asked
-// for (pure-hcloud mode).
-func ipv4InSubnet(cidr string) func(string) error {
-	return func(s string) error {
-		if err := ipv4(s); err != nil {
-			return err
-		}
-		cidr = strings.TrimSpace(cidr)
-		if cidr == "" {
-			return nil
-		}
-		_, subnet, err := net.ParseCIDR(cidr)
-		if err != nil || subnet == nil {
-			return nil
-		}
-		if !subnet.Contains(net.ParseIP(strings.TrimSpace(s))) {
-			return fmt.Errorf("must be inside the vSwitch subnet %s", cidr)
-		}
-		return nil
-	}
-}
-
-// httpsURL validates that s is a non-empty https:// URL with a host.
-// Used for inputs where the protocol matters at bootstrap time
-// (e.g. OIDC issuer URLs — kube-apiserver only fetches JWKS over
-// TLS).
-func httpsURL(s string) error {
-	if err := nonEmpty(s); err != nil {
-		return err
+		return nil, fmt.Errorf("parsing template %s: %w", name, err)
 	}
 
-	u, err := url.Parse(strings.TrimSpace(s))
-	if err != nil {
-		return fmt.Errorf("invalid URL: %w", err)
+	var rendered bytes.Buffer
+	if err := tmpl.Execute(&rendered, data); err != nil {
+		return nil, fmt.Errorf("rendering template %s: %w", name, err)
 	}
 
-	if u.Scheme != "https" {
-		return errors.New("URL must start with https://")
-	}
-
-	if u.Host == "" {
-		return errors.New("URL must include a host (https://<host>/...)")
-	}
-
-	return nil
+	return rendered.Bytes(), nil
 }
 
 // writeTemplatedFile renders a Go template string with the given data and writes it to disk.
 func writeTemplatedFile(filePath string, tmplStr string, data any, perm os.FileMode) error {
+	rendered, err := renderTemplate(filePath, tmplStr, data)
+	if err != nil {
+		return err
+	}
+
+	return writeFile(filePath, rendered, perm)
+}
+
+// writeFile writes data to filePath with perm, creating parent directories
+// as needed.
+func writeFile(filePath string, data []byte, perm os.FileMode) error {
 	dir := path.Dir(filePath)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return fmt.Errorf("creating directory %s: %w", dir, err)
 	}
 
-	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
-	if err != nil {
+	if err := os.WriteFile(filePath, data, perm); err != nil {
 		return fmt.Errorf("creating file %s: %w", filePath, err)
-	}
-	defer f.Close()
-
-	tmpl, err := template.New(path.Base(filePath)).Parse(tmplStr)
-	if err != nil {
-		return fmt.Errorf("parsing template %s: %w", filePath, err)
-	}
-
-	if err := tmpl.Execute(f, data); err != nil {
-		return fmt.Errorf("rendering template %s: %w", filePath, err)
 	}
 
 	return nil

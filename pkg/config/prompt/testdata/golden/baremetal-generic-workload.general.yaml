@@ -1,0 +1,42 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 31.0.4
+  kubeaidConfig:
+    url: git@github.com:demo/kubeaid-config.git
+    directory: 
+
+cluster:
+  type: workload
+  name: demo
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  bare-metal:
+    ssh:
+      port: 22
+    controlPlane:
+      endpoint:
+        host: 192.0.2.10
+        port: 6443
+      hosts:
+        - publicAddress: 192.0.2.10
+        - publicAddress: 192.0.2.11
+    nodeGroups:
+      - name: workers
+        hosts:
+          - publicAddress: 192.0.2.20
+

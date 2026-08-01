@@ -1,0 +1,83 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 29.0.9
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory: 
+
+cluster:
+  type: workload
+  name: bm-acme
+  k8sVersion: v1.35.4
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  netbird:
+    dns: netbird.vpn.acme.com
+    dnsZone: bm-acme.local
+  lockdown: true
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  hetzner:
+    mode: bare-metal
+    sshKeyPair:
+      name: bm-acme
+      useSSHAgent: true
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      vSwitch:
+        name: bm-acme-vswitch
+        vlanID: 4002
+        subnetCIDRBlock: "10.0.1.0/24"
+      # Cilium host firewall (CiliumClusterwideNetworkPolicy) on each node's
+      # public NIC. enabled gates whether the policy is rendered; allowSshFrom
+      # restricts SSH (empty = from anywhere, IPv4/CIDR only). 80/443 are
+      # world-public; 6443 is reachable only from the node public IPs, not the
+      # world. allowPublic is a legacy no-op (ignored, warns if set) — set extra
+      # world ports via the cilium chart's hostNetworkPolicy.publicPorts. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        enabled: true
+        allowSshFrom: []
+        allowPublic: []
+    controlPlane:
+      bareMetal:
+        endpoint:
+          isFailoverIP: true
+          host: 1.2.3.4
+        bareMetalHosts:
+          # Robot main IP: 5.5.5.1
+          - serverID: "1234567"
+            privateIP: 10.0.1.1
+          # Robot main IP: 5.5.5.2
+          - serverID: "1234568"
+            privateIP: 10.0.1.2
+          # Robot main IP: 5.5.5.3
+          - serverID: "1234569"
+            privateIP: 10.0.1.3
+      regions:
+        - fsn1
+    nodeGroups:
+      bareMetal:
+        - name: workers
+          bareMetalHosts:
+            # Robot main IP: 5.5.5.4
+            - serverID: "1234570"
+              privateIP: 10.0.1.10
+
