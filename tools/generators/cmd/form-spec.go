@@ -135,10 +135,12 @@ func toSchemaField(field structs.Field, path []string, when whenCondition) schem
 	}
 }
 
-// sectionTitle derives a human title for a root struct's top-level field
-// from the first sentence of its doc comment, falling back to the
-// capitalized yaml key when no doc comment exists (as for every
-// SecretsConfig top-level field today).
+// sectionTitle derives a human title for a root struct's top-level
+// field: its doc comment up to the first period or line break —
+// whichever comes first, so a wrapped first sentence is cut at the
+// source line break rather than spilling the rest of the paragraph into
+// a section header — or the capitalized yaml key when there's no doc
+// comment at all.
 func sectionTitle(field structs.Field) string {
 	doc := strings.TrimSpace(field.Doc)
 	if doc == "" {

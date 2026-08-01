@@ -1156,7 +1156,7 @@ func Render(cfg *PromptedConfig) (general []byte, secrets []byte, err error) {
 func writeConfigFiles(configsDirectory string, cfg *PromptedConfig) error {
 	general, secrets, err := Render(cfg)
 	if err != nil {
-		return err
+		return fmt.Errorf("rendering config: %w", err)
 	}
 
 	generalPath := path.Join(configsDirectory, "general.yaml")
