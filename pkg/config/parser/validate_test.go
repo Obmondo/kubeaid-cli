@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	validatorV10 "github.com/go-playground/validator/v10"
+	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,6 +22,46 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
+
+// TestVSwitchVLANIDRangeEnforcedAtParseTime proves the Hetzner vSwitch
+// VLAN ID range (4000-4091) is enforced by validateConfigStructTags —
+// the same check pkg/config/validate.HetznerVLANID runs interactively —
+// so a config that never went through the prompt (hand-written, or
+// rendered by the Obmondo API) still fails fast at parse time instead of
+// erroring against Hetzner's webservice mid-bootstrap.
+func TestVSwitchVLANIDRangeEnforcedAtParseTime(t *testing.T) {
+	tests := []struct {
+		name    string
+		vlanID  int
+		wantErr bool
+	}{
+		{name: "below range", vlanID: 3999, wantErr: true},
+		{name: "lower bound", vlanID: 4000, wantErr: false},
+		{name: "upper bound", vlanID: 4091, wantErr: false},
+		{name: "above range", vlanID: 4092, wantErr: true},
+		{name: "zero value (unset)", vlanID: 0, wantErr: true},
+	}
+
+	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
+	require.NoError(t, validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank))
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			vSwitch := config.VSwitchConfig{
+				VLANID:          tc.vlanID,
+				Name:            "test-vswitch",
+				SubnetCIDRBlock: "10.0.1.0/24",
+			}
+
+			err := validator.Struct(vSwitch)
+			if tc.wantErr {
+				assert.Error(t, err, "VLAN ID %d should be rejected", tc.vlanID)
+				return
+			}
+			assert.NoError(t, err, "VLAN ID %d should be accepted", tc.vlanID)
+		})
+	}
+}
 
 func stubK8sVersionDeps(t *testing.T) {
 	t.Helper()
@@ -124,7 +166,10 @@ func TestValidateConfigs(t *testing.T) {
 
 			err := validateConfigs(context.Background())
 			require.Error(t, err)
-			assert.EqualError(t, err, "cluster name cannot contain any dots")
+			// validateClusterName delegates to pkg/config/validate.ClusterName —
+			// same rule the interactive prompt enforces (see that package's
+			// TestClusterName for the other RFC-1123 cases).
+			assert.EqualError(t, err, "cluster name cannot contain dots — use '-' instead (e.g. kam-acme-com)")
 		})
 	}
 }

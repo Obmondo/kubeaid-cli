@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
@@ -146,11 +147,13 @@ func validateACMEDNS01(cluster config.ClusterConfig, acmeCreds *config.ACMECrede
 	return nil
 }
 
+// validateClusterName runs the same rule the interactive prompt enforces
+// (pkg/config/validate.ClusterName) so a general.yaml that never went
+// through the prompt — hand-written, or rendered by the Obmondo API —
+// still fails on a dotted, oversized, or non-RFC-1123 name at parse time
+// rather than three steps later inside CAPI/Cilium.
 func validateClusterName(clusterName string) error {
-	if strings.Contains(clusterName, ".") {
-		return errors.New("cluster name cannot contain any dots")
-	}
-	return nil
+	return validate.ClusterName(clusterName)
 }
 
 func validateClusterType(clusterType, cloudProviderName string) error {
