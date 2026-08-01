@@ -103,7 +103,7 @@ type (
 	// KubeAid repository specific details.
 	KubeAidForkConfig struct {
 		// KubeAid repository SSH URL.
-		URL       string `yaml:"url" validate:"required" tier:"basic"`
+		URL       string `yaml:"url" validate:"required"`
 		ParsedURL *repourl.Parsed
 
 		// KubeAid git ref (tag / branch / commit).
@@ -113,7 +113,7 @@ type (
 	// KubeAid Config repository specific details.
 	KubeaidConfigForkConfig struct {
 		// KubeAid Config repository SSH URL.
-		URL       string `yaml:"url" validate:"required" tier:"basic"`
+		URL       string `yaml:"url" validate:"required"`
 		ParsedURL *repourl.Parsed
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
@@ -127,16 +127,16 @@ type (
 	}
 
 	ClusterConfig struct {
-		Type string `yaml:"type" validate:"notblank,oneof=vpn workload" default:"workload" tier:"basic"`
+		Type string `yaml:"type" validate:"notblank,oneof=vpn workload" default:"workload"`
 
 		// Name of the Kubernetes cluster.
 		//
 		// We don't allow using dots in the cluster name, since it can cause issues with tools like
 		// ClusterAPI and Cilium : which use the cluster name to generate other configurations.
-		Name string `yaml:"name" validate:"notblank" tier:"basic"`
+		Name string `yaml:"name" validate:"notblank"`
 
 		// Kubernetes version (>= 1.30.0).
-		K8sVersion string `yaml:"k8sVersion" validate:"notblank" tier:"basic"`
+		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
 		// Whether you would like to enable Kubernetes Audit Logging out of the box.
 		// Suitable Kubernetes API configurations will be done for you automatically. And they can be
@@ -174,7 +174,7 @@ type (
 		// elsewhere). Not supported on workload clusters — access there is
 		// via the NetBird mesh (cluster.netbird.dns), so a keycloak block
 		// on a workload cluster is rejected.
-		Keycloak *KeycloakConfig `yaml:"keycloak" when:"cluster.type=vpn"`
+		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
 		// NetBird declares the NetBird Management instance this VPN
 		// cluster hosts. Only meaningful when cluster.type=vpn AND
@@ -552,10 +552,10 @@ type (
 		SSHKeyPair HetznerSSHKeyPair `yaml:"sshKeyPair" validate:"required"`
 
 		// HCloud specific details.
-		HCloud *HCloudConfig `yaml:"hcloud" when:"cloud.hetzner.mode=hcloud|hybrid"`
+		HCloud *HCloudConfig `yaml:"hcloud"`
 
 		// Hetzner bare-metal specific details.
-		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal" when:"cloud.hetzner.mode=bare-metal|hybrid"`
+		BareMetal *HetznerBareMetalConfig `yaml:"bareMetal"`
 
 		// Control-plane specific details.
 		ControlPlane HetznerControlPlane `yaml:"controlPlane" validate:"required"`
@@ -574,7 +574,7 @@ type (
 	}
 
 	HCloudConfig struct {
-		Zone      string `yaml:"zone"      validate:"notblank" tier:"basic"`
+		Zone      string `yaml:"zone"      validate:"notblank"`
 		ImageName string `yaml:"imageName" validate:"notblank" default:"ubuntu-26.04"`
 
 		// NATGatewayServerType is the HCloud server type for the NAT gateway
@@ -682,8 +682,8 @@ type (
 	}
 
 	HetznerControlPlane struct {
-		HCloud    *HCloudControlPlane           `yaml:"hcloud" when:"cloud.hetzner.mode=hcloud|hybrid"`
-		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal" when:"cloud.hetzner.mode=bare-metal"`
+		HCloud    *HCloudControlPlane           `yaml:"hcloud"`
+		BareMetal *HetznerBareMetalControlPlane `yaml:"bareMetal"`
 
 		// Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)
 		// the CAPH chart constrains control-plane placement to. At least one is required.
@@ -698,8 +698,8 @@ type (
 	}
 
 	HCloudControlPlane struct {
-		MachineType  string                         `yaml:"machineType"  validate:"notblank" tier:"basic"`
-		Replicas     uint                           `yaml:"replicas"     validate:"notblank" tier:"basic"`
+		MachineType  string                         `yaml:"machineType"  validate:"notblank"`
+		Replicas     uint                           `yaml:"replicas"     validate:"notblank"`
 		LoadBalancer HCloudControlPlaneLoadBalancer `yaml:"loadBalancer" validate:"required"`
 	}
 
@@ -736,10 +736,10 @@ type (
 	// Details about node-groups in Hetzner.
 	HetznerNodeGroups struct {
 		// Details about node-groups in HCloud.
-		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud" tier:"basic" when:"cloud.hetzner.mode=hcloud|hybrid"`
+		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
 
 		// Details about node-groups in Hetzner Bare Metal.
-		BareMetal []*HetznerBareMetalNodeGroup `yaml:"bareMetal" when:"cloud.hetzner.mode=bare-metal|hybrid"`
+		BareMetal []*HetznerBareMetalNodeGroup `yaml:"bareMetal"`
 	}
 
 	// Details about (autoscalable) node-groups in HCloud.

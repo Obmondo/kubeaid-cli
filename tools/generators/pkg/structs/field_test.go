@@ -4,7 +4,6 @@
 package structs
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -63,43 +62,6 @@ func TestParseValidateStructTag(t *testing.T) {
 			gotRequired, gotEnum := parseValidateStructTag(tc.tag)
 			assert.Equal(t, tc.wantRequired, gotRequired)
 			assert.Equal(t, tc.wantEnum, gotEnum)
-		})
-	}
-}
-
-func TestParseWhenStructTag(t *testing.T) {
-	tests := []struct {
-		name       string
-		tag        string
-		wantPath   string
-		wantValues []string
-	}{
-		{name: "empty tag means always applies", tag: "", wantPath: "", wantValues: nil},
-		{
-			name:       "single value",
-			tag:        "cluster.type=vpn",
-			wantPath:   "cluster.type",
-			wantValues: []string{"vpn"},
-		},
-		{
-			name:       "multiple values",
-			tag:        "cloud.hetzner.mode=hcloud|hybrid",
-			wantPath:   "cloud.hetzner.mode",
-			wantValues: []string{"hcloud", "hybrid"},
-		},
-		{
-			name:       "three values",
-			tag:        "cloud.hetzner.mode=bare-metal|hcloud|hybrid",
-			wantPath:   "cloud.hetzner.mode",
-			wantValues: []string{"bare-metal", "hcloud", "hybrid"},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			gotPath, gotValues := parseWhenStructTag(context.Background(), tc.tag)
-			assert.Equal(t, tc.wantPath, gotPath)
-			assert.Equal(t, tc.wantValues, gotValues)
 		})
 	}
 }

@@ -16,10 +16,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
-// TierBasic is the only recognized value of the `tier` struct tag. Absent
-// (empty Field.Tier) means advanced — see NewFieldFromAST.
-const TierBasic = "basic"
-
 type Field struct {
 	Name,
 	Type,
@@ -36,17 +32,6 @@ type Field struct {
 	// itself, and are ignored by both.
 	Required    bool
 	EnumOptions []string
-
-	// Tier is "basic" (shown to a first-time user by default) or "" —
-	// advanced, collapsed behind a UI disclosure. From the `tier` struct tag.
-	Tier string
-
-	// WhenPath / WhenValues are derived from the `when` struct tag —
-	// `when:"cloud.hetzner.mode=hcloud|hybrid"` sets WhenPath to
-	// "cloud.hetzner.mode" and WhenValues to ["hcloud","hybrid"]. WhenPath
-	// is "" when the field always applies.
-	WhenPath   string
-	WhenValues []string
 }
 
 func NewFieldFromAST(ctx context.Context, imports map[string]string, node *ast.Field) Field {
@@ -56,18 +41,9 @@ func NewFieldFromAST(ctx context.Context, imports map[string]string, node *ast.F
 		yamlStructTag     = structTags.Get("yaml")
 		defaultStructTag  = structTags.Get("default")
 		validateStructTag = structTags.Get("validate")
-		tierStructTag     = structTags.Get("tier")
-		whenStructTag     = structTags.Get("when")
-	)
-
-	assert.Assert(ctx,
-		(tierStructTag == "") || (tierStructTag == TierBasic),
-		"tier struct tag must be either absent or \"basic\"",
-		slog.String("tier", tierStructTag),
 	)
 
 	required, enumOptions := parseValidateStructTag(validateStructTag)
-	whenPath, whenValues := parseWhenStructTag(ctx, whenStructTag)
 
 	t := getFieldTypeAsString(ctx, imports, node.Type)
 
@@ -97,9 +73,6 @@ func NewFieldFromAST(ctx context.Context, imports map[string]string, node *ast.F
 			DefaultValue: defaultStructTag,
 			Required:     required,
 			EnumOptions:  enumOptions,
-			Tier:         tierStructTag,
-			WhenPath:     whenPath,
-			WhenValues:   whenValues,
 		}
 	}
 }
@@ -140,23 +113,6 @@ func parseValidateStructTag(tag string) (required bool, enumOptions []string) {
 	}
 
 	return required, enumOptions
-}
-
-// parseWhenStructTag parses a `when:"<dotted schema path>=<value>[|<value>...]"`
-// struct tag — e.g. `when:"cloud.hetzner.mode=hcloud|hybrid"`. Returns
-// ("", nil) when tag is empty, meaning the field always applies.
-func parseWhenStructTag(ctx context.Context, tag string) (path string, values []string) {
-	if tag == "" {
-		return "", nil
-	}
-
-	path, rawValues, ok := strings.Cut(tag, "=")
-	assert.Assert(ctx, ok,
-		"when struct tag must be \"<dotted path>=<value>[|<value>...]\"",
-		slog.String("when", tag),
-	)
-
-	return path, strings.Split(rawValues, "|")
 }
 
 // Returns struct tags for the given struct field AST node.
