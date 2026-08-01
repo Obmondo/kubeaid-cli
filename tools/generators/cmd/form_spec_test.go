@@ -183,6 +183,39 @@ func TestBuildFormSpecAppliesWhenInheritance(t *testing.T) {
 	assert.Nil(t, findField(t, spec, "cluster", "name").AppliesWhen)
 }
 
+// TestBuildFormSpecAppliesWhenPathsResolve proves every appliesWhen key
+// in the spec is a real field's Path, joined with ".". whenCondition
+// builds AppliesWhen straight from the raw `when` struct-tag string with
+// no cross-validation against the rest of the model — this is the test
+// that would catch a `when` tag left stale after the field it points at
+// is renamed or removed, the same class of drift caught elsewhere in
+// this repo by grepping template field refs before a struct rename.
+func TestBuildFormSpecAppliesWhenPathsResolve(t *testing.T) {
+	spec := buildFormSpec(loadRealConfigStructs(t))
+
+	knownPaths := map[string]bool{}
+	for _, section := range spec.Sections {
+		for _, field := range section.Fields {
+			knownPaths[joinPath(field.Path)] = true
+		}
+	}
+
+	checked := map[string]bool{}
+	for _, section := range spec.Sections {
+		for _, field := range section.Fields {
+			for whenPath := range field.AppliesWhen {
+				if checked[whenPath] {
+					continue
+				}
+				checked[whenPath] = true
+				assert.True(t, knownPaths[whenPath],
+					"appliesWhen references %q, which is not any field's path in the spec", whenPath)
+			}
+		}
+	}
+	assert.NotEmpty(t, checked, "expected at least one appliesWhen condition to check")
+}
+
 // TestBuildFormSpecJSONRoundTrips proves the spec survives an
 // encode/decode cycle unchanged — the same path pkg/config/schema.FormSpec
 // takes at runtime over the embedded formspec.json.
