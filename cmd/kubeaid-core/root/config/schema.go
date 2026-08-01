@@ -21,8 +21,10 @@ var SchemaCmd = &cobra.Command{
 secrets.yaml field — path, type, tier, required, default, enum and
 appliesWhen — read-only, no config files or cluster required.
 
-This is what the Obmondo API's add-cluster web form renders from: invoke
-a pinned kubeaid-cli release binary and parse stdout as JSON.`,
+The same spec is committed at pkg/config/schema/formspec.json and is
+generated from the config structs by tools/generators. Consumers vendor
+that file; this command prints it for a specific released binary, so a
+refresh job or a human can read the spec without a checkout.`,
 
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
