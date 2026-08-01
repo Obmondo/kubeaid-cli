@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
@@ -147,13 +146,24 @@ func validateACMEDNS01(cluster config.ClusterConfig, acmeCreds *config.ACMECrede
 	return nil
 }
 
-// validateClusterName runs the same rule the interactive prompt enforces
-// (pkg/config/validate.ClusterName) so a general.yaml that never went
-// through the prompt — hand-written, or rendered by the Obmondo API —
-// still fails on a dotted, oversized, or non-RFC-1123 name at parse time
-// rather than three steps later inside CAPI/Cilium.
+// validateClusterName rejects dots — the name is spliced into DNS labels
+// like the NetBird peer FQDN `k8s-<name>` and HCloud/Robot resource
+// names.
+//
+// Deliberately narrower than the interactive prompt's clusterName
+// validator (pkg/config/validate.ClusterName, which also enforces
+// RFC-1123 shape and a 63-char limit): this check runs on every `cluster`
+// subcommand via ParseConfigFiles, including sync/upgrade/delete against
+// an already-bootstrapped cluster, not just fresh config. Tightening it
+// to match the prompt needs verifying against every existing
+// kubeaid-config-<customer> general.yaml first — a name that fails the
+// stricter rule but is already running would break routine operations
+// on that cluster, not just reject a new one.
 func validateClusterName(clusterName string) error {
-	return validate.ClusterName(clusterName)
+	if strings.Contains(clusterName, ".") {
+		return errors.New("cluster name cannot contain any dots")
+	}
+	return nil
 }
 
 func validateClusterType(clusterType, cloudProviderName string) error {
