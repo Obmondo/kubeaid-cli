@@ -13,8 +13,6 @@ import (
 	"testing"
 	"time"
 
-	validatorV10 "github.com/go-playground/validator/v10"
-	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -23,12 +21,41 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
+// hetznerBareMetalConfigWithVLANID builds a HetznerConfig with every
+// other validate-tagged field satisfied, nesting vlanID at its real
+// production depth (HetznerConfig.BareMetal.VSwitch.VLANID) so a passing
+// test proves the whole recursion chain — not just VSwitchConfig
+// validated on its own — actually reaches it.
+func hetznerBareMetalConfigWithVLANID(vlanID int) *config.HetznerConfig {
+	return &config.HetznerConfig{
+		Mode:       constants.HetznerModeBareMetal,
+		SSHKeyPair: config.HetznerSSHKeyPair{Name: "test-key"},
+		ControlPlane: config.HetznerControlPlane{
+			Regions: []string{"fsn1"},
+		},
+		BareMetal: &config.HetznerBareMetalConfig{
+			InstallImage: config.InstallImageConfig{
+				ImagePath: "/root/.oldroot/nfs/images/test.tar.zst",
+				VG0:       config.VG0Config{Size: 80, RootVolumeSize: 50},
+			},
+			ZFS: config.ZFSConfig{Size: 220},
+			VSwitch: &config.VSwitchConfig{
+				VLANID:          vlanID,
+				Name:            "test-vswitch",
+				SubnetCIDRBlock: "10.0.1.0/24",
+			},
+		},
+	}
+}
+
 // TestVSwitchVLANIDRangeEnforcedAtParseTime proves the Hetzner vSwitch
 // VLAN ID range (4000-4091) is enforced by validateConfigStructTags —
 // the same check pkg/config/validate.HetznerVLANID runs interactively —
 // so a config that never went through the prompt (hand-written, or
 // rendered by the Obmondo API) still fails fast at parse time instead of
-// erroring against Hetzner's webservice mid-bootstrap.
+// erroring against Hetzner's webservice mid-bootstrap. Runs through
+// validateConfigStructTags itself, with VLANID nested at its real
+// production depth, rather than validating VSwitchConfig standalone.
 func TestVSwitchVLANIDRangeEnforcedAtParseTime(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -42,20 +69,15 @@ func TestVSwitchVLANIDRangeEnforcedAtParseTime(t *testing.T) {
 		{name: "zero value (unset)", vlanID: 0, wantErr: true},
 	}
 
-	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	require.NoError(t, validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank))
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			vSwitch := config.VSwitchConfig{
-				VLANID:          tc.vlanID,
-				Name:            "test-vswitch",
-				SubnetCIDRBlock: "10.0.1.0/24",
-			}
+			general := minimalLocalConfig("bm-test")
+			general.Cloud = config.CloudConfig{Hetzner: hetznerBareMetalConfigWithVLANID(tc.vlanID)}
 
-			err := validator.Struct(vSwitch)
+			err := validateConfigStructTags(general, &config.SecretsConfig{})
 			if tc.wantErr {
 				assert.Error(t, err, "VLAN ID %d should be rejected", tc.vlanID)
+				assert.Contains(t, err.Error(), "VLANID")
 				return
 			}
 			assert.NoError(t, err, "VLAN ID %d should be accepted", tc.vlanID)
@@ -166,10 +188,7 @@ func TestValidateConfigs(t *testing.T) {
 
 			err := validateConfigs(context.Background())
 			require.Error(t, err)
-			// validateClusterName delegates to pkg/config/validate.ClusterName —
-			// same rule the interactive prompt enforces (see that package's
-			// TestClusterName for the other RFC-1123 cases).
-			assert.EqualError(t, err, "cluster name cannot contain dots — use '-' instead (e.g. kam-acme-com)")
+			assert.EqualError(t, err, "cluster name cannot contain any dots")
 		})
 	}
 }
