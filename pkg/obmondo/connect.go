@@ -212,12 +212,17 @@ func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
 // unrelated config here that silently replacing would destroy.
 func Write(configsDirectory string, config *ClusterConfig) (*WrittenPaths, error) {
 	generalPath := filepath.Join(configsDirectory, "general.yaml")
-	if _, err := os.Stat(generalPath); err == nil {
+
+	_, err := os.Stat(generalPath)
+	if err == nil {
 		return nil, fmt.Errorf(
 			"%s already exists — re-run bootstrap without --connect-obmondo to use it",
 			generalPath,
 		)
-	} else if !os.IsNotExist(err) {
+	}
+	// Anything other than "not there" is a real problem — an unreadable
+	// directory, say. Only a genuine absence means it is safe to write.
+	if !os.IsNotExist(err) {
 		return nil, fmt.Errorf("checking %s: %w", generalPath, err)
 	}
 
