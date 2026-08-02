@@ -99,7 +99,7 @@
 
             description = "KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a GitOps native way";
             homepage = "https://github.com/Obmondo/kubeaid-cli";
-            license = lib.licenses.gpl3;
+            license = lib.licenses.asl20;
 
             maintainers =
               with lib.maintainers

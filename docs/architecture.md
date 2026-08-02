@@ -3,7 +3,7 @@
 > A GitOps-native, multi-cloud Kubernetes provisioning tool.
 > Go • ClusterAPI • ArgoCD • AWS / Azure / Hetzner / KubeOne
 
-**License:** AGPL-3.0 &nbsp;•&nbsp; **Runtime:** single `kubeaid-cli` binary (+ Docker for K3D) &nbsp;•&nbsp; **Source:** [Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli)
+**License:** Apache-2.0 &nbsp;•&nbsp; **Runtime:** single `kubeaid-cli` binary (+ Docker for K3D) &nbsp;•&nbsp; **Source:** [Obmondo/kubeaid-cli](https://github.com/Obmondo/kubeaid-cli)
 
 ---
 
@@ -606,7 +606,7 @@ All build targets live in the [Makefile](../Makefile). Version, commit, and buil
 | `make format`              | `golangci-lint fmt` - imports, golines, etc.             |
 | `make test`                | Unit tests; writes `coverage.out`                        |
 | `make check-coverage`      | Enforce `testcoverage.yaml` thresholds                   |
-| `make addlicense`          | Adds AGPL-3 headers to any Go file that lacks one        |
+| `make addlicense`          | Adds Apache-2.0 headers to any Go file that lacks one    |
 | `make run-generators`      | Regenerates config artifacts from the struct definitions |
 | `make fetch-k8s-eol`       | Refreshes embedded Kubernetes end-of-life data           |
 | `make management-cluster-delete` | Deletes the local K3D management cluster           |

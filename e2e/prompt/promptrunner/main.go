@@ -1,5 +1,5 @@
 // Copyright 2026 Obmondo
-// SPDX-License-Identifier: AGPL3
+// SPDX-License-Identifier: Apache-2.0
 
 // testcmd is a minimal binary that only runs the interactive config prompt.
 // It is used by e2e tests to drive the prompt flow via a pseudo-terminal

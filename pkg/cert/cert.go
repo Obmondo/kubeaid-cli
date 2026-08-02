@@ -1,5 +1,5 @@
 // Copyright 2025 Obmondo
-// SPDX-License-Identifier: AGPL3
+// SPDX-License-Identifier: Apache-2.0
 
 // Package cert provides helpers for reading PEM-encoded X.509 certificates.
 package cert
