@@ -22,7 +22,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"gopkg.in/yaml.v3"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 const (
@@ -54,6 +59,10 @@ const (
 // references it by PATH (ObmondoConfig.CertPath / KeyPath) and only this
 // process knows where the configs directory actually is.
 type PuppetMaterial struct {
+	// Certname is overwritten with the Certificate's Subject CN on fetch:
+	// the signed certificate is what bootstrap reads back to render into
+	// cluster-vars.jsonnet, so the CN decides and this field only echoes it.
+	// Independent of the cluster's name — the two are separate identifiers.
 	Certname      string `json:"certname"`
 	PrivateKey    string `json:"private_key"`
 	Certificate   string `json:"certificate"`
@@ -103,25 +112,6 @@ func ClusterName(generalYAML string) (string, error) {
 		return "", fmt.Errorf("general.yaml has no cluster.name")
 	}
 	return probe.Cluster.Name, nil
-}
-
-// DefaultConfigsDirectory is where a portal-fetched config lives when the
-// operator has not chosen a location: <user config dir>/kubeaid-cli/<cluster>/configs,
-// which is ~/.config/kubeaid-cli/<cluster>/configs on Linux.
-//
-// Deliberately NOT the flag's usual "outputs/configs" default, which is
-// relative to the working directory. secrets.yaml holds cloud credentials and
-// an mTLS private key, and an operator running this inside a checkout — the
-// likely case, since they have a kubeaid-config repo — would leave those one
-// `git add .` away from being committed. A path under the user's config
-// directory cannot be committed by accident, and keeps each cluster's config
-// separate without the operator having to think about directories at all.
-func DefaultConfigsDirectory(clusterName string) (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", fmt.Errorf("locating the user config directory: %w", err)
-	}
-	return filepath.Join(base, "kubeaid-cli", clusterName, "configs"), nil
 }
 
 // Fetch downloads the cluster configuration for token.
@@ -200,7 +190,42 @@ func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
 		return nil, fmt.Errorf("the Obmondo API returned no general.yaml")
 	}
 
+	if err := adoptCertificateCN(config.Puppet); err != nil {
+		return nil, err
+	}
+
 	return config, nil
+}
+
+// adoptCertificateCN checks the certificate is usable and takes its CN as the
+// certname.
+//
+// The CN is the authoritative certname — bootstrap reads it back off this
+// certificate (cert.ReadCN on ObmondoConfig.CertPath) and renders it into
+// cluster-vars.jsonnet, so the JSON field is only an echo and the signed
+// certificate is what actually decides. Deliberately NOT checked against
+// cluster.name: a cluster's name and its certname are separate things, and
+// tying them together here would reject a valid pairing the moment the portal
+// stops deriving one from the other.
+//
+// Checked at fetch rather than at template time so an unusable certificate
+// fails now, while the operator still has the terminal — discovering it during
+// bootstrap would waste a single-use token and several minutes.
+func adoptCertificateCN(material *PuppetMaterial) error {
+	if material == nil || strings.TrimSpace(material.Certificate) == "" {
+		return nil
+	}
+
+	cn, err := cert.CN([]byte(material.Certificate))
+	if err != nil {
+		return fmt.Errorf("the Obmondo API returned an unusable Puppet certificate: %w", err)
+	}
+	if cn == "" {
+		return fmt.Errorf("the Obmondo API returned a Puppet certificate with no common name")
+	}
+
+	material.Certname = cn
+	return nil
 }
 
 // Write lays the configuration out under configsDirectory and returns where
@@ -215,9 +240,12 @@ func Write(configsDirectory string, config *ClusterConfig) (*WrittenPaths, error
 
 	_, err := os.Stat(generalPath)
 	if err == nil {
+		// Not "re-run without --connect-obmondo": the token path resolves to
+		// a per-cluster directory, so dropping the flag would send bootstrap
+		// looking in outputs/configs and it would not find this at all.
 		return nil, fmt.Errorf(
-			"%s already exists — re-run bootstrap without --connect-obmondo to use it",
-			generalPath,
+			"%s already exists — re-run bootstrap with --%s %s to use it",
+			generalPath, constants.FlagNameConfigsDirectory, configsDirectory,
 		)
 	}
 	// Anything other than "not there" is a real problem — an unreadable
@@ -335,4 +363,61 @@ func LogPaths(ctx context.Context, written *WrittenPaths) {
 		attributes = append(attributes, slog.String("obmondoCert", written.CertPath))
 	}
 	slog.InfoContext(ctx, "Fetched cluster configuration from Obmondo", attributes...)
+}
+
+// PrintSecretsNotice tells the operator to back up the secrets this run
+// wrote, and names where they landed.
+//
+// Printed rather than logged because stdout only receives ERROR records
+// unless --debug is set: an slog line would go to the log file, which is
+// not what the operator is reading when the run ends.
+func PrintSecretsNotice(ctx context.Context, written *WrittenPaths) {
+	if written == nil || written.Secrets == "" {
+		return
+	}
+
+	// Pause the bar so its 100ms spinner auto-render can't \r-overwrite the
+	// box mid-print — same fix as printHelpTextForArgoCDDashboardAccess.
+	bar := progress.FromCtx(ctx)
+	bar.Pause()
+	defer bar.Resume()
+
+	fmt.Println(renderSecretsNotice(written)) //nolint:forbidigo
+}
+
+// renderSecretsNotice lays the backup reminder out as a lipgloss bordered
+// box, in the same style as the cluster-ready and PR-merge boxes the
+// operator has already seen during this run. Amber header, matching the
+// warning colour used elsewhere.
+func renderSecretsNotice(written *WrittenPaths) string {
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("3"))
+	pathStyle := lipgloss.NewStyle().Bold(true)
+	noteStyle := lipgloss.NewStyle().Faint(true)
+
+	lines := []string{
+		headerStyle.Render("⚠ Back up secrets.yaml"),
+		"",
+		"  " + pathStyle.Render(written.Secrets),
+	}
+
+	// The private key is as sensitive as secrets.yaml and lands beside it.
+	// Listed bare rather than annotated: an inline label would widen the box
+	// past 80 columns, and obmondo/key.pem is self-describing here.
+	if written.KeyPath != "" {
+		lines = append(lines, "  "+pathStyle.Render(written.KeyPath))
+	}
+
+	// Phrased without claiming where these sit: the default path is outside
+	// any checkout, but --configs-directory can put them anywhere, and
+	// "nothing in git has a copy" would then be both wrong and reassuring.
+	lines = append(lines,
+		"",
+		noteStyle.Render("Cloud credentials and cluster secrets. Keep out of git, and store"),
+		noteStyle.Render("a copy somewhere safe — a pass repo or your password manager."),
+	)
+
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		Padding(0, 1).
+		Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }

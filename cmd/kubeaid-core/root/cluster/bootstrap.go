@@ -5,10 +5,12 @@ package cluster
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -28,8 +30,9 @@ var BootstrapCmd = &cobra.Command{
 		// portal has already collected every answer, so rather than
 		// prompting, the rendered general.yaml and secrets.yaml are
 		// downloaded and written before the bootstrap below reads them.
+		var obmondoPaths *obmondo.WrittenPaths
 		if len(connectObmondoToken) > 0 {
-			fetchObmondoConfig(ctx, cmd)
+			obmondoPaths = fetchObmondoConfig(ctx, cmd)
 		}
 
 		core.BootstrapCluster(ctx, core.BootstrapClusterArgs{
@@ -41,6 +44,11 @@ var BootstrapCmd = &cobra.Command{
 			},
 			SkipClusterctlMove: skipClusterctlMove,
 		})
+
+		// Last, not at fetch time: bootstrap runs for many minutes and
+		// scrolls a lot of output past, so a reminder printed up front
+		// would be long gone by the time the operator is done.
+		obmondo.PrintSecretsNotice(ctx, obmondoPaths)
 	},
 }
 
@@ -52,21 +60,33 @@ var connectObmondoToken,
 
 // fetchObmondoConfig downloads this cluster's configuration and writes it,
 // pointing globals.ConfigsDirectory at the result so the bootstrap that
-// follows reads exactly what was just written.
-func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) {
+// follows reads exactly what was just written. Returns where the files
+// landed, for the end-of-run backup notice.
+func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) *obmondo.WrittenPaths {
 	config, err := obmondo.Fetch(ctx, obmondoAPIURL, connectObmondoToken)
 	assert.AssertErrNil(ctx, err, "Failed fetching cluster configuration from Obmondo")
 
 	clusterName, err := obmondo.ClusterName(config.GeneralYAML)
 	assert.AssertErrNil(ctx, err, "Failed reading the cluster name from the fetched configuration")
 
+	// The token decides which cluster this is, so --cluster-name cannot
+	// redirect it. Disagreement is refused rather than silently resolved:
+	// an operator who names one cluster and redeems another's token would
+	// otherwise bootstrap the wrong cluster with no indication.
+	if globals.ClusterName != "" && globals.ClusterName != clusterName {
+		assert.AssertErrNil(ctx,
+			fmt.Errorf("this token is for cluster %q, not %q", clusterName, globals.ClusterName),
+			"Refusing to bootstrap: --"+constants.FlagNameClusterName+" does not match the token",
+		)
+	}
+
 	// An explicit --configs-directory always wins. Without one the files go
-	// to a per-cluster path under the user's config directory rather than
+	// to the per-cluster path under the user's config directory rather than
 	// this flag's working-directory-relative default: secrets.yaml carries
 	// cloud credentials and an mTLS private key, and an operator running
 	// this is likely sitting inside a git checkout.
 	if !cmd.Flags().Changed(constants.FlagNameConfigsDirectory) {
-		globals.ConfigsDirectory, err = obmondo.DefaultConfigsDirectory(clusterName)
+		globals.ConfigsDirectory, err = clusterdir.For(clusterName)
 		assert.AssertErrNil(ctx, err, "Failed resolving where to write the cluster configuration")
 	}
 
@@ -74,6 +94,8 @@ func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) {
 	assert.AssertErrNil(ctx, err, "Failed writing the cluster configuration")
 
 	obmondo.LogPaths(ctx, written)
+
+	return written
 }
 
 func init() {
