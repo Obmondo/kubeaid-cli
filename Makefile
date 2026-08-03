@@ -41,8 +41,8 @@ lint: ## Run Go linters
 	@golangci-lint run ./...
 
 .PHONY: addlicense
-addlicense: ## Add AGPL3 headers to Go files
-	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "AGPL3" -s {} +
+addlicense: ## Add Apache-2.0 headers to Go files
+	@find . -name '*.go' -exec addlicense -c "Obmondo" -l "apache" -s {} +
 
 .PHONY: test
 test: ## Run unit tests and write coverage.out

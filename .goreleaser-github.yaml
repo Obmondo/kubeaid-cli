@@ -100,6 +100,6 @@ nfpms:
     description: |-
       KubeAid CLI helps you operate KubeAid managed Kubernetes cluster lifecycle in a
       GitOps native way
-    license: AGPL3
+    license: Apache-2.0
     formats: ["deb", "rpm", "apk", "archlinux"]
     mtime: "{{ .CommitDate }}"

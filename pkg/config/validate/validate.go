@@ -1,5 +1,5 @@
 // Copyright 2026 Obmondo
-// SPDX-License-Identifier: AGPL3
+// SPDX-License-Identifier: Apache-2.0
 
 // Package validate holds the field-level validators kubeaid-cli's
 // interactive prompt runs at input time, exported so a consumer that

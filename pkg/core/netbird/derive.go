@@ -1,5 +1,5 @@
 // Copyright 2026 Obmondo
-// SPDX-License-Identifier: AGPL3
+// SPDX-License-Identifier: Apache-2.0
 
 // Package netbird holds the bootstrap-side NetBird orchestration: the
 // operator API-key gate, the CNPG postgres DSN patch, and the derivation

@@ -1,5 +1,5 @@
 // Copyright 2026 Obmondo
-// SPDX-License-Identifier: AGPL3
+// SPDX-License-Identifier: Apache-2.0
 
 // Package ui renders operator-facing terminal output shared across the
 // bootstrap flow — the rounded next-steps box and the Keycloak admin-login
