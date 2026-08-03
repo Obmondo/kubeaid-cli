@@ -1,4 +1,28 @@
 - - -
+## v0.31.3 - 2026-08-03
+#### Features
+- (**cli**) add config schema command to publish the form spec - (4a7a053) - Ashish Jaiswal
+- (**config**) locate cluster configs by --cluster-name - (c2f8016) - Ashish Jaiswal
+- (**config**) tag basic fields and when-conditions, close prompt-only validation gaps - (57abf6b) - Ashish Jaiswal
+- (**generators**) read validate, tier and when struct tags - (bd5faa4) - Ashish Jaiswal
+- (**obmondo**) fetch cluster config via --connect-obmondo - (d30e0fc) - Ashish Jaiswal
+- (**prompt**) extract pure Render, export field validators to pkg/config/validate - (1b87ee3) - Ashish Jaiswal
+- (**schema**) emit a JSON form spec for the add-cluster web form - (910b41a) - Ashish Jaiswal
+#### Bug Fixes
+- (**config**) create the configs directory 0700, not 0750 - (e6ce1bf) - Ashish Jaiswal
+- (**config**) keep cluster-name validation narrow at parse time - (19059b3) - Ashish Jaiswal
+- (**generators**) resolve embedded struct fields in a deterministic order - (7dfb512) - Ashish Jaiswal
+- (**obmondo**) take the certname from the certificate CN - (aa65d26) - Ashish Jaiswal
+- (**prompt**) write golden fixtures 0600 to satisfy gosec G306 - (792524c) - Ashish Jaiswal
+#### Revert
+- (**cli**) remove the add-cluster form-spec JSON export - (3d24707) - Ashish Jaiswal
+- (**config**) drop the tier/when struct-tag machinery - (eb09d2f) - Ashish Jaiswal
+#### Refactoring
+- (**obmondo**) flatten the general.yaml existence check - (f994e69) - Ashish Jaiswal
+- (**repository**) repository URL parsing logic refactored into the dedicated repository package - (eaa429e) - Archisman
+
+- - -
+
 ## v0.31.2 - 2026-07-27
 #### Features
 - address the prompt and bootstrap papercuts from issue #21 - (a7aad2a) - Ashish Jaiswal
