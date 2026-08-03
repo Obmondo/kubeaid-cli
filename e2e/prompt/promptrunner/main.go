@@ -15,10 +15,18 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: testcmd <configs-directory>")
+		fmt.Fprintln(os.Stderr, "usage: testcmd <configs-directory> [cluster-name]")
 		os.Exit(1)
 	}
-	if err := prompt.ConfigFromPrompt(os.Args[1]); err != nil {
+
+	// Optional so existing single-argument invocations keep driving the
+	// prompt with nothing pre-filled.
+	var clusterName string
+	if len(os.Args) > 2 {
+		clusterName = os.Args[2]
+	}
+
+	if err := prompt.ConfigFromPrompt(os.Args[1], clusterName); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

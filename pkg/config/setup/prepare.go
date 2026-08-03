@@ -6,8 +6,11 @@ package setup
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
@@ -33,12 +36,34 @@ func Prepare(ctx context.Context) (func(), error) {
 		return cleanup, fmt.Errorf("checking config files: %w", err)
 	}
 	if !exists {
-		return cleanup, fmt.Errorf(
-			"config files not found under %q — run `kubeaid-cli config generate` first to create them",
-			globals.ConfigsDirectory,
-		)
+		return cleanup, notFoundError(globals.ConfigsDirectory)
 	}
 
 	parser.ParseConfigFiles(ctx, globals.ConfigsDirectory)
 	return cleanup, nil
+}
+
+// notFoundError names the clusters that DO have a config on disk.
+//
+// Listed rather than offered as a picker: every caller of Prepare goes on to
+// create, mutate or destroy real cloud infrastructure, and an arrow-key
+// selection is an easy way to act on the wrong cluster. Naming it is cheap;
+// the operator still has to type which one they meant.
+func notFoundError(configsDirectory string) error {
+	available := clusterdir.List()
+	if len(available) == 0 {
+		return fmt.Errorf(
+			"config files not found under %q — run `kubeaid-cli config generate` first to create them",
+			configsDirectory,
+		)
+	}
+
+	return fmt.Errorf(
+		"config files not found under %q\n\nclusters with a saved config:\n  %s\n\n"+
+			"re-run with --%s <name>, or --%s <path>",
+		configsDirectory,
+		strings.Join(available, "\n  "),
+		constants.FlagNameClusterName,
+		constants.FlagNameConfigsDirectory,
+	)
 }

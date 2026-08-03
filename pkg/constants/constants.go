@@ -49,10 +49,30 @@ const (
 	FlagNameConfigsDirectory             = "configs-directory"
 	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
 
+	// FlagNameClusterName locates a cluster's config by name, under
+	// ~/.config/kubeaid-cli/<name>/configs, so a follow-up command does not
+	// need the full path spelled out. --configs-directory still wins when
+	// both are given.
+	FlagNameClusterName = "cluster-name"
+
 	FlagNameSkipMonitoringSetup = "skip-monitoring-setup"
 	FlagNameSkipPRWorkflow      = "skip-pr-workflow"
 	FlagNameSkipClusterctlMove  = "skip-clusterctl-move"
 	FlagNameYes                 = "yes"
+
+	// FlagNameConnectObmondo takes the single-use token the Obmondo portal's
+	// add-cluster flow issues, and fetches that cluster's rendered
+	// general.yaml and secrets.yaml instead of running `config generate`.
+	FlagNameConnectObmondo = "connect-obmondo"
+
+	// FlagNameObmondoAPIURL overrides which Obmondo API the token is
+	// redeemed against — needed to point at beta or a local build.
+	FlagNameObmondoAPIURL = "obmondo-api-url"
+
+	// EnvNameObmondoToken supplies the same token as FlagNameConnectObmondo.
+	// Preferred over the flag on a shared machine: argv is world-readable
+	// through ps, a process's environment is not.
+	EnvNameObmondoToken = "KUBEAID_CLI_OBMONDO_TOKEN"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"

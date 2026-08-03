@@ -80,4 +80,12 @@ func init() {
 			"Path to the directory containing KubeAid Bootstrap Script general and secrets config files",
 		)
 	RootCmd.MarkPersistentFlagDirname(constants.FlagNameConfigsDirectory)
+
+	RootCmd.PersistentFlags().
+		StringVar(&globals.ClusterName,
+			constants.FlagNameClusterName,
+			"",
+			"Name of the cluster whose config to use, from ~/.config/kubeaid-cli/<name>/configs"+
+				" (ignored when --"+constants.FlagNameConfigsDirectory+" is given)",
+		)
 }
