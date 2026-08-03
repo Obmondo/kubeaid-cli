@@ -52,7 +52,10 @@ first, review the output, then bootstrap.`,
 		clusterName, err := resolveTargetCluster()
 		assert.AssertErrNil(ctx, err, "Failed resolving which cluster to configure")
 
-		if err := os.MkdirAll(globals.ConfigsDirectory, 0o750); err != nil {
+		// 0700, matching obmondo.Write: this directory holds secrets.yaml,
+		// and the same location should not be group-traversable or not
+		// depending on which command happened to create it.
+		if err := os.MkdirAll(globals.ConfigsDirectory, 0o700); err != nil {
 			assert.AssertErrNil(ctx, err,
 				"Failed creating configs directory",
 				slog.String("path", globals.ConfigsDirectory),
