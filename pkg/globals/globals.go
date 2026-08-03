@@ -14,6 +14,11 @@ import (
 var (
 	ConfigsDirectory,
 
+	// ClusterName is --cluster-name: an alternative to spelling out
+	// --configs-directory, resolved against the per-cluster convention in
+	// pkg/config/clusterdir. Empty when the flag was not given.
+	ClusterName,
+
 	// KubeaidCLIVersion is the version of the kubeaid-cli binary, injected
 	// from the version package via ldflags at build time. Set once at startup
 	// in cmd/kubeaid-core/root/root.go. Empty string and "dev" both mean a

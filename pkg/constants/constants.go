@@ -49,6 +49,12 @@ const (
 	FlagNameConfigsDirectory             = "configs-directory"
 	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
 
+	// FlagNameClusterName locates a cluster's config by name, under
+	// ~/.config/kubeaid-cli/<name>/configs, so a follow-up command does not
+	// need the full path spelled out. --configs-directory still wins when
+	// both are given.
+	FlagNameClusterName = "cluster-name"
+
 	FlagNameSkipMonitoringSetup = "skip-monitoring-setup"
 	FlagNameSkipPRWorkflow      = "skip-pr-workflow"
 	FlagNameSkipClusterctlMove  = "skip-clusterctl-move"

@@ -304,10 +304,19 @@ func exitCleanlyOnAbort(
 //     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
 //   - Phase 4: Collect optional Obmondo support details after the summary is accepted.
-func ConfigFromPrompt(configsDirectory string) (returnErr error) {
+func ConfigFromPrompt(configsDirectory, clusterName string) (returnErr error) {
 	detected := autoDetect()
 	cfg := defaultPromptedConfig(detected)
 	cfg.ConfigsDirectory = configsDirectory
+
+	// Pre-fill the name the operator gave when choosing where this config
+	// lives, so the directory and cluster.name agree by default rather than
+	// by luck — the directory is what --cluster-name later looks up, and the
+	// k8s cluster name is what mgmt-<name> is derived from. An existing
+	// config loaded below overrides this.
+	if clusterName != "" {
+		cfg.ClusterName = clusterName
+	}
 	state := &promptState{}
 	session := &promptSession{
 		configsDirectory: configsDirectory,

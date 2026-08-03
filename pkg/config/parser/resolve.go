@@ -16,21 +16,46 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 var stdinReader io.Reader = os.Stdin
 
-// ResolveConfigsDirectory resolves the configs directory from a local path or stdin ("-").
-// For stdin, it writes the received YAML to a temp directory and updates
-// globals.ConfigsDirectory to point there.
+// ResolveConfigsDirectory resolves the configs directory from a local path,
+// stdin ("-"), or --cluster-name. For stdin, it writes the received YAML to a
+// temp directory and updates globals.ConfigsDirectory to point there.
 func ResolveConfigsDirectory(ctx context.Context) error {
 	if globals.ConfigsDirectory == "-" {
 		return resolveFromStdin(ctx)
 	}
+
+	// An explicit --configs-directory always wins; --cluster-name only fills
+	// in for the default, so neither flag can silently override the other.
+	if globals.ClusterName != "" && UsingDefaultConfigsDirectory() {
+		directory, err := clusterdir.For(globals.ClusterName)
+		if err != nil {
+			return err
+		}
+		globals.ConfigsDirectory = directory
+
+		slog.InfoContext(ctx, "Resolved configs directory from cluster name",
+			slog.String("cluster", globals.ClusterName),
+			slog.String("path", directory),
+		)
+	}
+
 	// Local path — nothing to resolve.
 	return nil
+}
+
+// UsingDefaultConfigsDirectory reports whether --configs-directory was left
+// alone. Compared by value rather than cobra's Changed() so that pkg/ code
+// can ask without importing cmd/; passing the default explicitly is
+// indistinguishable, which is harmless because it resolves the same way.
+func UsingDefaultConfigsDirectory() bool {
+	return globals.ConfigsDirectory == constants.FlagNameConfigsDirectoryDefaultValue
 }
 
 // resolveFromStdin reads YAML from stdinReader and writes it as general.yaml to a temp directory.
