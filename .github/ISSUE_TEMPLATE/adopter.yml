@@ -1,0 +1,30 @@
+name: New adopter
+description: Add your organization to ADOPTERS.md
+title: "adopter: <organization name>"
+labels:
+  - adopter
+body:
+  - type: input
+    id: organization
+    attributes:
+      label: Organization name
+      description: The name of your organization or team
+    validations:
+      required: true
+
+  - type: input
+    id: url
+    attributes:
+      label: Organization URL
+      description: A link to your organization's website
+      placeholder: https://example.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: story
+    attributes:
+      label: How are you using KubeAid CLI?
+      description: A short description of your use case, or a quote we can add to the table
+    validations:
+      required: false
