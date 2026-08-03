@@ -289,8 +289,10 @@ func TestRenderGoldenParity(t *testing.T) {
 			secretsGoldenPath := filepath.Join("testdata", "golden", tc.name+".secrets.yaml")
 
 			if *updateGolden {
-				require.NoError(t, os.WriteFile(generalGoldenPath, gotGeneral, 0o644))
-				require.NoError(t, os.WriteFile(secretsGoldenPath, gotSecrets, 0o644))
+				// 0600 to satisfy gosec G306. Git records only the
+				// executable bit, so the committed fixtures are unaffected.
+				require.NoError(t, os.WriteFile(generalGoldenPath, gotGeneral, 0o600))
+				require.NoError(t, os.WriteFile(secretsGoldenPath, gotSecrets, 0o600))
 			}
 
 			wantGeneral, err := os.ReadFile(generalGoldenPath)
