@@ -1,72 +1,39 @@
-// Copyright 2025 Obmondo
+// Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package query
+package config
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"path"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
+
+// The predicates below answer "what shape is this cluster" from the parsed
+// config. They live beside the schema deliberately: they read
+// ParsedGeneralConfig and nothing else, so they cost this package nothing,
+// and config.UsingHCloud() reads better at a call site than any package
+// this could be split into.
 
 type ReleaseDetails struct {
 	TagName string `json:"tag_name"`
 }
 
-// Returns the latest KubeAid version, fetching it from GitHub.
-//
-//nolint:unused
-func getLatestKubeAidVersion(ctx context.Context) string {
-	response, err := http.DefaultClient.Get(
-		"https://api.github.com/repos/Obmondo/KubeAid/releases/latest",
-	)
-	assert.AssertErrNil(ctx, err, "Failed getting KubeAid's latest release details")
-	defer response.Body.Close()
-
-	assert.Assert(
-		ctx,
-		(response.StatusCode == http.StatusOK),
-		"Failed getting KubeAid's latest release details",
-	)
-
-	var releaseDetails ReleaseDetails
-	err = json.NewDecoder(response.Body).Decode(&releaseDetails)
-	assert.AssertErrNil(ctx, err, "Failed JSON decoding KubeAid's latest release details")
-
-	return releaseDetails.TagName
-}
-
-func GetGeneralConfigFilePath() string {
-	return path.Join(globals.ConfigsDirectory, "general.yaml")
-}
-
-func GetSecretsConfigFilePath() string {
-	return path.Join(globals.ConfigsDirectory, "secrets.yaml")
-}
-
 // Returns whether we're using HCloud.
 func UsingHCloud() bool {
-	if config.ParsedGeneralConfig.Cloud.Hetzner == nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
-	mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
 // Returns whether the control-plane is in HCloud.
 func ControlPlaneInHCloud() bool {
-	if config.ParsedGeneralConfig.Cloud.Hetzner == nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
-	mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeHCloud) || (mode == constants.HetznerModeHybrid)
 }
 
@@ -76,16 +43,16 @@ func ControlPlaneInHCloud() bool {
 // clusters: Coturn can land on any CP node, so its public IP must float;
 // a single CP has no failover and non-VPN clusters run no Coturn.
 func CoturnFloatingIPEnabled() bool {
-	if config.ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
+	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
 		return false
 	}
 	if !UsingHCloud() {
 		return false
 	}
-	if config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud == nil {
+	if ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud == nil {
 		return false
 	}
-	return config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.Replicas > 1
+	return ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.Replicas > 1
 }
 
 // HCloudSingleNodePublic reports whether this is the single-node public
@@ -96,7 +63,7 @@ func CoturnFloatingIPEnabled() bool {
 // workers) and workloads behind an existing VPN (hcloudVPNCluster set) — both
 // stay private; a worker node-group would need the NAT gateway for egress.
 func HCloudSingleNodePublic() bool {
-	hetzner := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetzner := ParsedGeneralConfig.Cloud.Hetzner
 	if hetzner == nil || hetzner.Mode != constants.HetznerModeHCloud {
 		return false
 	}
@@ -115,7 +82,7 @@ func HCloudSingleNodePublic() bool {
 // patch): any VPN cluster with a keycloak block, regardless of Keycloak mode —
 // NetBird itself runs in-cluster either way. Workload clusters: false.
 func VPNClusterEnabled() bool {
-	cluster := config.ParsedGeneralConfig.Cluster
+	cluster := ParsedGeneralConfig.Cluster
 	return cluster.Type == constants.ClusterTypeVPN && cluster.Keycloak != nil
 }
 
@@ -123,7 +90,7 @@ func VPNClusterEnabled() bool {
 // (the keycloakx app, keycloak-admin SealedSecret, realm reconciler): a VPN
 // cluster with keycloak.mode=managed. Nil-safe; workload clusters: false.
 func ManagedKeycloakEnabled() bool {
-	cluster := config.ParsedGeneralConfig.Cluster
+	cluster := ParsedGeneralConfig.Cluster
 	if cluster.Type != constants.ClusterTypeVPN || cluster.Keycloak == nil {
 		return false
 	}
@@ -132,21 +99,21 @@ func ManagedKeycloakEnabled() bool {
 
 // Returns whether we're using Hetzner Bare Metal.
 func UsingHetznerBareMetal() bool {
-	if config.ParsedGeneralConfig.Cloud.Hetzner == nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
-	mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return (mode == constants.HetznerModeBareMetal) || (mode == constants.HetznerModeHybrid)
 }
 
 // Returns whether the control-plane is in Hetzner Bare Metal.
 func ControlPlaneInHetznerBareMetal() bool {
-	if config.ParsedGeneralConfig.Cloud.Hetzner == nil {
+	if ParsedGeneralConfig.Cloud.Hetzner == nil {
 		return false
 	}
 
-	mode := config.ParsedGeneralConfig.Cloud.Hetzner.Mode
+	mode := ParsedGeneralConfig.Cloud.Hetzner.Mode
 	return mode == constants.HetznerModeBareMetal
 }
 
@@ -160,7 +127,7 @@ func ControlPlaneInHetznerBareMetal() bool {
 // taint. Only worker nodes can host mons / OSDs, so only they count towards
 // whether a healthy CephCluster can form.
 func HetznerBareMetalWorkerNodeCount() int {
-	hetzner := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetzner := ParsedGeneralConfig.Cloud.Hetzner
 	if hetzner == nil {
 		return 0
 	}

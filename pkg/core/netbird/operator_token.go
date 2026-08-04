@@ -21,7 +21,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
 )
@@ -272,7 +271,7 @@ func printNetBirdSetupDeferred() {
 // Keycloak SSO, so a realm user must exist first. No-op without a locally
 // managed Keycloak; an empty password falls back to the kubectl-fetch row.
 func printKeycloakUserSetupForNetBird(keycloakAdminPassword string) {
-	if !query.VPNClusterEnabled() || !query.ManagedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return
 	}
 	cluster := config.ParsedGeneralConfig.Cluster

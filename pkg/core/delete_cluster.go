@@ -19,7 +19,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
@@ -108,7 +107,7 @@ func DeleteCluster(ctx context.Context) {
 
 	// When using HCloud, disable deletion protection on critical resources before CAPH
 	// attempts to delete them. Without this, CAPH receives 403 errors and teardown hangs.
-	if globals.CloudProviderName == constants.CloudProviderHetzner && query.UsingHCloud() {
+	if globals.CloudProviderName == constants.CloudProviderHetzner && config.UsingHCloud() {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 

@@ -14,7 +14,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
@@ -26,7 +26,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 
-	if query.ControlPlaneInHetznerBareMetal() {
+	if config.ControlPlaneInHetznerBareMetal() {
 		nodeGroupCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("node-group", "control-plane"),
 		})
@@ -162,7 +162,7 @@ func collectAndSortWWNs(disks []*storageplan.Disk) []string {
 // box (the same value the struct carried via default:"220", or any
 // explicit override the operator pre-set in general.yaml).
 func persistApprovedZFSSize(ctx context.Context, size int) error {
-	path := query.GetGeneralConfigFilePath()
+	path := globals.GeneralConfigFilePath()
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)

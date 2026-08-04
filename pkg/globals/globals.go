@@ -5,6 +5,7 @@ package globals
 
 import (
 	"io"
+	"path"
 
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 
@@ -59,3 +60,17 @@ var (
 	LogFile     io.Writer
 	LogFilePath string
 )
+
+// GeneralConfigFilePath is where general.yaml lives for this run.
+//
+// Derived from ConfigsDirectory, so it belongs here rather than in
+// pkg/config: that package holds the schema and must stay importable
+// without this one.
+func GeneralConfigFilePath() string {
+	return path.Join(ConfigsDirectory, "general.yaml")
+}
+
+// SecretsConfigFilePath is where secrets.yaml lives for this run.
+func SecretsConfigFilePath() string {
+	return path.Join(ConfigsDirectory, "secrets.yaml")
+}

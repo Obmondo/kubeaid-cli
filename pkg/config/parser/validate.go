@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -428,7 +427,7 @@ func validateHetznerConfig(ctx context.Context) error {
 		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
-	if query.UsingHCloud() {
+	if config.UsingHCloud() {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
@@ -436,7 +435,7 @@ func validateHetznerConfig(ctx context.Context) error {
 			return err
 		}
 	}
-	if query.UsingHetznerBareMetal() {
+	if config.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
 			return err
 		}
@@ -467,7 +466,7 @@ func validateHCloudConfig() error {
 	}
 	// hetzner.apiToken presence is enforced unconditionally in
 	// validateHetznerConfig — no per-mode check needed here anymore.
-	if query.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
+	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}
 	if err := validateHCloudControlPlaneLoadBalancerEndpointNotIP(); err != nil {
@@ -501,7 +500,7 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 // IP exists) and a CP machineType with >= 8 GB RAM (the one node runs the
 // whole cluster). No-op for other topologies.
 func validateHCloudSingleNodePublic(ctx context.Context) error {
-	if !query.HCloudSingleNodePublic() {
+	if !config.HCloudSingleNodePublic() {
 		return nil
 	}
 
@@ -543,7 +542,7 @@ func validateHetznerBareMetalConfig() error {
 		return errors.New("VSwitch details not provided")
 	}
 
-	if query.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
+	if config.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
 		return errors.New("hetzner bare metal specific control-plane details not provided")
 	}
 

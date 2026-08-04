@@ -21,7 +21,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -146,17 +145,17 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 	// of leaning on the alphabetical order ArgoCD's List returns.
 	bar.Describe("Syncing ArgoCD applications")
 	var orderedApps []kubernetes.AppSyncStep
-	if query.VPNClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
+	if config.VPNClusterEnabled() && globals.CloudProviderName == constants.CloudProviderHetzner {
 		// ccm-hcloud manages LoadBalancers for HCloud nodes and must be up before
 		// traefik so the ingress LB Service gets an IP. ccm-hetzner (bare-metal /
 		// hybrid) follows; it doesn't own LBs so traefik-ordering is less critical
 		// but sync order is still declared to keep the sequence deterministic.
 		// WaitForIngressLBDNS then waits for the operator to point DNS at the IP.
-		if query.UsingHCloud() {
+		if config.UsingHCloud() {
 			orderedApps = append(orderedApps,
 				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHCloud})
 		}
-		if query.UsingHetznerBareMetal() {
+		if config.UsingHetznerBareMetal() {
 			orderedApps = append(orderedApps,
 				kubernetes.AppSyncStep{Name: constants.ArgoCDAppCCMHetzner})
 		}
@@ -167,7 +166,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			},
 		})
 	}
-	if query.VPNClusterEnabled() {
+	if config.VPNClusterEnabled() {
 		// cert-manager must be running before keycloakx / netbird sync
 		// so it can issue their Ingress certs. After each of those
 		// syncs, gate on the Certificate object itself being Ready —
@@ -184,7 +183,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		// apps loop happens to sync cnpg, which can be much later.
 		orderedApps = append(orderedApps,
 			kubernetes.AppSyncStep{Name: constants.ArgoCDAppCloudNativePG})
-		if query.ManagedKeycloakEnabled() {
+		if config.ManagedKeycloakEnabled() {
 			orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 				Name:      constants.ArgoCDAppKeycloakx,
 				AfterSync: keycloakxAfterSync(mainClusterClient),
@@ -305,7 +304,7 @@ func readKeycloakAdminPasswordForPanel(
 	ctx context.Context,
 	clusterClient client.Client,
 ) string {
-	if !query.VPNClusterEnabled() || !query.ManagedKeycloakEnabled() {
+	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
 		return ""
 	}
 	password, err := readSecretValue(
@@ -451,7 +450,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Sync cluster-autoscaler on AWS or Azure workload clusters.
 	// Skip Hetzner (chart wiring not in place), bare-metal (no
 	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
-	if !query.VPNClusterEnabled() &&
+	if !config.VPNClusterEnabled() &&
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
@@ -495,11 +494,11 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	managementClusterClient, clientErr := kubernetes.CreateKubernetesClient(ctx, mgmtKubeconfig)
 	assert.AssertErrNil(ctx, clientErr, "Failed constructing Kubernetes cluster client")
 
-	if query.UsingHetznerBareMetal() {
+	if config.UsingHetznerBareMetal() {
 		// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 		// we need to make the Failover IP point to the 'init master node'.
 		// 'init master node' is the very first master node, where 'kubeadm init' is executed.
-		if query.ControlPlaneInHetznerBareMetal() &&
+		if config.ControlPlaneInHetznerBareMetal() &&
 			config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)

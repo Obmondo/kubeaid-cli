@@ -35,7 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
@@ -560,27 +559,27 @@ func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
 		}
 
 	case constants.CloudProviderHetzner:
-		if query.UsingHCloud() {
+		if config.UsingHCloud() {
 			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
 				return err
 			}
 		}
 
-		if query.UsingHetznerBareMetal() {
+		if config.UsingHetznerBareMetal() {
 			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
 
 			// Rook Ceph needs at least constants.RookCephMinNodes bare-metal worker
 			// nodes to form a healthy cluster (mon quorum + replica-3 / host failure
 			// domain; Ceph can't schedule on the tainted control-plane nodes), so on
 			// smaller clusters we skip it — see config.RookCephEnabled.
-			if query.RookCephEnabled() {
+			if config.RookCephEnabled() {
 				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
 					return err
 				}
 			} else {
 				slog.InfoContext(ctx,
 					"Skipping Rook Ceph sync: insufficient bare-metal worker nodes for a healthy cluster",
-					slog.Int("bare-metal-worker-nodes", query.HetznerBareMetalWorkerNodeCount()),
+					slog.Int("bare-metal-worker-nodes", config.HetznerBareMetalWorkerNodeCount()),
 					slog.Int("required", constants.RookCephMinNodes),
 				)
 			}
