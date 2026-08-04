@@ -11,6 +11,7 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -33,7 +34,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 	// descriptors past the phase boundary.
 	defer h.sshPool.closeAll()
 
-	if config.UsingHetznerBareMetal() {
+	if configquery.UsingHetznerBareMetal() {
 		sshKeyPair := hetznerConfig.SSHKeyPair
 		if err := h.CreateHetznerBareMetalSSHKey(ctx, sshKeyPair.Name, sshKeyPair.SSHKeyPairConfig); err != nil {
 			return fmt.Errorf("creating Hetzner Bare Metal SSH key: %w", err)
@@ -71,7 +72,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 	// — the vSwitch is the only L2 fabric the cluster needs, and
 	// there's no HCloud Network to attach it to.
 	var network *hcloud.Network
-	if config.UsingHCloud() {
+	if configquery.UsingHCloud() {
 		n, err := h.CreateNetwork(ctx)
 		if err != nil {
 			return fmt.Errorf("creating Hetzner Network: %w", err)
@@ -94,7 +95,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		//
 		// Skipped for the single-node public control-plane topology: the
 		// lone node egresses over its own public IPv4 — no NAT needed.
-		if !config.HCloudSingleNodePublic() {
+		if !configquery.HCloudSingleNodePublic() {
 			if err := h.CreateNATGateway(ctx, network.ID); err != nil {
 				return fmt.Errorf("creating NAT gateway: %w", err)
 			}
@@ -127,7 +128,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		// across nodes and the capi-cluster chart binds it on each CP
 		// via netplan; here we only allocate the (unassigned) IP and
 		// stash it so it threads into the CAPI cluster values.
-		if config.CoturnFloatingIPEnabled() {
+		if configquery.CoturnFloatingIPEnabled() {
 			floatingIP, err := h.CreateCoturnFloatingIP(ctx,
 				config.ParsedGeneralConfig.Cluster.Name,
 				hetznerConfig.ControlPlane.Regions[0],
@@ -140,7 +141,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		}
 	}
 
-	if config.UsingHetznerBareMetal() {
+	if configquery.UsingHetznerBareMetal() {
 		vswitchID, err := h.CreateVSwitch(ctx)
 		if err != nil {
 			return fmt.Errorf("creating VSwitch: %w", err)
@@ -202,7 +203,7 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 // operator knows how many servers are involved in a parallel step.
 func countBareMetalHosts(hetznerConfig *config.HetznerConfig) int {
 	count := 0
-	if config.ControlPlaneInHetznerBareMetal() {
+	if configquery.ControlPlaneInHetznerBareMetal() {
 		count += len(hetznerConfig.ControlPlane.BareMetal.BareMetalHosts)
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
@@ -223,7 +224,7 @@ func attachAllBareMetalServersToVSwitch(
 	vswitchID int,
 ) error {
 	var serverIDs []string
-	if config.ControlPlaneInHetznerBareMetal() {
+	if configquery.ControlPlaneInHetznerBareMetal() {
 		for _, host := range hetznerConfig.ControlPlane.BareMetal.BareMetalHosts {
 			serverIDs = append(serverIDs, host.ServerID)
 		}
@@ -252,7 +253,7 @@ func attachAllBareMetalServersToVSwitch(
 // lifecycle on its own, and the single-node public control-plane
 // topology has no control-plane LB at all.
 func (h *Hetzner) shouldPreCreateControlPlaneLB() bool {
-	if config.HCloudSingleNodePublic() {
+	if configquery.HCloudSingleNodePublic() {
 		return false
 	}
 	cluster := config.ParsedGeneralConfig.Cluster

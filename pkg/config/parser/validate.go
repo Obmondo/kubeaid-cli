@@ -20,8 +20,6 @@ import (
 	gogitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	gogitMemory "github.com/go-git/go-git/v5/storage/memory"
-	validatorV10 "github.com/go-playground/validator/v10"
-	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	"k8c.io/kubeone/pkg/executor"
@@ -29,6 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/configvalidate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
@@ -172,21 +172,13 @@ func validateClusterType(clusterType, cloudProviderName string) error {
 	return nil
 }
 
+// validateConfigStructTags delegates to pkg/configvalidate, which owns the
+// struct-tag validation so it can be reached without this package.
 func validateConfigStructTags(
 	generalConfig *config.GeneralConfig,
 	secretsConfig *config.SecretsConfig,
 ) error {
-	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	if err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank); err != nil {
-		return fmt.Errorf("failed registering notblank validator: %w", err)
-	}
-	if err := validator.Struct(generalConfig); err != nil {
-		return fmt.Errorf("struct validation failed for general config: %w", err)
-	}
-	if err := validator.Struct(secretsConfig); err != nil {
-		return fmt.Errorf("struct validation failed for secrets config: %w", err)
-	}
-	return nil
+	return configvalidate.StructTags(generalConfig, secretsConfig)
 }
 
 // commitHashPattern matches a git commit hash — either the full 40
@@ -436,7 +428,7 @@ func validateHetznerConfig(ctx context.Context) error {
 		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
-	if config.UsingHCloud() {
+	if configquery.UsingHCloud() {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
@@ -444,7 +436,7 @@ func validateHetznerConfig(ctx context.Context) error {
 			return err
 		}
 	}
-	if config.UsingHetznerBareMetal() {
+	if configquery.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
 			return err
 		}
@@ -475,7 +467,7 @@ func validateHCloudConfig() error {
 	}
 	// hetzner.apiToken presence is enforced unconditionally in
 	// validateHetznerConfig — no per-mode check needed here anymore.
-	if config.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
+	if configquery.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}
 	if err := validateHCloudControlPlaneLoadBalancerEndpointNotIP(); err != nil {
@@ -509,7 +501,7 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 // IP exists) and a CP machineType with >= 8 GB RAM (the one node runs the
 // whole cluster). No-op for other topologies.
 func validateHCloudSingleNodePublic(ctx context.Context) error {
-	if !config.HCloudSingleNodePublic() {
+	if !configquery.HCloudSingleNodePublic() {
 		return nil
 	}
 
@@ -551,7 +543,7 @@ func validateHetznerBareMetalConfig() error {
 		return errors.New("VSwitch details not provided")
 	}
 
-	if config.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
+	if configquery.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
 		return errors.New("hetzner bare metal specific control-plane details not provided")
 	}
 

@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
@@ -86,7 +87,7 @@ func ingressLBFQDNs() []string {
 	// Floating IP; with one they resolve to that IP instead (see
 	// coturnFloatingIPFQDNs / waitForCoturnFloatingIPDNS), since
 	// host-network Coturn answers on the Floating IP, not the HTTP LB.
-	if !config.CoturnFloatingIPEnabled() {
+	if !configquery.CoturnFloatingIPEnabled() {
 		fqdns = append(fqdns, netbirdStunTurnFQDNs()...)
 	}
 	return fqdns
@@ -96,7 +97,7 @@ func ingressLBFQDNs() []string {
 // cluster with a Coturn Floating IP, must resolve to that Floating IP
 // rather than the Traefik LB — or nil when there is no Floating IP.
 func coturnFloatingIPFQDNs() []string {
-	if !config.CoturnFloatingIPEnabled() {
+	if !configquery.CoturnFloatingIPEnabled() {
 		return nil
 	}
 	return netbirdStunTurnFQDNs()

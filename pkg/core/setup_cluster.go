@@ -23,6 +23,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -106,14 +107,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	//   - keycloakx       : only when managed (keycloak-admin
 	//                       SealedSecret consumed by the chart's
 	//                       pre-install hook).
-	if config.VPNClusterEnabled() {
+	if configquery.VPNClusterEnabled() {
 		namespacesToBeCreated = append(
 			namespacesToBeCreated,
 			constants.NamespaceCloudNativePG,
 			constants.NamespaceNetBird,
 		)
 	}
-	if config.ManagedKeycloakEnabled() {
+	if configquery.ManagedKeycloakEnabled() {
 		namespacesToBeCreated = append(
 			namespacesToBeCreated,
 			constants.NamespaceKeycloak,

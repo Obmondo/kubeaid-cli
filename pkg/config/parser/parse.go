@@ -22,6 +22,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -31,8 +32,8 @@ import (
 // ConfigFilesExist checks whether both general.yaml and secrets.yaml exist at the given path.
 func ConfigFilesExist(configsDirectory string) (bool, error) {
 	for _, p := range []string{
-		config.GetGeneralConfigFilePath(),
-		config.GetSecretsConfigFilePath(),
+		configquery.GetGeneralConfigFilePath(),
+		configquery.GetSecretsConfigFilePath(),
 	} {
 		if _, err := os.Stat(p); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
@@ -49,7 +50,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 
 	// Read contents of the general config file into ParsedGeneralConfig.
 	{
-		config.GeneralConfigFileContents, err = os.ReadFile(config.GetGeneralConfigFilePath())
+		config.GeneralConfigFileContents, err = os.ReadFile(configquery.GetGeneralConfigFilePath())
 		assert.AssertErrNil(ctx, err, "Failed reading general config file")
 
 		//nolint:musttag
@@ -107,7 +108,7 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 	// Read contents of the secrets config file into ParsedSecretsConfig.
 	// This needs to be done before reading the general config.
 	{
-		secretsConfigFileContents, err := os.ReadFile(config.GetSecretsConfigFilePath())
+		secretsConfigFileContents, err := os.ReadFile(configquery.GetSecretsConfigFilePath())
 		assert.AssertErrNil(ctx, err, "Failed reading secrets config file")
 
 		err = yaml.Unmarshal([]byte(secretsConfigFileContents), config.ParsedSecretsConfig)

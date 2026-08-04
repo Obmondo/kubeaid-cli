@@ -15,6 +15,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
@@ -93,7 +94,7 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	}
 
 	// Construct HCloud client, if we're using HCloud.
-	if config.UsingHCloud() {
+	if configquery.UsingHCloud() {
 		hcloudClient := hcloud.NewClient(
 			hcloud.WithToken(config.ParsedSecretsConfig.Hetzner.APIToken),
 		)
@@ -107,7 +108,7 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	}
 
 	// Construct Hetzner Robot HTTP client, if we're using Hetzner Bare Metal.
-	if config.UsingHetznerBareMetal() {
+	if configquery.UsingHetznerBareMetal() {
 		robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
 		hetznerClient.robotClient = newRobotRestyClient(
 			robotWebServiceUserCredentials.User,

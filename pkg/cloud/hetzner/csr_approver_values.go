@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 )
 
 // GetHetznerBareMetalHostPublicIPs returns a map of HetznerBareMetalHost
@@ -29,7 +30,7 @@ import (
 // deleted (CAPH's native CSR validator is structurally tighter than
 // postfinance's IP-prefix allow-list).
 func (h *Hetzner) GetHetznerBareMetalHostPublicIPs(ctx context.Context) (map[string]string, error) {
-	if !config.UsingHetznerBareMetal() {
+	if !configquery.UsingHetznerBareMetal() {
 		return map[string]string{}, nil
 	}
 
@@ -39,7 +40,7 @@ func (h *Hetzner) GetHetznerBareMetalHostPublicIPs(ctx context.Context) (map[str
 	}
 
 	var hosts []*config.HetznerBareMetalHost
-	if config.ControlPlaneInHetznerBareMetal() {
+	if configquery.ControlPlaneInHetznerBareMetal() {
 		hosts = append(hosts, hetznerConfig.ControlPlane.BareMetal.BareMetalHosts...)
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {

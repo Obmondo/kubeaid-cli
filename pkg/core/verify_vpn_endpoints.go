@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
 	"github.com/Obmondo/kubeaid-cli/pkg/keycloak"
 )
 
@@ -33,7 +34,7 @@ import (
 //
 // No-op when the cluster is not a managed-Keycloak VPN cluster.
 func verifyVPNClusterEndpoints(ctx context.Context) error {
-	if !config.VPNClusterEnabled() || !config.ManagedKeycloakEnabled() {
+	if !configquery.VPNClusterEnabled() || !configquery.ManagedKeycloakEnabled() {
 		return nil
 	}
 	cluster := config.ParsedGeneralConfig.Cluster

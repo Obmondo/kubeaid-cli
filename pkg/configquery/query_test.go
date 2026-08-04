@@ -1,10 +1,12 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package config
+package configquery
 
 import (
 	"testing"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
 
 	"github.com/stretchr/testify/assert"
 
@@ -13,50 +15,51 @@ import (
 
 // bareMetalHosts builds a slice of n hosts — only the count matters for the
 // node-count helpers, so the host fields are left zero.
-func bareMetalHosts(n int) []*HetznerBareMetalHost {
-	out := make([]*HetznerBareMetalHost, n)
+func bareMetalHosts(n int) []*config.HetznerBareMetalHost {
+	out := make([]*config.HetznerBareMetalHost, n)
 	for i := range out {
-		out[i] = &HetznerBareMetalHost{}
+		out[i] = &config.HetznerBareMetalHost{}
 	}
 	return out
 }
 
-// hetznerConfig builds a *GeneralConfig with a Hetzner cloud of the given mode,
+// hetznerConfig builds a *config.GeneralConfig with a Hetzner cloud of the given mode,
 // controlPlaneHosts bare-metal control-plane hosts, and one worker node-group
 // per entry in workerGroupHosts (each carrying that many hosts). The
 // control-plane hosts are set so tests can prove they're NOT counted.
-func hetznerConfig(mode string, controlPlaneHosts int, workerGroupHosts ...int) *GeneralConfig {
-	hetzner := &HetznerConfig{Mode: mode}
+func hetznerConfig(mode string, controlPlaneHosts int, workerGroupHosts ...int) *config.GeneralConfig {
+	hetzner := &config.HetznerConfig{Mode: mode}
 
 	if controlPlaneHosts > 0 {
-		hetzner.ControlPlane.BareMetal = &HetznerBareMetalControlPlane{
+		hetzner.ControlPlane.BareMetal = &config.HetznerBareMetalControlPlane{
 			BareMetalHosts: bareMetalHosts(controlPlaneHosts),
 		}
 	}
 	for _, n := range workerGroupHosts {
 		hetzner.NodeGroups.BareMetal = append(hetzner.NodeGroups.BareMetal,
-			&HetznerBareMetalNodeGroup{BareMetalHosts: bareMetalHosts(n)})
+			&config.HetznerBareMetalNodeGroup{BareMetalHosts: bareMetalHosts(n)})
 	}
 
-	return &GeneralConfig{Cloud: CloudConfig{Hetzner: hetzner}}
+	return &config.GeneralConfig{Cloud: config.CloudConfig{Hetzner: hetzner}}
 }
 
 func TestHetznerBareMetalWorkerNodeCount(t *testing.T) {
-	original := ParsedGeneralConfig
-	defer func() { ParsedGeneralConfig = original }()
+	original := config.ParsedGeneralConfig
+	defer func() { config.ParsedGeneralConfig = original }()
 
 	// withNilNodeGroup appends a nil bare-metal node-group, which must be
 	// skipped rather than panicked on.
 	withNilNodeGroup := hetznerConfig(constants.HetznerModeBareMetal, 0, 2)
 	withNilNodeGroup.Cloud.Hetzner.NodeGroups.BareMetal = append(
-		withNilNodeGroup.Cloud.Hetzner.NodeGroups.BareMetal, nil)
+		withNilNodeGroup.Cloud.Hetzner.NodeGroups.BareMetal, nil,
+	)
 
 	tests := []struct {
 		name string
-		cfg  *GeneralConfig
+		cfg  *config.GeneralConfig
 		want int
 	}{
-		{"nil hetzner", &GeneralConfig{Cloud: CloudConfig{Hetzner: nil}}, 0},
+		{"nil hetzner", &config.GeneralConfig{Cloud: config.CloudConfig{Hetzner: nil}}, 0},
 		// Control-plane hosts never count, even with no workers.
 		{"control-plane only", hetznerConfig(constants.HetznerModeBareMetal, 3), 0},
 		{"workers across two node-groups", hetznerConfig(constants.HetznerModeBareMetal, 0, 2, 1), 3},
@@ -67,22 +70,22 @@ func TestHetznerBareMetalWorkerNodeCount(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ParsedGeneralConfig = tt.cfg
+			config.ParsedGeneralConfig = tt.cfg
 			assert.Equal(t, tt.want, HetznerBareMetalWorkerNodeCount())
 		})
 	}
 }
 
 func TestRookCephEnabled(t *testing.T) {
-	original := ParsedGeneralConfig
-	defer func() { ParsedGeneralConfig = original }()
+	original := config.ParsedGeneralConfig
+	defer func() { config.ParsedGeneralConfig = original }()
 
 	tests := []struct {
 		name string
-		cfg  *GeneralConfig
+		cfg  *config.GeneralConfig
 		want bool
 	}{
-		{"nil hetzner", &GeneralConfig{Cloud: CloudConfig{Hetzner: nil}}, false},
+		{"nil hetzner", &config.GeneralConfig{Cloud: config.CloudConfig{Hetzner: nil}}, false},
 		// HCloud is never bare-metal, so Ceph is off regardless of host count.
 		{"hcloud is never eligible", hetznerConfig(constants.HetznerModeHCloud, 0, 5), false},
 		{"bare-metal below threshold", hetznerConfig(constants.HetznerModeBareMetal, 0, 2), false},
@@ -95,20 +98,20 @@ func TestRookCephEnabled(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ParsedGeneralConfig = tt.cfg
+			config.ParsedGeneralConfig = tt.cfg
 			assert.Equal(t, tt.want, RookCephEnabled())
 		})
 	}
 }
 
 func TestManagedKeycloakEnabled(t *testing.T) {
-	original := ParsedGeneralConfig
-	defer func() { ParsedGeneralConfig = original }()
+	original := config.ParsedGeneralConfig
+	defer func() { config.ParsedGeneralConfig = original }()
 
 	tests := []struct {
 		name        string
 		clusterType string
-		keycloak    *KeycloakConfig
+		keycloak    *config.KeycloakConfig
 		want        bool
 	}{
 		{"workload cluster without keycloak block", constants.ClusterTypeWorkload, nil, false},
@@ -116,13 +119,13 @@ func TestManagedKeycloakEnabled(t *testing.T) {
 		{
 			"vpn cluster with mode=external",
 			constants.ClusterTypeVPN,
-			&KeycloakConfig{Mode: "external", DNS: "keycloak.demo.example.com"},
+			&config.KeycloakConfig{Mode: "external", DNS: "keycloak.demo.example.com"},
 			false,
 		},
 		{
 			"vpn cluster with mode=managed",
 			constants.ClusterTypeVPN,
-			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			&config.KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
 			true,
 		},
 		{
@@ -130,28 +133,28 @@ func TestManagedKeycloakEnabled(t *testing.T) {
 			// stay nil-safe and false rather than render a broken config.
 			"workload cluster with managed keycloak (defensive)",
 			constants.ClusterTypeWorkload,
-			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			&config.KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
 			false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ParsedGeneralConfig = &GeneralConfig{}
-			ParsedGeneralConfig.Cluster.Type = tt.clusterType
-			ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
+			config.ParsedGeneralConfig = &config.GeneralConfig{}
+			config.ParsedGeneralConfig.Cluster.Type = tt.clusterType
+			config.ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
 			assert.Equal(t, tt.want, ManagedKeycloakEnabled())
 		})
 	}
 }
 
 func TestVPNClusterEnabled(t *testing.T) {
-	original := ParsedGeneralConfig
-	defer func() { ParsedGeneralConfig = original }()
+	original := config.ParsedGeneralConfig
+	defer func() { config.ParsedGeneralConfig = original }()
 
 	tests := []struct {
 		name        string
 		clusterType string
-		keycloak    *KeycloakConfig
+		keycloak    *config.KeycloakConfig
 		want        bool
 	}{
 		{"workload cluster", constants.ClusterTypeWorkload, nil, false},
@@ -159,7 +162,7 @@ func TestVPNClusterEnabled(t *testing.T) {
 		{
 			"vpn cluster + managed",
 			constants.ClusterTypeVPN,
-			&KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
+			&config.KeycloakConfig{Mode: "managed", DNS: "keycloak.demo.example.com"},
 			true,
 		},
 		{
@@ -167,49 +170,49 @@ func TestVPNClusterEnabled(t *testing.T) {
 			// Keycloak install itself differs.
 			"vpn cluster + external",
 			constants.ClusterTypeVPN,
-			&KeycloakConfig{Mode: "external", DNS: "auth.demo.example.com"},
+			&config.KeycloakConfig{Mode: "external", DNS: "auth.demo.example.com"},
 			true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ParsedGeneralConfig = &GeneralConfig{}
-			ParsedGeneralConfig.Cluster.Type = tt.clusterType
-			ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
+			config.ParsedGeneralConfig = &config.GeneralConfig{}
+			config.ParsedGeneralConfig.Cluster.Type = tt.clusterType
+			config.ParsedGeneralConfig.Cluster.Keycloak = tt.keycloak
 			assert.Equal(t, tt.want, VPNClusterEnabled())
 		})
 	}
 }
 
 func TestHCloudSingleNodePublic(t *testing.T) {
-	original := ParsedGeneralConfig
-	defer func() { ParsedGeneralConfig = original }()
+	original := config.ParsedGeneralConfig
+	defer func() { config.ParsedGeneralConfig = original }()
 
 	// build assembles a Hetzner cluster config: cluster type, hetzner mode,
 	// control-plane replicas (0 => no HCloud control-plane block at all), and a
 	// count of HCloud worker node-groups.
-	build := func(clusterType, mode string, cpReplicas, hcloudNodeGroups int) *GeneralConfig {
-		hetzner := &HetznerConfig{Mode: mode}
+	build := func(clusterType, mode string, cpReplicas, hcloudNodeGroups int) *config.GeneralConfig {
+		hetzner := &config.HetznerConfig{Mode: mode}
 		if cpReplicas > 0 {
-			hetzner.ControlPlane.HCloud = &HCloudControlPlane{Replicas: uint(cpReplicas)}
+			hetzner.ControlPlane.HCloud = &config.HCloudControlPlane{Replicas: uint(cpReplicas)}
 		}
 		for range hcloudNodeGroups {
-			hetzner.NodeGroups.HCloud = append(hetzner.NodeGroups.HCloud, HCloudAutoScalableNodeGroup{})
+			hetzner.NodeGroups.HCloud = append(hetzner.NodeGroups.HCloud, config.HCloudAutoScalableNodeGroup{})
 		}
-		return &GeneralConfig{
-			Cluster: ClusterConfig{Type: clusterType},
-			Cloud:   CloudConfig{Hetzner: hetzner},
+		return &config.GeneralConfig{
+			Cluster: config.ClusterConfig{Type: clusterType},
+			Cloud:   config.CloudConfig{Hetzner: hetzner},
 		}
 	}
 
 	// workloadBehindVPN is a single hcloud node connecting to an existing VPN
 	// (hcloudVPNCluster set) — it must stay private behind that mesh.
 	workloadBehindVPN := build(constants.ClusterTypeWorkload, constants.HetznerModeHCloud, 1, 0)
-	workloadBehindVPN.Cloud.Hetzner.HCloudVPNCluster = &HCloudVPNClusterConfig{Name: "some-vpn"}
+	workloadBehindVPN.Cloud.Hetzner.HCloudVPNCluster = &config.HCloudVPNClusterConfig{Name: "some-vpn"}
 
 	tests := []struct {
 		name string
-		cfg  *GeneralConfig
+		cfg  *config.GeneralConfig
 		want bool
 	}{
 		// Applies regardless of cluster.type — the decision is about the
@@ -229,13 +232,13 @@ func TestHCloudSingleNodePublic(t *testing.T) {
 		{"workload behind an existing VPN", workloadBehindVPN, false},
 		{
 			"nil hetzner",
-			&GeneralConfig{Cluster: ClusterConfig{Type: constants.ClusterTypeWorkload}, Cloud: CloudConfig{Hetzner: nil}},
+			&config.GeneralConfig{Cluster: config.ClusterConfig{Type: constants.ClusterTypeWorkload}, Cloud: config.CloudConfig{Hetzner: nil}},
 			false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ParsedGeneralConfig = tt.cfg
+			config.ParsedGeneralConfig = tt.cfg
 			assert.Equal(t, tt.want, HCloudSingleNodePublic())
 		})
 	}

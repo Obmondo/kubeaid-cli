@@ -27,7 +27,7 @@ type TaintEffect string
 // in a config file a human writes, and coreV1 marks it omitempty, so
 // omitting it here keeps the marshalled output identical.
 type Taint struct {
-	Key    string      `json:"key"              yaml:"key"`
-	Value  string      `json:"value,omitempty"  yaml:"value,omitempty"`
-	Effect TaintEffect `json:"effect"           yaml:"effect"`
+	Key    string      `json:"key"             yaml:"key"`
+	Value  string      `json:"value,omitempty" yaml:"value,omitempty"`
+	Effect TaintEffect `json:"effect"          yaml:"effect"`
 }
