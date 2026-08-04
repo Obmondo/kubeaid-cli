@@ -14,7 +14,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	corenetbird "github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -286,7 +286,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		HetznerConfig:          sanitizedHetznerConfigForChart(config.ParsedGeneralConfig.Cloud.Hetzner),
 		HetznerCredentials:     config.ParsedSecretsConfig.Hetzner,
-		HCloudSingleNodePublic: configquery.HCloudSingleNodePublic(),
+		HCloudSingleNodePublic: query.HCloudSingleNodePublic(),
 
 		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
 
@@ -354,7 +354,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ObmondoKeyFileContents = string(key)
 	}
 
-	if configquery.VPNClusterEnabled() {
+	if query.VPNClusterEnabled() {
 		// All NetBird random secrets come from secrets.yaml (auto-
 		// generated on first run by parser.FillMissingSecrets, then
 		// stable across re-runs). Replaces the prior
@@ -404,7 +404,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		}
 	}
 
-	if configquery.ManagedKeycloakEnabled() {
+	if query.ManagedKeycloakEnabled() {
 		// Same shape as NetBird above — KeycloakAdminPassword is
 		// auto-generated into secrets.yaml on first run and read
 		// directly thereafter.
@@ -440,7 +440,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		// Single-node public control-plane: no LB — the endpoint is the
 		// operator's api DNS name (validated non-empty).
-		case configquery.HCloudSingleNodePublic():
+		case query.HCloudSingleNodePublic():
 			templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint
 
 		// HCloud / Hetzner hybrid clusters where kubeaid-cli pre-
@@ -572,18 +572,18 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		//   hcloud    → ccm-hcloud only (networking=true, robot=false, owns LBs + routes)
 		//   bare-metal → ccm-hetzner only (robot=true, no networking)
 		//   hybrid    → both (ccm-hcloud for HCloud nodes + LBs, ccm-hetzner for Robot nodes)
-		if configquery.UsingHCloud() {
+		if query.UsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudCCMNonSecretTemplateNames...,
 			)
 		}
-		if configquery.UsingHetznerBareMetal() {
+		if query.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerCCMNonSecretTemplateNames...,
 			)
 		}
 
-		if configquery.UsingHetznerBareMetal() {
+		if query.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
@@ -597,7 +597,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			// automatically (no automated / prune sync policy), but an operator who
 			// then deletes it must pass --cascade=false to avoid destroying live
 			// Ceph data.
-			if configquery.RookCephEnabled() {
+			if query.RookCephEnabled() {
 				embeddedTemplateNames = append(embeddedTemplateNames,
 					constants.RookCephTemplateNames...,
 				)
@@ -606,7 +606,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
 			// to a healthy master node, in a failover scenario.
-			if configquery.ControlPlaneInHetznerBareMetal() &&
+			if query.ControlPlaneInHetznerBareMetal() &&
 				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
 				embeddedTemplateNames = append(embeddedTemplateNames,
@@ -616,7 +616,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			}
 		}
 
-		if configquery.UsingHCloud() {
+		if query.UsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudSpecificNonSecretTemplateNames...,
 			)
@@ -637,7 +637,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Relay + Dashboard + Coturn themselves. cnpg also backs
 	// keycloak-pgsql in managed mode; rendering it here keeps cnpg
 	// syncing once regardless of mode.
-	if configquery.VPNClusterEnabled() {
+	if query.VPNClusterEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TraefikTemplateNames...,
 		)
@@ -671,7 +671,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// hcloud-fip-controller — multi-CP HCloud VPN cluster only (a Coturn
 	// Floating IP was provisioned). Keeps that Floating IP on the active
 	// control-plane node so host-network Coturn survives CP failover.
-	if configquery.CoturnFloatingIPEnabled() {
+	if query.CoturnFloatingIPEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.HCloudFIPControllerTemplateNames...,
 		)
@@ -681,7 +681,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// chart on this cluster and runs the gocloak realm reconciler
 	// post-sync. External-mode VPN clusters skip this — the
 	// operator's existing Keycloak handles it.
-	if configquery.ManagedKeycloakEnabled() {
+	if query.ManagedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedNonSecretTemplateNames...,
 		)
@@ -804,7 +804,7 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.CommonHetznerSpecificSecretTemplateNames...,
 		)
 
-		if configquery.UsingHetznerBareMetal() {
+		if query.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificSecretTemplateNames...,
 			)
@@ -827,14 +827,14 @@ func getEmbeddedSecretTemplateNames() []string {
 	// SealedSecrets always. The OIDC client secret inside the
 	// netbird Secret is generated by kubeaid-cli when managed,
 	// supplied by the operator via secrets.yaml when external.
-	if configquery.VPNClusterEnabled() {
+	if query.VPNClusterEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdSecretTemplateNames...,
 		)
 	}
 
 	// Managed Keycloak only: keycloak-admin SealedSecret.
-	if configquery.ManagedKeycloakEnabled() {
+	if query.ManagedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedSecretTemplateNames...,
 		)
@@ -854,7 +854,7 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	// hcloud-fip-controller token — the HCLOUD_API_TOKEN Secret the
 	// controller reads via envFrom. Only when the controller is rendered.
-	if configquery.CoturnFloatingIPEnabled() {
+	if query.CoturnFloatingIPEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.HCloudFIPControllerTokenSecretTemplateName,
 		)

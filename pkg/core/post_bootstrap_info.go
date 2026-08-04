@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/ui"
@@ -63,7 +63,7 @@ func printPostBootstrapNextSteps(keycloakAdminPassword string, elapsed time.Dura
 // cluster isn't one (the credential it surfaces - the keycloak-admin Secret - only exists
 // when kubeaid-cli rendered keycloakx itself).
 func vpnClusterNextStepsLines(keycloakAdminPassword string) []string {
-	if !configquery.VPNClusterEnabled() || !configquery.ManagedKeycloakEnabled() {
+	if !query.VPNClusterEnabled() || !query.ManagedKeycloakEnabled() {
 		return nil
 	}
 	cluster := config.ParsedGeneralConfig.Cluster

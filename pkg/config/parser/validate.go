@@ -27,8 +27,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
-	"github.com/Obmondo/kubeaid-cli/pkg/configvalidate"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
@@ -178,7 +178,7 @@ func validateConfigStructTags(
 	generalConfig *config.GeneralConfig,
 	secretsConfig *config.SecretsConfig,
 ) error {
-	return configvalidate.StructTags(generalConfig, secretsConfig)
+	return validate.StructTags(generalConfig, secretsConfig)
 }
 
 // commitHashPattern matches a git commit hash — either the full 40
@@ -428,7 +428,7 @@ func validateHetznerConfig(ctx context.Context) error {
 		config.ParsedGeneralConfig.Cloud.Hetzner.HCloudVPNCluster = nil
 	}
 
-	if configquery.UsingHCloud() {
+	if query.UsingHCloud() {
 		if err := validateHCloudConfig(); err != nil {
 			return err
 		}
@@ -436,7 +436,7 @@ func validateHetznerConfig(ctx context.Context) error {
 			return err
 		}
 	}
-	if configquery.UsingHetznerBareMetal() {
+	if query.UsingHetznerBareMetal() {
 		if err := validateHetznerBareMetalConfig(); err != nil {
 			return err
 		}
@@ -467,7 +467,7 @@ func validateHCloudConfig() error {
 	}
 	// hetzner.apiToken presence is enforced unconditionally in
 	// validateHetznerConfig — no per-mode check needed here anymore.
-	if configquery.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
+	if query.ControlPlaneInHCloud() && hetznerConfig.ControlPlane.HCloud == nil {
 		return errors.New("HCloud specific control-plane details not provided")
 	}
 	if err := validateHCloudControlPlaneLoadBalancerEndpointNotIP(); err != nil {
@@ -501,7 +501,7 @@ func validateHCloudControlPlaneLoadBalancerEndpointNotIP() error {
 // IP exists) and a CP machineType with >= 8 GB RAM (the one node runs the
 // whole cluster). No-op for other topologies.
 func validateHCloudSingleNodePublic(ctx context.Context) error {
-	if !configquery.HCloudSingleNodePublic() {
+	if !query.HCloudSingleNodePublic() {
 		return nil
 	}
 
@@ -543,7 +543,7 @@ func validateHetznerBareMetalConfig() error {
 		return errors.New("VSwitch details not provided")
 	}
 
-	if configquery.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
+	if query.ControlPlaneInHetznerBareMetal() && hetznerConfig.ControlPlane.BareMetal == nil {
 		return errors.New("hetzner bare metal specific control-plane details not provided")
 	}
 

@@ -27,7 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	gitUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
@@ -92,7 +92,7 @@ func lockdownDecision(ld *bool) (run, skipConfirm bool) {
 // (info-logged); any actual failure is warn-logged and bootstrap continues —
 // the cluster is already provisioned.
 func lockdownInBootstrap(ctx context.Context, clusterClient client.Client, gitAuthMethod transport.AuthMethod) {
-	if !configquery.UsingHetznerBareMetal() || !kubernetes.IsClusterctlMoveExecuted(ctx) {
+	if !query.UsingHetznerBareMetal() || !kubernetes.IsClusterctlMoveExecuted(ctx) {
 		return
 	}
 

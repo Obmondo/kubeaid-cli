@@ -24,14 +24,23 @@ var BootstrapCmd = &cobra.Command{
 
 	Short: "Bootstrap a KubeAid managed K8s cluster",
 
-	Run: func(cmd *cobra.Command, args []string) {
+	// Declared here rather than inherited from ClusterCmd because the Obmondo
+	// config has to be on disk before the shared prepare step parses it.
+	// PersistentPreRun is not additive in cobra — the closest one wins — so
+	// this calls the parent's logic itself.
+	//
+	// Ordering is the whole point: prepare exits with "config files not
+	// found" when the directory is empty, which on a fresh machine is every
+	// --token run, and the fetch used to live in Run, after it. Resolving
+	// first also means the config that gets parsed and validated is the one
+	// just written, not whatever happened to be on disk.
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
 		// The Obmondo flags stand in for `config generate`: the portal has
 		// already collected every answer, so the rendered general.yaml and
 		// secrets.yaml are downloaded — or read back off disk — before the
 		// bootstrap below reads them.
-		var obmondoPaths *obmondo.WrittenPaths
 		switch {
 		case bootstrapToken != "" && obmondoCertname != "":
 			obmondoPaths = fetchObmondoConfig(ctx, cmd)
@@ -40,7 +49,8 @@ var BootstrapCmd = &cobra.Command{
 		// redemption without one, so this is caught here rather than spent
 		// on a request that cannot succeed.
 		case bootstrapToken != "":
-			assert.AssertErrNil(ctx,
+			assert.AssertErrNil(
+				ctx,
 				fmt.Errorf("--%s is required with --%s", constants.FlagNameCertname, constants.FlagNameToken),
 				"Refusing to bootstrap: --"+constants.FlagNameToken+" does not say which cluster it is for",
 			)
@@ -48,6 +58,12 @@ var BootstrapCmd = &cobra.Command{
 		case obmondoCertname != "":
 			obmondoPaths = obmondoConfigFromDisk(ctx, cmd)
 		}
+
+		PrepareClusterCommand(ctx)
+	},
+
+	Run: func(cmd *cobra.Command, args []string) {
+		ctx := cmd.Context()
 
 		core.BootstrapCluster(ctx, core.BootstrapClusterArgs{
 			CreateDevEnvArgs: &core.CreateDevEnvArgs{
@@ -65,6 +81,11 @@ var BootstrapCmd = &cobra.Command{
 		obmondo.PrintSecretsNotice(ctx, obmondoPaths)
 	},
 }
+
+// obmondoPaths is set by PersistentPreRun and read by Run, which is why it
+// is a package var rather than a local: cobra gives the two hooks no way to
+// pass a value between them.
+var obmondoPaths *obmondo.WrittenPaths
 
 var skipMonitoringSetup,
 	skipClusterctlMove bool
@@ -111,7 +132,8 @@ func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) *obmondo.Writte
 	// either way and Write replaces what is there.
 	existingDirectory, _, err := obmondo.FindOnDisk(obmondoCertname)
 	if err == nil {
-		slog.InfoContext(ctx, "Replacing the cluster configuration already on disk",
+		slog.InfoContext(
+			ctx, "Replacing the cluster configuration already on disk",
 			slog.String("certname", obmondoCertname),
 			slog.String("directory", existingDirectory),
 		)
@@ -128,7 +150,8 @@ func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) *obmondo.Writte
 	// an operator who names one cluster and redeems another's token would
 	// otherwise bootstrap the wrong cluster with no indication.
 	if globals.ClusterName != "" && globals.ClusterName != clusterName {
-		assert.AssertErrNil(ctx,
+		assert.AssertErrNil(
+			ctx,
 			fmt.Errorf("this token is for cluster %q, not %q", clusterName, globals.ClusterName),
 			"Refusing to bootstrap: --"+constants.FlagNameClusterName+" does not match the token",
 		)
@@ -156,19 +179,22 @@ func init() {
 	// Flags.
 
 	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipMonitoringSetup, constants.FlagNameSkipMonitoringSetup, false,
+		BoolVar(
+			&skipMonitoringSetup, constants.FlagNameSkipMonitoringSetup, false,
 			"Skip KubePrometheus installation",
 		)
 
 	BootstrapCmd.PersistentFlags().
-		BoolVar(&skipClusterctlMove, constants.FlagNameSkipClusterctlMove, false,
+		BoolVar(
+			&skipClusterctlMove, constants.FlagNameSkipClusterctlMove, false,
 			"Skip executing the 'clusterctl move' command",
 		)
 
 	// Defaulted from the environment so the token can be supplied without
 	// landing in argv, which is world-readable via ps on a shared machine.
 	BootstrapCmd.PersistentFlags().
-		StringVar(&bootstrapToken, constants.FlagNameToken,
+		StringVar(
+			&bootstrapToken, constants.FlagNameToken,
 			os.Getenv(constants.EnvNameToken),
 			"Fetch this cluster's configuration from Obmondo using the bootstrap token issued by the portal"+
 				" (also read from "+constants.EnvNameToken+")",
@@ -178,14 +204,16 @@ func init() {
 	// redemption whose certname disagrees with the one the token was issued
 	// for, and the portal hands out both together.
 	BootstrapCmd.PersistentFlags().
-		StringVar(&obmondoCertname, constants.FlagNameCertname,
+		StringVar(
+			&obmondoCertname, constants.FlagNameCertname,
 			os.Getenv(constants.EnvNameCertname),
 			"Certname the Obmondo token was issued for, as <cluster>.<customer-id>"+
 				" (also read from "+constants.EnvNameCertname+")",
 		)
 
 	BootstrapCmd.PersistentFlags().
-		StringVar(&obmondoAPIURL, constants.FlagNameObmondoAPIURL, obmondo.DefaultAPIURL,
+		StringVar(
+			&obmondoAPIURL, constants.FlagNameObmondoAPIURL, obmondo.DefaultAPIURL,
 			"Obmondo API to fetch the cluster configuration from",
 		)
 }

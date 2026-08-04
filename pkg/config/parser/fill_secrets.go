@@ -13,7 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/randval"
 )
@@ -47,7 +47,7 @@ func FillMissingSecrets(ctx context.Context) error {
 		return nil
 	}
 
-	secretsPath := configquery.GetSecretsConfigFilePath()
+	secretsPath := query.GetSecretsConfigFilePath()
 	raw, err := os.ReadFile(secretsPath)
 	if err != nil {
 		return fmt.Errorf("reading secrets.yaml: %w", err)

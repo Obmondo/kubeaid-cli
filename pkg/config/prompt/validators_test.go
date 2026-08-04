@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package validate
+package prompt
 
 import (
 	"errors"
@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestNonEmpty(t *testing.T) {
+func TestNonEmptyValidator(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
@@ -38,7 +38,7 @@ func assertErrorIs(t *testing.T, err, target error) {
 	assert.True(t, errors.Is(err, target), "expected error to be ErrRequired, got %v", err)
 }
 
-func TestClusterName(t *testing.T) {
+func TestClusterNameValidator(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string
@@ -202,7 +202,7 @@ func TestIPv4InSubnet(t *testing.T) {
 	}
 }
 
-func TestHTTPSURL(t *testing.T) {
+func TestHTTPSURLValidator(t *testing.T) {
 	tests := []struct {
 		name    string
 		in      string

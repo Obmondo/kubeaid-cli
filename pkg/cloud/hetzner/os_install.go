@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/configquery"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/query"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
@@ -39,7 +39,7 @@ func (h *Hetzner) BootAllHBMSIntoRescue(ctx context.Context) error {
 
 	var hosts []*config.HetznerBareMetalHost
 
-	if configquery.ControlPlaneInHetznerBareMetal() {
+	if query.ControlPlaneInHetznerBareMetal() {
 		hosts = append(hosts, hetznerConfig.ControlPlane.BareMetal.BareMetalHosts...)
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {
