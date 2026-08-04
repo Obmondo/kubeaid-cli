@@ -14,6 +14,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/randval"
 )
 
@@ -46,7 +47,7 @@ func FillMissingSecrets(ctx context.Context) error {
 		return nil
 	}
 
-	secretsPath := config.GetSecretsConfigFilePath()
+	secretsPath := globals.SecretsConfigFilePath()
 	raw, err := os.ReadFile(secretsPath)
 	if err != nil {
 		return fmt.Errorf("reading secrets.yaml: %w", err)

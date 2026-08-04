@@ -12,6 +12,8 @@
 package urlprotocol
 
 import (
+	"fmt"
+	"net"
 	"strings"
 )
 
@@ -60,4 +62,42 @@ func UsingHTTPBasedProtocol(unparsedURL string) bool {
 func UsingSSHBasedProtocol(unparsedURL string) bool {
 	protocol := DetectProtocol(unparsedURL)
 	return (protocol == ProtocolSSH) || (protocol == ProtocolSCP)
+}
+
+// Parsed is a Git URL broken into its parts.
+//
+// The type lives here rather than in pkg/repository/url for the same reason
+// the protocol constants do: pkg/config embeds it, and that package must
+// stay importable without pulling the parsing machinery — which reaches
+// oops, samber/lo and golang.org/x/text — along with it. pkg/repository/url
+// aliases it and owns Parse.
+type Parsed struct {
+	Protocol Protocol
+	Host,
+	Owner,
+	Repository string
+}
+
+// AsHTTPsURL renders the URL in https form, whatever transport it was
+// written in.
+func (u *Parsed) AsHTTPsURL() string {
+	var hostName string
+	switch u.Protocol {
+	case ProtocolHTTP, ProtocolHTTPs:
+		hostName = u.Host
+
+	case ProtocolSSH, ProtocolSCP:
+		hostName = u.HostName()
+	}
+
+	return fmt.Sprintf("https://%s/%s/%s.git", hostName, u.Owner, u.Repository)
+}
+
+// HostName is Host without any port.
+func (u *Parsed) HostName() string {
+	if host, _, err := net.SplitHostPort(u.Host); err == nil {
+		return host
+	}
+
+	return u.Host
 }

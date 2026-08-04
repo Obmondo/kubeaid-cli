@@ -20,16 +20,14 @@ import (
 	gogitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	gogitMemory "github.com/go-git/go-git/v5/storage/memory"
-	validatorV10 "github.com/go-playground/validator/v10"
-	goNonStandardValidators "github.com/go-playground/validator/v10/non-standard/validators"
 	labelsPkg "github.com/siderolabs/talos/pkg/machinery/labels"
 	"golang.org/x/crypto/ssh"
 	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
-	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
@@ -173,21 +171,13 @@ func validateClusterType(clusterType, cloudProviderName string) error {
 	return nil
 }
 
+// validateConfigStructTags delegates to pkg/configvalidate, which owns the
+// struct-tag validation so it can be reached without this package.
 func validateConfigStructTags(
 	generalConfig *config.GeneralConfig,
 	secretsConfig *config.SecretsConfig,
 ) error {
-	validator := validatorV10.New(validatorV10.WithRequiredStructEnabled())
-	if err := validator.RegisterValidation("notblank", goNonStandardValidators.NotBlank); err != nil {
-		return fmt.Errorf("failed registering notblank validator: %w", err)
-	}
-	if err := validator.Struct(generalConfig); err != nil {
-		return fmt.Errorf("struct validation failed for general config: %w", err)
-	}
-	if err := validator.Struct(secretsConfig); err != nil {
-		return fmt.Errorf("struct validation failed for secrets config: %w", err)
-	}
-	return nil
+	return validate.StructTags(generalConfig, secretsConfig)
 }
 
 // commitHashPattern matches a git commit hash — either the full 40
@@ -782,7 +772,7 @@ var validNodeGroupLabelDomains = []string{
 func validateLabelsAndTaints(
 	nodeGroupName string,
 	labels map[string]string,
-	taints []*coreV1.Taint,
+	taints []*config.Taint,
 ) error {
 	if err := labelsPkg.Validate(labels); err != nil {
 		return fmt.Errorf(

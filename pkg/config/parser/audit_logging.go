@@ -7,8 +7,6 @@ import (
 	_ "embed"
 	"path"
 
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
@@ -73,7 +71,7 @@ func hydrateWithAuditLoggingOptions() {
 		HostPath:  auditPolicyFileHostPath,
 		MountPath: auditPolicyFileHostPath,
 		ReadOnly:  true,
-		PathType:  v1.HostPathFileOrCreate,
+		PathType:  config.HostPathType("FileOrCreate"),
 	})
 
 	// Mount the audit-log directory (not just the file) into the apiserver
@@ -91,7 +89,7 @@ func hydrateWithAuditLoggingOptions() {
 			HostPath:  auditLogDir,
 			MountPath: auditLogDir,
 			ReadOnly:  false,
-			PathType:  v1.HostPathDirectoryOrCreate,
+			PathType:  config.HostPathType("DirectoryOrCreate"),
 		})
 	}
 }

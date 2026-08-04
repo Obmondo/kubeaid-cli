@@ -42,7 +42,7 @@ func generateAndPrintStoragePlan(
 	assert.AssertErrNil(ctx, err, "Failed generating storage-plan")
 
 	slog.InfoContext(ctx, "Generated storage plan:")
-	storagePlan.PrettyPrint()
+	storageplan.PrettyPrint(storagePlan)
 
 	return storagePlan
 }

@@ -6,8 +6,6 @@ package parser
 import (
 	"testing"
 
-	v1 "k8s.io/api/core/v1"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
@@ -103,7 +101,7 @@ func TestAuditLoggingMounts(t *testing.T) {
 			t.Fatalf("expected audit-log mount at /var/log/kubernetes/audit, got %q", volume.HostPath)
 		}
 
-		if volume.PathType != v1.HostPathDirectoryOrCreate {
+		if volume.PathType != config.HostPathType("DirectoryOrCreate") {
 			t.Fatalf("expected DirectoryOrCreate, got %q", volume.PathType)
 		}
 
@@ -126,7 +124,7 @@ func TestAuditLoggingMounts(t *testing.T) {
 			t.Fatalf("expected policy mount at /etc/kubernetes/audit-policy.yaml, got %q", volume.HostPath)
 		}
 
-		if volume.PathType != v1.HostPathFileOrCreate {
+		if volume.PathType != config.HostPathType("FileOrCreate") {
 			t.Fatalf("expected FileOrCreate, got %q", volume.PathType)
 		}
 

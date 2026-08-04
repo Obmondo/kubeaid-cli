@@ -78,7 +78,7 @@ func TestStoragePlanGetUITree(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			rendered := tc.plan.getUITree().String()
+			rendered := getUITree(tc.plan).String()
 			require.NotEmpty(t, rendered)
 
 			for _, want := range tc.wantSubstrings {

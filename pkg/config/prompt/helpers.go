@@ -12,8 +12,6 @@ import (
 	"text/template"
 
 	"golang.org/x/net/publicsuffix"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
@@ -77,31 +75,29 @@ func deriveACMEEmailFromDNS(host string) string {
 // errRequired is prompt's name for validate.ErrRequired — the file-path
 // validators in prompt_helper.go return it directly for a blank input,
 // same as validate.NonEmpty does.
-var errRequired = validate.ErrRequired
+var errRequired = ErrRequired
 
 // minHetznerVLANID / maxHetznerVLANID are prompt's names for
-// pkg/config/validate's exported VLAN ID bounds, kept for the vSwitch
 // add-loop's "next free VLAN ID" scan in provider_hetzner_baremetal.go.
 const (
-	minHetznerVLANID = validate.MinHetznerVLANID
-	maxHetznerVLANID = validate.MaxHetznerVLANID
+	minHetznerVLANID = MinHetznerVLANID
+	maxHetznerVLANID = MaxHetznerVLANID
 )
 
 // nonEmpty / clusterName / sshGitURL / ipv4 / cidrv4 / hetznerVLANID /
-// ipv4InSubnet / httpsURL are prompt's names for pkg/config/validate's
 // exported field validators, kept so every huh Validate(...) call site in
 // this package is unchanged. See that package for the validation rules —
 // the Obmondo API imports it directly to enforce the same rules in the
 // browser.
 var (
-	nonEmpty      = validate.NonEmpty
-	clusterName   = validate.ClusterName
-	sshGitURL     = validate.SSHGitURL
-	ipv4          = validate.IPv4
-	cidrv4        = validate.CIDRv4
-	hetznerVLANID = validate.HetznerVLANID
-	ipv4InSubnet  = validate.IPv4InSubnet
-	httpsURL      = validate.HTTPSURL
+	nonEmpty      = NonEmpty
+	clusterName   = ClusterName
+	sshGitURL     = SSHGitURL
+	ipv4          = IPv4
+	cidrv4        = CIDRv4
+	hetznerVLANID = HetznerVLANID
+	ipv4InSubnet  = IPv4InSubnet
+	httpsURL      = HTTPSURL
 )
 
 // renderTemplate executes a Go template string against data and returns the

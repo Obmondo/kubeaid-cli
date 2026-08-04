@@ -6,6 +6,7 @@ package plan
 import (
 	"github.com/spf13/cobra"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 )
 
@@ -20,6 +21,6 @@ var ExecuteCommand = &cobra.Command{
 		commandExecutor := commandexecutor.NewLocalCommandExecutor(false)
 
 		storagePlan := generateAndPrintStoragePlan(ctx, commandExecutor)
-		storagePlan.Execute(ctx, commandExecutor)
+		storageplan.Execute(ctx, storagePlan, commandExecutor)
 	},
 }

@@ -12,29 +12,22 @@ import (
 	"github.com/charmbracelet/lipgloss/tree"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/storagetypes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 	templateUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
-type StoragePlan struct {
-	ServerID string
+// StoragePlan is defined in pkg/storagetypes so pkg/config can embed it
+// without pulling this package's executor, templates and tree printing.
+// Aliased here; the behaviour below stays.
+type (
+	StoragePlan    = storagetypes.StoragePlan
+	Disk           = storagetypes.Disk
+	PriorityScores = storagetypes.PriorityScores
+)
 
-	Disks,
-
-	// 2 disks across which the OS will get installed, with RAID 1 enabled.
-	OS,
-
-	// 2 disks across which the ZFS pool runs, as a ZFS mirror
-	// (two-disk RAID-1 semantics — the executor template does
-	// `zpool create primary mirror …`; raidz-1 needs ≥ 3 disks
-	// anyway). We carve out ZFS volumes for ContainerD's image
-	// store, pod logs, and pod ephemeral volumes; the remainder
-	// backs the OpenEBS ZFS LocalPV provisioner CSI driver.
-	ZFS,
-
-	// Disks across which the CEPH cluster will be running.
-	CEPH []*Disk
-}
+// NewDisk is re-exported so callers of this package are unchanged.
+var NewDisk = storagetypes.NewDisk
 
 type StoragePlanExecutorTemplateValues struct {
 	StoragePlan *StoragePlan
@@ -47,7 +40,7 @@ type StoragePlanExecutorTemplateValues struct {
 // individual servers. The bootstrap-time group-level rendering lives
 // in StoragePlans.PrettyPrint and uses the compact composition + ZFS
 // sub-volume summary instead.
-func (s *StoragePlan) getUITree() *tree.Tree {
+func getUITree(s *StoragePlan) *tree.Tree {
 	t := tree.Root(s.ServerID)
 	for _, disk := range s.Disks {
 		label := disk.Name
@@ -69,15 +62,15 @@ func (s *StoragePlan) getUITree() *tree.Tree {
 	return t
 }
 
-func (s *StoragePlan) PrettyPrint() {
-	fmt.Println(s.getUITree().String())
+func PrettyPrint(s *StoragePlan) {
+	fmt.Println(getUITree(s).String())
 }
 
 //go:embed templates/*
 var templates embed.FS
 
 // Executes the storage plan, by running necessary shell commands.
-func (s *StoragePlan) Execute(ctx context.Context, commandExecutor commandexecutor.CommandExecutor) {
+func Execute(ctx context.Context, s *StoragePlan, commandExecutor commandexecutor.CommandExecutor) {
 	// Generate the shell commands to execute the storage plan.
 
 	storagePlanExecutorTemplateValues := &StoragePlanExecutorTemplateValues{StoragePlan: s}

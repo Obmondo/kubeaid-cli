@@ -4,11 +4,9 @@
 package config
 
 import (
-	coreV1 "k8s.io/api/core/v1"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/render"
-	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
-	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-cli/pkg/storagetypes"
+	"github.com/Obmondo/kubeaid-cli/pkg/urlprotocol"
 )
 
 var (
@@ -105,7 +103,7 @@ type (
 	KubeAidForkConfig struct {
 		// KubeAid repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL *repourl.Parsed
+		ParsedURL *urlprotocol.Parsed
 
 		// KubeAid git ref (tag / branch / commit).
 		Version string `yaml:"version"`
@@ -115,7 +113,7 @@ type (
 	KubeaidConfigForkConfig struct {
 		// KubeAid Config repository SSH URL.
 		URL       string `yaml:"url" validate:"required"`
-		ParsedURL *repourl.Parsed
+		ParsedURL *urlprotocol.Parsed
 
 		// Name of the directory inside your KubeAid Config repository's k8s folder, where the KubeAid
 		// Config files for this cluster will be contained.
@@ -327,10 +325,10 @@ type (
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount
 	HostPathMountConfig struct {
-		Name      string              `yaml:"name"      validate:"notblank"`
-		HostPath  string              `yaml:"hostPath"  validate:"notblank"`
-		MountPath string              `yaml:"mountPath" validate:"notblank"`
-		PathType  coreV1.HostPathType `yaml:"pathType"  validate:"required"`
+		Name      string       `yaml:"name"      validate:"notblank"`
+		HostPath  string       `yaml:"hostPath"  validate:"notblank"`
+		MountPath string       `yaml:"mountPath" validate:"notblank"`
+		PathType  HostPathType `yaml:"pathType"  validate:"required"`
 
 		// Whether the mount should be read-only.
 		ReadOnly bool `yaml:"readOnly" default:"true"`
@@ -363,7 +361,7 @@ type (
 		Labels map[string]string `yaml:"labels" default:"[]"`
 
 		// Taints that you want to be propagated to each node in the nodegroup.
-		Taints []*coreV1.Taint `yaml:"taints" default:"[]"`
+		Taints []*Taint `yaml:"taints" default:"[]"`
 	}
 
 	AutoScalableNodeGroup struct {
@@ -703,7 +701,7 @@ type (
 		// ZFS pool size on each control-plane node. See ZFSConfig.Size for sizing rules.
 		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
-		StoragePlan storageplan.StoragePlan `yaml:"-"`
+		StoragePlan storagetypes.StoragePlan `yaml:"-"`
 	}
 
 	HetznerBareMetalControlPlaneEndpoint struct {
@@ -758,7 +756,7 @@ type (
 		// The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.
 		ZFS ZFSConfig `yaml:"zfs" validate:"required"`
 
-		StoragePlan storageplan.StoragePlan `yaml:"-"`
+		StoragePlan storagetypes.StoragePlan `yaml:"-"`
 	}
 
 	HetznerBareMetalHost struct {

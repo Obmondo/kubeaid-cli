@@ -4,20 +4,18 @@
 package url
 
 import (
-	"fmt"
-	"net"
 	"net/url"
 	"strings"
 
 	"github.com/samber/oops"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/urlprotocol"
 )
 
-type Parsed struct {
-	Protocol Protocol
-	Host,
-	Owner,
-	Repository string
-}
+// Parsed is defined in pkg/urlprotocol so pkg/config can embed it without
+// pulling this package's parsing machinery. Aliased so callers and struct
+// literals here are unchanged.
+type Parsed = urlprotocol.Parsed
 
 func Parse(unparsed string) (*Parsed, error) {
 	// Trim any leading or trailing whitespaces.
@@ -51,27 +49,6 @@ func Parse(unparsed string) (*Parsed, error) {
 	}
 
 	return parsed, nil
-}
-
-func (u *Parsed) AsHTTPsURL() string {
-	var hostName string
-	switch u.Protocol {
-	case ProtocolHTTP, ProtocolHTTPs:
-		hostName = u.Host
-
-	case ProtocolSSH, ProtocolSCP:
-		hostName = u.HostName()
-	}
-
-	return fmt.Sprintf("https://%s/%s/%s.git", hostName, u.Owner, u.Repository)
-}
-
-func (u *Parsed) HostName() string {
-	if host, _, err := net.SplitHostPort(u.Host); err == nil {
-		return host
-	}
-
-	return u.Host
 }
 
 func parseNonSCPSchemed(unparsed string, protocol Protocol) (*Parsed, error) {

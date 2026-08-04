@@ -1,51 +1,20 @@
-// Copyright 2025 Obmondo
+// Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
 package config
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"path"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
+
+// The predicates below answer "what shape is this cluster" from the parsed
+// config. They live beside the schema deliberately: they read
+// ParsedGeneralConfig and nothing else, so they cost this package nothing,
+// and config.UsingHCloud() reads better at a call site than any package
+// this could be split into.
 
 type ReleaseDetails struct {
 	TagName string `json:"tag_name"`
-}
-
-// Returns the latest KubeAid version, fetching it from GitHub.
-//
-//nolint:unused
-func getLatestKubeAidVersion(ctx context.Context) string {
-	response, err := http.DefaultClient.Get(
-		"https://api.github.com/repos/Obmondo/KubeAid/releases/latest",
-	)
-	assert.AssertErrNil(ctx, err, "Failed getting KubeAid's latest release details")
-	defer response.Body.Close()
-
-	assert.Assert(ctx,
-		(response.StatusCode == http.StatusOK),
-		"Failed getting KubeAid's latest release details",
-	)
-
-	var releaseDetails ReleaseDetails
-	err = json.NewDecoder(response.Body).Decode(&releaseDetails)
-	assert.AssertErrNil(ctx, err, "Failed JSON decoding KubeAid's latest release details")
-
-	return releaseDetails.TagName
-}
-
-func GetGeneralConfigFilePath() string {
-	return path.Join(globals.ConfigsDirectory, "general.yaml")
-}
-
-func GetSecretsConfigFilePath() string {
-	return path.Join(globals.ConfigsDirectory, "secrets.yaml")
 }
 
 // Returns whether we're using HCloud.
