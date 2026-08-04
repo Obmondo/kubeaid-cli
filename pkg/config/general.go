@@ -6,6 +6,7 @@ package config
 import (
 	coreV1 "k8s.io/api/core/v1"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 )
@@ -424,22 +425,14 @@ type (
 		Version    string `yaml:"version"`
 		GrafanaURL string `yaml:"grafanaURL"`
 	}
-
-	ObmondoConfig struct {
-		CustomerID string `yaml:"customerID"`
-		Monitoring bool   `yaml:"monitoring"`
-
-		// Path to the mTLS client cert issued by Obmondo. Required when
-		// Monitoring is true — kubeaid-agent uses it to authenticate to the
-		// Obmondo API, and kube-prometheus's Alertmanager uses it to push
-		// alerts to Obmondo's alert-receiver endpoint.
-		CertPath string `yaml:"certPath"`
-
-		// Path to the private key paired with CertPath. Required when
-		// Monitoring is true.
-		KeyPath string `yaml:"keyPath"`
-	}
 )
+
+// ObmondoConfig is defined in pkg/render, because render.PromptedConfig
+// embeds it and that package must stay importable without dragging this one
+// (~1180 transitive packages) along with it. Aliased rather than moved
+// outright so this package's own callers, and the yaml tags they unmarshal
+// through, are unchanged.
+type ObmondoConfig = render.ObmondoConfig
 
 // AWS specific.
 type (

@@ -4,49 +4,42 @@
 package url
 
 import (
-	"strings"
+	"github.com/Obmondo/kubeaid-cli/pkg/urlprotocol"
+)
+
+// The protocol classification lives in pkg/urlprotocol so pkg/render can use
+// it without importing this package, whose other file reaches oklog/ulid,
+// samber/lo and golang.org/x/text. Re-exported here as aliases rather than
+// wrappers, so callers that compare or switch on these values keep working
+// against the same types.
+
+type (
+	Protocol = urlprotocol.Protocol
+	Scheme   = urlprotocol.Scheme
 )
 
 const (
-	ProtocolHTTP  Protocol = "HTTP"
-	ProtocolHTTPs Protocol = "HTTPs"
-	ProtocolSSH   Protocol = "SSH"
-	ProtocolSCP   Protocol = "SCP"
+	ProtocolHTTP  = urlprotocol.ProtocolHTTP
+	ProtocolHTTPs = urlprotocol.ProtocolHTTPs
+	ProtocolSSH   = urlprotocol.ProtocolSSH
+	ProtocolSCP   = urlprotocol.ProtocolSCP
 )
 
 const (
-	SchemeHTTP  Scheme = "http://"
-	SchemeHTTPs Scheme = "https://"
-	SchemeSSH   Scheme = "ssh://"
-	SchemeSCP   Scheme = "scp://"
+	SchemeHTTP  = urlprotocol.SchemeHTTP
+	SchemeHTTPs = urlprotocol.SchemeHTTPs
+	SchemeSSH   = urlprotocol.SchemeSSH
+	SchemeSCP   = urlprotocol.SchemeSCP
 )
-
-type Protocol string
-
-type Scheme string
 
 func DetectProtocol(unparsedURL string) Protocol {
-	switch {
-	case strings.HasPrefix(unparsedURL, string(SchemeHTTP)):
-		return ProtocolHTTP
-
-	case strings.HasPrefix(unparsedURL, string(SchemeHTTPs)):
-		return ProtocolHTTPs
-
-	case strings.HasPrefix(unparsedURL, string(SchemeSSH)):
-		return ProtocolSSH
-
-	default:
-		return ProtocolSCP
-	}
+	return urlprotocol.DetectProtocol(unparsedURL)
 }
 
 func UsingHTTPBasedProtocol(unparsedURL string) bool {
-	protocol := DetectProtocol(unparsedURL)
-	return (protocol == ProtocolHTTP) || (protocol == ProtocolHTTPs)
+	return urlprotocol.UsingHTTPBasedProtocol(unparsedURL)
 }
 
 func UsingSSHBasedProtocol(unparsedURL string) bool {
-	protocol := DetectProtocol(unparsedURL)
-	return (protocol == ProtocolSSH) || (protocol == ProtocolSCP)
+	return urlprotocol.UsingSSHBasedProtocol(unparsedURL)
 }
