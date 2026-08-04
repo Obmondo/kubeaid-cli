@@ -5,8 +5,14 @@ package parser
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1027,12 +1033,28 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 			name: "valid Cert + Key passes",
 			setup: func(t *testing.T) *config.ObmondoConfig {
 				dir := t.TempDir()
-				cert := filepath.Join(dir, "c.pem")
+				certPath := filepath.Join(dir, "c.pem")
 				key := filepath.Join(dir, "k.pem")
-				require.NoError(t, os.WriteFile(cert, []byte("c"), 0o600))
+				require.NoError(t, os.WriteFile(certPath, testCertPEM(t, "demo.acme"), 0o600))
 				require.NoError(t, os.WriteFile(key, []byte("k"), 0o600))
-				return &config.ObmondoConfig{Monitoring: true, CertPath: cert, KeyPath: key}
+				return &config.ObmondoConfig{Monitoring: true, CertPath: certPath, KeyPath: key}
 			},
+		},
+		{
+			// A file that exists but is not a certificate would otherwise
+			// surface as a render failure, after the operator has stopped
+			// looking at their config.
+			name: "a certPath that is not an X.509 cert is rejected",
+			setup: func(t *testing.T) *config.ObmondoConfig {
+				dir := t.TempDir()
+				certPath := filepath.Join(dir, "c.pem")
+				key := filepath.Join(dir, "k.pem")
+				require.NoError(t, os.WriteFile(certPath, []byte("not a certificate"), 0o600))
+				require.NoError(t, os.WriteFile(key, []byte("k"), 0o600))
+				return &config.ObmondoConfig{Monitoring: true, CertPath: certPath, KeyPath: key}
+			},
+			wantErr:    true,
+			wantErrSub: "not a readable X.509 certificate",
 		},
 	}
 
@@ -1261,4 +1283,25 @@ func TestValidateBareMetalConfigRejectsZeroControlPlaneHosts(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "control-plane hosts")
+}
+
+// testCertPEM mints a self-signed certificate carrying cn, so validation
+// that parses the file has something real to parse.
+func testCertPEM(t *testing.T, cn string) []byte {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
 }

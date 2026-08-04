@@ -26,6 +26,7 @@ import (
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	"k8s.io/apimachinery/pkg/util/version"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -332,6 +333,15 @@ func validateObmondoMonitoring(
 	}
 	if _, err := stat(obmondo.KeyPath); err != nil {
 		return fmt.Errorf("obmondo.keyPath does not exist: %w", err)
+	}
+
+	// Parsed once here rather than at every render site: templates.go reads
+	// the CN out of this file to stamp into cluster-vars, so a file that is
+	// present but is not a certificate would otherwise surface midway
+	// through rendering instead of while the operator is still looking at
+	// their config.
+	if _, err := cert.ReadCN(obmondo.CertPath); err != nil {
+		return fmt.Errorf("obmondo.certPath is not a readable X.509 certificate: %w", err)
 	}
 
 	return nil
