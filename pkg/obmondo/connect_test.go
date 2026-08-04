@@ -24,7 +24,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testToken = "tok_9f3c1a7e5b2d4088"
+const (
+	testToken = "tok_9f3c1a7e5b2d4088"
+
+	// testCertname is the <cluster>.<customer-id> the token was issued for.
+	// Sent on every redemption: the API refuses one whose certname disagrees
+	// with the token's.
+	testCertname = "demo.acme"
+)
 
 // testCertPEM mints a self-signed certificate carrying cn as its Subject
 // Common Name. Real x509 rather than a fixture string, because what is under
@@ -58,16 +65,17 @@ const testConfigData = `{
 }`
 
 func TestFetchReturnsTheConfigAndSendsTheTokenBothWays(t *testing.T) {
-	var gotHeader, gotQuery string
+	var gotHeader, gotQuery, gotCertname string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeader = r.Header.Get("token")
 		gotQuery = r.URL.Query().Get("token")
+		gotCertname = r.URL.Query().Get("certname")
 		_, _ = w.Write([]byte(okEnvelope(testConfigData)))
 	}))
 	defer server.Close()
 
-	config, err := Fetch(context.Background(), server.URL, testToken)
+	config, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 	require.NoError(t, err)
 	require.Equal(t, "cluster:\n  name: demo\n", config.GeneralYAML)
 	require.Contains(t, config.SecretsYAML, "apiToken")
@@ -77,21 +85,26 @@ func TestFetchReturnsTheConfigAndSendsTheTokenBothWays(t *testing.T) {
 	// the query parameter is what the portal's endpoint reads.
 	require.Equal(t, testToken, gotHeader)
 	require.Equal(t, testToken, gotQuery)
+
+	// The API gates redemption on this matching the token's own certname, so
+	// omitting it is a validation failure rather than a permissive default.
+	require.Equal(t, testCertname, gotCertname)
 }
 
-// A token that will not work — expired, already used, or simply wrong — must
-// produce one actionable message rather than leaking which case applied.
+// A token that will not work — expired, simply wrong, or issued for another
+// cluster — must produce one actionable message rather than leaking which
+// case applied.
 func TestFetchTreatsEveryDeadTokenTheSame(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusNotFound, http.StatusGone} {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(status)
 		}))
 
-		_, err := Fetch(context.Background(), server.URL, testToken)
+		_, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 		server.Close()
 
 		require.Errorf(t, err, "status %d", status)
-		require.Containsf(t, err.Error(), "generate a new one", "status %d", status)
+		require.Containsf(t, err.Error(), "generate a new link", "status %d", status)
 	}
 }
 
@@ -113,7 +126,7 @@ func TestFetchNeverPutsTheTokenInAnError(t *testing.T) {
 			server := httptest.NewServer(handler)
 			defer server.Close()
 
-			_, err := Fetch(context.Background(), server.URL, testToken)
+			_, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 			require.Error(t, err)
 			require.NotContains(t, err.Error(), testToken)
 		})
@@ -121,7 +134,7 @@ func TestFetchNeverPutsTheTokenInAnError(t *testing.T) {
 
 	// An unreachable host is the case most likely to embed the URL, and the
 	// URL carries the token in its query string.
-	_, err := Fetch(context.Background(), "http://127.0.0.1:1", testToken)
+	_, err := Fetch(context.Background(), "http://127.0.0.1:1", testToken, testCertname)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), testToken)
 }
@@ -144,13 +157,14 @@ func TestFetchTakesTheCertnameFromTheCertificateCN(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config, err := Fetch(context.Background(), server.URL, testToken)
+	config, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 	require.NoError(t, err)
 	require.Equal(t, "k8s-demo.acme", config.Puppet.Certname)
 }
 
 // An unusable certificate must fail now, not minutes into bootstrap when
-// cert.ReadCN hits it — by then the single-use token is already spent.
+// cert.ReadCN hits it — by then a lot of work has happened on a config that
+// was never going to authenticate.
 func TestFetchRejectsAnUnparseableCertificate(t *testing.T) {
 	body := okEnvelope(`{
 	  "general_yaml": "cluster:\n  name: demo-01\n",
@@ -163,7 +177,7 @@ func TestFetchRejectsAnUnparseableCertificate(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := Fetch(context.Background(), server.URL, testToken)
+	_, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "unusable Puppet certificate")
 	require.NotContains(t, err.Error(), testToken)
@@ -176,14 +190,23 @@ func TestFetchAllowsAMissingPuppetBlock(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config, err := Fetch(context.Background(), server.URL, testToken)
+	config, err := Fetch(context.Background(), server.URL, testToken, testCertname)
 	require.NoError(t, err)
 	require.Nil(t, config.Puppet)
 }
 
 func TestFetchRejectsAnEmptyToken(t *testing.T) {
-	_, err := Fetch(context.Background(), "https://example.invalid", "   ")
+	_, err := Fetch(context.Background(), "https://example.invalid", "   ", testCertname)
 	require.Error(t, err)
+}
+
+// Caught before the request rather than as a 406 from the API, so the
+// operator is told which value is missing instead of reading a validation
+// failure back out of an envelope.
+func TestFetchRejectsAnEmptyCertname(t *testing.T) {
+	_, err := Fetch(context.Background(), "https://example.invalid", testToken, "   ")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "certname")
 }
 
 func TestClusterNameReadsTheNameAndToleratesUnknownFields(t *testing.T) {
@@ -222,24 +245,79 @@ func TestWriteLaysOutTheFilesWithRestrictivePermissions(t *testing.T) {
 	require.Equal(t, os.FileMode(0o700), dirInfo.Mode().Perm())
 }
 
-// The token is single-use, so an existing general.yaml means either a previous
-// run succeeded or unrelated config lives here. Overwriting either silently
-// would destroy work.
-func TestWriteRefusesToClobberExistingConfig(t *testing.T) {
+// A token is redeemable for its whole window, so a re-run reaching Write has
+// deliberately asked for this certname's config again. Replacing what is
+// there is the intent — prompting would ask the same question every re-run.
+func TestWriteOverwritesExistingConfig(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "general.yaml"), []byte("existing"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "general.yaml"), []byte("stale"), 0o600))
 
-	_, err := Write(dir, &ClusterConfig{GeneralYAML: "cluster:\n  name: demo\n"})
-	require.Error(t, err)
-
-	// Must name the directory it actually looked in. Telling the operator to
-	// "re-run without --connect-obmondo" would send bootstrap to
-	// outputs/configs, which is not where this file is.
-	require.Contains(t, err.Error(), "--configs-directory "+dir)
-
-	kept, err := os.ReadFile(filepath.Join(dir, "general.yaml"))
+	written, err := Write(dir, &ClusterConfig{
+		GeneralYAML: "cluster:\n  name: demo\n",
+		SecretsYAML: "hetzner:\n  apiToken: tok\n",
+	})
 	require.NoError(t, err)
-	require.Equal(t, "existing", string(kept))
+
+	replaced, err := os.ReadFile(written.General)
+	require.NoError(t, err)
+	require.Equal(t, "cluster:\n  name: demo\n", string(replaced))
+}
+
+// A directory missing any one of the five files cannot bootstrap, so a
+// partial set must read as absent rather than as something to work with.
+func TestCompleteRequiresEveryFile(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "configs")
+	written, err := Write(dir, &ClusterConfig{
+		GeneralYAML: "cluster:\n  name: demo\n",
+		SecretsYAML: "x",
+		Puppet: &PuppetMaterial{
+			Certificate:   testCertPEM(t, testCertname),
+			PrivateKey:    "k",
+			CACertificate: "ca",
+		},
+	})
+	require.NoError(t, err)
+
+	_, complete := Complete(dir)
+	require.True(t, complete)
+
+	require.NoError(t, os.Remove(written.KeyPath))
+	_, complete = Complete(dir)
+	require.False(t, complete, "a missing private key must make the set incomplete")
+}
+
+// The certificate's CN is what ties a directory to a certname — the
+// directory's own name proves nothing, since a cluster's name and its
+// certname are separate identifiers.
+func TestVerifyOnDiskMatchesOnTheCertificateCN(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "configs")
+	_, err := Write(dir, &ClusterConfig{
+		GeneralYAML: "cluster:\n  name: something-else\n",
+		SecretsYAML: "x",
+		Puppet: &PuppetMaterial{
+			Certificate:   testCertPEM(t, testCertname),
+			PrivateKey:    "k",
+			CACertificate: "ca",
+		},
+	})
+	require.NoError(t, err)
+
+	paths, err := VerifyOnDisk(dir, testCertname)
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(dir, "general.yaml"), paths.General)
+
+	_, err = VerifyOnDisk(dir, "other.acme")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), testCertname)
+}
+
+func TestVerifyOnDiskRejectsAnIncompleteDirectory(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "general.yaml"), []byte("cluster:\n  name: demo\n"), 0o600))
+
+	_, err := VerifyOnDisk(dir, testCertname)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "--token")
 }
 
 func TestWriteStoresPuppetMaterialAndPointsGeneralAtIt(t *testing.T) {
