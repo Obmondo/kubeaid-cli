@@ -982,9 +982,21 @@ func TestValidateObmondoMonitoringConfig(t *testing.T) {
 		wantErrSub string
 	}{
 		{
-			name: "empty CertPath is rejected",
+			// monitoring alone is an opensource-legal request for
+			// kube-prometheus; the Obmondo wiring keys off the certificate
+			// instead (see config.ObmondoIntegrationEnabled).
+			name: "monitoring without any cert is allowed",
 			setup: func(t *testing.T) *config.ObmondoConfig {
 				return &config.ObmondoConfig{Monitoring: true}
+			},
+			wantErr: false,
+		},
+		{
+			name: "a key without its certificate is rejected",
+			setup: func(t *testing.T) *config.ObmondoConfig {
+				keyPath := filepath.Join(t.TempDir(), "key.pem")
+				require.NoError(t, os.WriteFile(keyPath, []byte("k"), 0o600))
+				return &config.ObmondoConfig{Monitoring: true, KeyPath: keyPath}
 			},
 			wantErr:    true,
 			wantErrSub: "obmondo.certPath is empty",
@@ -1118,12 +1130,11 @@ func TestValidateConfigHelpers(t *testing.T) {
 			wantErrSub: "alice",
 		},
 		{
-			name: "Obmondo monitoring requires cert path",
+			name: "Obmondo monitoring alone needs no cert",
 			validate: func() error {
 				return validateObmondoMonitoring(&config.ObmondoConfig{Monitoring: true}, statOK)
 			},
-			wantErr:    true,
-			wantErrSub: "certPath",
+			wantErr: false,
 		},
 		{
 			name: "Obmondo monitoring requires key path",

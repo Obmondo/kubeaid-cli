@@ -92,7 +92,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// The monitoring namespace itself is created by kube-prometheus at
 	// sync-order 50 — so without pre-creating it here, the secrets App deadlocks
 	// and kube-prometheus never gets a chance to sync.
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+	if config.ObmondoIntegrationEnabled() {
 		namespacesToBeCreated = append(namespacesToBeCreated, "monitoring")
 	}
 	// On VPN clusters, kubeaid-cli pre-creates the namespaces so its
