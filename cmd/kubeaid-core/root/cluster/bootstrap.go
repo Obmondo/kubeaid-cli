@@ -6,6 +6,7 @@ package cluster
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -26,13 +27,26 @@ var BootstrapCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		// --connect-obmondo stands in for `config generate`: the Obmondo
-		// portal has already collected every answer, so rather than
-		// prompting, the rendered general.yaml and secrets.yaml are
-		// downloaded and written before the bootstrap below reads them.
+		// The Obmondo flags stand in for `config generate`: the portal has
+		// already collected every answer, so the rendered general.yaml and
+		// secrets.yaml are downloaded — or read back off disk — before the
+		// bootstrap below reads them.
 		var obmondoPaths *obmondo.WrittenPaths
-		if len(connectObmondoToken) > 0 {
+		switch {
+		case bootstrapToken != "" && obmondoCertname != "":
 			obmondoPaths = fetchObmondoConfig(ctx, cmd)
+
+		// A token names no cluster on its own, and the API refuses a
+		// redemption without one, so this is caught here rather than spent
+		// on a request that cannot succeed.
+		case bootstrapToken != "":
+			assert.AssertErrNil(ctx,
+				fmt.Errorf("--%s is required with --%s", constants.FlagNameCertname, constants.FlagNameToken),
+				"Refusing to bootstrap: --"+constants.FlagNameToken+" does not say which cluster it is for",
+			)
+
+		case obmondoCertname != "":
+			obmondoPaths = obmondoConfigFromDisk(ctx, cmd)
 		}
 
 		core.BootstrapCluster(ctx, core.BootstrapClusterArgs{
@@ -55,15 +69,55 @@ var BootstrapCmd = &cobra.Command{
 var skipMonitoringSetup,
 	skipClusterctlMove bool
 
-var connectObmondoToken,
+var bootstrapToken,
+	obmondoCertname,
 	obmondoAPIURL string
+
+// obmondoConfigFromDisk continues from a configuration an earlier run already
+// fetched. --certname without a token means "this cluster, whatever is on
+// disk", so nothing is downloaded and no token has to still be valid.
+//
+// An explicit --configs-directory is checked in place; without one the
+// per-cluster directories are searched for the certificate issued to this
+// certname. Either way the certificate has to match, so a stale or unrelated
+// config is refused here rather than surfacing as an authentication failure
+// deep into bootstrap.
+func obmondoConfigFromDisk(ctx context.Context, cmd *cobra.Command) *obmondo.WrittenPaths {
+	if cmd.Flags().Changed(constants.FlagNameConfigsDirectory) {
+		paths, err := obmondo.VerifyOnDisk(globals.ConfigsDirectory, obmondoCertname)
+		assert.AssertErrNil(ctx, err, "Refusing to bootstrap: no usable configuration for --"+constants.FlagNameCertname)
+
+		obmondo.LogReusedPaths(ctx, paths)
+		return paths
+	}
+
+	directory, paths, err := obmondo.FindOnDisk(obmondoCertname)
+	assert.AssertErrNil(ctx, err, "Refusing to bootstrap: no usable configuration for --"+constants.FlagNameCertname)
+
+	globals.ConfigsDirectory = directory
+	obmondo.LogReusedPaths(ctx, paths)
+	return paths
+}
 
 // fetchObmondoConfig downloads this cluster's configuration and writes it,
 // pointing globals.ConfigsDirectory at the result so the bootstrap that
 // follows reads exactly what was just written. Returns where the files
 // landed, for the end-of-run backup notice.
 func fetchObmondoConfig(ctx context.Context, cmd *cobra.Command) *obmondo.WrittenPaths {
-	config, err := obmondo.Fetch(ctx, obmondoAPIURL, connectObmondoToken)
+	// Looked up by certname before the request, because that is the only
+	// handle available this early: the configs directory is otherwise
+	// derived from the cluster name, which is inside the general.yaml that
+	// has not been downloaded yet. Informational only — the fetch proceeds
+	// either way and Write replaces what is there.
+	existingDirectory, _, err := obmondo.FindOnDisk(obmondoCertname)
+	if err == nil {
+		slog.InfoContext(ctx, "Replacing the cluster configuration already on disk",
+			slog.String("certname", obmondoCertname),
+			slog.String("directory", existingDirectory),
+		)
+	}
+
+	config, err := obmondo.Fetch(ctx, obmondoAPIURL, bootstrapToken, obmondoCertname)
 	assert.AssertErrNil(ctx, err, "Failed fetching cluster configuration from Obmondo")
 
 	clusterName, err := obmondo.ClusterName(config.GeneralYAML)
@@ -114,10 +168,20 @@ func init() {
 	// Defaulted from the environment so the token can be supplied without
 	// landing in argv, which is world-readable via ps on a shared machine.
 	BootstrapCmd.PersistentFlags().
-		StringVar(&connectObmondoToken, constants.FlagNameConnectObmondo,
-			os.Getenv(constants.EnvNameObmondoToken),
-			"Fetch this cluster's configuration from Obmondo using the token issued by the portal"+
-				" (also read from "+constants.EnvNameObmondoToken+")",
+		StringVar(&bootstrapToken, constants.FlagNameToken,
+			os.Getenv(constants.EnvNameToken),
+			"Fetch this cluster's configuration from Obmondo using the bootstrap token issued by the portal"+
+				" (also read from "+constants.EnvNameToken+")",
+		)
+
+	// Required with the token, not derivable from it: the API refuses a
+	// redemption whose certname disagrees with the one the token was issued
+	// for, and the portal hands out both together.
+	BootstrapCmd.PersistentFlags().
+		StringVar(&obmondoCertname, constants.FlagNameCertname,
+			os.Getenv(constants.EnvNameCertname),
+			"Certname the Obmondo token was issued for, as <cluster>.<customer-id>"+
+				" (also read from "+constants.EnvNameCertname+")",
 		)
 
 	BootstrapCmd.PersistentFlags().

@@ -60,19 +60,32 @@ const (
 	FlagNameSkipClusterctlMove  = "skip-clusterctl-move"
 	FlagNameYes                 = "yes"
 
-	// FlagNameConnectObmondo takes the single-use token the Obmondo portal's
-	// add-cluster flow issues, and fetches that cluster's rendered
+	// FlagNameToken takes the short-lived bootstrap token the Obmondo
+	// portal's add-cluster flow issues, and fetches that cluster's rendered
 	// general.yaml and secrets.yaml instead of running `config generate`.
-	FlagNameConnectObmondo = "connect-obmondo"
+	// Supplying it is what selects the Obmondo path at all.
+	FlagNameToken = "token"
+
+	// FlagNameCertname names the cluster the token was issued for, as
+	// <cluster>.<customer-id>. Required alongside the token: the API checks
+	// the two agree and refuses the redemption otherwise, so the token alone
+	// is not enough to fetch anything. The portal emits both together.
+	FlagNameCertname = "certname"
 
 	// FlagNameObmondoAPIURL overrides which Obmondo API the token is
 	// redeemed against — needed to point at beta or a local build.
 	FlagNameObmondoAPIURL = "obmondo-api-url"
 
-	// EnvNameObmondoToken supplies the same token as FlagNameConnectObmondo.
+	// EnvNameToken supplies the same bootstrap token as FlagNameToken.
 	// Preferred over the flag on a shared machine: argv is world-readable
 	// through ps, a process's environment is not.
-	EnvNameObmondoToken = "KUBEAID_CLI_OBMONDO_TOKEN"
+	EnvNameToken = "KUBEAID_CLI_TOKEN"
+
+	// EnvNameCertname supplies the same value as FlagNameCertname, so the
+	// portal can emit one export block carrying both halves of the
+	// redemption. Not a secret — it pairs with one purely for symmetry with
+	// the token it must accompany.
+	EnvNameCertname = "KUBEAID_CLI_CERTNAME"
 
 	FlagNameAWSAccessKeyID     = "aws-access-key-id"
 	FlagNameAWSSecretAccessKey = "aws-secret-access-key"

@@ -4,9 +4,11 @@
 // Package obmondo fetches a cluster's configuration from the Obmondo portal.
 //
 // The portal's add-cluster flow collects every answer general.yaml and
-// secrets.yaml need, then issues a short-lived single-use token. Passing that
-// token to `cluster bootstrap --connect-obmondo` downloads the rendered files
-// instead of running `config generate` — the portal has already done that job.
+// secrets.yaml need, then issues a short-lived bootstrap token paired with
+// the cluster's certname. Passing both to `cluster bootstrap` downloads the
+// rendered files instead of running `config generate` — the portal has
+// already done that job. Passing the certname alone reuses whatever an
+// earlier run already fetched for it.
 package obmondo
 
 import (
@@ -26,6 +28,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cert"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
@@ -36,7 +39,9 @@ const (
 	DefaultAPIURL = "https://api.obmondo.com/api"
 
 	// installPath is the token-authenticated endpoint. It carries no JWT:
-	// the token IS the authentication, and it is single-use.
+	// the token IS the authentication, paired with the certname it was
+	// issued for. Redeeming does not consume it — it stays usable until it
+	// expires, so a re-run needs no new link.
 	installPath = "/v1/cluster/install"
 
 	// fetchTimeout bounds the whole exchange. The response is a handful of
@@ -52,6 +57,9 @@ const (
 	certFileName = "cert.pem"
 	keyFileName  = "key.pem"
 	caFileName   = "ca.pem"
+
+	generalFileName = "general.yaml"
+	secretsFileName = "secrets.yaml"
 )
 
 // PuppetMaterial is the mTLS identity kubeaid-agent authenticates to Obmondo
@@ -116,14 +124,25 @@ func ClusterName(generalYAML string) (string, error) {
 
 // Fetch downloads the cluster configuration for token.
 //
+// certname must be the one the token was issued for. It is checked
+// server-side, so sending the wrong one is refused rather than silently
+// serving another cluster's config — which is why it is required here and
+// not derived from the response: the response is what the check protects.
+//
 // The token is sent as a header rather than only in the query string: it
 // keeps the secret out of any intermediary's request log, which routinely
 // records URLs and rarely records headers. The query parameter is kept as
 // well because the portal's endpoint reads it there, matching how the
 // LinuxAid install link already works.
-func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
+func Fetch(ctx context.Context, apiURL, token, certname string) (*ClusterConfig, error) {
 	if strings.TrimSpace(token) == "" {
 		return nil, fmt.Errorf("no Obmondo token supplied")
+	}
+	if strings.TrimSpace(certname) == "" {
+		return nil, fmt.Errorf(
+			"no certname supplied: pass --%s (or set %s) with the value the portal issued alongside the token",
+			constants.FlagNameCertname, constants.EnvNameCertname,
+		)
 	}
 
 	endpoint, err := url.Parse(strings.TrimRight(apiURL, "/") + installPath)
@@ -132,6 +151,7 @@ func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
 	}
 	query := endpoint.Query()
 	query.Set("token", token)
+	query.Set("certname", certname)
 	endpoint.RawQuery = query.Encode()
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
@@ -160,11 +180,13 @@ func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
 		// fall through
 
 	case http.StatusUnauthorized, http.StatusNotFound, http.StatusGone:
-		// One message for every "this token will not work" case. The token
-		// is single-use and short-lived, so an operator hitting any of
-		// these needs the same next step: get a fresh one from the portal.
+		// One message for every "this will not work" case. The API answers
+		// an expired token and a certname that does not match the token
+		// identically and on purpose, so there is nothing to tell apart
+		// here — and either way the next step is the same.
 		return nil, fmt.Errorf(
-			"this token is not valid — it may have expired or already been used; generate a new one from the Obmondo portal",
+			"this token is not valid for %q — it may have expired, or been issued for a different cluster;"+
+				" generate a new link from the Obmondo portal", certname,
 		)
 
 	default:
@@ -209,8 +231,9 @@ func Fetch(ctx context.Context, apiURL, token string) (*ClusterConfig, error) {
 // stops deriving one from the other.
 //
 // Checked at fetch rather than at template time so an unusable certificate
-// fails now, while the operator still has the terminal — discovering it during
-// bootstrap would waste a single-use token and several minutes.
+// fails now, while the operator still has the terminal — discovering it
+// during bootstrap would cost several minutes on a config that was never
+// going to authenticate.
 func adoptCertificateCN(material *PuppetMaterial) error {
 	if material == nil || strings.TrimSpace(material.Certificate) == "" {
 		return nil
@@ -228,39 +251,114 @@ func adoptCertificateCN(material *PuppetMaterial) error {
 	return nil
 }
 
+// pathsIn returns where each file a fetch writes lives under
+// configsDirectory, whether or not any of them exist yet.
+func pathsIn(configsDirectory string) *WrittenPaths {
+	obmondoDir := filepath.Join(configsDirectory, obmondoDirName)
+	return &WrittenPaths{
+		General:  filepath.Join(configsDirectory, generalFileName),
+		Secrets:  filepath.Join(configsDirectory, secretsFileName),
+		CertPath: filepath.Join(obmondoDir, certFileName),
+		KeyPath:  filepath.Join(obmondoDir, keyFileName),
+		CAPath:   filepath.Join(obmondoDir, caFileName),
+	}
+}
+
+// Complete reports whether every file a fetch writes is present under
+// configsDirectory. All of them or none is the only useful answer: a
+// half-written directory cannot bootstrap, and treating it as usable would
+// fail much later with a much worse message.
+func Complete(configsDirectory string) (*WrittenPaths, bool) {
+	paths := pathsIn(configsDirectory)
+	for _, path := range []string{paths.General, paths.Secrets, paths.CertPath, paths.KeyPath, paths.CAPath} {
+		if _, err := os.Stat(path); err != nil {
+			return paths, false
+		}
+	}
+	return paths, true
+}
+
+// VerifyOnDisk accepts configsDirectory as this run's configuration, if it
+// holds a complete file set whose Puppet certificate was issued for
+// certname.
+//
+// The certificate's CN decides, never the directory's name: a cluster's name
+// and its certname are separate identifiers (see adoptCertificateCN), so a
+// path that looks right proves nothing about who the config authenticates
+// as.
+func VerifyOnDisk(configsDirectory, certname string) (*WrittenPaths, error) {
+	paths, complete := Complete(configsDirectory)
+	if !complete {
+		return nil, fmt.Errorf(
+			"%s does not hold a complete Obmondo configuration — pass --%s to fetch one",
+			configsDirectory, constants.FlagNameToken,
+		)
+	}
+
+	cn, err := cert.ReadCN(paths.CertPath)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", paths.CertPath, err)
+	}
+	if cn != certname {
+		return nil, fmt.Errorf(
+			"the certificate in %s was issued for %q, not %q",
+			configsDirectory, cn, certname,
+		)
+	}
+
+	return paths, nil
+}
+
+// FindOnDisk locates the configuration a previous run fetched for certname,
+// among the per-cluster directories kubeaid-cli writes.
+//
+// Scans rather than deriving a path from certname, for the reason in
+// VerifyOnDisk: the certificate's CN is the only reliable link between a
+// certname and a directory named after a cluster.
+func FindOnDisk(certname string) (string, *WrittenPaths, error) {
+	clusters := clusterdir.List()
+
+	for _, cluster := range clusters {
+		directory, err := clusterdir.For(cluster)
+		if err != nil {
+			continue
+		}
+		paths, err := VerifyOnDisk(directory, certname)
+		if err != nil {
+			continue
+		}
+		return directory, paths, nil
+	}
+
+	if len(clusters) == 0 {
+		return "", nil, fmt.Errorf(
+			"no cluster configuration on this machine — pass --%s to fetch %s from Obmondo",
+			constants.FlagNameToken, certname,
+		)
+	}
+	return "", nil, fmt.Errorf(
+		"nothing on this machine was issued for %s (found: %s) — pass --%s to fetch it",
+		certname, strings.Join(clusters, ", "), constants.FlagNameToken,
+	)
+}
+
 // Write lays the configuration out under configsDirectory and returns where
 // each file landed.
 //
-// It refuses to overwrite an existing general.yaml. A token is single-use, so
-// finding config already there means either a previous run succeeded — in
-// which case bootstrap should simply be re-run without the flag — or there is
-// unrelated config here that silently replacing would destroy.
+// Existing files are overwritten. Redeeming a token is repeatable within its
+// window, so a caller that got this far asked for this cluster's config by
+// certname and got it — replacing what an earlier run wrote for the same
+// certname is the intent, not an accident. Prompting instead would ask the
+// same question on every re-run, which is the case most likely to be
+// answered by reflex.
 func Write(configsDirectory string, config *ClusterConfig) (*WrittenPaths, error) {
-	generalPath := filepath.Join(configsDirectory, "general.yaml")
-
-	_, err := os.Stat(generalPath)
-	if err == nil {
-		// Not "re-run without --connect-obmondo": the token path resolves to
-		// a per-cluster directory, so dropping the flag would send bootstrap
-		// looking in outputs/configs and it would not find this at all.
-		return nil, fmt.Errorf(
-			"%s already exists — re-run bootstrap with --%s %s to use it",
-			generalPath, constants.FlagNameConfigsDirectory, configsDirectory,
-		)
-	}
-	// Anything other than "not there" is a real problem — an unreadable
-	// directory, say. Only a genuine absence means it is safe to write.
-	if !os.IsNotExist(err) {
-		return nil, fmt.Errorf("checking %s: %w", generalPath, err)
-	}
-
 	if err := os.MkdirAll(configsDirectory, 0o700); err != nil {
 		return nil, fmt.Errorf("creating %s: %w", configsDirectory, err)
 	}
 
 	written := &WrittenPaths{
-		General: generalPath,
-		Secrets: filepath.Join(configsDirectory, "secrets.yaml"),
+		General: filepath.Join(configsDirectory, generalFileName),
+		Secrets: filepath.Join(configsDirectory, secretsFileName),
 	}
 
 	// secrets.yaml and the private key are 0600 throughout: they carry the
@@ -351,6 +449,16 @@ func withObmondoCertPaths(generalYAML, certPath, keyPath string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// LogReusedPaths reports the configuration an offline run adopted — the
+// --certname-only path, where nothing was downloaded and nothing replaced.
+func LogReusedPaths(ctx context.Context, written *WrittenPaths) {
+	slog.InfoContext(ctx, "Using the cluster configuration already on disk",
+		slog.String("general", written.General),
+		slog.String("secrets", written.Secrets),
+		slog.String("obmondoCert", written.CertPath),
+	)
 }
 
 // LogPaths reports what was written, without echoing any contents.
