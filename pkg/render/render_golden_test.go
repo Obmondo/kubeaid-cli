@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package prompt
+package render
 
 import (
 	"flag"
@@ -11,8 +11,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // updateGolden regenerates the golden fixtures in testdata/golden from the
@@ -260,7 +258,7 @@ func goldenCases() []goldenCase {
 
 				CloudProvider: "local",
 
-				Obmondo: &config.ObmondoConfig{
+				Obmondo: &ObmondoConfig{
 					Monitoring: true,
 					CertPath:   "/etc/obmondo/client.crt",
 					KeyPath:    "/etc/obmondo/client.key",
@@ -305,20 +303,9 @@ func TestRenderGoldenParity(t *testing.T) {
 			assert.Equal(t, string(wantSecrets), string(gotSecrets),
 				"Render secrets.yaml output drifted from the golden fixture for %s", tc.name)
 
-			// writeConfigFiles must be a thin caller of Render — assert its
-			// disk output is byte-identical to what Render just returned.
-			dir := t.TempDir()
-			require.NoError(t, writeConfigFiles(dir, tc.cfg))
-
-			diskGeneral, err := os.ReadFile(filepath.Join(dir, "general.yaml"))
-			require.NoError(t, err)
-			diskSecrets, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
-			require.NoError(t, err)
-
-			assert.Equal(t, string(gotGeneral), string(diskGeneral),
-				"writeConfigFiles general.yaml must be byte-identical to Render's output")
-			assert.Equal(t, string(gotSecrets), string(diskSecrets),
-				"writeConfigFiles secrets.yaml must be byte-identical to Render's output")
+			// The disk-writing path stayed in pkg/config/prompt, so the
+			// "writeConfigFiles is a thin caller of Render" assertion moved
+			// there with it — see TestWriteConfigFilesMatchesRender.
 		})
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 // runHetznerBareMetalForm collects bare-metal config in three phases:
@@ -1180,14 +1181,11 @@ var (
 // robotVSwitch is the subset of a Hetzner Robot GET /vswitch entry the
 // prompt needs — enough to offer the vSwitch for reuse and to know
 // which VLAN IDs are already spoken for.
-type robotVSwitch struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	VLANID int    `json:"vlan"`
-	// Cancelled vSwitches are being torn down; CreateVSwitch refuses
-	// to adopt one, so they're filtered out of the picker.
-	Cancelled bool `json:"cancelled"`
-}
+//
+// Defined in pkg/render because PromptedConfig carries a list of them and
+// that package must stay self-contained; aliased here so this file's own
+// uses read unchanged.
+type robotVSwitch = render.RobotVSwitch
 
 // robotVSwitchListOverride is unset in production; tests set it to
 // short-circuit the Robot client construction.
