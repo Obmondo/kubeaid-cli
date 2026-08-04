@@ -4,8 +4,6 @@
 package config
 
 import (
-	coreV1 "k8s.io/api/core/v1"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/render"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
@@ -327,10 +325,10 @@ type (
 
 	// REFER : "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1beta1".HostPathMount
 	HostPathMountConfig struct {
-		Name      string              `yaml:"name"      validate:"notblank"`
-		HostPath  string              `yaml:"hostPath"  validate:"notblank"`
-		MountPath string              `yaml:"mountPath" validate:"notblank"`
-		PathType  coreV1.HostPathType `yaml:"pathType"  validate:"required"`
+		Name      string       `yaml:"name"      validate:"notblank"`
+		HostPath  string       `yaml:"hostPath"  validate:"notblank"`
+		MountPath string       `yaml:"mountPath" validate:"notblank"`
+		PathType  HostPathType `yaml:"pathType"  validate:"required"`
 
 		// Whether the mount should be read-only.
 		ReadOnly bool `yaml:"readOnly" default:"true"`
@@ -363,7 +361,7 @@ type (
 		Labels map[string]string `yaml:"labels" default:"[]"`
 
 		// Taints that you want to be propagated to each node in the nodegroup.
-		Taints []*coreV1.Taint `yaml:"taints" default:"[]"`
+		Taints []*Taint `yaml:"taints" default:"[]"`
 	}
 
 	AutoScalableNodeGroup struct {

@@ -26,7 +26,6 @@ import (
 	"golang.org/x/crypto/ssh"
 	"k8c.io/kubeone/pkg/executor"
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
-	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/version"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
@@ -782,7 +781,7 @@ var validNodeGroupLabelDomains = []string{
 func validateLabelsAndTaints(
 	nodeGroupName string,
 	labels map[string]string,
-	taints []*coreV1.Taint,
+	taints []*config.Taint,
 ) error {
 	if err := labelsPkg.Validate(labels); err != nil {
 		return fmt.Errorf(
