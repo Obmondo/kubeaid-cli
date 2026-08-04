@@ -1,17 +1,12 @@
 # Maintainers
 
-This is the list of maintainers for KubeAid CLI. See
-[CONTRIBUTING](README.md#contributing) for how the project is run day to day.
+This is the list of maintainers for KubeAid CLI.
 
-| Name | GitHub | Email | Organization |
-|---|---|---|---|
-| Rishi |  |  | Obmondo |
-| Klavs Klavsen |  |  | Obmondo |
-| Shubham Gupta |  |  | Obmondo |
-| Aman |  |  | Obmondo |
-| Ashish Jaiswal |  |  | Obmondo |
+The current maintainers of the KubeAid CLI project are (in alphabetical order):
 
-## Becoming a maintainer
+* [Archisman Mridha](https://github.com/Archisman-Mridha) (Obmondo)
+* [Ashish Jaiswal](https://github.com/ashish1099) (Obmondo)
+* [Klavs Klavsen](https://github.com/KlavsKlavsen) (Obmondo)
+* [Rishi Mondal](https://github.com/MAVRICK-1) (Obmondo)
+* [Shubham Singh](https://github.com/1Shubham7) (Obmondo)
 
-See the [CNCF community membership guidelines](https://github.com/cncf/foundation/blob/main/membership-guidelines.md)
-for the general path from contributor to maintainer.

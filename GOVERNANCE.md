@@ -17,14 +17,6 @@ lifecycle management, not an advanced add-on: every change it makes lands as a
 Git commit, reconciled by ArgoCD, so a cluster's entire history is auditable and
 reproducible.
 
-### Project Origins
-
-KubeAid CLI grew out of [Obmondo](https://obmondo.com)'s own internal tooling
-for operating Kubernetes clusters for its customers. It is developed in the
-open as part of the broader [KubeAid](https://github.com/Obmondo/KubeAid)
-ecosystem, and is licensed under Apache-2.0 so it can be adopted, forked, and
-contributed to independent of any single organization.
-
 ## Core Values
 
 We believe a healthy open-source project is built on trust, merit, and
