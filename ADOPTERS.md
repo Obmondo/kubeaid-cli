@@ -10,8 +10,13 @@ The list of organizations that have publicly shared their usage of KubeAid CLI:
 
 | Organization | Success Story |
 |:---|:---|
+| [Obmondo](https://obmondo.com) | Obmondo's own managed customer clusters, provisioned and operated with KubeAid CLI. |
 | [Kilroy International](https://www.kilroy.net/) | Multi-cloud production clusters (Azure and Hetzner) across several environments, provisioned and managed with KubeAid CLI. |
 | [BlackWoodSeven (BW7)](https://www.blackwoodseven.com/) | Multiple AWS production and staging environments, kept up to date and operated with KubeAid CLI. |
+| [GN Store Nord](https://www.gn.com/) | High-performance computing and build environments for R&D, run with Obmondo's open source automation, including KubeAid CLI. |
+| [HBK](https://www.hbkworld.com/) | Server security updates and maintenance, streamlined with Obmondo's tooling, including KubeAid CLI. |
+| [ebillet a/s](https://ebillet.dk/) | Load balancer and automated certificate management for production infrastructure, run with KubeAid CLI. |
+| [Officient](https://officient.io/) | Kubernetes infrastructure security review and hardening, supported by Obmondo's KubeAid CLI-managed operations. |
 | [EnableIT](https://enableit.dk/) | Internal production Kubernetes clusters, provisioned and managed with KubeAid CLI. |
 
 <!-- append new rows above this line, in the same table format -->
