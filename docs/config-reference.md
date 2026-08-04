@@ -63,7 +63,6 @@
 - [NetBirdConfig](#netbirdconfig)
 - [NetBirdCredentials](#netbirdcredentials)
 - [NodeGroup](#nodegroup)
-- [ObmondoConfig](#obmondoconfig)
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
@@ -140,7 +139,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | sshKeyName | `string` |  |  |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 | minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
 | maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 
@@ -196,7 +195,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## AzureAutoScalableNodeGroup
 
@@ -210,7 +209,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## AzureConfig
 
@@ -309,7 +308,7 @@ REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1b
 | hosts | [][`BareMetalHost`](#baremetalhost) |  |  |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## BareMetalSSHConfig
 
@@ -433,7 +432,7 @@ We require the KubeAid and KubeAid Config repositories to be hosted in the same 
 | cloud | [`CloudConfig`](#cloudconfig) |  | Cloud provider specific details.<br> |
 | kubePrometheus | [`KubePrometheusConfig`](#kubeprometheusconfig) |  | Kube Prometheus installation specific details.<br> |
 | kubeaidStoragectl | [`KubeaidStoragectlConfig`](#kubeaidstoragectlconfig) |  | KubeaidStoragectl pins the kubeaid-storagectl release tag<br>used by the bare-metal preKubeadm script when carving the<br>ZFS pool and Ceph partition. Leave nil (block omitted) to<br>fall back to the kubeaid-cli binary's own release version,<br>which is the right default for most operators — every node<br>downloads the storagectl that ships with the kubeaid-cli<br>release that bootstrapped it. Set explicitly to override:<br><br>  - to pin against a tag newer/older than kubeaid-cli for<br>    testing a fix or rolling back, or<br>  - to point at an unreleased dev build when running a<br>    `go run ./cmd/kubeaid-cli` development bootstrap (the<br>    CLI's KubeaidCLIVersion is empty there and the chart<br>    would otherwise fall through to `latest`, which 404s if<br>    no release has been published yet).<br> |
-| obmondo | [`ObmondoConfig`](#obmondoconfig) |  | Obmondo customer specific details.<br> |
+| obmondo | `ObmondoConfig` |  | Obmondo customer specific details.<br> |
 
 ## GitConfig
 
@@ -460,7 +459,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## HCloudConfig
 
@@ -551,7 +550,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | zfs | [`ZFSConfig`](#zfsconfig) |  | ZFS specific configuration.<br>Every node runs a ZFS pool, named primary. We carve out storage for container images, pod<br>logs and pod ephemeral volumes from that ZFS pool, as required.<br>The ZFS pool has RAIDZ-1 enabled, which means it can survive single disk failure.<br> |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## HetznerConfig
 
@@ -633,7 +632,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | name | `string` |  |  |
 | hostPath | `string` |  |  |
 | mountPath | `string` |  |  |
-| pathType | `k8s.io/api/core/v1.HostPathType` |  |  |
+| pathType | `HostPathType` |  |  |
 | readOnly | `bool` | true | Whether the mount should be read-only.<br> |
 
 ## InstallImageConfig
@@ -782,18 +781,7 @@ KeycloakCredentials.</p>
 |-------|------|---------|-------------|
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
-| taints | []`k8s.io/api/core/v1.Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
-
-## ObmondoConfig
-
-<p></p>
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| customerID | `string` |  |  |
-| monitoring | `bool` |  |  |
-| certPath | `string` |  | Path to the mTLS client cert issued by Obmondo. Required when<br>Monitoring is true — kubeaid-agent uses it to authenticate to the<br>Obmondo API, and kube-prometheus's Alertmanager uses it to push<br>alerts to Obmondo's alert-receiver endpoint.<br> |
-| keyPath | `string` |  | Path to the private key paired with CertPath. Required when<br>Monitoring is true.<br> |
+| taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
 
 ## OpenIDProviderSSHKeyPairConfig
 

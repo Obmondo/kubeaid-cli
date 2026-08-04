@@ -1,4 +1,28 @@
 - - -
+## v0.31.4 - 2026-08-04
+#### Features
+- (**config**) require a parseable certificate, and keep monitoring in the gate - (398a093) - Ashish Jaiswal
+- (**config**) let an opensource user enable monitoring without Obmondo certs - (3669a4a) - Ashish Jaiswal
+- <span style="background-color: #d73a49; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold; font-size: 0.85em;">BREAKING</span>(**obmondo**) bootstrap from Obmondo with --token and --certname - (2c593c3) - Ashish Jaiswal
+#### Documentation
+- update maintainer list, drop Project Origins from GOVERNANCE.md - (5e6683f) - mavrick-1
+- add GOVERNANCE.md - (4a11899) - mavrick-1
+- add MAINTAINERS.md and adopt CNCF Code of Conduct - (260b0a4) - mavrick-1
+#### Tests
+- (**parser**) assert rendered config passes the validation that reads it - (0e907f0) - Ashish Jaiswal
+#### Refactoring
+- (**config**) drop the redundant monitoring check from the gate - (5f524df) - Ashish Jaiswal
+- (**config**) keep the predicates on config, drop the query package - (019c5d3) - Ashish Jaiswal
+- (**config**) name the new packages under pkg/config - (5e80ad7) - Ashish Jaiswal
+- (**config**) make pkg/config a leaf so its schema can be validated anywhere - (f0d555b) - Ashish Jaiswal
+- (**config**) mirror the two core/v1 types instead of importing them - (ec3fd19) - Ashish Jaiswal
+- (**render**) extract a leaf package for config rendering - (8c8c493) - Ashish Jaiswal
+- (**types**) move Parsed and the storage types into leaf packages - (8513bdd) - Ashish Jaiswal
+#### Miscellaneous Chores
+- relicense from AGPL-3.0 to Apache-2.0 - (8da2ca5) - mavrick-1
+
+- - -
+
 ## v0.31.3 - 2026-08-03
 #### Features
 - (**cli**) add config schema command to publish the form spec - (4a7a053) - Ashish Jaiswal
