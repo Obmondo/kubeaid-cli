@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package storageplan
+package storagetypes
 
 import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
