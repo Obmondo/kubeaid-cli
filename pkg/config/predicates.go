@@ -152,3 +152,29 @@ func RookCephEnabled() bool {
 	return UsingHetznerBareMetal() &&
 		(HetznerBareMetalWorkerNodeCount() >= constants.RookCephMinNodes)
 }
+
+// ObmondoIntegrationEnabled reports whether this cluster pushes to Obmondo:
+// monitoring was asked for, and the mTLS material to authenticate with is on
+// disk.
+//
+// Cheap on purpose — it is called from several render paths. That the
+// certificate is a parseable X.509 is checked once at parse time by
+// validateObmondoMonitoring, so by the time this runs, a non-empty CertPath
+// means a real certificate.
+//
+// The material is what distinguishes an Obmondo customer from an opensource
+// user: it is minted by the portal and written by `cluster bootstrap
+// --token`, and the API refuses to mint one without an active subscription.
+//
+// obmondo.monitoring on its own requires no certificate. An opensource user
+// can set it and get kube-prometheus, gated separately by
+// --skip-monitoring-setup and general.kubePrometheus; they simply get none
+// of the Obmondo-side wiring, which would otherwise render a SealedSecret
+// out of empty paths and fail the ArgoCD sync.
+func ObmondoIntegrationEnabled() bool {
+	obmondo := ParsedGeneralConfig.Obmondo
+	return obmondo != nil &&
+		obmondo.Monitoring &&
+		obmondo.CertPath != "" &&
+		obmondo.KeyPath != ""
+}

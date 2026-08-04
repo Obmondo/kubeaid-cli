@@ -332,7 +332,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 	// sealed-secret templates can base64-encode them. Paths are validated by
 	// validateConfigs — re-read here to fail with context if they became
 	// unreadable between parse and render.
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+	if config.ObmondoIntegrationEnabled() {
 		obmondo := config.ParsedGeneralConfig.Obmondo
 
 		cn, certErr := cert.ReadCN(obmondo.CertPath)
@@ -688,7 +688,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	// Obmondo customer: include the KubeAid Agent ArgoCD Application
 	// templates when monitoring is requested.
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+	if config.ObmondoIntegrationEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KubeAidAgentNonSecretTemplateNames...,
 		)
@@ -813,7 +813,7 @@ func getEmbeddedSecretTemplateNames() []string {
 		// No additional provider-specific secret templates needed.
 	}
 
-	if config.ParsedGeneralConfig.Obmondo != nil && config.ParsedGeneralConfig.Obmondo.Monitoring {
+	if config.ObmondoIntegrationEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.ObmondoClientCertSecretTemplateNames...,
 		)

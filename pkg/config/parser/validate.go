@@ -26,6 +26,7 @@ import (
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	"k8s.io/apimachinery/pkg/util/version"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/cert"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/validate"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -294,26 +295,53 @@ func validateObmondoMonitoring(
 	obmondo *config.ObmondoConfig,
 	stat statFunc,
 ) error {
-	if obmondo == nil || !obmondo.Monitoring {
+	if obmondo == nil {
 		return nil
 	}
-	if obmondo.CertPath == "" {
+
+	// obmondo.monitoring no longer requires a certificate. It asks for
+	// kube-prometheus, which an opensource user is entitled to — the
+	// Obmondo-side wiring (client cert secret, alertmanager push, the
+	// KubeAid Agent app) keys off the certificate being present instead,
+	// see config.ObmondoIntegrationEnabled.
+	//
+	// What is still validated is that the pair is coherent: half a pair is
+	// always a mistake, and a path that points at nothing would otherwise
+	// surface as an unreadable file midway through rendering.
+	certSet := obmondo.CertPath != ""
+	keySet := obmondo.KeyPath != ""
+
+	switch {
+	case certSet && !keySet:
 		return errors.New(
-			"obmondo.monitoring is true but obmondo.certPath is empty, " +
-				"an Obmondo-issued mTLS cert is required",
+			"obmondo.certPath is set but obmondo.keyPath is empty, " +
+				"the private key paired with the certificate is required",
 		)
+
+	case keySet && !certSet:
+		return errors.New(
+			"obmondo.keyPath is set but obmondo.certPath is empty, " +
+				"the certificate paired with the private key is required",
+		)
+
+	case !certSet && !keySet:
+		return nil
 	}
+
 	if _, err := stat(obmondo.CertPath); err != nil {
 		return fmt.Errorf("obmondo.certPath does not exist: %w", err)
 	}
-	if obmondo.KeyPath == "" {
-		return errors.New(
-			"obmondo.monitoring is true but obmondo.keyPath is empty, " +
-				"the private key paired with obmondo.certPath is required",
-		)
-	}
 	if _, err := stat(obmondo.KeyPath); err != nil {
 		return fmt.Errorf("obmondo.keyPath does not exist: %w", err)
+	}
+
+	// Parsed once here rather than at every render site: templates.go reads
+	// the CN out of this file to stamp into cluster-vars, so a file that is
+	// present but is not a certificate would otherwise surface midway
+	// through rendering instead of while the operator is still looking at
+	// their config.
+	if _, err := cert.ReadCN(obmondo.CertPath); err != nil {
+		return fmt.Errorf("obmondo.certPath is not a readable X.509 certificate: %w", err)
 	}
 
 	return nil
