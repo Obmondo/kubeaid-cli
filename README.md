@@ -19,6 +19,7 @@ KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/
 - [Documentation](#documentation)
 - [Development](#development)
 - [Contributing](#contributing)
+- [Roadmap](https://github.com/Obmondo/kubeaid-cli/blob/main/ROADMAP.md)
 - [License](#license)
 
 ## Architecture
