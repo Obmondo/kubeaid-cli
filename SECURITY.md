@@ -11,6 +11,9 @@ acknowledge the report, work with you to understand and validate the impact,
 and coordinate a fix and disclosure timeline before any public advisory goes
 out.
 
+If you'd rather not use GitHub, you can also report security issues directly
+to [info@obmondo.com](mailto:info@obmondo.com).
+
 ## Supported Versions
 
 KubeAid CLI ships releases from `main` only (see [docs/release.md](docs/release.md));
