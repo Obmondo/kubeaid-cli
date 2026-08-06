@@ -213,12 +213,8 @@ Run `make help` to list every target.
 
 ## Contributing
 
-Contributions are welcome.
-
-1. Open an [issue](https://github.com/Obmondo/kubeaid-cli/issues) describing the bug or feature before starting substantial work.
-2. Follow Google's [Go style guide](https://google.github.io/styleguide/go/decisions); run `make lint` and `make format` before pushing (CI is strict).
-3. Write [Conventional Commits](https://www.conventionalcommits.org/) — releases are cut with [cocogitto](https://docs.cocogitto.io/).
-4. Open a pull request that references the issue and explains the *why*, not just the *what*.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev
+setup, code standards, and how to open a pull request.
 
 ## License
 
