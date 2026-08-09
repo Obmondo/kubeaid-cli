@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/certificate"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
-	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	"github.com/argoproj/argo-cd/v2/util/rbac"
-	"github.com/argoproj/gitops-engine/pkg/health"
+	"github.com/argoproj/argo-cd/gitops-engine/pkg/health"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/certificate"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/project"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/session"
+	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	"github.com/argoproj/argo-cd/v3/util/rbac"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -292,7 +292,7 @@ func CreateArgoCDProject(ctx context.Context, argoCDProjectClient project.Projec
 					Namespace: "*",
 					Name:      "*",
 				}},
-				ClusterResourceWhitelist:   []metaV1.GroupKind{{Group: "*", Kind: "*"}},
+				ClusterResourceWhitelist:   []argoCDV1Aplha1.ClusterResourceRestrictionItem{{Group: "*", Kind: "*"}},
 				NamespaceResourceWhitelist: []metaV1.GroupKind{{Group: "*", Kind: "*"}},
 			},
 		},
