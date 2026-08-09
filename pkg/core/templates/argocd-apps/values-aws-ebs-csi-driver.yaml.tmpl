@@ -1,0 +1,16 @@
+---
+aws-ebs-csi-driver:
+  # EKS installs no storage driver by default — this is the cluster's default
+  # StorageClass. The CSI controller needs EBS permissions (the AWS managed
+  # AmazonEBSCSIDriverPolicy) granted to whatever identity it runs under —
+  # the nodes.cluster-api-provider-aws.sigs.k8s.io instance profile, or IRSA
+  # once wired.
+  storageClasses:
+    - name: gp3
+      annotations:
+        storageclass.kubernetes.io/is-default-class: "true"
+      volumeBindingMode: WaitForFirstConsumer
+      allowVolumeExpansion: true
+      parameters:
+        type: gp3
+        encrypted: "true"

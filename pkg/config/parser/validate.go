@@ -401,11 +401,95 @@ func validateAWSConfig() error {
 	}
 
 	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
+
+	if awsConfig.EKS {
+		if err := validateAWSEKSConfig(awsConfig); err != nil {
+			return err
+		}
+	} else if err := validateAWSSelfManagedConfig(awsConfig); err != nil {
+		return err
+	}
+
 	for _, awsAutoScalableNodeGroup := range awsConfig.NodeGroups {
 		if err := validateAutoScalableNodeGroup(
 			&awsAutoScalableNodeGroup.AutoScalableNodeGroup,
 		); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// validateAWSEKSConfig enforces the cross-field rules of an EKS cluster : AWS
+// owns the control plane (multi-AZ by design, no replicas / instance type /
+// AMI to pick), worker AMIs are resolved by CAPA via
+// ami.eksLookupType: AmazonLinux2023, and workers stay keyless (use SSM
+// Session Manager for debugging). AL2023 node bootstrapping (NodeadmConfig)
+// requires Kubernetes >= v1.33 — AL2 / EKSConfig is EOL upstream.
+func validateAWSEKSConfig(awsConfig *config.AWSConfig) error {
+	if awsConfig.ControlPlane != nil {
+		return errors.New(
+			"cloud.aws.controlPlane must not be set when cloud.aws.eks is true — AWS manages the EKS control plane",
+		)
+	}
+	if awsConfig.SSHKeyName != "" {
+		return errors.New(
+			"cloud.aws.sshKeyName must not be set when cloud.aws.eks is true — EKS workers stay keyless (use SSM Session Manager for node access)",
+		)
+	}
+	for _, nodeGroup := range awsConfig.NodeGroups {
+		if nodeGroup.AMI != nil {
+			return fmt.Errorf(
+				"cloud.aws.nodeGroups[%s].ami must not be set when cloud.aws.eks is true — CAPA resolves the EKS optimized AL2023 AMI itself",
+				nodeGroup.Name,
+			)
+		}
+		if nodeGroup.SSHKeyName != "" {
+			return fmt.Errorf(
+				"cloud.aws.nodeGroups[%s].sshKeyName must not be set when cloud.aws.eks is true — EKS workers stay keyless",
+				nodeGroup.Name,
+			)
+		}
+	}
+	if len(awsConfig.NodeGroups) == 0 {
+		return errors.New(
+			"at least one node-group is required when cloud.aws.eks is true — an EKS cluster has no control-plane nodes to schedule workloads on",
+		)
+	}
+
+	parsedK8sVersion, err := version.ParseSemantic(config.ParsedGeneralConfig.Cluster.K8sVersion)
+	if err != nil {
+		return fmt.Errorf("parsing K8s semantic version: %w", err)
+	}
+	parsedMin, err := version.ParseMajorMinor(constants.MinEKSSupportedK8sVersion)
+	if err != nil {
+		return fmt.Errorf("parsing min EKS supported K8s version: %w", err)
+	}
+	if !parsedK8sVersion.AtLeast(parsedMin) {
+		return fmt.Errorf(
+			"K8s version must be >= %s for EKS clusters — node bootstrapping uses NodeadmConfig on AL2023 AMIs, and AL2 (K8s <= v1.32) is EOL",
+			constants.MinEKSSupportedK8sVersion,
+		)
+	}
+	return nil
+}
+
+// validateAWSSelfManagedConfig enforces the fields a kubeadm based (self
+// managed control plane) AWS cluster needs — previously struct-tag enforced,
+// moved here because they must stay unset for EKS.
+func validateAWSSelfManagedConfig(awsConfig *config.AWSConfig) error {
+	if awsConfig.ControlPlane == nil {
+		return errors.New("cloud.aws.controlPlane is required (unless cloud.aws.eks is true)")
+	}
+	if awsConfig.SSHKeyName == "" {
+		return errors.New("cloud.aws.sshKeyName is required (unless cloud.aws.eks is true)")
+	}
+	for _, nodeGroup := range awsConfig.NodeGroups {
+		if nodeGroup.AMI == nil || nodeGroup.AMI.ID == "" {
+			return fmt.Errorf("cloud.aws.nodeGroups[%s].ami.id is required (unless cloud.aws.eks is true)", nodeGroup.Name)
+		}
+		if nodeGroup.SSHKeyName == "" {
+			return fmt.Errorf("cloud.aws.nodeGroups[%s].sshKeyName is required (unless cloud.aws.eks is true)", nodeGroup.Name)
 		}
 	}
 	return nil

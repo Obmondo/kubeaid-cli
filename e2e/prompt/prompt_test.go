@@ -310,7 +310,12 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("service-user token")
 	c.sendLine("nbp_e2etoken")
 
-	// Step 3 — AWS credentials form.
+	// Step 3 — control-plane flavour select (before credentials). Default is
+	// the first option: self-managed.
+	c.expectString("Control plane:")
+	c.acceptDefault()
+
+	// AWS credentials form.
 	// HOME is set to a scratch dir in newConsole so ~/.aws is empty.
 	c.expectString("Access Key ID:")
 	c.sendLine("aws-access-key")

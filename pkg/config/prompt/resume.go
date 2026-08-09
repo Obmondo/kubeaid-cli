@@ -217,10 +217,13 @@ func applyCloudConfigToPromptedConfig(cloud *config.CloudConfig, cfg *PromptedCo
 	case cloud.AWS != nil:
 		cfg.CloudProvider = constants.CloudProviderAWS
 		cfg.AWSRegion = firstNonEmpty(cloud.AWS.Region, cfg.AWSRegion)
+		cfg.AWSEKS = cfg.AWSEKS || cloud.AWS.EKS
 		cfg.AWSSSHKeyName = firstNonEmpty(cloud.AWS.SSHKeyName, cfg.AWSSSHKeyName)
-		cfg.AWSCPInstanceType = firstNonEmpty(cloud.AWS.ControlPlane.InstanceType, cfg.AWSCPInstanceType)
-		cfg.AWSCPReplicas = firstNonEmpty(uint32String(cloud.AWS.ControlPlane.Replicas), cfg.AWSCPReplicas)
-		cfg.AWSAMIID = firstNonEmpty(cloud.AWS.ControlPlane.AMI.ID, cfg.AWSAMIID)
+		if cloud.AWS.ControlPlane != nil {
+			cfg.AWSCPInstanceType = firstNonEmpty(cloud.AWS.ControlPlane.InstanceType, cfg.AWSCPInstanceType)
+			cfg.AWSCPReplicas = firstNonEmpty(uint32String(cloud.AWS.ControlPlane.Replicas), cfg.AWSCPReplicas)
+			cfg.AWSAMIID = firstNonEmpty(cloud.AWS.ControlPlane.AMI.ID, cfg.AWSAMIID)
+		}
 	case cloud.Azure != nil:
 		cfg.CloudProvider = constants.CloudProviderAzure
 		cfg.AzureTenantID = firstNonEmpty(cloud.Azure.TenantID, cfg.AzureTenantID)

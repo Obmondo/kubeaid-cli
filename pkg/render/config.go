@@ -119,7 +119,10 @@ type PromptedConfig struct {
 	CloudProvider string
 
 	// AWS.
-	AWSRegion          string
+	AWSRegion string
+	// AWSEKS selects an AWS managed (EKS) control plane instead of the
+	// self-managed kubeadm one. Skips the HA / AMI / SSH-key questions.
+	AWSEKS             bool
 	AWSSSHKeyName      string
 	AWSCPInstanceType  string
 	AWSCPReplicas      string

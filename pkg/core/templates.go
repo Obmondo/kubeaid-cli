@@ -80,6 +80,12 @@ type TemplateValues struct {
 	*/
 	ControlPlaneEndpoint string
 
+	// ControlPlaneEndpointPort is the apiserver port Cilium's kube-proxy
+	// replacement dials. Kubeadm based clusters listen on 6443; EKS control
+	// planes listen on 443. Populated from the main cluster kubeconfig once
+	// the cluster exists, "6443" otherwise.
+	ControlPlaneEndpointPort string
+
 	// ControlPlaneLBPrivateIP and ControlPlaneLBBootstrapPublicIP
 	// are the HCloud load-balancer's private (steady-state) and
 	// bootstrap-only public IPs. Populated only on HCloud-VPN
@@ -481,7 +487,14 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
 		if endpoint != nil {
 			templateValues.ControlPlaneEndpoint = endpoint.Hostname()
+			templateValues.ControlPlaneEndpointPort = endpoint.Port()
 		}
+	}
+
+	// Kubeadm based control planes listen on 6443; the port only differs when
+	// the kubeconfig says so (EKS : 443).
+	if templateValues.ControlPlaneEndpointPort == "" {
+		templateValues.ControlPlaneEndpointPort = "6443"
 	}
 
 	return templateValues
@@ -542,9 +555,11 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Add cloud provider specific templates.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.AWSSpecificNonSecretTemplateNames...,
-		)
+		awsTemplateNames := constants.AWSSpecificNonSecretTemplateNames
+		if config.EKSEnabled() {
+			awsTemplateNames = constants.AWSEKSSpecificNonSecretTemplateNames
+		}
+		embeddedTemplateNames = append(embeddedTemplateNames, awsTemplateNames...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recovery.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {

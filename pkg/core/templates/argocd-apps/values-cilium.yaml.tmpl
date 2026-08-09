@@ -4,7 +4,7 @@ cilium:
   {{- if .ControlPlaneEndpoint }}
   kubeProxyReplacement: "true"
   k8sServiceHost: {{ .ControlPlaneEndpoint }}
-  k8sServicePort: 6443
+  k8sServicePort: {{ .ControlPlaneEndpointPort }}
   {{- end }}
 
   {{- if .HetznerBareMetalFirewallEnabled }}

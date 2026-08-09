@@ -13,6 +13,7 @@ import (
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	helmValues "helm.sh/helm/v3/pkg/cli/values"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/credentials"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/controller/rollout"
@@ -373,11 +374,25 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// ContainerCreating. Failing fast here points the operator at the
 	// actual problem (CNI not Ready on the CP Node).
 	bar := progress.FromCtx(ctx)
-	releaseNet := bar.InProgress("Waiting for control-plane Node networking to be ready")
-	err = kubernetes.WaitForCPNodesNetworkingReady(ctx, provisionedClusterClient)
-	releaseNet()
-	assert.AssertErrNil(ctx, err, "Failed waiting for control-plane Node networking to be ready")
-	bar.Substep("Control-plane Node networking ready")
+	switch {
+	// EKS clusters have no control-plane Nodes to check, and no
+	// KubeadmControlPlane postKubeadm hook to install the CNI : AWS's default
+	// VPC CNI and kube-proxy are disabled declaratively (AWSManagedControlPlane
+	// spec), so kubeaid-cli installs Cilium itself — the worker Nodes stay
+	// NotReady until it lands. The cilium ArgoCD App adopts these manifests
+	// once the main cluster's ArgoCD is up.
+	case config.EKSEnabled():
+		releaseCNI := bar.InProgress("Installing Cilium on the EKS cluster")
+		installCiliumOnEKSCluster(ctx)
+		releaseCNI()
+		bar.Substep("Installed Cilium on the EKS cluster")
+	default:
+		releaseNet := bar.InProgress("Waiting for control-plane Node networking to be ready")
+		err = kubernetes.WaitForCPNodesNetworkingReady(ctx, provisionedClusterClient)
+		releaseNet()
+		assert.AssertErrNil(ctx, err, "Failed waiting for control-plane Node networking to be ready")
+		bar.Substep("Control-plane Node networking ready")
+	}
 	bar.Substep("Main cluster provisioned 🎉")
 
 	// Ensure that application workloads can be scheduled.
@@ -557,7 +572,12 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	//
 	// NOTE : The ClusterAPI AWS InfrastructureProvider component (CAPA controller) needs to run in
 	//        a master node.
-	if globals.CloudProviderName == constants.CloudProviderAWS {
+	//
+	// EKS clusters skip this : there are no control-plane nodes, so post-pivot
+	// CAPA runs on workers, whose nodes.cluster-api-provider-aws.sigs.k8s.io
+	// instance profile lacks the controllers policy. CAPA keeps using the
+	// cloud-credentials Secret instead (IRSA is the eventual replacement).
+	if globals.CloudProviderName == constants.CloudProviderAWS && !config.EKSEnabled() {
 		// Zero the credentials CAPA controller started with.
 		// This will force the CAPA controller to fall back to use the attached instance profiles.
 		err := credentials.ZeroCredentials(credentials.ZeroCredentialsInput{
@@ -613,6 +633,37 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	assert.AssertErrNil(ctx, err, "Failed pivoting the cluster by executing 'clusterctl move'")
 	slog.InfoContext(ctx, "Pivoted the cluster by executing 'clusterctl move'")
 	bar.Substep("Pivoted ClusterAPI to main cluster")
+}
+
+// installCiliumOnEKSCluster installs Cilium into the just-provisioned EKS
+// cluster, mirroring what the KubeadmControlPlane postKubeadm hook does on
+// self-managed clusters (helm-render the KubeAid cilium chart with the
+// apiserver endpoint set). EKS has no control-plane nodes to run that hook,
+// and its AWS-default CNI + kube-proxy are disabled via AWSManagedControlPlane
+// (spec.vpcCni.disable / spec.kubeProxy.disable) — so without this install the
+// worker Nodes never turn Ready and nothing else can be scheduled. The cilium
+// ArgoCD App later adopts the same manifests (same chart, same values source).
+func installCiliumOnEKSCluster(ctx context.Context) {
+	endpoint, err := kubernetes.GetMainClusterEndpoint(ctx)
+	assert.AssertErrNil(ctx, err, "Failed getting main cluster endpoint")
+	assert.AssertNotNil(ctx, endpoint, "Main cluster kubeconfig has no endpoint — cannot install Cilium")
+
+	// KUBECONFIG already points at the main cluster's kubeconfig here — the
+	// Helm SDK picks it up from the environment.
+	err = kubernetes.HelmInstallOrUpgrade(ctx, &kubernetes.HelmInstallArgs{
+		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/cilium"),
+
+		Namespace:   "cilium",
+		ReleaseName: "cilium",
+		Values: &helmValues.Options{
+			Values: []string{
+				"cilium.kubeProxyReplacement=true",
+				fmt.Sprintf("cilium.k8sServiceHost=%s", endpoint.Hostname()),
+				fmt.Sprintf("cilium.k8sServicePort=%s", endpoint.Port()),
+			},
+		},
+	})
+	assert.AssertErrNil(ctx, err, "Failed installing Cilium on the EKS cluster")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

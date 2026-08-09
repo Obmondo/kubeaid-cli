@@ -38,6 +38,17 @@ var UpgradeCmd = &cobra.Command{
 			})
 
 		case constants.CloudProviderAWS:
+			// EKS clusters are upgraded the GitOps way : AWS owns the control
+			// plane and CAPA rolls it (plus the MachineDeployments) when the
+			// version in the capi-cluster values changes.
+			if config.EKSEnabled() {
+				assert.Assert(cmd.Context(), false,
+					"`cluster upgrade` doesn't apply to EKS clusters : bump global.kubernetes.version in "+
+						"argocd-apps/values-capi-cluster.yaml in your kubeaid-config repo and let ArgoCD sync — "+
+						"CAPA then upgrades the EKS control plane and rolls the node-groups",
+				)
+			}
+
 			core.UpgradeCluster(cmd.Context(), core.UpgradeClusterArgs{
 				SkipPRWorkflow: skipPRWorkflow,
 

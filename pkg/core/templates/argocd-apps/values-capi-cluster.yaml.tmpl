@@ -37,6 +37,26 @@ global:
 provider:
   aws: true
 
+{{- if .AWSConfig.EKS }}
+
+aws:
+  # AWS managed (EKS) control plane : the chart renders AWSManagedControlPlane
+  # + AWSManagedCluster instead of AWSCluster + KubeadmControlPlane. Workers
+  # stay self-managed MachineDeployments, bootstrapped via NodeadmConfig on
+  # EKS optimized AL2023 AMIs that CAPA resolves itself — hence no sshKeyName,
+  # no controlPlane block and no per-node-group AMI IDs here.
+  eks: true
+  secretName: cloud-credentials
+  region: {{ .AWSConfig.Region }}
+  bastion:
+    enabled: {{ .AWSConfig.BastionEnabled }}
+  vpc:
+    cidrBlock: 10.14.0.0/22
+  pods:
+    cidrBlock: 10.244.0.0/16
+  nodeGroups: {{- .AWSConfig.NodeGroups | toYaml | nindent 4 }}
+{{- else }}
+
 aws:
   # Currently, hostNetworking must be set to true.
   # Otherwise, during the Kubernetes version upgrade process, when the control-plane nodes get
@@ -69,6 +89,7 @@ aws:
       files: {{- .ClusterConfig.APIServer.Files | toYaml | nindent 8 }}
     {{- end }}
   nodeGroups: {{- .AWSConfig.NodeGroups | toYaml | nindent 4 }}
+{{- end }}
 {{- end }}
 
 {{- if .AzureConfig }}

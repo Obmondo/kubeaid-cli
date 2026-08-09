@@ -140,6 +140,12 @@ func newAWSProvider() *awsPrompter {
 }
 
 func (p *awsPrompter) SummaryLines(cfg *PromptedConfig) []string {
+	if cfg.AWSEKS {
+		return []string{
+			fmt.Sprintf("  Region:        %s", cfg.AWSRegion),
+			"  Control plane: EKS (managed by AWS)",
+		}
+	}
 	return []string{
 		fmt.Sprintf("  Region:        %s", cfg.AWSRegion),
 		fmt.Sprintf("  Instance type: %s", cfg.AWSCPInstanceType),
@@ -176,6 +182,24 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		cfg.AWSCPInstanceType = "t3.medium"
 	}
 
+	// Control-plane flavour comes BEFORE credentials : the credentials are the
+	// same either way, but every question after them differs — EKS has no HA /
+	// replica choice (AWS runs the control plane multi-AZ), no AMI (CAPA
+	// resolves the EKS optimized AL2023 image itself) and no SSH key name.
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[bool]().
+				Title("Control plane:").
+				Options(
+					huh.NewOption("Self-managed (EC2, kubeadm)", false),
+					huh.NewOption("EKS (managed by AWS)", true),
+				).
+				Value(&cfg.AWSEKS),
+		).Title("AWS control plane").Description("Step 3/4"),
+	).Run(); err != nil {
+		return err
+	}
+
 	haChoice := cfg.AWSCPReplicas != "1"
 
 	credGroup := huh.NewGroup(
@@ -201,16 +225,27 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		slog.Info("No AWS credentials found in ~/.aws — prompting")
 	}
 
+	haGroup := huh.NewGroup(
+		huh.NewConfirm().
+			Title("Enable high availability for the control plane?").
+			Value(&haChoice),
+	).WithHideFunc(func() bool {
+		// EKS control planes are HA by design — nothing to ask.
+		return cfg.AWSEKS
+	})
+
 	err := huh.NewForm(
 		credGroup,
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("Enable high availability for the control plane?").
-				Value(&haChoice),
-		).Title("AWS credentials").Description("Step 3/4"),
+		haGroup.Title("AWS credentials").Description("Step 3/4 (cont.)"),
 	).Run()
 	if err != nil {
 		return err
+	}
+
+	if cfg.AWSEKS {
+		// AWS owns the control plane and CAPA resolves worker AMIs — nothing
+		// more to collect.
+		return nil
 	}
 
 	if haChoice {
@@ -252,7 +287,13 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 
 // postProcess derives AWSSSHKeyName after the Git/SSH step has populated the key path.
 // Called by ConfigFromPrompt after runGitSSHForm.
+// EKS clusters skip it : workers stay keyless (SSM Session Manager covers
+// debugging) and the rendered config must not carry an sshKeyName.
 func (p *awsPrompter) postProcess(cfg *PromptedConfig) {
+	if cfg.AWSEKS {
+		return
+	}
+
 	keyPath := cfg.KubeaidConfigDeployKeyPath
 	if keyPath == "" {
 		keyPath = cfg.SSHKeyPath

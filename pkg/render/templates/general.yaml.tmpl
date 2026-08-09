@@ -67,6 +67,10 @@ cloud:
 {{- if eq .CloudProvider "aws" }}
   aws:
     region: {{ .AWSRegion }}
+{{- if .AWSEKS }}
+    eks: true
+    bastionEnabled: true
+{{- else }}
     sshKeyName: {{ .AWSSSHKeyName }}
     bastionEnabled: true
     controlPlane:
@@ -75,6 +79,7 @@ cloud:
       instanceType: {{ .AWSCPInstanceType }}
       ami:
         id: {{ .AWSAMIID }}
+{{- end }}
 {{- end }}
 {{- if eq .CloudProvider "azure" }}
   azure:
