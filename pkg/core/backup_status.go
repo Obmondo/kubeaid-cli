@@ -256,7 +256,7 @@ func findReadyPod(ctx context.Context, clientset k8sclientset.Interface, namespa
 }
 
 // podReady reports whether pod is Running with a Ready=True condition - the same bar argo-cd's
-// own port-forward pod selection uses (argo-cd/v2/util/kube.selectPodForPortForward, reached
+// own port-forward pod selection uses (argo-cd/v3/util/kube.selectPodForPortForward, reached
 // transitively via pkg/apiclient's PortForward option elsewhere in this codebase), and Ready
 // alone isn't a substitute for: podutils.IsPodReady only inspects the condition, so a
 // Succeeded/Failed pod that never cleared a stale Ready=True still needs the Phase check.

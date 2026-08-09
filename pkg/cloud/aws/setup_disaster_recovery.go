@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	"github.com/sagikazarmark/slog-shim"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws/services"

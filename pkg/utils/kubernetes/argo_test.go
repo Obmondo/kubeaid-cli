@@ -26,10 +26,11 @@ import (
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
-	"github.com/argoproj/argo-cd/v2/pkg/apiclient/project"
-	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
-	repoApiclient "github.com/argoproj/argo-cd/v2/reposerver/apiclient"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
+	argoCDEvents "github.com/argoproj/argo-cd/v3/pkg/apiclient/events"
+	"github.com/argoproj/argo-cd/v3/pkg/apiclient/project"
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+	repoApiclient "github.com/argoproj/argo-cd/v3/reposerver/apiclient"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
@@ -189,7 +190,7 @@ func (f *fakeProjectServiceClient) Delete(context.Context, *project.ProjectQuery
 	return nil, nil
 }
 
-func (f *fakeProjectServiceClient) ListEvents(context.Context, *project.ProjectQuery, ...grpc.CallOption) (*coreV1.EventList, error) {
+func (f *fakeProjectServiceClient) ListEvents(context.Context, *project.ProjectQuery, ...grpc.CallOption) (*argoCDEvents.EventList, error) {
 	return nil, nil
 }
 
@@ -338,7 +339,7 @@ type fakeFullApplicationServiceClient struct {
 	fakeArgoCDAppClient
 }
 
-func (f *fakeFullApplicationServiceClient) ListResourceEvents(context.Context, *application.ApplicationResourceEventsQuery, ...grpc.CallOption) (*coreV1.EventList, error) {
+func (f *fakeFullApplicationServiceClient) ListResourceEvents(context.Context, *application.ApplicationResourceEventsQuery, ...grpc.CallOption) (*argoCDEvents.EventList, error) {
 	return nil, nil
 }
 
@@ -419,6 +420,18 @@ func (f *fakeFullApplicationServiceClient) PatchResource(context.Context, *appli
 }
 
 func (f *fakeFullApplicationServiceClient) ListResourceActions(context.Context, *application.ApplicationResourceRequest, ...grpc.CallOption) (*application.ResourceActionsListResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeFullApplicationServiceClient) GetOCIMetadata(context.Context, *application.RevisionMetadataQuery, ...grpc.CallOption) (*argoCDV1Alpha1.OCIMetadata, error) {
+	return nil, nil
+}
+
+func (f *fakeFullApplicationServiceClient) ServerSideDiff(context.Context, *application.ApplicationServerSideDiffQuery, ...grpc.CallOption) (*application.ApplicationServerSideDiffResponse, error) {
+	return nil, nil
+}
+
+func (f *fakeFullApplicationServiceClient) RunResourceActionV2(context.Context, *application.ResourceActionRunRequestV2, ...grpc.CallOption) (*application.ApplicationResponse, error) {
 	return nil, nil
 }
 

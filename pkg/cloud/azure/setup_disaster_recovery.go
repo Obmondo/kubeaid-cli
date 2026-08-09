@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"

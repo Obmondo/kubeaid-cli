@@ -10,7 +10,7 @@ import (
 	"path"
 	"time"
 
-	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v2/pkg/apis/application/v1alpha1"
+	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 	clusterctlClientLib "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
 	"sigs.k8s.io/controller-runtime/pkg/client"
