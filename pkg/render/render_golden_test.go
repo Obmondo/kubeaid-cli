@@ -319,3 +319,51 @@ func TestRenderNilConfig(t *testing.T) {
 	assert.Nil(t, general)
 	assert.Nil(t, secrets)
 }
+
+// TestRenderAlwaysEmitsGitKeyPathWithoutAgent pins the contract the Obmondo
+// install flow depends on: when the operator is not on an SSH agent, the git
+// block always carries a privateKeyFilePath line, even with no value.
+//
+// The portal ships that value empty on purpose — it cannot know where the key
+// will land, because that depends on --configs-directory — and kubeaid-cli
+// fills it in after writing the key. Omitting the line when the value is empty
+// left nothing to fill, and the operator was asked for a key that had already
+// been delivered.
+//
+// Hetzner's sshKeyPair and both ArgoCD deploy keys already behaved this way;
+// git was the one that did not.
+func TestRenderAlwaysEmitsGitKeyPathWithoutAgent(t *testing.T) {
+	base := goldenCases()[0].cfg
+
+	t.Run("empty path still emits the line", func(t *testing.T) {
+		cfg := *base
+		cfg.UseSSHAgent = false
+		cfg.SSHKeyPath = ""
+
+		general, _, err := Render(&cfg)
+		require.NoError(t, err)
+		assert.Contains(t, string(general), "\n  privateKeyFilePath:",
+			"an empty path must still render the line, or the CLI has nothing to fill")
+	})
+
+	t.Run("a supplied path is rendered unchanged", func(t *testing.T) {
+		cfg := *base
+		cfg.UseSSHAgent = false
+		cfg.SSHKeyPath = "/home/op/.ssh/id_ed25519"
+
+		general, _, err := Render(&cfg)
+		require.NoError(t, err)
+		assert.Contains(t, string(general), "\n  privateKeyFilePath: /home/op/.ssh/id_ed25519")
+	})
+
+	t.Run("the agent path emits no line at all", func(t *testing.T) {
+		cfg := *base
+		cfg.UseSSHAgent = true
+		cfg.SSHKeyPath = ""
+
+		general, _, err := Render(&cfg)
+		require.NoError(t, err)
+		assert.NotContains(t, string(general), "\n  privateKeyFilePath:",
+			"an agent operator has no key file, so the line would be a lie")
+	})
+}
