@@ -156,7 +156,9 @@ func TestFetchLatestUbuntuAMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	amis, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
+	index, err := fetchUbuntuSimplestreamsIndex(context.Background(), clientForTestServer(server))
+	require.NoError(t, err)
+	amis, err := latestUbuntuAMIs(index, ubuntuProductARM64)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
@@ -171,7 +173,7 @@ func TestFetchLatestUbuntuAMIsReturnsStatusError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
+	_, err := fetchUbuntuSimplestreamsIndex(context.Background(), clientForTestServer(server))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status")
@@ -183,7 +185,10 @@ func TestFetchLatestUbuntuAMIsReturnsErrorForMissingProduct(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
+	index, err := fetchUbuntuSimplestreamsIndex(context.Background(), clientForTestServer(server))
+	require.NoError(t, err)
+
+	_, err = latestUbuntuAMIs(index, ubuntuProductARM64)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing")

@@ -28,15 +28,15 @@ const (
 	ubuntuProductARM64     = "com.ubuntu.cloud:server:" + ubuntuVersion + ":arm64"
 	amiFetchTimeout        = 15 * time.Second
 
-	// ARM (Graviton) is the default. The control plane keeps the small
+	// The control plane defaults to ARM (Graviton) at the small
 	// general-purpose sizing it always had (t4g.medium is the Graviton
-	// equivalent of the old t3.medium default); workers get c7g.xlarge, the
-	// smallest Graviton type meeting the 4 vCPU / 8 GB baseline. Both are
-	// overridable in general.yaml — the AMI product (arm64 vs amd64) follows
-	// the control-plane instance type, and one AMI serves CP + workers, so
-	// keep the two families on the same architecture.
+	// equivalent of the old t3.medium default). Workers default to amd64 —
+	// c6i.xlarge is the smallest current-gen x86 type meeting the
+	// 4 vCPU / 8 GB baseline. Both are overridable in general.yaml; each gets
+	// its own AMI, resolved for its own architecture, so CP and workers may
+	// differ.
 	defaultAWSCPInstanceType   = "t4g.medium"
-	defaultAWSNodeInstanceType = "c7g.xlarge"
+	defaultAWSNodeInstanceType = "c6i.xlarge"
 )
 
 // awsARMInstanceTypeRegexp matches AWS Graviton (arm64) instance types by
@@ -51,6 +51,24 @@ var awsARMInstanceTypeRegexp = regexp.MustCompile(`^(?:[a-z]+\d+[a-z]*g[a-z]*|a1
 // credentials are configured.
 func awsInstanceTypeIsARM(instanceType string) bool {
 	return awsARMInstanceTypeRegexp.MatchString(instanceType)
+}
+
+// ubuntuProductForInstanceType returns the simplestreams product matching the
+// instance type's architecture.
+func ubuntuProductForInstanceType(instanceType string) string {
+	if awsInstanceTypeIsARM(instanceType) {
+		return ubuntuProductARM64
+	}
+	return ubuntuProductAMD64
+}
+
+// archForProduct returns the architecture suffix of a simplestreams product
+// ID, for prompt labels.
+func archForProduct(productID string) string {
+	if productID == ubuntuProductARM64 {
+		return "arm64"
+	}
+	return "amd64"
 }
 
 // simplestreams JSON structures — see https://cloudinit.readthedocs.io/en/latest/topics/datasources/simplestreams.html
@@ -79,14 +97,13 @@ type (
 	}
 )
 
-// fetchLatestUbuntuAMIs pulls Canonical's published simplestreams index and
-// returns the newest HVM + SSD-backed AMI IDs for the given product (an
-// Ubuntu release + architecture pair), keyed by region.
-func fetchLatestUbuntuAMIs(
+// fetchUbuntuSimplestreamsIndex pulls Canonical's published simplestreams
+// index. The index covers every release + architecture product, so one fetch
+// (~11MB) serves both the control-plane and worker AMI lookups.
+func fetchUbuntuSimplestreamsIndex(
 	ctx context.Context,
 	client *http.Client,
-	productID string,
-) (map[string]string, error) {
+) (*awsSimplestreamsIndex, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -119,6 +136,13 @@ func fetchLatestUbuntuAMIs(
 		return nil, fmt.Errorf("decoding simplestreams index: %w", err)
 	}
 
+	return &index, nil
+}
+
+// latestUbuntuAMIs returns the newest HVM + SSD-backed AMI IDs from the index
+// for the given product (an Ubuntu release + architecture pair), keyed by
+// region.
+func latestUbuntuAMIs(index *awsSimplestreamsIndex, productID string) (map[string]string, error) {
 	product, ok := index.Products[productID]
 	if !ok {
 		return nil, fmt.Errorf("product %q missing from simplestreams index", productID)
@@ -290,31 +314,57 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		cfg.AWSCPReplicas = "1"
 	}
 
-	// Attempt to auto-detect AMI from Canonical; fall back to a manual prompt.
-	// The architecture follows the instance type : Graviton types get the
-	// arm64 product, everything else amd64.
-	amiProduct := ubuntuProductAMD64
-	if awsInstanceTypeIsARM(cfg.AWSCPInstanceType) {
-		amiProduct = ubuntuProductARM64
-	}
-	amiMap, err := fetchLatestUbuntuAMIs(context.Background(), http.DefaultClient, amiProduct)
+	// Attempt to auto-detect the AMIs from Canonical; fall back to manual
+	// prompts. Control plane and workers each get an AMI resolved for their
+	// own instance type's architecture (ARM CP + amd64 workers by default),
+	// from a single index fetch.
+	cpProduct := ubuntuProductForInstanceType(cfg.AWSCPInstanceType)
+	nodeProduct := ubuntuProductForInstanceType(cfg.AWSNodeInstanceType)
+
+	index, err := fetchUbuntuSimplestreamsIndex(context.Background(), http.DefaultClient)
 	if err != nil {
-		slog.Warn("Failed to fetch latest Ubuntu "+ubuntuVersion+" AMI from Canonical",
+		slog.Warn("Failed to fetch the Ubuntu "+ubuntuVersion+" AMI index from Canonical",
 			slog.Any("error", err))
-	} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
-		cfg.AWSAMIID = ami
+	} else {
+		if amiMap, amiErr := latestUbuntuAMIs(index, cpProduct); amiErr != nil {
+			slog.Warn("Failed resolving the control-plane AMI", slog.Any("error", amiErr))
+		} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
+			cfg.AWSAMIID = ami
+		}
+
+		if amiMap, amiErr := latestUbuntuAMIs(index, nodeProduct); amiErr != nil {
+			slog.Warn("Failed resolving the worker node-group AMI", slog.Any("error", amiErr))
+		} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
+			cfg.AWSNodeAMIID = ami
+		}
 	}
 
+	var amiInputs []huh.Field
 	if cfg.AWSAMIID == "" {
+		amiInputs = append(amiInputs, huh.NewInput().
+			TitleFunc(func() string {
+				return fmt.Sprintf(
+					"Ubuntu %s AMI ID for the control plane (%s) in region %s:",
+					ubuntuVersion, archForProduct(cpProduct), cfg.AWSRegion,
+				)
+			}, &cfg.AWSRegion).
+			Value(&cfg.AWSAMIID).
+			Validate(nonEmpty))
+	}
+	if cfg.AWSNodeAMIID == "" {
+		amiInputs = append(amiInputs, huh.NewInput().
+			TitleFunc(func() string {
+				return fmt.Sprintf(
+					"Ubuntu %s AMI ID for the worker node-group (%s) in region %s:",
+					ubuntuVersion, archForProduct(nodeProduct), cfg.AWSRegion,
+				)
+			}, &cfg.AWSRegion).
+			Value(&cfg.AWSNodeAMIID).
+			Validate(nonEmpty))
+	}
+	if len(amiInputs) > 0 {
 		if err := huh.NewForm(
-			huh.NewGroup(
-				huh.NewInput().
-					TitleFunc(func() string {
-						return fmt.Sprintf("Ubuntu %s AMI ID for region %s:", ubuntuVersion, cfg.AWSRegion)
-					}, &cfg.AWSRegion).
-					Value(&cfg.AWSAMIID).
-					Validate(nonEmpty),
-			).Title("AWS AMI").Description("Step 3/4 (cont.)"),
+			huh.NewGroup(amiInputs...).Title("AWS AMI").Description("Step 3/4 (cont.)"),
 		).Run(); err != nil {
 			return err
 		}
