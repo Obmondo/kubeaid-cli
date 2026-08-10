@@ -1,4 +1,10 @@
 - - -
+## v0.31.7 - 2026-08-10
+#### Bug Fixes
+- (**render**) always emit git's privateKeyFilePath without an agent - (7ac46a7) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.6 - 2026-08-10
 #### Miscellaneous Chores
 - (**version**) v0.31.5 - (8fd28c4) - Ashish Jaiswal
