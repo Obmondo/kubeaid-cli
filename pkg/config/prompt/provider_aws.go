@@ -71,6 +71,24 @@ func archForProduct(productID string) string {
 	return "amd64"
 }
 
+// resolveUbuntuAMI extracts the region's newest AMI for the given product
+// from an already-fetched index. Returns "" when the index is unavailable,
+// the product can't be resolved (warned, target names which AMI it was), or
+// the region has no image — the caller falls back to a manual prompt.
+func resolveUbuntuAMI(index *awsSimplestreamsIndex, productID, region, target string) string {
+	if index == nil {
+		return ""
+	}
+
+	amiMap, err := latestUbuntuAMIs(index, productID)
+	if err != nil {
+		slog.Warn("Failed resolving the "+target+" AMI", slog.Any("error", err))
+		return ""
+	}
+
+	return amiMap[region]
+}
+
 // simplestreams JSON structures — see https://cloudinit.readthedocs.io/en/latest/topics/datasources/simplestreams.html
 // and Canonical's published schema. Only fields we care about are decoded.
 type (
@@ -325,18 +343,13 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 	if err != nil {
 		slog.Warn("Failed to fetch the Ubuntu "+ubuntuVersion+" AMI index from Canonical",
 			slog.Any("error", err))
-	} else {
-		if amiMap, amiErr := latestUbuntuAMIs(index, cpProduct); amiErr != nil {
-			slog.Warn("Failed resolving the control-plane AMI", slog.Any("error", amiErr))
-		} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
-			cfg.AWSAMIID = ami
-		}
+	}
 
-		if amiMap, amiErr := latestUbuntuAMIs(index, nodeProduct); amiErr != nil {
-			slog.Warn("Failed resolving the worker node-group AMI", slog.Any("error", amiErr))
-		} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
-			cfg.AWSNodeAMIID = ami
-		}
+	if ami := resolveUbuntuAMI(index, cpProduct, cfg.AWSRegion, "control-plane"); ami != "" {
+		cfg.AWSAMIID = ami
+	}
+	if ami := resolveUbuntuAMI(index, nodeProduct, cfg.AWSRegion, "worker node-group"); ami != "" {
+		cfg.AWSNodeAMIID = ami
 	}
 
 	var amiInputs []huh.Field
