@@ -437,10 +437,19 @@ type (
 	AWSConfig struct {
 		Region string `yaml:"region" validate:"notblank"`
 
-		SSHKeyName     string                     `yaml:"sshKeyName"     validate:"notblank"`
+		// EKS flips the cluster to an AWS managed (EKS) control plane,
+		// provisioned via CAPA's AWSManagedControlPlane. Workers stay
+		// self-managed MachineDeployments (CAPA's stable EKS worker
+		// path), bootstrapped with NodeadmConfig on AL2023 AMIs that
+		// CAPA resolves itself — so sshKeyName, controlPlane and
+		// per-node-group AMIs must be left unset. Cross-field rules
+		// live in pkg/config/parser/validate.go (validateAWSConfig).
+		EKS bool `yaml:"eks"`
+
+		SSHKeyName     string                     `yaml:"sshKeyName"`
 		VPCID          *string                    `yaml:"vpcID"`
-		BastionEnabled bool                       `yaml:"bastionEnabled"                     default:"True"`
-		ControlPlane   AWSControlPlane            `yaml:"controlPlane"   validate:"required"`
+		BastionEnabled bool                       `yaml:"bastionEnabled" default:"True"`
+		ControlPlane   *AWSControlPlane           `yaml:"controlPlane,omitempty"`
 		NodeGroups     []AWSAutoScalableNodeGroup `yaml:"nodeGroups"`
 	}
 
@@ -454,10 +463,10 @@ type (
 	AWSAutoScalableNodeGroup struct {
 		AutoScalableNodeGroup `yaml:",inline"`
 
-		AMI            AMIConfig `yaml:"ami"            validate:"required"`
-		InstanceType   string    `yaml:"instanceType"   validate:"notblank"`
-		RootVolumeSize uint32    `yaml:"rootVolumeSize" validate:"required"`
-		SSHKeyName     string    `yaml:"sshKeyName"     validate:"notblank"`
+		AMI            *AMIConfig `yaml:"ami,omitempty"`
+		InstanceType   string     `yaml:"instanceType"   validate:"notblank"`
+		RootVolumeSize uint32     `yaml:"rootVolumeSize" validate:"required"`
+		SSHKeyName     string     `yaml:"sshKeyName,omitempty"`
 	}
 
 	AMIConfig struct {

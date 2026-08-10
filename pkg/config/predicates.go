@@ -17,6 +17,13 @@ type ReleaseDetails struct {
 	TagName string `json:"tag_name"`
 }
 
+// EKSEnabled reports whether the cluster runs an AWS managed (EKS) control
+// plane — CAPA AWSManagedControlPlane instead of KubeadmControlPlane. Workers
+// remain self-managed MachineDeployments either way.
+func EKSEnabled() bool {
+	return ParsedGeneralConfig.Cloud.AWS != nil && ParsedGeneralConfig.Cloud.AWS.EKS
+}
+
 // Returns whether we're using HCloud.
 func UsingHCloud() bool {
 	if ParsedGeneralConfig.Cloud.Hetzner == nil {

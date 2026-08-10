@@ -522,6 +522,12 @@ const (
 	// NOTE : We need update this range manually, when upgrading KubeOne.
 	MinKubeOneSupportedK8sVersion = "v1.33"
 	MaxKubeOneSupportedK8sVersion = "v1.35"
+
+	// EKS clusters bootstrap their (self-managed MachineDeployment) workers
+	// with CAPA's NodeadmConfig on AL2023 AMIs, which upstream supports for
+	// K8s >= v1.33 only. AL2 / EKSConfig (K8s <= v1.32) went EOL 2026-06-30.
+	// REFER : CAPA docs/book/src/topics/eks/creating-a-cluster.md.
+	MinEKSSupportedK8sVersion = "v1.33"
 )
 
 // Kubernetes -> KubePrometheus compatibility matrix.

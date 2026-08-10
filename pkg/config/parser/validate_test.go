@@ -613,7 +613,83 @@ func TestValidateAWSConfig(t *testing.T) {
 		{
 			name:    "AWS credentials with no node-groups passes",
 			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
-			general: &config.GeneralConfig{Cloud: config.CloudConfig{AWS: &config.AWSConfig{}}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{AWS: &config.AWSConfig{
+				SSHKeyName:   "deploy-key",
+				ControlPlane: &config.AWSControlPlane{AMI: config.AMIConfig{ID: "ami-123"}},
+			}}},
+		},
+		{
+			name:       "self-managed without controlPlane is rejected",
+			secrets:    &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general:    &config.GeneralConfig{Cloud: config.CloudConfig{AWS: &config.AWSConfig{}}},
+			wantErr:    true,
+			wantErrSub: "cloud.aws.controlPlane is required",
+		},
+		{
+			name:    "EKS with a node-group passes",
+			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{K8sVersion: "v1.34.0"},
+				Cloud: config.CloudConfig{AWS: &config.AWSConfig{
+					EKS: true,
+					NodeGroups: []config.AWSAutoScalableNodeGroup{
+						{InstanceType: "m5.large"},
+					},
+				}},
+			},
+		},
+		{
+			name:    "EKS with controlPlane set is rejected",
+			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{K8sVersion: "v1.34.0"},
+				Cloud: config.CloudConfig{AWS: &config.AWSConfig{
+					EKS:          true,
+					ControlPlane: &config.AWSControlPlane{},
+				}},
+			},
+			wantErr:    true,
+			wantErrSub: "cloud.aws.controlPlane must not be set",
+		},
+		{
+			name:    "EKS with a node-group AMI is rejected",
+			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{K8sVersion: "v1.34.0"},
+				Cloud: config.CloudConfig{AWS: &config.AWSConfig{
+					EKS: true,
+					NodeGroups: []config.AWSAutoScalableNodeGroup{
+						{InstanceType: "m5.large", AMI: &config.AMIConfig{ID: "ami-123"}},
+					},
+				}},
+			},
+			wantErr:    true,
+			wantErrSub: "ami must not be set",
+		},
+		{
+			name:    "EKS without node-groups is rejected",
+			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{K8sVersion: "v1.34.0"},
+				Cloud:   config.CloudConfig{AWS: &config.AWSConfig{EKS: true}},
+			},
+			wantErr:    true,
+			wantErrSub: "at least one node-group is required",
+		},
+		{
+			name:    "EKS below v1.33 is rejected",
+			secrets: &config.SecretsConfig{AWS: &config.AWSCredentials{}},
+			general: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{K8sVersion: "v1.32.0"},
+				Cloud: config.CloudConfig{AWS: &config.AWSConfig{
+					EKS: true,
+					NodeGroups: []config.AWSAutoScalableNodeGroup{
+						{InstanceType: "m5.large"},
+					},
+				}},
+			},
+			wantErr:    true,
+			wantErrSub: "K8s version must be >= v1.33 for EKS",
 		},
 	}, validateAWSConfig)
 }

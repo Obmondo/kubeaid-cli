@@ -71,6 +71,23 @@ var (
 		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
+	// EKS clusters : the EKS control plane runs the AWS cloud controller, so
+	// ccm-aws is dropped. EKS installs no storage driver by default, so the
+	// EBS CSI driver is added instead. Cluster Autoscaler keeps working in
+	// CAPI mode against the (self-managed) MachineDeployments.
+	AWSEKSSpecificNonSecretTemplateNames = []string{
+		// For Cluster Autoscaler.
+		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
+		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
+
+		// For External Snapshotter.
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
+
+		// For the EBS CSI driver.
+		"argocd-apps/templates/aws-ebs-csi-driver.yaml.tmpl",
+		"argocd-apps/values-aws-ebs-csi-driver.yaml.tmpl",
+	}
+
 	AWSSpecificSecretTemplateNames = []string{
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
