@@ -60,6 +60,22 @@ const (
 
 	generalFileName = "general.yaml"
 	secretsFileName = "secrets.yaml"
+
+	// SSH key purposes, matching the portal's ssh_keys map.
+	//
+	// operator is the key the person running this bootstrap works through:
+	// it authenticates the git push and is installed on the cluster's nodes,
+	// which is why it fills two unrelated places in general.yaml. Absent when
+	// they source it from an SSH agent, or already had one and named its path.
+	//
+	// deploy is ArgoCD's read-only key for the KubeAid Config repository. It
+	// is sealed into a Secret and lives in the cluster, so it can never come
+	// from an agent — the material has to be there.
+	sshKeyPurposeOperator = "operator"
+	sshKeyPurposeDeploy   = "deploy"
+
+	operatorKeyFileName = "operator-key"
+	deployKeyFileName   = "deploy-key"
 )
 
 // PuppetMaterial is the mTLS identity kubeaid-agent authenticates to Obmondo
@@ -77,11 +93,28 @@ type PuppetMaterial struct {
 	CACertificate string `json:"ca_certificate"`
 }
 
+// SSHKeyMaterial is the private half of one keypair the portal minted for
+// this cluster. Like PuppetMaterial it arrives inline and is written to disk
+// here, because general.yaml points at it by PATH and only this process knows
+// where the configs directory is.
+//
+// The public half is not sent: it is derived from the private key when the
+// config is parsed, so there is nothing to carry and nothing to keep in step.
+type SSHKeyMaterial struct {
+	PrivateKey string `json:"private_key"`
+}
+
 // ClusterConfig is what the install endpoint returns.
 type ClusterConfig struct {
 	GeneralYAML string          `json:"general_yaml"`
 	SecretsYAML string          `json:"secrets_yaml"`
 	Puppet      *PuppetMaterial `json:"puppet"`
+
+	// SSHKeys is keyed by purpose — see sshKeyPurpose*. Absent entries are
+	// normal and mean different things per purpose, so nothing here is an
+	// error: a missing operator key means the operator supplies their own,
+	// and a missing deploy key means none was generated for this cluster.
+	SSHKeys map[string]SSHKeyMaterial `json:"ssh_keys"`
 }
 
 // apiResponse is the portal's standard envelope. Only the fields needed to
@@ -100,6 +133,10 @@ type WrittenPaths struct {
 	CertPath string
 	KeyPath  string
 	CAPath   string
+
+	// SSHKeys maps each delivered key's purpose to where it was written.
+	// Empty for a config that carried none.
+	SSHKeys map[string]string
 }
 
 // ClusterName reads cluster.name out of the fetched general.yaml.
@@ -359,6 +396,7 @@ func Write(configsDirectory string, config *ClusterConfig) (*WrittenPaths, error
 	written := &WrittenPaths{
 		General: filepath.Join(configsDirectory, generalFileName),
 		Secrets: filepath.Join(configsDirectory, secretsFileName),
+		SSHKeys: map[string]string{},
 	}
 
 	// secrets.yaml and the private key are 0600 throughout: they carry the
@@ -402,11 +440,49 @@ func Write(configsDirectory string, config *ClusterConfig) (*WrittenPaths, error
 		generalYAML = withObmondoCertPaths(generalYAML, written.CertPath, written.KeyPath)
 	}
 
+	// Delivered SSH keys, for the same reason and by the same mechanism as
+	// the Puppet material above: the portal ships their paths empty because
+	// only this process knows the configs directory.
+	if len(config.SSHKeys) > 0 {
+		obmondoDir := filepath.Join(configsDirectory, obmondoDirName)
+		if err := os.MkdirAll(obmondoDir, 0o700); err != nil {
+			return nil, fmt.Errorf("creating %s: %w", obmondoDir, err)
+		}
+
+		for purpose, fileName := range map[string]string{
+			sshKeyPurposeOperator: operatorKeyFileName,
+			sshKeyPurposeDeploy:   deployKeyFileName,
+		} {
+			material, ok := config.SSHKeys[purpose]
+			if !ok || strings.TrimSpace(material.PrivateKey) == "" {
+				continue
+			}
+
+			path := filepath.Join(obmondoDir, fileName)
+			if err := os.WriteFile(path, []byte(ensureTrailingNewline(material.PrivateKey)), 0o600); err != nil {
+				return nil, fmt.Errorf("writing %s: %w", path, err)
+			}
+			written.SSHKeys[purpose] = path
+		}
+
+		generalYAML = withSSHKeyPaths(generalYAML, written.SSHKeys)
+	}
+
 	if err := os.WriteFile(written.General, []byte(generalYAML), 0o600); err != nil {
 		return nil, fmt.Errorf("writing %s: %w", written.General, err)
 	}
 
 	return written, nil
+}
+
+// ensureTrailingNewline appends one if absent. OpenSSH refuses a private key
+// whose final -----END----- line is unterminated, and the portal trims what
+// it stores.
+func ensureTrailingNewline(s string) string {
+	if strings.HasSuffix(s, "\n") {
+		return s
+	}
+	return s + "\n"
 }
 
 // withObmondoCertPaths fills in obmondo.certPath and obmondo.keyPath.
@@ -446,6 +522,85 @@ func withObmondoCertPaths(generalYAML, certPath, keyPath string) string {
 				lines[i] = fmt.Sprintf("%s%s: %q", indent, key, value)
 			}
 		}
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+// sshKeyPathTargets maps a dotted path in general.yaml to the purpose whose
+// delivered key fills it.
+//
+// One key serves two of them: node access and pushing the config are the same
+// person acting, so the operator key answers both git and the Hetzner key
+// pair. The deploy key answers ArgoCD's, twice when the KubeAid fork is SSH.
+//
+// Matching on the full path, not on the field name, is the point. Four lines
+// in a rendered general.yaml are called privateKeyFilePath, and writing the
+// deploy key into the operator's slot produces a config that still parses,
+// still bootstraps, and then cannot reach git or the nodes.
+var sshKeyPathTargets = map[string]string{
+	"git.privateKeyFilePath":                                     sshKeyPurposeOperator,
+	"cloud.hetzner.sshKeyPair.privateKeyFilePath":                sshKeyPurposeOperator,
+	"cluster.argoCD.deployKeys.kubeaid.privateKeyFilePath":       sshKeyPurposeDeploy,
+	"cluster.argoCD.deployKeys.kubeaidConfig.privateKeyFilePath": sshKeyPurposeDeploy,
+}
+
+// withSSHKeyPaths fills in every privateKeyFilePath the portal left empty,
+// with the path the matching key was written to.
+//
+// A line-level edit for the same reason as withObmondoCertPaths, but tracking
+// nesting rather than one named block: the targets sit at four different
+// depths under three different top-level keys. Paths not in
+// sshKeyPathTargets, and purposes no key was delivered for, are left exactly
+// as they arrived — an operator who named their own key keeps it.
+func withSSHKeyPaths(generalYAML string, paths map[string]string) string {
+	type frame struct {
+		indent int
+		key    string
+	}
+
+	lines := strings.Split(generalYAML, "\n")
+	stack := []frame{}
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Blank lines, comments and list items carry no key to descend into.
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "-") {
+			continue
+		}
+		key, _, found := strings.Cut(trimmed, ":")
+		if !found {
+			continue
+		}
+
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		// Anything at this indent or deeper is a sibling or a child of a
+		// sibling, so it is no longer an ancestor of this line.
+		for len(stack) > 0 && stack[len(stack)-1].indent >= indent {
+			stack = stack[:len(stack)-1]
+		}
+
+		if key != "privateKeyFilePath" {
+			stack = append(stack, frame{indent: indent, key: key})
+			continue
+		}
+
+		segments := make([]string, 0, len(stack)+1)
+		for _, ancestor := range stack {
+			segments = append(segments, ancestor.key)
+		}
+		segments = append(segments, key)
+
+		purpose, wanted := sshKeyPathTargets[strings.Join(segments, ".")]
+		if !wanted {
+			continue
+		}
+		path, delivered := paths[purpose]
+		if !delivered || path == "" {
+			continue
+		}
+
+		lines[i] = fmt.Sprintf("%s%s: %q", line[:indent], key, path)
 	}
 
 	return strings.Join(lines, "\n")

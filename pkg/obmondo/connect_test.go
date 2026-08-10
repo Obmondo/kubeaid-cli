@@ -457,3 +457,96 @@ func TestWithObmondoCertPathsOnlyEditsTheObmondoBlock(t *testing.T) {
 	require.Equal(t, "cluster:\n  name: demo\n",
 		withObmondoCertPaths("cluster:\n  name: demo\n", "/c", "/k"))
 }
+
+// realisticGeneralYAML mirrors the shape pkg/render produces: four lines
+// called privateKeyFilePath, at four depths, under three top-level keys.
+func realisticGeneralYAML() string {
+	return strings.Join([]string{
+		"git:",
+		"  sshUsername: git",
+		"  useSSHAgent: false",
+		"  privateKeyFilePath: \"\"",
+		"cluster:",
+		"  name: demo",
+		"  argoCD:",
+		"    deployKeys:",
+		"      kubeaid:",
+		"        privateKeyFilePath: \"\"",
+		"      kubeaidConfig:",
+		"        privateKeyFilePath: \"\"",
+		"cloud:",
+		"  hetzner:",
+		"    mode: hcloud",
+		"    sshKeyPair:",
+		"      name: demo",
+		"      privateKeyFilePath: \"\"",
+		"",
+	}, "\n")
+}
+
+// TestWithSSHKeyPathsFillsEachSlotFromItsOwnPurpose is the whole point of
+// matching on the path rather than the field name: the operator key and the
+// deploy key both land in lines called privateKeyFilePath, and swapping them
+// yields a config that parses, bootstraps, and then reaches nothing.
+func TestWithSSHKeyPathsFillsEachSlotFromItsOwnPurpose(t *testing.T) {
+	got := withSSHKeyPaths(realisticGeneralYAML(), map[string]string{
+		sshKeyPurposeOperator: "/configs/obmondo/operator-key",
+		sshKeyPurposeDeploy:   "/configs/obmondo/deploy-key",
+	})
+
+	// git and the Hetzner key pair are the same person, so the same key.
+	require.Contains(t, got, "  privateKeyFilePath: \"/configs/obmondo/operator-key\"")
+	require.Contains(t, got, "      privateKeyFilePath: \"/configs/obmondo/operator-key\"")
+
+	// Both ArgoCD deploy keys take the deploy key.
+	require.Equal(t, 2, strings.Count(got, "        privateKeyFilePath: \"/configs/obmondo/deploy-key\""))
+
+	// Nothing was left empty, and nothing was crossed over.
+	require.NotContains(t, got, "privateKeyFilePath: \"\"")
+	require.NotContains(t, got, "        privateKeyFilePath: \"/configs/obmondo/operator-key\"")
+
+	// Indentation is preserved, so the result is still valid YAML.
+	require.Contains(t, got, "  sshUsername: git")
+	require.Contains(t, got, "    mode: hcloud")
+}
+
+// TestWithSSHKeyPathsLeavesUndeliveredSlotsAlone covers the operator who
+// named their own key or works through an agent: the portal sends nothing for
+// that purpose and whatever general.yaml already said must survive.
+func TestWithSSHKeyPathsLeavesUndeliveredSlotsAlone(t *testing.T) {
+	input := strings.ReplaceAll(realisticGeneralYAML(),
+		"  privateKeyFilePath: \"\"", "  privateKeyFilePath: ~/.ssh/id_ed25519")
+
+	got := withSSHKeyPaths(input, map[string]string{
+		sshKeyPurposeDeploy: "/configs/obmondo/deploy-key",
+	})
+
+	require.Contains(t, got, "  privateKeyFilePath: ~/.ssh/id_ed25519")
+	require.Equal(t, 2, strings.Count(got, "        privateKeyFilePath: \"/configs/obmondo/deploy-key\""))
+}
+
+// TestWithSSHKeyPathsIgnoresLookalikePaths guards the failure a flat key
+// match would cause: a privateKeyFilePath somewhere we are not authoritative
+// about must be left exactly as it arrived.
+func TestWithSSHKeyPathsIgnoresLookalikePaths(t *testing.T) {
+	input := strings.Join([]string{
+		"cloud:",
+		"  azure:",
+		"    workloadIdentity:",
+		"      openIDProviderSSHKeyPair:",
+		"        privateKeyFilePath: /azure/only",
+		"cluster:",
+		"  hosts:",
+		"    - name: bm1",
+		"      ssh:",
+		"        privateKeyFilePath: /host/only",
+		"",
+	}, "\n")
+
+	got := withSSHKeyPaths(input, map[string]string{
+		sshKeyPurposeOperator: "/configs/obmondo/operator-key",
+		sshKeyPurposeDeploy:   "/configs/obmondo/deploy-key",
+	})
+
+	require.Equal(t, input, got, "paths we do not own must be untouched")
+}
