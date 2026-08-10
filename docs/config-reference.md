@@ -133,10 +133,10 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ami | [`AMIConfig`](#amiconfig) |  |  |
+| ami,omitempty | [`AMIConfig`](#amiconfig) |  |  |
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
-| sshKeyName | `string` |  |  |
+| sshKeyName,omitempty | `string` |  |  |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
@@ -150,10 +150,11 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | region | `string` |  |  |
+| eks | `bool` |  | EKS flips the cluster to an AWS managed (EKS) control plane,<br>provisioned via CAPA's AWSManagedControlPlane. Workers stay<br>self-managed MachineDeployments (CAPA's stable EKS worker<br>path), bootstrapped with NodeadmConfig on AL2023 AMIs that<br>CAPA resolves itself — so sshKeyName, controlPlane and<br>per-node-group AMIs must be left unset. Cross-field rules<br>live in pkg/config/parser/validate.go (validateAWSConfig).<br> |
 | sshKeyName | `string` |  |  |
 | vpcID | `string` |  |  |
 | bastionEnabled | `bool` | True |  |
-| controlPlane | [`AWSControlPlane`](#awscontrolplane) |  |  |
+| controlPlane,omitempty | [`AWSControlPlane`](#awscontrolplane) |  |  |
 | nodeGroups | [][`AWSAutoScalableNodeGroup`](#awsautoscalablenodegroup) |  |  |
 
 ## AWSControlPlane

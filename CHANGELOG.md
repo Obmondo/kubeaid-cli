@@ -1,4 +1,25 @@
 - - -
+## v0.31.5 - 2026-08-10
+#### Features
+- (**aws**) add EKS (managed control plane) cluster support - (5784e53) - Ashish Jaiswal
+- (**config**) ask for the ssh key path instead of failing without one - (de2089b) - Ashish Jaiswal
+- (**obmondo**) write the ssh keys an install token delivers - (7e7b2df) - Ashish Jaiswal
+#### Bug Fixes
+- (**config**) expand ~ in ssh key paths, and refuse a key with no material - (5e1b878) - Ashish Jaiswal
+#### Documentation
+- add ROADMAP.md - (78510f9) - mavrick-1
+- format MAINTAINERS.md as a table (#53) - (9e9ea42) - Rishi Mondal
+- add email as an alternative security reporting channel - (7b89889) - mavrick-1
+- add CONTRIBUTING.md and SECURITY.md - (c3c90f7) - mavrick-1
+- refine adopter descriptions based on each company's actual business - (79ec708) - mavrick-1
+- add Obmondo, GN, HBK, ebillet, and Officient to ADOPTERS.md - (a11cea7) - mavrick-1
+- add ADOPTERS.md with an issue-based submission workflow - (0c06116) - mavrick-1
+#### Miscellaneous Chores
+- (**deps**) bump vulnerable dependencies flagged by dependabot - (1445c8f) - Ashish Jaiswal
+- (**deps**) update argo-cd to v3.5.0 and lift the k8s v0.33 pins - (19071a0) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.4 - 2026-08-04
 #### Features
 - (**config**) require a parseable certificate, and keep monitoring in the gate - (398a093) - Ashish Jaiswal

@@ -204,10 +204,18 @@ cluster:
 cloud:
   aws:
     region:
+    # EKS flips the cluster to an AWS managed (EKS) control plane,
+    # provisioned via CAPA's AWSManagedControlPlane. Workers stay
+    # self-managed MachineDeployments (CAPA's stable EKS worker
+    # path), bootstrapped with NodeadmConfig on AL2023 AMIs that
+    # CAPA resolves itself — so sshKeyName, controlPlane and
+    # per-node-group AMIs must be left unset. Cross-field rules
+    # live in pkg/config/parser/validate.go (validateAWSConfig).
+    eks:
     sshKeyName:
     vpcID:
     bastionEnabled: True
-    controlPlane:
+    controlPlane,omitempty:
       loadBalancerScheme: internet-facing
       replicas:
       instanceType:
