@@ -19,6 +19,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
@@ -30,8 +31,10 @@ func hydrateSSHKeyPairConfigs() {
 	deployKeys := &generalConfig.Cluster.ArgoCD.DeployKeys
 	if deployKeys.Kubeaid != nil {
 		hydrateSSHKeyPairConfig(deployKeys.Kubeaid)
+		assertDeployKeyIsMaterialised(deployKeys.Kubeaid, "kubeaid")
 	}
 	hydrateSSHKeyPairConfig(&deployKeys.KubeaidConfig)
+	assertDeployKeyIsMaterialised(&deployKeys.KubeaidConfig, "kubeaidConfig")
 
 	// When using SSH private key to authenticate against git.
 	if generalConfig.Git.SSHKeyPairConfig != nil {
@@ -113,14 +116,55 @@ func hydrateSSHKeyPairConfig(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	hydrateSSHKeyPairFromFile(sshKeyPairConfig)
 }
 
+// assertDeployKeyIsMaterialised fails the run when a deploy key hydrated to
+// no private key material.
+//
+// ArgoCD's deploy keys are the one pair that cannot be agent-held: they are
+// rendered into a SealedSecret and live in the cluster, so the material has
+// to exist here. hydrateSSHKeyPairFromAgent leaves PrivateKey empty by
+// design, and the sealed-secret template would embed that emptiness happily —
+// producing a cluster that bootstraps, reports success, and then silently
+// never syncs because ArgoCD cannot authenticate to the repository.
+//
+// Cheap check, whole class of failure, and it fires at parse time rather than
+// an hour into a bootstrap.
+func assertDeployKeyIsMaterialised(sshKeyPairConfig *config.SSHKeyPairConfig, name string) {
+	ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
+		slog.String("deploy-key", name),
+	})
+
+	assert.Assert(ctx, sshKeyPairConfig.PrivateKey != "",
+		fmt.Sprintf(
+			"ArgoCD deploy key %q resolved to no private key material — it is sealed into a Secret and read inside the cluster, so it cannot come from an SSH agent; point privateKeyFilePath at a key file, or let an install token deliver one",
+			name,
+		),
+	)
+}
+
 func hydrateSSHKeyPairFromFile(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
 		slog.String("private-key-file-path", sshKeyPairConfig.PrivateKeyFilePath),
 	})
 
+	// An empty path means nothing filled it in: general.yaml was written
+	// without one, or it came from the portal and the install token carried
+	// no key for this slot. os.ReadFile reports that as a missing file named
+	// "", which sends the operator looking for the wrong thing.
+	assert.Assert(ctx, sshKeyPairConfig.PrivateKeyFilePath != "",
+		"No SSH private key file path set and useSSHAgent is false: set a path, enable the agent, or re-run with an install token that delivers the key",
+	)
+
+	// Expand "~" before reading. os.ReadFile does no shell expansion, so
+	// ~/.ssh/id_ed25519 — which is what the portal's wizard offers by
+	// default — would otherwise be looked for inside a directory literally
+	// named "~".
+	privateKeyFilePath, err := utils.ToAbsolutePath(sshKeyPairConfig.PrivateKeyFilePath)
+	assert.AssertErrNil(ctx, err, "Failed resolving SSH private key file path")
+	sshKeyPairConfig.PrivateKeyFilePath = privateKeyFilePath
+
 	// Read the SSH private key.
-	privateKey, err := os.ReadFile(sshKeyPairConfig.PrivateKeyFilePath)
-	assert.AssertErrNil(ctx, err, "Failed reading file")
+	privateKey, err := os.ReadFile(privateKeyFilePath)
+	assert.AssertErrNil(ctx, err, "Failed reading SSH private key file")
 
 	sshKeyPairConfig.PrivateKey = strings.TrimSpace(string(privateKey))
 
