@@ -7,14 +7,17 @@ import (
 	"context"
 	"crypto"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
 	"strings"
 
+	"github.com/charmbracelet/huh"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -141,18 +144,95 @@ func assertDeployKeyIsMaterialised(sshKeyPairConfig *config.SSHKeyPairConfig, na
 	)
 }
 
+// Test seams: the prompt and the TTY check both need a real terminal, so unit
+// tests override these to drive the branching without one. Same shape as
+// pkg/core/netbird's.
+var (
+	stdinIsTerminal         = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
+	promptSSHPrivateKeyPath = runSSHPrivateKeyPathForm
+)
+
+// defaultSSHPrivateKeyPath is what the prompt starts on: the name almost every
+// key has, and the one the portal's wizard offers.
+const defaultSSHPrivateKeyPath = "~/.ssh/id_ed25519"
+
+// askForSSHPrivateKeyPath asks where the private key is, for a key pair
+// general.yaml named no path for.
+//
+// Config that arrives without a path is not a broken config — it is an
+// unfinished one, and the answer is on the operator's own machine. Failing
+// would tell someone holding the key that they cannot proceed.
+//
+// Unattended runs cannot answer, so those still fail, with a message naming
+// every way out rather than the "no such file" that an empty path used to
+// produce.
+func askForSSHPrivateKeyPath(ctx context.Context) string {
+	assert.Assert(ctx, stdinIsTerminal(),
+		"No SSH private key file path set, useSSHAgent is false, and there is no terminal to ask on: set privateKeyFilePath in general.yaml, enable useSSHAgent, or re-run with an install token that delivers the key",
+	)
+
+	path := defaultSSHPrivateKeyPath
+	err := promptSSHPrivateKeyPath(&path)
+	assert.AssertErrNil(ctx, err, "Failed asking for the SSH private key file path")
+
+	return path
+}
+
+// runSSHPrivateKeyPathForm asks for a path and refuses to return one that is
+// not a readable SSH private key — better to correct it here than to accept it
+// and fail on the next line.
+func runSSHPrivateKeyPathForm(path *string) error {
+	return huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Path to your SSH private key:").
+				Description("general.yaml names no privateKeyFilePath for this key. Where is it on this machine?").
+				Value(path).
+				Validate(validateSSHPrivateKeyAtPath),
+		),
+	).Run()
+}
+
+// validateSSHPrivateKeyAtPath checks the answer names a key this run can
+// actually use. Encrypted keys pass: the passphrase is supplied later, the
+// same allowance pkg/config/prompt makes.
+func validateSSHPrivateKeyAtPath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return fmt.Errorf("a path is required")
+	}
+
+	absolutePath, err := utils.ToAbsolutePath(path)
+	if err != nil {
+		return fmt.Errorf("resolving %s: %w", path, err)
+	}
+
+	privateKey, err := os.ReadFile(absolutePath)
+	if err != nil {
+		return fmt.Errorf("reading %s: %w", absolutePath, err)
+	}
+
+	if _, err := ssh.ParseRawPrivateKey(privateKey); err != nil {
+		var missingPassphrase *ssh.PassphraseMissingError
+		if errors.As(err, &missingPassphrase) {
+			return nil
+		}
+		return fmt.Errorf("%s is not an SSH private key: %w", absolutePath, err)
+	}
+	return nil
+}
+
 func hydrateSSHKeyPairFromFile(sshKeyPairConfig *config.SSHKeyPairConfig) {
 	ctx := logger.AppendSlogAttributesToCtx(context.Background(), []slog.Attr{
 		slog.String("private-key-file-path", sshKeyPairConfig.PrivateKeyFilePath),
 	})
 
 	// An empty path means nothing filled it in: general.yaml was written
-	// without one, or it came from the portal and the install token carried
-	// no key for this slot. os.ReadFile reports that as a missing file named
-	// "", which sends the operator looking for the wrong thing.
-	assert.Assert(ctx, sshKeyPairConfig.PrivateKeyFilePath != "",
-		"No SSH private key file path set and useSSHAgent is false: set a path, enable the agent, or re-run with an install token that delivers the key",
-	)
+	// without one, or it came from the portal and the install token carried no
+	// key for this slot. The operator almost always has the key — they just
+	// never said where — so ask rather than end the run over it.
+	if sshKeyPairConfig.PrivateKeyFilePath == "" {
+		sshKeyPairConfig.PrivateKeyFilePath = askForSSHPrivateKeyPath(ctx)
+	}
 
 	// Expand "~" before reading. os.ReadFile does no shell expansion, so
 	// ~/.ssh/id_ed25519 — which is what the portal's wizard offers by

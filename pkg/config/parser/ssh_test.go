@@ -98,3 +98,80 @@ func TestPublicKeyFileMatchesFingerprint(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// TestHydrateSSHKeyPairFromFileAsksWhenNoPathIsSet covers the config that
+// names no privateKeyFilePath. The operator has the key — they just never said
+// where — so the run asks instead of ending.
+func TestHydrateSSHKeyPairFromFileAsksWhenNoPathIsSet(t *testing.T) {
+	privatePEM, authorizedKey, fingerprint := sshTestKeyPair(t)
+	keyPath := sshTestTempFile(t, "id_ed25519", privatePEM)
+
+	restoreTerminal := stdinIsTerminal
+	restorePrompt := promptSSHPrivateKeyPath
+	t.Cleanup(func() {
+		stdinIsTerminal = restoreTerminal
+		promptSSHPrivateKeyPath = restorePrompt
+	})
+
+	asked := 0
+	stdinIsTerminal = func() bool { return true }
+	promptSSHPrivateKeyPath = func(path *string) error {
+		asked++
+		// The prompt opens on the usual location rather than an empty field.
+		assert.Equal(t, defaultSSHPrivateKeyPath, *path)
+		*path = keyPath
+		return nil
+	}
+
+	sshKeyPairConfig := &config.SSHKeyPairConfig{}
+	hydrateSSHKeyPairFromFile(sshKeyPairConfig)
+
+	assert.Equal(t, 1, asked)
+	assert.Equal(t, keyPath, sshKeyPairConfig.PrivateKeyFilePath, "the answer is kept for the rest of the run")
+	assert.Equal(t, string(authorizedKey), sshKeyPairConfig.PublicKey)
+	assert.Equal(t, fingerprint, sshKeyPairConfig.Fingerprint)
+}
+
+// TestHydrateSSHKeyPairFromFileDoesNotAskWhenAPathIsSet is the other half:
+// a config that already answers the question is never interrupted.
+func TestHydrateSSHKeyPairFromFileDoesNotAskWhenAPathIsSet(t *testing.T) {
+	privatePEM, _, _ := sshTestKeyPair(t)
+
+	restoreTerminal := stdinIsTerminal
+	restorePrompt := promptSSHPrivateKeyPath
+	t.Cleanup(func() {
+		stdinIsTerminal = restoreTerminal
+		promptSSHPrivateKeyPath = restorePrompt
+	})
+
+	stdinIsTerminal = func() bool { return true }
+	promptSSHPrivateKeyPath = func(_ *string) error {
+		t.Fatal("must not ask when general.yaml already names a path")
+		return nil
+	}
+
+	hydrateSSHKeyPairFromFile(&config.SSHKeyPairConfig{
+		PrivateKeyFilePath: sshTestTempFile(t, "id_ed25519", privatePEM),
+	})
+}
+
+// TestValidateSSHPrivateKeyAtPath keeps a wrong answer inside the prompt,
+// where it can be corrected, rather than accepting it and failing on the next
+// line. Tilde expansion is covered here too: it is the form most keys are
+// named by, and os.ReadFile does not do it.
+func TestValidateSSHPrivateKeyAtPath(t *testing.T) {
+	privatePEM, _, _ := sshTestKeyPair(t)
+	keyPath := sshTestTempFile(t, "id_ed25519", privatePEM)
+
+	assert.NoError(t, validateSSHPrivateKeyAtPath(keyPath))
+	assert.Error(t, validateSSHPrivateKeyAtPath(""), "an empty answer is not a path")
+	assert.Error(t, validateSSHPrivateKeyAtPath(filepath.Join(t.TempDir(), "absent")))
+
+	notAKey := sshTestTempFile(t, "notes.txt", []byte("this is not a key\n"))
+	assert.Error(t, validateSSHPrivateKeyAtPath(notAKey))
+
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	assert.Error(t, validateSSHPrivateKeyAtPath("~/"+filepath.Base(t.TempDir())+"/definitely-absent"),
+		"a ~ path must be resolved against %s, not read literally", home)
+}
