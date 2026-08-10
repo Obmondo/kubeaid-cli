@@ -1,4 +1,10 @@
 - - -
+## v0.31.6 - 2026-08-10
+#### Miscellaneous Chores
+- (**version**) v0.31.5 - (8fd28c4) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.5 - 2026-08-10
 #### Features
 - (**aws**) add EKS (managed control plane) cluster support - (5784e53) - Ashish Jaiswal
