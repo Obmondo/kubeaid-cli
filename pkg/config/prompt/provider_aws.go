@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -22,9 +23,30 @@ import (
 // The file is ~11MB, so the timeout is intentionally generous.
 const (
 	canonicalAWSStreamsURL = "https://cloud-images.ubuntu.com/releases/streams/v1/com.ubuntu.cloud:released:aws.json"
-	ubuntu2404ProductID    = "com.ubuntu.cloud:server:24.04:amd64"
+	ubuntuVersion          = "26.04"
+	ubuntuProductAMD64     = "com.ubuntu.cloud:server:" + ubuntuVersion + ":amd64"
+	ubuntuProductARM64     = "com.ubuntu.cloud:server:" + ubuntuVersion + ":arm64"
 	amiFetchTimeout        = 15 * time.Second
+
+	// ARM (Graviton) is the default : c7g.xlarge is the smallest Graviton
+	// type meeting the 4 vCPU / 8 GB baseline. Overridable in general.yaml —
+	// the AMI product (arm64 vs amd64) follows the instance type.
+	defaultAWSInstanceType = "c7g.xlarge"
 )
+
+// awsARMInstanceTypeRegexp matches AWS Graviton (arm64) instance types by
+// their family naming convention : the letters following the generation digit
+// include 'g' (t4g, m7g, c7gn, x2gd, im4gn, g5g, hpc7g), plus the first-gen
+// a1 family. The GPU families (g4dn, g5) don't match — their 'g' precedes the
+// generation digit.
+var awsARMInstanceTypeRegexp = regexp.MustCompile(`^(?:[a-z]+\d+[a-z]*g[a-z]*|a1)\.`)
+
+// awsInstanceTypeIsARM reports whether the given EC2 instance type is ARM
+// (Graviton) based, from its name alone — no AWS API call, so it works before
+// credentials are configured.
+func awsInstanceTypeIsARM(instanceType string) bool {
+	return awsARMInstanceTypeRegexp.MatchString(instanceType)
+}
 
 // simplestreams JSON structures — see https://cloudinit.readthedocs.io/en/latest/topics/datasources/simplestreams.html
 // and Canonical's published schema. Only fields we care about are decoded.
@@ -52,9 +74,14 @@ type (
 	}
 )
 
-// fetchLatestUbuntu2404AMIs pulls Canonical's published simplestreams index
-// and returns the newest HVM + SSD-backed AMI IDs keyed by region.
-func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[string]string, error) {
+// fetchLatestUbuntuAMIs pulls Canonical's published simplestreams index and
+// returns the newest HVM + SSD-backed AMI IDs for the given product (an
+// Ubuntu release + architecture pair), keyed by region.
+func fetchLatestUbuntuAMIs(
+	ctx context.Context,
+	client *http.Client,
+	productID string,
+) (map[string]string, error) {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -87,9 +114,9 @@ func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[st
 		return nil, fmt.Errorf("decoding simplestreams index: %w", err)
 	}
 
-	product, ok := index.Products[ubuntu2404ProductID]
+	product, ok := index.Products[productID]
 	if !ok {
-		return nil, fmt.Errorf("product %q missing from simplestreams index", ubuntu2404ProductID)
+		return nil, fmt.Errorf("product %q missing from simplestreams index", productID)
 	}
 
 	// Version keys are YYYYMMDD-style strings — lexicographic descending order gives newest first.
@@ -98,7 +125,7 @@ func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[st
 		versionKeys = append(versionKeys, k)
 	}
 	if len(versionKeys) == 0 {
-		return nil, fmt.Errorf("no versions listed for product %q", ubuntu2404ProductID)
+		return nil, fmt.Errorf("no versions listed for product %q", productID)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(versionKeys)))
 
@@ -127,7 +154,7 @@ func fetchLatestUbuntu2404AMIs(ctx context.Context, client *http.Client) (map[st
 	}
 
 	if len(amis) == 0 {
-		return nil, fmt.Errorf("no HVM/SSD AMIs found for product %q", ubuntu2404ProductID)
+		return nil, fmt.Errorf("no HVM/SSD AMIs found for product %q", productID)
 	}
 
 	return amis, nil
@@ -174,12 +201,13 @@ func detectAWSCredentials() (source string, ok bool) {
 }
 
 func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
-	// Default region and smallest general-purpose instance type.
+	// Default region and instance type — ARM (Graviton) by default, at the
+	// 4 vCPU / 8 GB baseline.
 	if cfg.AWSRegion == "" {
 		cfg.AWSRegion = "eu-west-1"
 	}
 	if cfg.AWSCPInstanceType == "" {
-		cfg.AWSCPInstanceType = "t3.medium"
+		cfg.AWSCPInstanceType = defaultAWSInstanceType
 	}
 
 	// Control-plane flavour comes BEFORE credentials : the credentials are the
@@ -255,9 +283,15 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 	}
 
 	// Attempt to auto-detect AMI from Canonical; fall back to a manual prompt.
-	amiMap, err := fetchLatestUbuntu2404AMIs(context.Background(), http.DefaultClient)
+	// The architecture follows the instance type : Graviton types get the
+	// arm64 product, everything else amd64.
+	amiProduct := ubuntuProductAMD64
+	if awsInstanceTypeIsARM(cfg.AWSCPInstanceType) {
+		amiProduct = ubuntuProductARM64
+	}
+	amiMap, err := fetchLatestUbuntuAMIs(context.Background(), http.DefaultClient, amiProduct)
 	if err != nil {
-		slog.Warn("Failed to fetch latest Ubuntu 24.04 AMI from Canonical",
+		slog.Warn("Failed to fetch latest Ubuntu "+ubuntuVersion+" AMI from Canonical",
 			slog.Any("error", err))
 	} else if ami, ok := amiMap[cfg.AWSRegion]; ok {
 		cfg.AWSAMIID = ami
@@ -268,7 +302,7 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 			huh.NewGroup(
 				huh.NewInput().
 					TitleFunc(func() string {
-						return fmt.Sprintf("Ubuntu 24.04 AMI ID for region %s:", cfg.AWSRegion)
+						return fmt.Sprintf("Ubuntu %s AMI ID for region %s:", ubuntuVersion, cfg.AWSRegion)
 					}, &cfg.AWSRegion).
 					Value(&cfg.AWSAMIID).
 					Validate(nonEmpty),

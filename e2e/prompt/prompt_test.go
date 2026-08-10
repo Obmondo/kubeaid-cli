@@ -332,8 +332,8 @@ func TestAWS_PromptFlow(t *testing.T) {
 
 	// After the credentials form returns, AMI lookup runs. If it fails
 	// (no network in CI), a manual AMI input form is shown.
-	nextPrompt := c.expectAnyString("Ubuntu 24.04 AMI ID for region", "ArgoCD deploy key")
-	if nextPrompt == "Ubuntu 24.04 AMI ID for region" {
+	nextPrompt := c.expectAnyString("Ubuntu 26.04 AMI ID for region", "ArgoCD deploy key")
+	if nextPrompt == "Ubuntu 26.04 AMI ID for region" {
 		c.sendLine("ami-0e2etestmanual123")
 	}
 
@@ -371,7 +371,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 
 	// AWS specifics.
 	assert.Contains(t, general, "region: eu-west-1")
-	assert.Contains(t, general, "instanceType: t3.medium")
+	assert.Contains(t, general, "instanceType: c7g.xlarge")
 	assert.Contains(t, general, "replicas: 3")
 	assert.Contains(t, general, "bastionEnabled: true")
 	assert.Contains(t, general, "loadBalancerScheme: internet-facing")

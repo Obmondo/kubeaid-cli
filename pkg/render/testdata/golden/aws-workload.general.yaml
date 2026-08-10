@@ -38,4 +38,18 @@ cloud:
       instanceType: t3.medium
       ami:
         id: ami-0123456789abcdef0
+    # cpu / memory feed the cluster-autoscaler scale-from-zero capacity
+    # annotations — keep them in sync if you change instanceType. The AMI must
+    # match the instance type's architecture.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        instanceType: t3.medium
+        rootVolumeSize: 35
+        sshKeyName: aws-acme
+        ami:
+          id: ami-0123456789abcdef0
 

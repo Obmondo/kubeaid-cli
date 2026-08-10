@@ -70,6 +70,16 @@ cloud:
 {{- if .AWSEKS }}
     eks: true
     bastionEnabled: true
+    # cpu / memory feed the cluster-autoscaler scale-from-zero capacity
+    # annotations — keep them in sync if you change instanceType.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        instanceType: {{ .AWSCPInstanceType }}
+        rootVolumeSize: 35
 {{- else }}
     sshKeyName: {{ .AWSSSHKeyName }}
     bastionEnabled: true
@@ -79,6 +89,20 @@ cloud:
       instanceType: {{ .AWSCPInstanceType }}
       ami:
         id: {{ .AWSAMIID }}
+    # cpu / memory feed the cluster-autoscaler scale-from-zero capacity
+    # annotations — keep them in sync if you change instanceType. The AMI must
+    # match the instance type's architecture.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        instanceType: {{ .AWSCPInstanceType }}
+        rootVolumeSize: 35
+        sshKeyName: {{ .AWSSSHKeyName }}
+        ami:
+          id: {{ .AWSAMIID }}
 {{- end }}
 {{- end }}
 {{- if eq .CloudProvider "azure" }}

@@ -114,11 +114,26 @@ func TestDetectAWSCredentials(t *testing.T) {
 	}
 }
 
-func TestFetchLatestUbuntu2404AMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T) {
+func TestAWSInstanceTypeIsARM(t *testing.T) {
+	for _, instanceType := range []string{
+		"c7g.xlarge", "t4g.medium", "m7g.large", "c7gn.xlarge", "x2gd.large",
+		"im4gn.xlarge", "g5g.xlarge", "hpc7g.4xlarge", "a1.large", "r8g.medium",
+	} {
+		assert.True(t, awsInstanceTypeIsARM(instanceType), instanceType)
+	}
+	for _, instanceType := range []string{
+		"t3.medium", "m5.large", "c5.xlarge", "g4dn.xlarge", "g5.xlarge",
+		"m6i.large", "r5ad.large",
+	} {
+		assert.False(t, awsInstanceTypeIsARM(instanceType), instanceType)
+	}
+}
+
+func TestFetchLatestUbuntuAMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{
 			"products": {
-				"com.ubuntu.cloud:server:24.04:amd64": {
+				"com.ubuntu.cloud:server:26.04:arm64": {
 					"versions": {
 						"20240101": {
 							"items": {
@@ -141,7 +156,7 @@ func TestFetchLatestUbuntu2404AMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T
 	}))
 	defer server.Close()
 
-	amis, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+	amis, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
@@ -150,25 +165,25 @@ func TestFetchLatestUbuntu2404AMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T
 	}, amis)
 }
 
-func TestFetchLatestUbuntu2404AMIsReturnsStatusError(t *testing.T) {
+func TestFetchLatestUbuntuAMIsReturnsStatusError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
 
-	_, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+	_, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unexpected status")
 }
 
-func TestFetchLatestUbuntu2404AMIsReturnsErrorForMissingProduct(t *testing.T) {
+func TestFetchLatestUbuntuAMIsReturnsErrorForMissingProduct(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"products": {}}`))
 	}))
 	defer server.Close()
 
-	_, err := fetchLatestUbuntu2404AMIs(context.Background(), clientForTestServer(server))
+	_, err := fetchLatestUbuntuAMIs(context.Background(), clientForTestServer(server), ubuntuProductARM64)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "missing")
