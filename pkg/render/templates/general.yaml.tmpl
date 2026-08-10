@@ -1,7 +1,7 @@
 git:
   sshUsername: {{ .SSHUsername }}
   useSSHAgent: {{ .UseSSHAgent }}
-{{- if and (not .UseSSHAgent) .SSHKeyPath }}
+{{- if not .UseSSHAgent }}
   privateKeyFilePath: {{ .SSHKeyPath }}
 {{- end }}
 {{- if .GitKnownHosts }}
