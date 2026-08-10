@@ -371,6 +371,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 
 	// AWS specifics.
 	assert.Contains(t, general, "region: eu-west-1")
+	assert.Contains(t, general, "instanceType: t4g.medium")
 	assert.Contains(t, general, "instanceType: c7g.xlarge")
 	assert.Contains(t, general, "replicas: 3")
 	assert.Contains(t, general, "bastionEnabled: true")

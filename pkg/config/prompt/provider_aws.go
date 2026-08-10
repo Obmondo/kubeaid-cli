@@ -28,10 +28,15 @@ const (
 	ubuntuProductARM64     = "com.ubuntu.cloud:server:" + ubuntuVersion + ":arm64"
 	amiFetchTimeout        = 15 * time.Second
 
-	// ARM (Graviton) is the default : c7g.xlarge is the smallest Graviton
-	// type meeting the 4 vCPU / 8 GB baseline. Overridable in general.yaml —
-	// the AMI product (arm64 vs amd64) follows the instance type.
-	defaultAWSInstanceType = "c7g.xlarge"
+	// ARM (Graviton) is the default. The control plane keeps the small
+	// general-purpose sizing it always had (t4g.medium is the Graviton
+	// equivalent of the old t3.medium default); workers get c7g.xlarge, the
+	// smallest Graviton type meeting the 4 vCPU / 8 GB baseline. Both are
+	// overridable in general.yaml — the AMI product (arm64 vs amd64) follows
+	// the control-plane instance type, and one AMI serves CP + workers, so
+	// keep the two families on the same architecture.
+	defaultAWSCPInstanceType   = "t4g.medium"
+	defaultAWSNodeInstanceType = "c7g.xlarge"
 )
 
 // awsARMInstanceTypeRegexp matches AWS Graviton (arm64) instance types by
@@ -201,13 +206,16 @@ func detectAWSCredentials() (source string, ok bool) {
 }
 
 func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
-	// Default region and instance type — ARM (Graviton) by default, at the
-	// 4 vCPU / 8 GB baseline.
+	// Default region and instance types — ARM (Graviton) by default : small
+	// control plane, 4 vCPU / 8 GB workers.
 	if cfg.AWSRegion == "" {
 		cfg.AWSRegion = "eu-west-1"
 	}
 	if cfg.AWSCPInstanceType == "" {
-		cfg.AWSCPInstanceType = defaultAWSInstanceType
+		cfg.AWSCPInstanceType = defaultAWSCPInstanceType
+	}
+	if cfg.AWSNodeInstanceType == "" {
+		cfg.AWSNodeInstanceType = defaultAWSNodeInstanceType
 	}
 
 	// Control-plane flavour comes BEFORE credentials : the credentials are the

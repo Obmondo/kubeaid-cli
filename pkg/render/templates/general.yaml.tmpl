@@ -78,7 +78,7 @@ cloud:
         maxSize: 6
         cpu: 4
         memory: 8
-        instanceType: {{ .AWSCPInstanceType }}
+        instanceType: {{ .AWSNodeInstanceType }}
         rootVolumeSize: 35
 {{- else }}
     sshKeyName: {{ .AWSSSHKeyName }}
@@ -98,7 +98,7 @@ cloud:
         maxSize: 6
         cpu: 4
         memory: 8
-        instanceType: {{ .AWSCPInstanceType }}
+        instanceType: {{ .AWSNodeInstanceType }}
         rootVolumeSize: 35
         sshKeyName: {{ .AWSSSHKeyName }}
         ami:

@@ -47,7 +47,7 @@ cloud:
         maxSize: 6
         cpu: 4
         memory: 8
-        instanceType: t3.medium
+        instanceType: c7g.xlarge
         rootVolumeSize: 35
         sshKeyName: aws-acme
         ami:
