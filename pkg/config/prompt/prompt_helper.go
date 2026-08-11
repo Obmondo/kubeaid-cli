@@ -219,6 +219,25 @@ func wrapLine(line string, maxWidth int) []string {
 	return result
 }
 
+// configuredSSHKeyPath reports whether general.yaml already answers a key path
+// question, and refuses the run when it answers it wrongly.
+//
+// Set and resolving is an answer — the operator supplied that key once, and
+// asking for it again on every re-run is noise. Set but not resolving is a
+// broken config rather than an open question: re-asking would paper over a
+// general.yaml pointing at a key that has moved or was never delivered, so the
+// run stops and names the field instead. Unset is simply not answered yet.
+func configuredSSHKeyPath(field, keyPath string) (bool, error) {
+	if strings.TrimSpace(keyPath) == "" {
+		return false, nil
+	}
+
+	if err := validateSSHKeyPath(keyPath); err != nil {
+		return false, fmt.Errorf("%s is set to %q in general.yaml: %w", field, keyPath, err)
+	}
+	return true, nil
+}
+
 func validateSSHKeyPath(p string) error {
 	if strings.TrimSpace(p) == "" {
 		return errRequired
