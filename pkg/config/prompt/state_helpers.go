@@ -11,7 +11,9 @@ type promptState struct {
 	VPNKeycloak  bool `yaml:"vpnKeycloak"`
 	VPNEndpoints bool `yaml:"vpnEndpoints"`
 	// WorkloadLockdown gates the workload Host Firewall (CCNP) step.
-	WorkloadLockdown    bool `yaml:"workloadLockdown"`
+	WorkloadLockdown bool `yaml:"workloadLockdown"`
+	// Security gates the optional security Apps step.
+	Security            bool `yaml:"security"`
 	ProviderCredentials bool `yaml:"providerCredentials"`
 	GitSSH              bool `yaml:"gitSSH"`
 	ObmondoSupport      bool `yaml:"obmondoSupport"`

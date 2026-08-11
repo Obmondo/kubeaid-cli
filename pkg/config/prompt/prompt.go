@@ -282,6 +282,10 @@ func (s *promptSession) runPromptSteps() error {
 		return err
 	}
 
+	if err := s.collectSecurityIfNeeded(); err != nil {
+		return err
+	}
+
 	if err := s.collectGitSSHIfNeeded(); err != nil {
 		return err
 	}
@@ -465,6 +469,72 @@ func (s *promptSession) collectObmondoSupportIfNeeded() error {
 		return fmt.Errorf("collecting Obmondo support config: %w", err)
 	}
 	s.state.ObmondoSupport = true
+
+	return nil
+}
+
+// collectSecurityIfNeeded asks which optional security Apps to deploy. Applies
+// to every cluster type — CVEs and runtime events are not provider-specific.
+func (s *promptSession) collectSecurityIfNeeded() error {
+	if s.state.Security {
+		return nil
+	}
+
+	if err := runSecurityFormFn(s.cfg); err != nil {
+		return fmt.Errorf("collecting security config: %w", err)
+	}
+	s.state.Security = true
+
+	return nil
+}
+
+// runSecurityFormFn is the test seam for the security form.
+var runSecurityFormFn = runSecurityForm
+
+// runSecurityForm asks which optional security Apps to deploy.
+//
+// Risk-exposure monitoring defaults to yes: it is two lightweight workloads
+// and the alert it enables only fires when a fix is actually available.
+// Runtime detection defaults to no — Tetragon is a per-node DaemonSet and,
+// without TracingPolicy resources, produces an event stream rather than
+// alerts.
+func runSecurityForm(cfg *PromptedConfig) error {
+	vulnerabilityScanning := true
+	runtimeDetection := false
+
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewNote().
+				Title("Risk exposure monitoring").
+				Description("Deploys trivy-operator and version-checker together.\n"+
+					"Alerts when a running image has fixable Critical/High CVEs\n"+
+					"AND a newer tag exists upstream — so every alert has an\n"+
+					"upgrade you can actually apply."),
+			huh.NewConfirm().
+				Title("Enable risk exposure monitoring?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&vulnerabilityScanning),
+		),
+		huh.NewGroup(
+			huh.NewNote().
+				Title("Runtime detection (Tetragon)").
+				Description("eBPF process, network and file events from every node,\n"+
+					"exported to your log stack. Observability-only until you\n"+
+					"apply TracingPolicy resources.\n\n"+
+					"Needs a BTF-enabled kernel (>= 5.4) on every node."),
+			huh.NewConfirm().
+				Title("Enable runtime detection?").
+				Affirmative("Yes").
+				Negative("No").
+				Value(&runtimeDetection),
+		),
+	).Run(); err != nil {
+		return err
+	}
+
+	cfg.VulnerabilityScanning = &vulnerabilityScanning
+	cfg.RuntimeDetection = &runtimeDetection
 
 	return nil
 }

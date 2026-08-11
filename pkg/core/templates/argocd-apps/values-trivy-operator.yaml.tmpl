@@ -1,0 +1,13 @@
+# Per-cluster overrides for the trivy-operator chart.
+# Chart defaults already filter to CRITICAL/HIGH with ignoreUnfixed and enable
+# the ServiceMonitor; only deviations belong here.
+#
+# The trivy-operator key maps to the wrapped upstream subchart; kubeaid is the
+# KubeAid wrapper's own.
+trivy-operator:
+  # Namespaces to leave unscanned, comma-separated.
+  excludeNamespaces: "kube-system,argocd"
+
+kubeaid:
+  prometheusRule:
+    enabled: true

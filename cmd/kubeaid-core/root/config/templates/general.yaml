@@ -87,6 +87,21 @@ cluster:
   # step. nil = ask interactively (legacy behavior); true = apply
   # without prompting (CI-safe); false = skip the step.
   lockdown:
+  # Security selects the optional security ArgoCD Apps. Omitting the block
+  # leaves every one of them off, so an existing cluster's App set does not
+  # change on upgrade.
+  security:
+    # Deploys trivy-operator together with version-checker. They are one
+    # switch because trivy-operator's ImageOutdatedAndVulnerable alert joins
+    # a metric from each — trivy-operator alone installs an alert that can
+    # never fire. The alert only fires when a running image has fixable
+    # Critical/High CVEs AND a newer tag exists upstream, so every alert
+    # carries an upgrade you can actually apply.
+    vulnerabilityScanning: false
+    # Deploys tetragon: eBPF process, network and file events from every
+    # node. Observability-only until you apply TracingPolicy resources.
+    # Requires a BTF-enabled kernel (>= 5.4) on every node.
+    runtimeDetection: false
   # Keycloak declares the Keycloak instance a VPN cluster hosts as
   # NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →
   # kubeaid-cli installs it; mode=external → operator runs it

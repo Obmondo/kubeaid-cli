@@ -553,6 +553,22 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		constants.CommonCloudSpecificNonSecretTemplateNames...,
 	)
 
+	// Optional security Apps, opted into via cluster.security. Off by default
+	// so an existing cluster's App set does not change on upgrade.
+	//
+	// trivy-operator and version-checker render together: the chart's
+	// ImageOutdatedAndVulnerable alert joins a metric from each.
+	if config.VulnerabilityScanningEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.VulnerabilityScanningTemplateNames...,
+		)
+	}
+	if config.RuntimeDetectionEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.RuntimeDetectionTemplateNames...,
+		)
+	}
+
 	// If the user has provided a CA bundle for accessing his / her Git repository,
 	// then we need to provide that CA bundle to ArgoCD via a ConfigMap.
 	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {

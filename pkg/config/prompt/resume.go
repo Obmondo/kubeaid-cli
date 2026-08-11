@@ -404,6 +404,7 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 		VPNKeycloak:         cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNKeycloak(cfg),
 		VPNEndpoints:        cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNEndpoints(cfg),
 		WorkloadLockdown:    cfg.ClusterType == constants.ClusterTypeVPN || cfg.Lockdown != nil,
+		Security:            cfg.VulnerabilityScanning != nil || cfg.RuntimeDetection != nil,
 		ProviderCredentials: !missingProviderPromptConfig(cfg),
 		GitSSH:              !missingGitSSH(cfg),
 		ObmondoSupport:      !missingObmondoSupportConfig(cfg),

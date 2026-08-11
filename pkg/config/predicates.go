@@ -200,3 +200,15 @@ func ObmondoIntegrationEnabled() bool {
 		obmondo.CertPath != "" &&
 		obmondo.KeyPath != ""
 }
+
+// VulnerabilityScanningEnabled reports whether to render the trivy-operator
+// and version-checker Apps. Both or neither: the chart's CVE alert joins a
+// metric from each, so trivy-operator alone yields an alert that cannot fire.
+func VulnerabilityScanningEnabled() bool {
+	return ParsedGeneralConfig.Cluster.Security.VulnerabilityScanning
+}
+
+// RuntimeDetectionEnabled reports whether to render the tetragon App.
+func RuntimeDetectionEnabled() bool {
+	return ParsedGeneralConfig.Cluster.Security.RuntimeDetection
+}

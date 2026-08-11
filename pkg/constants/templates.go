@@ -240,6 +240,27 @@ var (
 		"argocd-apps/values-rook-ceph.yaml.tmpl",
 	}
 
+	// VulnerabilityScanningTemplateNames are the risk-exposure App + values
+	// templates, rendered when cluster.security.vulnerabilityScanning is set.
+	//
+	// The two Apps ship as one set on purpose: trivy-operator's
+	// ImageOutdatedAndVulnerable alert joins trivy_vulnerability_id with
+	// version_checker_is_latest_version, so trivy-operator without
+	// version-checker installs an alert that can never fire.
+	VulnerabilityScanningTemplateNames = []string{
+		"argocd-apps/templates/trivy-operator.yaml.tmpl",
+		"argocd-apps/values-trivy-operator.yaml.tmpl",
+		"argocd-apps/templates/version-checker.yaml.tmpl",
+		"argocd-apps/values-version-checker.yaml.tmpl",
+	}
+
+	// RuntimeDetectionTemplateNames are the Tetragon App + values templates,
+	// rendered when cluster.security.runtimeDetection is set.
+	RuntimeDetectionTemplateNames = []string{
+		"argocd-apps/templates/tetragon.yaml.tmpl",
+		"argocd-apps/values-tetragon.yaml.tmpl",
+	}
+
 	HetznerBareMetalSpecificSecretTemplateNames = []string{
 		// For Cluster API.
 		"sealed-secrets/capi-cluster/hetzner-ssh-keypair.yaml.tmpl",
