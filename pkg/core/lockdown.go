@@ -347,7 +347,7 @@ func applyCCNP(ctx context.Context, c client.Client) error {
 
 	// Server-side apply: same strategy as ApplyManifestFromReader in apply.go.
 	// Handles both create and update in one call; idempotent.
-	if err := c.Patch(ctx, ccnp, client.Apply, client.ForceOwnership, client.FieldOwner("kubeaid-cli")); err != nil {
+	if err := c.Apply(ctx, client.ApplyConfigurationFromUnstructured(ccnp), client.ForceOwnership, client.FieldOwner("kubeaid-cli")); err != nil {
 		return fmt.Errorf("server-side applying CCNP %q: %w", ccnp.GetName(), err)
 	}
 	slog.InfoContext(ctx, "Applied host-firewall CCNP via server-side apply",

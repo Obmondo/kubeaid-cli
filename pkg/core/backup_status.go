@@ -19,7 +19,10 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/httpstream"
+
+	// Superseded by k8s.io/streaming/pkg/httpstream, but client-go's
+	// portforward package still takes and returns these types.
+	"k8s.io/apimachinery/pkg/util/httpstream" //nolint:staticcheck
 	"k8s.io/apimachinery/pkg/util/intstr"
 	k8sclientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"

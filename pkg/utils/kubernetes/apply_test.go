@@ -32,13 +32,13 @@ func newApplyTestScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-// patchCounter returns an interceptor.Funcs that counts Patch calls and
+// applyCounter returns an interceptor.Funcs that counts Apply calls and
 // succeeds unconditionally, simulating server-side apply behavior.
-func patchCounter() (interceptor.Funcs, *int) {
+func applyCounter() (interceptor.Funcs, *int) {
 	var mu sync.Mutex
 	count := 0
 	return interceptor.Funcs{
-		Patch: func(_ context.Context, _ client.WithWatch, _ client.Object, _ client.Patch, _ ...client.PatchOption) error {
+		Apply: func(_ context.Context, _ client.WithWatch, _ runtime.ApplyConfiguration, _ ...client.ApplyOption) error {
 			mu.Lock()
 			count++
 			mu.Unlock()
@@ -55,10 +55,10 @@ func TestApplyManifestFromReader(t *testing.T) {
 	tests := []struct {
 		name           string
 		yamlInput      string
-		interceptPatch func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error
+		interceptApply func(ctx context.Context, cl client.WithWatch, obj runtime.ApplyConfiguration, opts ...client.ApplyOption) error
 		wantErr        bool
 		wantErrSubstr  string
-		wantPatchCount int
+		wantApplyCount int
 	}{
 		{
 			name: "applies single ConfigMap document",
@@ -70,7 +70,7 @@ metadata:
 data:
   key: value
 `,
-			wantPatchCount: 1,
+			wantApplyCount: 1,
 		},
 		{
 			name: "applies multi-document YAML",
@@ -90,12 +90,12 @@ metadata:
 data:
   b: "2"
 `,
-			wantPatchCount: 2,
+			wantApplyCount: 2,
 		},
 		{
 			name:           "skips empty documents",
 			yamlInput:      "---\n\n---\n",
-			wantPatchCount: 0,
+			wantApplyCount: 0,
 		},
 		{
 			name:          "returns error on invalid YAML",
@@ -104,14 +104,14 @@ data:
 			wantErrSubstr: "decoding YAML document",
 		},
 		{
-			name: "returns error when Patch fails",
+			name: "returns error when Apply fails",
 			yamlInput: `apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fail-cm
   namespace: default
 `,
-			interceptPatch: func(_ context.Context, _ client.WithWatch, _ client.Object, _ client.Patch, _ ...client.PatchOption) error {
+			interceptApply: func(_ context.Context, _ client.WithWatch, _ runtime.ApplyConfiguration, _ ...client.ApplyOption) error {
 				return errors.New("conflict")
 			},
 			wantErr:       true,
@@ -123,15 +123,15 @@ metadata:
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			var patchCount *int
+			var applyCount *int
 			var funcs interceptor.Funcs
 
-			if tc.interceptPatch != nil {
+			if tc.interceptApply != nil {
 				funcs = interceptor.Funcs{
-					Patch: tc.interceptPatch,
+					Apply: tc.interceptApply,
 				}
 			} else {
-				funcs, patchCount = patchCounter()
+				funcs, applyCount = applyCounter()
 			}
 
 			fakeClient := crFake.NewClientBuilder().
@@ -148,8 +148,8 @@ metadata:
 			}
 			require.NoError(t, err)
 
-			if patchCount != nil {
-				assert.Equal(t, tc.wantPatchCount, *patchCount)
+			if applyCount != nil {
+				assert.Equal(t, tc.wantApplyCount, *applyCount)
 			}
 		})
 	}
@@ -166,7 +166,7 @@ func TestApplyManifestFromFile(t *testing.T) {
 		useNonexistent bool
 		wantErr        bool
 		wantErrSubstr  string
-		wantPatchCount int
+		wantApplyCount int
 	}{
 		{
 			name: "applies YAML from file",
@@ -178,7 +178,7 @@ metadata:
 data:
   hello: world
 `,
-			wantPatchCount: 1,
+			wantApplyCount: 1,
 		},
 		{
 			name:           "returns error for nonexistent file",
@@ -192,7 +192,7 @@ data:
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			funcs, patchCount := patchCounter()
+			funcs, applyCount := applyCounter()
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithInterceptorFuncs(funcs).
@@ -215,7 +215,7 @@ data:
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantPatchCount, *patchCount)
+			assert.Equal(t, tc.wantApplyCount, *applyCount)
 		})
 	}
 }
@@ -230,7 +230,7 @@ func TestApplyManifestFromURL(t *testing.T) {
 		handler        http.HandlerFunc
 		wantErr        bool
 		wantErrSubstr  string
-		wantPatchCount int
+		wantApplyCount int
 	}{
 		{
 			name: "applies YAML fetched from URL",
@@ -245,7 +245,7 @@ data:
   source: url
 `)
 			},
-			wantPatchCount: 1,
+			wantApplyCount: 1,
 		},
 		{
 			name: "returns error on non-200 status",
@@ -264,7 +264,7 @@ data:
 			server := httptest.NewServer(tc.handler)
 			t.Cleanup(server.Close)
 
-			funcs, patchCount := patchCounter()
+			funcs, applyCount := applyCounter()
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithInterceptorFuncs(funcs).
@@ -278,7 +278,7 @@ data:
 				return
 			}
 			require.NoError(t, err)
-			assert.Equal(t, tc.wantPatchCount, *patchCount)
+			assert.Equal(t, tc.wantApplyCount, *applyCount)
 		})
 	}
 }

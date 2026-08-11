@@ -448,7 +448,7 @@ type (
 
 		SSHKeyName     string                     `yaml:"sshKeyName"`
 		VPCID          *string                    `yaml:"vpcID"`
-		BastionEnabled bool                       `yaml:"bastionEnabled" default:"True"`
+		BastionEnabled bool                       `yaml:"bastionEnabled"         default:"True"`
 		ControlPlane   *AWSControlPlane           `yaml:"controlPlane,omitempty"`
 		NodeGroups     []AWSAutoScalableNodeGroup `yaml:"nodeGroups"`
 	}
@@ -464,8 +464,8 @@ type (
 		AutoScalableNodeGroup `yaml:",inline"`
 
 		AMI            *AMIConfig `yaml:"ami,omitempty"`
-		InstanceType   string     `yaml:"instanceType"   validate:"notblank"`
-		RootVolumeSize uint32     `yaml:"rootVolumeSize" validate:"required"`
+		InstanceType   string     `yaml:"instanceType"         validate:"notblank"`
+		RootVolumeSize uint32     `yaml:"rootVolumeSize"       validate:"required"`
 		SSHKeyName     string     `yaml:"sshKeyName,omitempty"`
 	}
 

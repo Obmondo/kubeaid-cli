@@ -129,6 +129,40 @@ func TestAWSInstanceTypeIsARM(t *testing.T) {
 	}
 }
 
+func TestUbuntuProductForInstanceType(t *testing.T) {
+	assert.Equal(t, ubuntuProductARM64, ubuntuProductForInstanceType("t4g.medium"))
+	assert.Equal(t, ubuntuProductAMD64, ubuntuProductForInstanceType("c6i.xlarge"))
+}
+
+func TestArchForProduct(t *testing.T) {
+	assert.Equal(t, "arm64", archForProduct(ubuntuProductARM64))
+	assert.Equal(t, "amd64", archForProduct(ubuntuProductAMD64))
+}
+
+func TestResolveUbuntuAMI(t *testing.T) {
+	index := &awsSimplestreamsIndex{
+		Products: map[string]awsSimplestreamsProduct{
+			ubuntuProductARM64: {
+				Versions: map[string]awsSimplestreamsVersion{
+					"20240201": {
+						Items: map[string]awsSimplestreamsItem{
+							"eu-west-1": {ID: "ami-arm-eu", CRSN: "eu-west-1", RootStore: "ssd", Virt: "hvm"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	assert.Equal(t, "ami-arm-eu", resolveUbuntuAMI(index, ubuntuProductARM64, "eu-west-1", "control-plane"))
+	// Region not covered by the product.
+	assert.Empty(t, resolveUbuntuAMI(index, ubuntuProductARM64, "ap-south-1", "control-plane"))
+	// Product missing from the index.
+	assert.Empty(t, resolveUbuntuAMI(index, ubuntuProductAMD64, "eu-west-1", "worker node-group"))
+	// Index fetch failed → nil index.
+	assert.Empty(t, resolveUbuntuAMI(nil, ubuntuProductARM64, "eu-west-1", "control-plane"))
+}
+
 func TestFetchLatestUbuntuAMIsReturnsLatestHVMSSDImagesByRegion(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{

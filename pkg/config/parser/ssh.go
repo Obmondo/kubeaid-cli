@@ -167,7 +167,9 @@ const defaultSSHPrivateKeyPath = "~/.ssh/id_ed25519"
 // every way out rather than the "no such file" that an empty path used to
 // produce.
 func askForSSHPrivateKeyPath(ctx context.Context) string {
-	assert.Assert(ctx, stdinIsTerminal(),
+	assert.Assert(
+		ctx,
+		stdinIsTerminal(),
 		"No SSH private key file path set, useSSHAgent is false, and there is no terminal to ask on: set privateKeyFilePath in general.yaml, enable useSSHAgent, or re-run with an install token that delivers the key",
 	)
 
