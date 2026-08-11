@@ -649,18 +649,17 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 // Ready and nothing else can be scheduled. The cilium ArgoCD App later adopts
 // the same manifests (same chart, same values source).
 //
-// kube-proxy replacement is enabled only on EKS, where kube-proxy is disabled
-// declaratively (spec.kubeProxy.disable). AKS always runs kube-proxy, so
-// Cilium runs alongside it there — matching values-cilium.yaml.tmpl.
+// Both managed flavours run kube-proxy-free with Cilium's replacement : EKS
+// disables kube-proxy via AWSManagedControlPlane.spec.kubeProxy.disable, AKS
+// via the chart's ASOManagedClusterPatches (networkProfile.kubeProxyConfig.
+// enabled=false — the classic CAPZ API has no first-class field for it).
+// Setting kubeProxyReplacement explicitly also sidesteps Cilium's kube-proxy
+// auto-detection, which AKS's windows-kube-proxy-initializer DaemonSet
+// confuses.
 func installCiliumOnManagedCluster(ctx context.Context) {
 	endpoint, err := kubernetes.GetMainClusterEndpoint(ctx)
 	assert.AssertErrNil(ctx, err, "Failed getting main cluster endpoint")
 	assert.AssertNotNil(ctx, endpoint, "Main cluster kubeconfig has no endpoint — cannot install Cilium")
-
-	kubeProxyReplacement := "true"
-	if config.AKSEnabled() {
-		kubeProxyReplacement = "false"
-	}
 
 	// KUBECONFIG already points at the main cluster's kubeconfig here — the
 	// Helm SDK picks it up from the environment.
@@ -671,7 +670,7 @@ func installCiliumOnManagedCluster(ctx context.Context) {
 		ReleaseName: "cilium",
 		Values: &helmValues.Options{
 			Values: []string{
-				fmt.Sprintf("cilium.kubeProxyReplacement=%s", kubeProxyReplacement),
+				"cilium.kubeProxyReplacement=true",
 				fmt.Sprintf("cilium.k8sServiceHost=%s", endpoint.Hostname()),
 				fmt.Sprintf("cilium.k8sServicePort=%s", endpoint.Port()),
 			},

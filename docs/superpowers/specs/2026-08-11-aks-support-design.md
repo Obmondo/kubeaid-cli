@@ -24,7 +24,7 @@ clouds behave the same, and deviates only where AKS forces it to.
 | 2 | Workers are **`AzureManagedMachinePool`s** (AKS agent pools), one per node-group; the first node-group renders as the required `System` mode pool, the rest as `User` pools | Unlike CAPA, CAPZ managed clusters support **only** machine pools — MachineDeployments cannot attach to an AKS control plane. `AzureManagedControlPlane` + `AzureManagedCluster` + `AzureManagedMachinePool` is CAPZ's GA managed-cluster path (CAPZ v1.21.1, the version the KubeAid chart pins). The CAPI `MachinePool` feature flag is enabled by default. |
 | 3 | Node autoscaling uses **AKS's built-in cluster autoscaler** (`AzureManagedMachinePool.spec.scaling` from the node-group's minSize/maxSize); the cluster-autoscaler addon is dropped | The CAPI-mode cluster-autoscaler manages MachineDeployments; AKS agent pools are scaled by AKS itself. Managed autoscaler needs no in-cluster pod and no RBAC. |
 | 4 | No machine images and no SSH keys to pick — `sshPublicKey`, `canonicalUbuntuImage`, and `controlPlane.*` must stay **unset** when `aks: true` | AKS owns node images and control-plane sizing. Nodes stay keyless (use `az aks command invoke` / node-shell for debugging), matching the EKS keyless-workers decision. |
-| 5 | **Cilium is the CNI**: the chart sets `AzureManagedControlPlane.spec.networkPlugin: none` (BYO CNI — an allowed enum value in CAPZ v1.21.1), and kubeaid-cli helm-installs the KubeAid cilium chart once the control plane is ready, exactly like the EKS flow. **kube-proxy stays enabled** — unlike EKS there is no supported declarative kube-proxy disable on AKS — so Cilium runs **without** kube-proxy replacement on AKS | Stack uniformity (network policy, Hubble) across KubeAid clusters. BYO-CNI worker nodes stay NotReady until a CNI lands, so the install is a bootstrap step, not an ArgoCD sync; the cilium ArgoCD App adopts the manifests afterwards. |
+| 5 | **Cilium is the CNI, kube-proxy-free**: the chart sets `AzureManagedControlPlane.spec.networkPlugin: none` (BYO CNI — an allowed enum value in CAPZ) **and disables kube-proxy** via `ASOManagedClusterPatches` (`networkProfile.kubeProxyConfig.enabled: false` on the underlying ASO ManagedCluster — the classic CAPZ API has no first-class field for it, up to and including v1.26.0). kubeaid-cli then helm-installs the KubeAid cilium chart with `kubeProxyReplacement=true` once the control plane is ready — identical to the EKS flow | Stack uniformity (network policy, Hubble, kube-proxy replacement) across KubeAid clusters. Setting `kubeProxyReplacement` explicitly also sidesteps Cilium's kube-proxy auto-detection, which AKS's `windows-kube-proxy-initializer` DaemonSet is known to confuse. BYO-CNI worker nodes stay NotReady until the CNI lands, so the install is a bootstrap step, not an ArgoCD sync; the cilium ArgoCD App adopts the manifests afterwards. Caveat: AKS's kube-proxy configuration may still require the `KubeProxyConfigurationPreview` feature registered on the subscription (pair the patch with CAPZ's `EnablePreviewFeatures` if so) — verify during the chart work. |
 | 6 | The prompt asks **self-managed vs AKS before credentials** | Same shape as AWS: credentials are identical either way, but AKS skips the HA question (Azure runs the control plane) and the storage-account derivation (decision 8). |
 | 7 | Lifecycle scope: **bootstrap + delete**. `cluster upgrade` and `cluster recover` are rejected for AKS with pointers to the GitOps flow / roadmap | Same as EKS decision 7: an upgrade is a GitOps edit (bump `global.kubernetes.version` in `values-capi-cluster.yaml`; ArgoCD syncs; CAPZ upgrades the AKS control plane and rolls the agent pools). |
 | 8 | Credentials: AKS uses the **AAD service principal directly**, via an `AzureClusterIdentity` of type `ServicePrincipal` whose client secret is sealed into the existing `capi-cluster/cloud-credentials` Secret. The **entire workload-identity machinery is skipped**: no Crossplane, no storage-account OIDC provider, no UAMIs, no K3D service-account-issuer key mounts, no azure-workload-identity webhook | The self-managed Azure flow needs all of that because CAPZ authenticates via Workload Identity against an operator-hosted OIDC issuer. AKS clusters can lean on AKS's own OIDC issuer (`oidcIssuerProfile.enabled`) for workload IAM later — deferred exactly like IRSA was for EKS. Dropping the machinery removes the `storageAccount`, `workloadIdentity`, and `aadApplication` config requirements for AKS. |
@@ -109,9 +109,9 @@ The select writes `PromptedConfig.AzureAKS`, consumed by
    carry the gate alone. *This also fixes a latent EKS deadlock — the EKS path
    had not yet been exercised against real AWS.*
 6. **CNI install** — `installCiliumOnManagedCluster` (generalised from
-   `installCiliumOnEKSCluster`): on EKS it keeps kube-proxy replacement on
-   (kube-proxy is disabled declaratively there); on AKS it installs Cilium
-   without kube-proxy replacement (kube-proxy runs).
+   `installCiliumOnEKSCluster`): both managed flavours install Cilium with
+   kube-proxy replacement on — kube-proxy is disabled declaratively on both
+   (EKS: `spec.kubeProxy.disable`; AKS: the chart's ASO patch, decision 5).
 7. **Post-pivot syncs** — the cluster-autoscaler and external-snapshotter
    ArgoCD app syncs are skipped for AKS (the apps aren't rendered; decision 3
    and 9). The EKS credential-zeroing skip is AWS-only and doesn't apply.
@@ -122,12 +122,20 @@ The select writes `PromptedConfig.AzureAKS`, consumed by
 
 Behind a new `azure.aks` values flag in `charts/azure/`:
 
+- **Bump `global.capz.version`** from v1.21.1 to **v1.26.0** (latest upstream,
+  June 2026) — same move the EKS work made for CAPA. The classic managed API,
+  `networkPlugin: none`, and `ASOManagedClusterPatches` are all verified
+  present at v1.26.0.
 - **`AzureManagedControlPlane`** (version, location, resourceGroup,
-  `networkPlugin: none`, `oidcIssuerProfile.enabled: true`, `identityRef`) +
-  **`AzureManagedCluster`**; the `Cluster` template's `controlPlaneRef` /
-  `infrastructureRef` switch to them when `aks` is set; `AzureCluster` +
-  `KubeadmControlPlane` + `KubeadmConfigTemplate` + `AzureMachineTemplate` +
-  `MachineDeployment` render only when it is not.
+  `networkPlugin: none`, `oidcIssuerProfile.enabled: true`, `identityRef`,
+  and `asoManagedClusterPatches` disabling kube-proxy —
+  `{"spec": {"networkProfile": {"kubeProxyConfig": {"enabled": false}}}}`,
+  plus `enablePreviewFeatures: true` if `KubeProxyConfigurationPreview` is
+  still subscription-gated) + **`AzureManagedCluster`**; the `Cluster`
+  template's `controlPlaneRef` / `infrastructureRef` switch to them when
+  `aks` is set; `AzureCluster` + `KubeadmControlPlane` +
+  `KubeadmConfigTemplate` + `AzureMachineTemplate` + `MachineDeployment`
+  render only when it is not.
 - **`AzureClusterIdentity`** gains a ServicePrincipal branch:
   `type: ServicePrincipal`, `clientID: {{ .Values.azure.clientID }}`,
   `clientSecret: {name: cloud-credentials, namespace: <ns>}` (key
