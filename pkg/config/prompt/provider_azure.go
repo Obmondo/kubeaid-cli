@@ -106,10 +106,9 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 		return nil
 	}
 
+	cfg.AzureCPReplicas = "1"
 	if haChoice {
 		cfg.AzureCPReplicas = "3"
-	} else {
-		cfg.AzureCPReplicas = "1"
 	}
 
 	// Auto-generate storage account name from cluster name.

@@ -643,14 +643,16 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 
 		// Select the right pair of counters once per Machine. Default
 		// to the worker accumulators; the CP label flips them.
+		isCP := isControlPlaneMachine(&m)
 		total, running := &workerTotal, &workerRunning
-		if isControlPlaneMachine(&m) {
+		if isCP {
 			total, running = &cpTotal, &cpRunning
-		} else if m.Status.Phase == string(clusterAPIV1Beta1.MachinePhaseRunning) &&
+		}
+		// "Joined" = a worker whose node registered with the apiserver,
+		// regardless of the v1beta2 Ready aggregate — the managed-control-
+		// plane predicate below needs this weaker signal (see there).
+		if !isCP && m.Status.Phase == string(clusterAPIV1Beta1.MachinePhaseRunning) &&
 			m.Status.NodeRef != nil {
-			// "Joined" = the node registered with the apiserver, regardless
-			// of the v1beta2 Ready aggregate — the managed-control-plane
-			// predicate below needs this weaker signal (see there).
 			workerJoined++
 		}
 		*total++
@@ -683,14 +685,10 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	// least one worker Machine Running with a registered Node. AKS agent
 	// pools are MachinePools and create no Machine objects, so there the
 	// Cluster conditions carry the gate alone.
-	var ready bool
 	if config.ManagedControlPlaneEnabled() {
-		ready = clusterReady && (workerTotal == 0 || workerJoined > 0)
-	} else {
-		ready = clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0)
+		return rows, clusterReady && (workerTotal == 0 || workerJoined > 0), firstErr
 	}
-
-	return rows, ready, firstErr
+	return rows, clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0), firstErr
 }
 
 // isControlPlaneMachine reports whether the Machine is a control-plane

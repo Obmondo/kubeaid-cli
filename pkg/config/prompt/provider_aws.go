@@ -248,10 +248,9 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		return nil
 	}
 
+	cfg.AWSCPReplicas = "1"
 	if haChoice {
 		cfg.AWSCPReplicas = "3"
-	} else {
-		cfg.AWSCPReplicas = "1"
 	}
 
 	// Attempt to auto-detect AMI from Canonical; fall back to a manual prompt.
