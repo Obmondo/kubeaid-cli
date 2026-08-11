@@ -385,6 +385,7 @@ func expandPaths(cfg *PromptedConfig) {
 	cfg.SSHKeyPath = expandTilde(cfg.SSHKeyPath)
 	cfg.KubeaidConfigDeployKeyPath = expandTilde(cfg.KubeaidConfigDeployKeyPath)
 	cfg.HetznerSSHKeyPath = expandTilde(cfg.HetznerSSHKeyPath)
+	cfg.AzureOIDCIssuerKeyPath = expandTilde(cfg.AzureOIDCIssuerKeyPath)
 	if cfg.Obmondo != nil {
 		cfg.Obmondo.CertPath = expandTilde(cfg.Obmondo.CertPath)
 		cfg.Obmondo.KeyPath = expandTilde(cfg.Obmondo.KeyPath)

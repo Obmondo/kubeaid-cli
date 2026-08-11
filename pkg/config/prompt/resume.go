@@ -231,6 +231,16 @@ func applyCloudConfigToPromptedConfig(cloud *config.CloudConfig, cfg *PromptedCo
 		cfg.AzureSubscriptionID = firstNonEmpty(cloud.Azure.SubscriptionID, cfg.AzureSubscriptionID)
 		cfg.AzureLocation = firstNonEmpty(cloud.Azure.Location, cfg.AzureLocation)
 		cfg.AzureStorageAccount = firstNonEmpty(cloud.Azure.StorageAccount, cfg.AzureStorageAccount)
+		cfg.AzureSSHPublicKey = firstNonEmpty(cloud.Azure.SSHPublicKey, cfg.AzureSSHPublicKey)
+		if cloud.Azure.AADApplication != nil {
+			cfg.AzurePrincipalID = firstNonEmpty(cloud.Azure.AADApplication.PrincipalID, cfg.AzurePrincipalID)
+		}
+		if cloud.Azure.WorkloadIdentity != nil {
+			cfg.AzureOIDCIssuerKeyPath = firstNonEmpty(
+				cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair.PrivateKeyFilePath,
+				cfg.AzureOIDCIssuerKeyPath,
+			)
+		}
 		if cloud.Azure.ControlPlane != nil {
 			cfg.AzureCPVMSize = firstNonEmpty(cloud.Azure.ControlPlane.VMSize, cfg.AzureCPVMSize)
 			cfg.AzureCPReplicas = firstNonEmpty(uint32String(cloud.Azure.ControlPlane.Replicas), cfg.AzureCPReplicas)

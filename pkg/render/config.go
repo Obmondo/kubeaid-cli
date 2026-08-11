@@ -150,8 +150,24 @@ type PromptedConfig struct {
 	AzureCPVMSize       string
 	AzureCPReplicas     string
 	AzureCPDiskSizeGB   string
+	AzureNodeVMSize     string
 	AzureClientID       string
 	AzureClientSecret   string
+	// AzureSSHPublicKey is the RSA public key MATERIAL (authorized_keys
+	// line) provisioned onto every self-managed VM — Azure rejects
+	// non-RSA keys at VM creation. Collected as a file path by the
+	// prompt, read into material for rendering. Unused for AKS.
+	AzureSSHPublicKey string
+	// AzureOIDCIssuerKeyPath is the RSA private key FILE PATH whose pair
+	// signs the workload-identity OIDC provider's service-account tokens
+	// (the public half feeds the JWKS document). The public key is
+	// expected beside it with a .pub suffix. Unused for AKS.
+	AzureOIDCIssuerKeyPath string
+	// AzurePrincipalID is the AAD application's service-principal OBJECT
+	// id (not the client/app id) — role assignments target it.
+	// Autofilled via a Microsoft Graph lookup when the collected
+	// credentials allow it; prompted otherwise. Unused for AKS.
+	AzurePrincipalID string
 
 	// Hetzner.
 	HetznerMode          string
