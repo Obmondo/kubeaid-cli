@@ -185,7 +185,7 @@ type promptSession struct {
 }
 
 func (s *promptSession) loadExistingConfigIfRequested() error {
-	if !existingPromptConfigPresent(s.configsDirectory) {
+	if !ExistingConfigPresent(s.configsDirectory) {
 		return nil
 	}
 
@@ -884,43 +884,93 @@ func runWorkloadNetBirdJoinForm(cfg *PromptedConfig) (bool, error) {
 //
 // The deploy key label clarifies it must be read-only (ArgoCD in-cluster clone);
 // the optional SSH key label clarifies it needs write access (kubeaid-cli push).
+// gitSSHFormPlan is which of the step's key questions are still open.
+type gitSSHFormPlan struct {
+	deployKey bool
+	gitKey    bool
+}
+
+// planGitSSHForm decides what the Git/SSH step still has to ask for, before any
+// auto-detected default is filled in — a detected path is a suggestion to
+// confirm, a configured one is already an answer.
+//
+// The step re-runs whenever any single one of its fields is missing, so
+// without this every re-run dragged the whole form back onto the screen and
+// asked again for keys general.yaml already named.
+func planGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) (gitSSHFormPlan, error) {
+	deployKeyConfigured, err := configuredSSHKeyPath(
+		"cluster.argoCD.deployKeys.kubeaidConfig.privateKeyFilePath",
+		cfg.KubeaidConfigDeployKeyPath,
+	)
+	if err != nil {
+		return gitSSHFormPlan{}, err
+	}
+
+	gitKeyConfigured, err := configuredSSHKeyPath("git.privateKeyFilePath", cfg.SSHKeyPath)
+	if err != nil {
+		return gitSSHFormPlan{}, err
+	}
+
+	return gitSSHFormPlan{
+		deployKey: !deployKeyConfigured,
+		// An agent operator never supplies a key file at all.
+		gitKey: !detected.SSHAgentAvail && !gitKeyConfigured,
+	}, nil
+}
+
 func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 	cfg.UseSSHAgent = detected.SSHAgentAvail
 
-	// gitKeyGroup is hidden when an SSH agent is available; only shown when
-	// the operator must supply a key file for kubeaid-cli to push with.
-	gitKeyGroup := huh.NewGroup(
-		huh.NewInput().
-			Title("Your SSH private key (with write access to kubeaid-config — used by kubeaid-cli to push):").
-			Value(&cfg.SSHKeyPath).
-			Validate(validateSSHKeyPath),
-	).WithHide(detected.SSHAgentAvail)
+	plan, err := planGitSSHForm(cfg, detected)
+	if err != nil {
+		return err
+	}
 
-	// Pre-fill the SSH key path default.
-	if cfg.SSHKeyPath == "" {
+	// Pre-fill defaults before the inputs are built: huh seeds each field from
+	// the value its pointer holds at construction, so a path assigned after
+	// that never reaches the screen.
+	if plan.gitKey {
 		cfg.SSHKeyPath = detectSSHKeyPath()
 	}
-	if cfg.KubeaidConfigDeployKeyPath == "" {
+	if plan.deployKey {
 		cfg.KubeaidConfigDeployKeyPath = detectSSHKeyPath()
 	}
 
-	if err := huh.NewForm(
-		huh.NewGroup(
-			// ArgoCD deploy key: read-only SSH key for in-cluster clone.
-			// MUST NOT have write access — GitHub Deploy Keys are read-only
-			// by default, which is the correct posture here.
+	// This step re-runs whenever any one of its fields is missing, so every
+	// field left on the screen is one the operator answers again. Leaving out
+	// the keys the config already supplies means only the open questions —
+	// the fork host, and a key that genuinely has not been given — remain.
+	fields := []huh.Field{}
+	if plan.deployKey {
+		// ArgoCD deploy key: read-only SSH key for in-cluster clone.
+		// MUST NOT have write access — GitHub Deploy Keys are read-only
+		// by default, which is the correct posture here.
+		fields = append(fields, huh.NewInput().
+			Title("ArgoCD deploy key — read-only SSH key for in-cluster clone (private key file path):").
+			Value(&cfg.KubeaidConfigDeployKeyPath).
+			Validate(validateSSHKeyPath))
+	}
+	fields = append(fields, huh.NewInput().
+		Title("KubeAid Config fork URL:").
+		// Not "the key collected below" — that field is skipped when the
+		// config already supplies one, and it never appears for an agent.
+		Description("SSH form — uses your yubikey via SSH agent, or your configured SSH key.").
+		Value(&cfg.KubeaidConfigForkURL).
+		Validate(sshGitURL))
+
+	groups := []*huh.Group{
+		huh.NewGroup(fields...).Title("Git / SSH").Description("Step 4/4"),
+	}
+	if plan.gitKey {
+		groups = append(groups, huh.NewGroup(
 			huh.NewInput().
-				Title("ArgoCD deploy key — read-only SSH key for in-cluster clone (private key file path):").
-				Value(&cfg.KubeaidConfigDeployKeyPath).
+				Title("Your SSH private key (with write access to kubeaid-config — used by kubeaid-cli to push):").
+				Value(&cfg.SSHKeyPath).
 				Validate(validateSSHKeyPath),
-			huh.NewInput().
-				Title("KubeAid Config fork URL:").
-				Description("SSH form — uses your yubikey via SSH agent, or the SSH key collected below.").
-				Value(&cfg.KubeaidConfigForkURL).
-				Validate(sshGitURL),
-		).Title("Git / SSH").Description("Step 4/4"),
-		gitKeyGroup,
-	).Run(); err != nil {
+		))
+	}
+
+	if err := huh.NewForm(groups...).Run(); err != nil {
 		return err
 	}
 
