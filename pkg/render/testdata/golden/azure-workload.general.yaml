@@ -38,7 +38,7 @@ cloud:
         publicKeyFilePath: /home/ops/.ssh/azure-oidc-issuer.pub
     sshPublicKey: "ssh-rsa AAAAB3FAKEKEY ops@acme.com"
     canonicalUbuntuImage:
-      offer: ubuntu-24_04-lts
+      offer: ubuntu-26_04-lts
       sku: server
     controlPlane:
       loadBalancerType: Public

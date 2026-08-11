@@ -133,7 +133,7 @@ cloud:
         publicKeyFilePath: {{ .AzureOIDCIssuerKeyPath }}.pub
     sshPublicKey: "{{ .AzureSSHPublicKey }}"
     canonicalUbuntuImage:
-      offer: ubuntu-24_04-lts
+      offer: ubuntu-26_04-lts
       sku: server
     controlPlane:
       loadBalancerType: Public

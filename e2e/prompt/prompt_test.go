@@ -515,7 +515,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "sshPublicKey: \"ssh-rsa ")
 	assert.Contains(t, general, "privateKeyFilePath: "+oidcKeyPath)
 	assert.Contains(t, general, "publicKeyFilePath: "+oidcKeyPath+".pub")
-	assert.Contains(t, general, "offer: ubuntu-24_04-lts")
+	assert.Contains(t, general, "offer: ubuntu-26_04-lts")
 	assert.Contains(t, general, "vmSize: Standard_F4s_v2")
 
 	// K8s version should be auto-detected.
