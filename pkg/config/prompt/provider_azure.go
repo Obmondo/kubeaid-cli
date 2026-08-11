@@ -52,7 +52,7 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 			huh.NewSelect[bool]().
 				Title("Control plane:").
 				Options(
-					huh.NewOption("Self-managed (VMs, kubeadm)", false),
+					huh.NewOption("Self-managed (Azure VMs, kubeadm)", false),
 					huh.NewOption("AKS (managed by Azure)", true),
 				).
 				Value(&cfg.AzureAKS),
