@@ -1,0 +1,9 @@
+# Per-cluster overrides for the tetragon chart.
+#
+# Tetragon ships no TracingPolicy, so out of the box it is observability-only:
+# process, network and file events exported as JSON to stdout, which the
+# openobserve-collector agent picks up. Enforcement (SIGKILL / Override) is
+# opt-in via your own TracingPolicy resources.
+#
+# Requires a kernel with BTF (>= 5.4, CONFIG_DEBUG_INFO_BTF=y) on every node.
+tetragon: {}

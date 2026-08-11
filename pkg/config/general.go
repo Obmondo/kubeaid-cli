@@ -167,6 +167,11 @@ type (
 		// without prompting (CI-safe); false = skip the step.
 		Lockdown *bool `yaml:"lockdown"`
 
+		// Security selects the optional security ArgoCD Apps. Omitting the
+		// block leaves every one of them off, so existing clusters keep
+		// their current app set across an upgrade.
+		Security SecurityConfig `yaml:"security"`
+
 		// Keycloak declares the Keycloak instance a VPN cluster hosts as
 		// NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →
 		// kubeaid-cli installs it; mode=external → operator runs it
@@ -201,6 +206,22 @@ type (
 		// for (cert-manager's selector.dnsZones). Empty matches every
 		// DNS-01 order — fine when this is the only solver.
 		DNSZones []string `yaml:"dnsZones"`
+	}
+
+	// SecurityConfig selects the optional security ArgoCD Apps. Both
+	// default to false so an existing cluster's app set is unchanged
+	// until its config opts in.
+	SecurityConfig struct {
+		// VulnerabilityScanning deploys trivy-operator together with
+		// version-checker. They are one switch because the chart's
+		// ImageOutdatedAndVulnerable alert joins both metrics —
+		// trivy-operator alone yields an alert that cannot fire.
+		VulnerabilityScanning bool `yaml:"vulnerabilityScanning"`
+
+		// RuntimeDetection deploys tetragon. Observability-only until
+		// TracingPolicy resources are applied. Needs a BTF-enabled
+		// kernel (>= 5.4) on every node.
+		RuntimeDetection bool `yaml:"runtimeDetection"`
 	}
 
 	ArgoCDConfig struct {

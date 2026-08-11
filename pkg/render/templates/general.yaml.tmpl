@@ -49,6 +49,11 @@ cluster:
 {{- if .LockdownSet }}
   lockdown: {{ .LockdownValue }}
 {{- end }}
+{{- if .SecurityBlockEnabled }}
+  security:
+    vulnerabilityScanning: {{ .VulnerabilityScanningValue }}
+    runtimeDetection: {{ .RuntimeDetectionValue }}
+{{- end }}
   argoCD:
     deployKeys:
 {{- if .KubeaidIsSSH }}

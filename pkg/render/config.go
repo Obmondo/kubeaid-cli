@@ -87,6 +87,15 @@ type PromptedConfig struct {
 	// asked, else the operator's choice. Rendered to cluster.lockdown.
 	Lockdown *bool
 
+	// VulnerabilityScanning is the risk-exposure monitoring decision
+	// (trivy-operator + version-checker): nil when not asked, else the
+	// operator's choice. Rendered to cluster.security.vulnerabilityScanning.
+	VulnerabilityScanning *bool
+
+	// RuntimeDetection is the Tetragon decision: nil when not asked, else
+	// the operator's choice. Rendered to cluster.security.runtimeDetection.
+	RuntimeDetection *bool
+
 	// HCloud-VPN control-plane endpoint FQDN — required when
 	// running a VPN cluster on Hetzner HCloud. Rendered into
 	// cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint;
@@ -259,6 +268,23 @@ func (c PromptedConfig) LockdownSet() bool { return c.Lockdown != nil }
 
 // LockdownValue is the value for the rendered cluster.lockdown line.
 func (c PromptedConfig) LockdownValue() bool { return c.Lockdown != nil && *c.Lockdown }
+
+// SecurityBlockEnabled reports whether to render the cluster.security block.
+func (c PromptedConfig) SecurityBlockEnabled() bool {
+	return c.VulnerabilityScanning != nil || c.RuntimeDetection != nil
+}
+
+// VulnerabilityScanningValue is the value for the rendered
+// cluster.security.vulnerabilityScanning line.
+func (c PromptedConfig) VulnerabilityScanningValue() bool {
+	return c.VulnerabilityScanning != nil && *c.VulnerabilityScanning
+}
+
+// RuntimeDetectionValue is the value for the rendered
+// cluster.security.runtimeDetection line.
+func (c PromptedConfig) RuntimeDetectionValue() bool {
+	return c.RuntimeDetection != nil && *c.RuntimeDetection
+}
 
 // NetBirdBlockEnabled reports whether to render the cluster.netbird block.
 // VPN clusters host NetBird by definition; workload clusters render it only

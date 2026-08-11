@@ -1,0 +1,10 @@
+# Per-cluster overrides for the version-checker chart.
+# Supplies the "is a newer tag available" half of ImageOutdatedAndVulnerable.
+#
+# The version-checker key maps to the wrapped upstream subchart.
+version-checker:
+  # Check every container. Set false and annotate pods with
+  # enable.version-checker.io/<container>=true to opt in selectively.
+  defaultTestAll: true
+  # Raise if registry rate limits become a problem.
+  imageCacheTimeout: 30m
