@@ -46,6 +46,12 @@ func hydrateSSHKeyPairConfigs() {
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
+		// AKS clusters carry no workloadIdentity block — CAPZ authenticates
+		// with the AAD service principal directly, so there is no OIDC
+		// provider key pair to hydrate.
+		if generalConfig.Cloud.Azure.WorkloadIdentity == nil {
+			break
+		}
 		openIDProviderSSHKeyPair := generalConfig.Cloud.Azure.WorkloadIdentity.OpenIDProviderSSHKeyPair
 
 		hydrateSSHKeyPairConfig(&openIDProviderSSHKeyPair.SSHKeyPairConfig)

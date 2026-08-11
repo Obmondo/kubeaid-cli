@@ -375,17 +375,18 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// actual problem (CNI not Ready on the CP Node).
 	bar := progress.FromCtx(ctx)
 	switch {
-	// EKS clusters have no control-plane Nodes to check, and no
-	// KubeadmControlPlane postKubeadm hook to install the CNI : AWS's default
-	// VPC CNI and kube-proxy are disabled declaratively (AWSManagedControlPlane
-	// spec), so kubeaid-cli installs Cilium itself — the worker Nodes stay
-	// NotReady until it lands. The cilium ArgoCD App adopts these manifests
-	// once the main cluster's ArgoCD is up.
-	case config.EKSEnabled():
-		releaseCNI := bar.InProgress("Installing Cilium on the EKS cluster")
-		installCiliumOnEKSCluster(ctx)
+	// Managed control-plane (EKS / AKS) clusters have no control-plane Nodes
+	// to check, and no KubeadmControlPlane postKubeadm hook to install the
+	// CNI : the cloud's default CNI is disabled (EKS : vpcCni.disable on the
+	// AWSManagedControlPlane; AKS : networkPlugin "none" — BYO CNI), so
+	// kubeaid-cli installs Cilium itself — the worker Nodes stay NotReady
+	// until it lands. The cilium ArgoCD App adopts these manifests once the
+	// main cluster's ArgoCD is up.
+	case config.ManagedControlPlaneEnabled():
+		releaseCNI := bar.InProgress("Installing Cilium on the managed cluster")
+		installCiliumOnManagedCluster(ctx)
 		releaseCNI()
-		bar.Substep("Installed Cilium on the EKS cluster")
+		bar.Substep("Installed Cilium on the managed cluster")
 	default:
 		releaseNet := bar.InProgress("Waiting for control-plane Node networking to be ready")
 		err = kubernetes.WaitForCPNodesNetworkingReady(ctx, provisionedClusterClient)
@@ -464,8 +465,10 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Sync cluster-autoscaler on AWS or Azure workload clusters.
 	// Skip Hetzner (chart wiring not in place), bare-metal (no
-	// scaling), Local (k3d), and any VPN cluster (operator-fixed).
-	if !config.VPNClusterEnabled() &&
+	// scaling), Local (k3d), any VPN cluster (operator-fixed), and
+	// AKS (the app isn't rendered — AKS's built-in autoscaler scales
+	// the agent pools).
+	if !config.VPNClusterEnabled() && !config.AKSEnabled() &&
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
@@ -480,8 +483,9 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Sync the external-snapshotter ArgoCD App,
 	// if not using Hetzner (since currently we don't support setting up disaster recovery for
-	// Hetzner 🥴).
-	if globals.CloudProviderName != constants.CloudProviderHetzner {
+	// Hetzner 🥴). AKS skips it too — the app isn't rendered there (AKS ships
+	// the snapshot controller with its managed CSI drivers).
+	if globals.CloudProviderName != constants.CloudProviderHetzner && !config.AKSEnabled() {
 		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(
 			ctx, constants.ArgoCDExternalSnapshotter,
@@ -635,18 +639,28 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	bar.Substep("Pivoted ClusterAPI to main cluster")
 }
 
-// installCiliumOnEKSCluster installs Cilium into the just-provisioned EKS
-// cluster, mirroring what the KubeadmControlPlane postKubeadm hook does on
-// self-managed clusters (helm-render the KubeAid cilium chart with the
-// apiserver endpoint set). EKS has no control-plane nodes to run that hook,
-// and its AWS-default CNI + kube-proxy are disabled via AWSManagedControlPlane
-// (spec.vpcCni.disable / spec.kubeProxy.disable) — so without this install the
-// worker Nodes never turn Ready and nothing else can be scheduled. The cilium
-// ArgoCD App later adopts the same manifests (same chart, same values source).
-func installCiliumOnEKSCluster(ctx context.Context) {
+// installCiliumOnManagedCluster installs Cilium into the just-provisioned
+// managed (EKS / AKS) cluster, mirroring what the KubeadmControlPlane
+// postKubeadm hook does on self-managed clusters (helm-render the KubeAid
+// cilium chart with the apiserver endpoint set). Managed clusters have no
+// control-plane nodes to run that hook, and their cloud-default CNI is
+// disabled (EKS : AWSManagedControlPlane's vpcCni.disable; AKS :
+// networkPlugin "none") — so without this install the worker Nodes never turn
+// Ready and nothing else can be scheduled. The cilium ArgoCD App later adopts
+// the same manifests (same chart, same values source).
+//
+// kube-proxy replacement is enabled only on EKS, where kube-proxy is disabled
+// declaratively (spec.kubeProxy.disable). AKS always runs kube-proxy, so
+// Cilium runs alongside it there — matching values-cilium.yaml.tmpl.
+func installCiliumOnManagedCluster(ctx context.Context) {
 	endpoint, err := kubernetes.GetMainClusterEndpoint(ctx)
 	assert.AssertErrNil(ctx, err, "Failed getting main cluster endpoint")
 	assert.AssertNotNil(ctx, endpoint, "Main cluster kubeconfig has no endpoint — cannot install Cilium")
+
+	kubeProxyReplacement := "true"
+	if config.AKSEnabled() {
+		kubeProxyReplacement = "false"
+	}
 
 	// KUBECONFIG already points at the main cluster's kubeconfig here — the
 	// Helm SDK picks it up from the environment.
@@ -657,13 +671,13 @@ func installCiliumOnEKSCluster(ctx context.Context) {
 		ReleaseName: "cilium",
 		Values: &helmValues.Options{
 			Values: []string{
-				"cilium.kubeProxyReplacement=true",
+				fmt.Sprintf("cilium.kubeProxyReplacement=%s", kubeProxyReplacement),
 				fmt.Sprintf("cilium.k8sServiceHost=%s", endpoint.Hostname()),
 				fmt.Sprintf("cilium.k8sServicePort=%s", endpoint.Port()),
 			},
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed installing Cilium on the EKS cluster")
+	assert.AssertErrNil(ctx, err, "Failed installing Cilium on the managed cluster")
 }
 
 func provisionMainClusterUsingKubeOne(ctx context.Context) {

@@ -2,7 +2,17 @@
 {{- if or .ControlPlaneEndpoint .HetznerBareMetalFirewallEnabled }}
 cilium:
   {{- if .ControlPlaneEndpoint }}
+  {{- /* AKS clusters always run kube-proxy (there is no supported declarative
+       disable, unlike EKS's AWSManagedControlPlane.spec.kubeProxy.disable),
+       so Cilium runs alongside it without the replacement. Every other
+       cluster shape with a known endpoint replaces kube-proxy. Matches the
+       values installCiliumOnManagedCluster helm-installs at bootstrap, so the
+       cilium ArgoCD App adopts the release without a config flip. */}}
+  {{- if (and .AzureConfig .AzureConfig.AKS) }}
+  kubeProxyReplacement: "false"
+  {{- else }}
   kubeProxyReplacement: "true"
+  {{- end }}
   k8sServiceHost: {{ .ControlPlaneEndpoint }}
   k8sServicePort: {{ .ControlPlaneEndpointPort }}
   {{- end }}

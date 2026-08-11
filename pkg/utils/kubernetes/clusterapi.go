@@ -623,7 +623,7 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	// real Machine progress lets kubeaid-cli sit through the long
 	// provisioning window with a single accurate spinner rather than
 	// failing-then-retrying downstream.
-	var cpTotal, cpRunning, workerTotal, workerRunning int
+	var cpTotal, cpRunning, workerTotal, workerRunning, workerJoined int
 
 	for _, m := range machines.Items {
 		detail := machineStatusDetail(&m)
@@ -646,6 +646,12 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 		total, running := &workerTotal, &workerRunning
 		if isControlPlaneMachine(&m) {
 			total, running = &cpTotal, &cpRunning
+		} else if m.Status.Phase == string(clusterAPIV1Beta1.MachinePhaseRunning) &&
+			m.Status.NodeRef != nil {
+			// "Joined" = the node registered with the apiserver, regardless
+			// of the v1beta2 Ready aggregate — the managed-control-plane
+			// predicate below needs this weaker signal (see there).
+			workerJoined++
 		}
 		*total++
 
@@ -664,7 +670,25 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	// three conditions. The worker check is skipped when cpTotal>0 and
 	// workerTotal==0 so a single-CP cluster (no worker MachineDeployments
 	// declared) doesn't deadlock here.
-	ready := clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0)
+	//
+	// Managed control planes (EKS / AKS) need a different gate: no
+	// control-plane Machines exist at all (the cloud owns the control
+	// plane), so `cpRunning > 0` would deadlock the wait forever. And
+	// worker Nodes cannot pass the v1beta2 NodeHealthy aggregate yet —
+	// their CNI is installed by kubeaid-cli right AFTER this wait
+	// (installCiliumOnManagedCluster), so requiring workerRunning here
+	// would be a chicken-and-egg deadlock too. Instead: the Cluster CR
+	// Provisioned+Ready (which implies the managed control plane is up),
+	// plus — when worker Machines exist (EKS MachineDeployments) — at
+	// least one worker Machine Running with a registered Node. AKS agent
+	// pools are MachinePools and create no Machine objects, so there the
+	// Cluster conditions carry the gate alone.
+	var ready bool
+	if config.ManagedControlPlaneEnabled() {
+		ready = clusterReady && (workerTotal == 0 || workerJoined > 0)
+	} else {
+		ready = clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0)
+	}
 
 	return rows, ready, firstErr
 }

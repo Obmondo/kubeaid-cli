@@ -18,11 +18,14 @@ var RecoverCmd = &cobra.Command{
 	Short: "Recover a KubeAid managed K8s cluster (from a disaster recovery backup)",
 
 	Run: func(cmd *cobra.Command, args []string) {
-		// EKS recovery isn't wired yet — recover re-runs the bootstrap and the
-		// Velero restore, and neither has been exercised against a managed
-		// control plane. Fail loudly instead of half-recovering.
+		// EKS / AKS recovery isn't wired yet — recover re-runs the bootstrap
+		// and the Velero restore, and neither has been exercised against a
+		// managed control plane. Fail loudly instead of half-recovering.
 		assert.Assert(cmd.Context(), !config.EKSEnabled(),
 			"`cluster recover` doesn't support EKS clusters yet — re-bootstrap and restore from the Velero backup manually",
+		)
+		assert.Assert(cmd.Context(), !config.AKSEnabled(),
+			"`cluster recover` doesn't support AKS clusters yet — re-bootstrap and restore manually",
 		)
 
 		core.RecoverCluster(cmd.Context(),

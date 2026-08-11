@@ -226,13 +226,16 @@ func applyCloudConfigToPromptedConfig(cloud *config.CloudConfig, cfg *PromptedCo
 		}
 	case cloud.Azure != nil:
 		cfg.CloudProvider = constants.CloudProviderAzure
+		cfg.AzureAKS = cfg.AzureAKS || cloud.Azure.AKS
 		cfg.AzureTenantID = firstNonEmpty(cloud.Azure.TenantID, cfg.AzureTenantID)
 		cfg.AzureSubscriptionID = firstNonEmpty(cloud.Azure.SubscriptionID, cfg.AzureSubscriptionID)
 		cfg.AzureLocation = firstNonEmpty(cloud.Azure.Location, cfg.AzureLocation)
 		cfg.AzureStorageAccount = firstNonEmpty(cloud.Azure.StorageAccount, cfg.AzureStorageAccount)
-		cfg.AzureCPVMSize = firstNonEmpty(cloud.Azure.ControlPlane.VMSize, cfg.AzureCPVMSize)
-		cfg.AzureCPReplicas = firstNonEmpty(uint32String(cloud.Azure.ControlPlane.Replicas), cfg.AzureCPReplicas)
-		cfg.AzureCPDiskSizeGB = firstNonEmpty(uint32String(cloud.Azure.ControlPlane.DiskSizeGB), cfg.AzureCPDiskSizeGB)
+		if cloud.Azure.ControlPlane != nil {
+			cfg.AzureCPVMSize = firstNonEmpty(cloud.Azure.ControlPlane.VMSize, cfg.AzureCPVMSize)
+			cfg.AzureCPReplicas = firstNonEmpty(uint32String(cloud.Azure.ControlPlane.Replicas), cfg.AzureCPReplicas)
+			cfg.AzureCPDiskSizeGB = firstNonEmpty(uint32String(cloud.Azure.ControlPlane.DiskSizeGB), cfg.AzureCPDiskSizeGB)
+		}
 	case cloud.Hetzner != nil:
 		applyHetznerConfigToPromptedConfig(cloud.Hetzner, cfg)
 	case cloud.BareMetal != nil:

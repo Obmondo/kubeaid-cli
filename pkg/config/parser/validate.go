@@ -501,12 +501,111 @@ func validateAzureConfig() error {
 	}
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
+
+	if azureConfig.AKS {
+		if err := validateAzureAKSConfig(azureConfig); err != nil {
+			return err
+		}
+	} else if err := validateAzureSelfManagedConfig(azureConfig); err != nil {
+		return err
+	}
+
 	for _, azureAutoScalableNodeGroup := range azureConfig.NodeGroups {
 		if err := validateAutoScalableNodeGroup(
 			&azureAutoScalableNodeGroup.AutoScalableNodeGroup,
 		); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// aksAgentPoolNamePattern matches a valid AKS (Linux) agent-pool name : 1-12
+// characters, lowercase alphanumeric, starting with a letter. Azure rejects
+// anything else at ManagedCluster creation time — validating here fails the
+// config fast instead of erroring against the Azure API mid-bootstrap.
+var aksAgentPoolNamePattern = regexp.MustCompile(`^[a-z][a-z0-9]{0,11}$`)
+
+// validateAzureAKSConfig enforces the cross-field rules of an AKS cluster :
+// Azure owns the control plane and the node images (no replicas / VM size /
+// image to pick, keyless nodes), and CAPZ authenticates with the AAD service
+// principal directly — so the whole workload-identity machinery (storage
+// account hosting the OIDC provider, UAMIs, issuer key pair) stays unset.
+// Workers are AKS agent pools, whose names Azure constrains.
+func validateAzureAKSConfig(azureConfig *config.AzureConfig) error {
+	if azureConfig.ControlPlane != nil {
+		return errors.New(
+			"cloud.azure.controlPlane must not be set when cloud.azure.aks is true — Azure manages the AKS control plane",
+		)
+	}
+	if azureConfig.SSHPublicKey != "" {
+		return errors.New(
+			"cloud.azure.sshPublicKey must not be set when cloud.azure.aks is true — AKS nodes stay keyless (use `az aks command invoke` for node access)",
+		)
+	}
+	if azureConfig.CanonicalUbuntuImage != nil {
+		return errors.New(
+			"cloud.azure.canonicalUbuntuImage must not be set when cloud.azure.aks is true — AKS manages the node images itself",
+		)
+	}
+	if azureConfig.StorageAccount != "" {
+		return errors.New(
+			"cloud.azure.storageAccount must not be set when cloud.azure.aks is true — it only hosts the self-managed workload-identity OIDC provider",
+		)
+	}
+	if azureConfig.WorkloadIdentity != nil {
+		return errors.New(
+			"cloud.azure.workloadIdentity must not be set when cloud.azure.aks is true — CAPZ authenticates with the AAD service principal directly (AKS's own OIDC issuer will back workload identity later)",
+		)
+	}
+	if azureConfig.AADApplication != nil {
+		return errors.New(
+			"cloud.azure.aadApplication must not be set when cloud.azure.aks is true — it only feeds the self-managed workload-identity role assignments",
+		)
+	}
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		return errors.New(
+			"cloud.disasterRecovery isn't supported when cloud.azure.aks is true yet — Azure DR provisioning rides the workload-identity machinery AKS clusters skip",
+		)
+	}
+
+	if len(azureConfig.NodeGroups) == 0 {
+		return errors.New(
+			"at least one node-group is required when cloud.azure.aks is true — an AKS cluster needs a System agent pool and has no control-plane nodes to schedule workloads on",
+		)
+	}
+	for _, nodeGroup := range azureConfig.NodeGroups {
+		if !aksAgentPoolNamePattern.MatchString(nodeGroup.Name) {
+			return fmt.Errorf(
+				"cloud.azure.nodeGroups[%s].name is not a valid AKS agent-pool name — 1-12 lowercase alphanumeric characters, starting with a letter",
+				nodeGroup.Name,
+			)
+		}
+	}
+	return nil
+}
+
+// validateAzureSelfManagedConfig enforces the fields a kubeadm based (self
+// managed control plane) Azure cluster needs — previously struct-tag enforced,
+// moved here because they must stay unset for AKS.
+func validateAzureSelfManagedConfig(azureConfig *config.AzureConfig) error {
+	if azureConfig.ControlPlane == nil {
+		return errors.New("cloud.azure.controlPlane is required (unless cloud.azure.aks is true)")
+	}
+	if azureConfig.SSHPublicKey == "" {
+		return errors.New("cloud.azure.sshPublicKey is required (unless cloud.azure.aks is true)")
+	}
+	if azureConfig.CanonicalUbuntuImage == nil {
+		return errors.New("cloud.azure.canonicalUbuntuImage is required (unless cloud.azure.aks is true)")
+	}
+	if azureConfig.StorageAccount == "" {
+		return errors.New("cloud.azure.storageAccount is required (unless cloud.azure.aks is true)")
+	}
+	if azureConfig.WorkloadIdentity == nil {
+		return errors.New("cloud.azure.workloadIdentity is required (unless cloud.azure.aks is true)")
+	}
+	if azureConfig.AADApplication == nil {
+		return errors.New("cloud.azure.aadApplication is required (unless cloud.azure.aks is true)")
 	}
 	return nil
 }

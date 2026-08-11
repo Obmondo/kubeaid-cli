@@ -249,7 +249,10 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 		ControlPlaneHostname:            globals.ControlPlaneHostname,
 		ControlPlaneLBBootstrapPublicIP: globals.ControlPlaneLBBootstrapPublicIP,
 	}
-	if globals.CloudProviderName == constants.CloudProviderAzure {
+	// AKS clusters skip the workload-identity mounts : CAPZ authenticates with
+	// the AAD service principal directly, so the management cluster hosts no
+	// service-account issuer.
+	if globals.CloudProviderName == constants.CloudProviderAzure && !config.AKSEnabled() {
 		workloadIdentityConfig := config.ParsedGeneralConfig.Cloud.Azure.WorkloadIdentity
 
 		sshKeys := workloadIdentityConfig.OpenIDProviderSSHKeyPair

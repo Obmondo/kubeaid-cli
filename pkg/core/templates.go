@@ -428,9 +428,13 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		)
 
 	case constants.CloudProviderAzure:
-		saIssuerURL, saErr := azure.GetServiceAccountIssuerURL()
-		assert.AssertErrNil(ctx, saErr, "Failed getting Azure ServiceAccount issuer URL")
-		templateValues.ServiceAccountIssuerURL = saIssuerURL
+		// AKS clusters have no operator-hosted OIDC provider — the issuer URL
+		// derives from the storage account, which AKS configs don't carry.
+		if !config.AKSEnabled() {
+			saIssuerURL, saErr := azure.GetServiceAccountIssuerURL()
+			assert.AssertErrNil(ctx, saErr, "Failed getting Azure ServiceAccount issuer URL")
+			templateValues.ServiceAccountIssuerURL = saIssuerURL
+		}
 	}
 
 	hetznerConfig := templateValues.HetznerConfig
@@ -569,11 +573,14 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderAzure:
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.AzureSpecificNonSecretTemplateNames...,
-		)
+		azureTemplateNames := constants.AzureSpecificNonSecretTemplateNames
+		if config.AKSEnabled() {
+			azureTemplateNames = constants.AzureAKSSpecificNonSecretTemplateNames
+		}
+		embeddedTemplateNames = append(embeddedTemplateNames, azureTemplateNames...)
 
-		// Add Disaster Recovery related templates, if the user wants disaster recovery.
+		// Add Disaster Recovery related templates, if the user wants disaster
+		// recovery. Validation rejects the DR block for AKS clusters.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
@@ -802,11 +809,14 @@ func getEmbeddedSecretTemplateNames() []string {
 		)
 
 	case constants.CloudProviderAzure:
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.AzureSpecificSecretTemplateNames...,
-		)
+		azureSecretTemplateNames := constants.AzureSpecificSecretTemplateNames
+		if config.AKSEnabled() {
+			azureSecretTemplateNames = constants.AzureAKSSpecificSecretTemplateNames
+		}
+		embeddedTemplateNames = append(embeddedTemplateNames, azureSecretTemplateNames...)
 
-		// Add Disaster Recovery related templates, if the user wants disaster recovery.
+		// Add Disaster Recovery related templates, if the user wants disaster
+		// recovery. Validation rejects the DR block for AKS clusters.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificSecretTemplateNames...,

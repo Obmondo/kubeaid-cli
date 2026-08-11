@@ -28,7 +28,7 @@ func TestCreateOIDCProvider(t *testing.T) {
 		Cloud: config.CloudConfig{
 			Azure: &config.AzureConfig{
 				StorageAccount: "teststorage",
-				WorkloadIdentity: config.WorkloadIdentity{
+				WorkloadIdentity: &config.WorkloadIdentity{
 					OpenIDProviderSSHKeyPair: config.OpenIDProviderSSHKeyPairConfig{
 						PublicKeyFilePath: "/tmp/fake-key.pub",
 					},

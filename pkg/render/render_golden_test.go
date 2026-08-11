@@ -92,6 +92,30 @@ func goldenCases() []goldenCase {
 			},
 		},
 		{
+			name: "azure-aks-workload",
+			cfg: &PromptedConfig{
+				SSHUsername:                "git",
+				UseSSHAgent:                true,
+				KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+				KubeaidVersion:             "31.0.4",
+				KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+				KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
+				ClusterName:                "azure-aks-acme",
+				ClusterType:                "workload",
+				K8sVersion:                 "v1.35.6",
+
+				CloudProvider: "azure",
+				// AKS: managed control plane — no storage account, no
+				// controlPlane block in the rendered general.yaml.
+				AzureAKS:            true,
+				AzureTenantID:       "11111111-1111-1111-1111-111111111111",
+				AzureSubscriptionID: "22222222-2222-2222-2222-222222222222",
+				AzureLocation:       "westeurope",
+				AzureClientID:       "33333333-3333-3333-3333-333333333333",
+				AzureClientSecret:   "fake&azure:secret",
+			},
+		},
+		{
 			name: "hetzner-hcloud-workload",
 			cfg: &PromptedConfig{
 				SSHUsername:                "git",

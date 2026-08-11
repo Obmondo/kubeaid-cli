@@ -132,6 +132,10 @@ type PromptedConfig struct {
 	AWSSessionToken    string
 
 	// Azure.
+	// AzureAKS selects an Azure managed (AKS) control plane instead of the
+	// self-managed kubeadm one. Skips the HA question and the
+	// storage-account derivation.
+	AzureAKS            bool
 	AzureTenantID       string
 	AzureSubscriptionID string
 	AzureLocation       string

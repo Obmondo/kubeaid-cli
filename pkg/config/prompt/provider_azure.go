@@ -17,6 +17,12 @@ func newAzureProvider() *azurePrompter {
 }
 
 func (p *azurePrompter) SummaryLines(cfg *PromptedConfig) []string {
+	if cfg.AzureAKS {
+		return []string{
+			fmt.Sprintf("  Location:      %s", cfg.AzureLocation),
+			"  Control plane: AKS (managed by Azure)",
+		}
+	}
 	return []string{
 		fmt.Sprintf("  Location:      %s", cfg.AzureLocation),
 		fmt.Sprintf("  VM size:       %s", cfg.AzureCPVMSize),
@@ -37,34 +43,67 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 		cfg.AzureCPDiskSizeGB = "128"
 	}
 
+	// Control-plane flavour comes BEFORE credentials : the credentials are the
+	// same either way, but every question after them differs — AKS has no HA /
+	// replica choice (Azure runs the control plane) and no storage account
+	// (it only hosts the self-managed workload-identity OIDC provider).
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[bool]().
+				Title("Control plane:").
+				Options(
+					huh.NewOption("Self-managed (VMs, kubeadm)", false),
+					huh.NewOption("AKS (managed by Azure)", true),
+				).
+				Value(&cfg.AzureAKS),
+		).Title("Azure control plane").Description("Step 3/4"),
+	).Run(); err != nil {
+		return err
+	}
+
 	haChoice := cfg.AzureCPReplicas != "1"
 
+	credGroup := huh.NewGroup(
+		huh.NewInput().
+			Title("Tenant ID:").
+			Value(&cfg.AzureTenantID).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Subscription ID:").
+			Value(&cfg.AzureSubscriptionID).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Client ID:").
+			Value(&cfg.AzureClientID).
+			Validate(nonEmpty),
+		huh.NewInput().
+			Title("Client Secret:").
+			EchoMode(huh.EchoModePassword).
+			Value(&cfg.AzureClientSecret).
+			Validate(nonEmpty),
+	)
+
+	haGroup := huh.NewGroup(
+		huh.NewConfirm().
+			Title("Enable high availability for the control plane?").
+			Value(&haChoice),
+	).WithHideFunc(func() bool {
+		// AKS control planes are Azure-managed — nothing to ask.
+		return cfg.AzureAKS
+	})
+
 	err := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Title("Tenant ID:").
-				Value(&cfg.AzureTenantID).
-				Validate(nonEmpty),
-			huh.NewInput().
-				Title("Subscription ID:").
-				Value(&cfg.AzureSubscriptionID).
-				Validate(nonEmpty),
-			huh.NewInput().
-				Title("Client ID:").
-				Value(&cfg.AzureClientID).
-				Validate(nonEmpty),
-			huh.NewInput().
-				Title("Client Secret:").
-				EchoMode(huh.EchoModePassword).
-				Value(&cfg.AzureClientSecret).
-				Validate(nonEmpty),
-			huh.NewConfirm().
-				Title("Enable high availability for the control plane?").
-				Value(&haChoice),
-		).Title("Azure credentials").Description("Step 3/4"),
+		credGroup.Title("Azure credentials").Description("Step 3/4 (cont.)"),
+		haGroup,
 	).Run()
 	if err != nil {
 		return err
+	}
+
+	if cfg.AzureAKS {
+		// Azure owns the control plane, and there is no storage account to
+		// derive — nothing more to collect.
+		return nil
 	}
 
 	if haChoice {
