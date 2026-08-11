@@ -9,11 +9,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
@@ -73,14 +75,21 @@ first, review the output, then bootstrap.`,
 	},
 }
 
+// Indirected so resolveTargetCluster is testable: huh needs a TTY.
+var (
+	confirmReuseDefaultConfigsDirectory = promptReuseDefaultConfigsDirectory
+	askTargetCluster                    = promptTargetCluster
+)
+
 // resolveTargetCluster points globals.ConfigsDirectory at where this run's
 // config should be written, and returns the cluster name when the per-cluster
 // convention was used ("" when it was not).
 //
 // Precedence: an explicit --configs-directory wins, then --cluster-name, then
-// an outputs/configs that already exists — so an operator who has been running
-// kubeaid-cli from a working directory keeps the behaviour they have today.
-// Only a genuinely fresh run asks.
+// an outputs/configs that already exists — but that last one is now offered
+// rather than taken, because with no flags the default directory is always
+// what gets looked at, and a config left in it names whichever cluster it was
+// written for. Taken silently, that stale name is what the prompt pre-fills.
 func resolveTargetCluster() (string, error) {
 	if !parser.UsingDefaultConfigsDirectory() {
 		return "", nil
@@ -95,8 +104,16 @@ func resolveTargetCluster() (string, error) {
 		return globals.ClusterName, nil
 	}
 
-	if _, err := os.Stat(globals.ConfigsDirectory); err == nil {
-		return "", nil
+	// An existing directory with nothing in it is not something to reuse —
+	// an aborted run leaves one behind — so there is nothing to ask about.
+	if prompt.ExistingConfigPresent(globals.ConfigsDirectory) {
+		reuse, err := confirmReuseDefaultConfigsDirectory(globals.ConfigsDirectory)
+		if err != nil {
+			return "", err
+		}
+		if reuse {
+			return "", nil
+		}
 	}
 
 	name, err := askTargetCluster()
@@ -113,12 +130,60 @@ func resolveTargetCluster() (string, error) {
 	return name, nil
 }
 
-// askTargetCluster asks which cluster this config is for.
+// promptReuseDefaultConfigsDirectory offers the config already sitting in the
+// default directory, naming the cluster it was written for so that reusing it
+// is a decision rather than something the operator discovers afterwards in a
+// pre-filled form.
+func promptReuseDefaultConfigsDirectory(configsDirectory string) (bool, error) {
+	description := configsDirectory
+	if name := clusterNameInConfigsDirectory(configsDirectory); name != "" {
+		description += "\ncluster: " + name
+	}
+
+	reuse := true
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("A config already exists in the default directory. Use it?").
+				Description(description).
+				Affirmative("Use it").
+				Negative("Choose a cluster").
+				Value(&reuse),
+		),
+	).Run()
+	if err != nil {
+		return false, err
+	}
+	return reuse, nil
+}
+
+// clusterNameInConfigsDirectory peeks at the cluster name in a directory's
+// general.yaml. Best-effort: the name only decorates a prompt the operator is
+// already reading, so failing to read it must not replace that prompt with an
+// error. A partial file from an interrupted run is the normal case here.
+func clusterNameInConfigsDirectory(configsDirectory string) string {
+	data, err := os.ReadFile(filepath.Join(configsDirectory, "general.yaml"))
+	if err != nil {
+		return ""
+	}
+
+	var general struct {
+		Cluster struct {
+			Name string `yaml:"name"`
+		} `yaml:"cluster"`
+	}
+	if err := yaml.Unmarshal(data, &general); err != nil {
+		return ""
+	}
+	return general.Cluster.Name
+}
+
+// promptTargetCluster asks which cluster this config is for.
 //
 // A picker is appropriate here in a way it is not for the cluster commands:
 // `config generate` is already interactive, and choosing wrong pre-fills a
 // form the operator then reviews rather than creating cloud infrastructure.
-func askTargetCluster() (string, error) {
+func promptTargetCluster() (string, error) {
 	const newCluster = ""
 
 	existing := clusterdir.List()

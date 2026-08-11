@@ -69,7 +69,13 @@ func removePromptState(configsDirectory string) error {
 	return nil
 }
 
-func existingPromptConfigPresent(configsDirectory string) bool {
+// ExistingConfigPresent reports whether configsDirectory already holds config
+// files, or the prompt state an interrupted run left behind.
+//
+// Exported so `config generate` can decide whether reusing a directory means
+// anything before it offers to, and reach the same answer as the resume offer
+// that follows.
+func ExistingConfigPresent(configsDirectory string) bool {
 	for _, filename := range []string{"general.yaml", "secrets.yaml", promptStateFileName} {
 		if _, err := os.Stat(path.Join(configsDirectory, filename)); err == nil {
 			return true

@@ -284,6 +284,24 @@ func completePromptedConfig(cloudProvider string) *PromptedConfig {
 	}
 }
 
+// ConfigFromPrompt pre-fills cfg.ClusterName from the cluster the operator
+// picked, then loads whatever config already sits in that directory. When the
+// two disagree the file wins — so a general.yaml left behind under one
+// cluster's directory hands back the old name it was written with.
+func TestLoadExistingPromptedConfigOverridesThePreFilledClusterName(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "general.yaml"),
+		[]byte("cluster:\n  name: old-cluster\n"),
+		0o600,
+	))
+
+	cfg := &PromptedConfig{ClusterName: "demo-02"}
+	require.NoError(t, loadExistingPromptedConfig(dir, cfg))
+
+	assert.Equal(t, "old-cluster", cfg.ClusterName)
+}
+
 func clearAWSEnvironment(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())

@@ -185,7 +185,7 @@ type promptSession struct {
 }
 
 func (s *promptSession) loadExistingConfigIfRequested() error {
-	if !existingPromptConfigPresent(s.configsDirectory) {
+	if !ExistingConfigPresent(s.configsDirectory) {
 		return nil
 	}
 
