@@ -61,6 +61,72 @@ func (p *azurePrompter) SummaryLines(cfg *PromptedConfig) []string {
 	}
 }
 
+// rsaPublicKeyFromPrivateKeyFile derives the authorized_keys line of the
+// given private key file's public half — but only when the key is RSA (the
+// only type Azure accepts at VM creation). Returns "" for any other key
+// type, an unreadable file, or an encrypted/agent-held key; the caller then
+// falls back to prompting.
+func rsaPublicKeyFromPrivateKeyFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	signer, err := ssh.ParsePrivateKey(contents)
+	if err != nil {
+		return ""
+	}
+	if signer.PublicKey().Type() != ssh.KeyAlgoRSA {
+		return ""
+	}
+	return strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+}
+
+// postProcess resolves the VM SSH public key after the Git/SSH step has
+// populated the deploy key path — mirroring AWS, where the deploy key names
+// the EC2 key pair. When the deploy key is RSA, its public half is reused
+// and no question is asked; otherwise (ed25519 deploy key, agent-held or
+// encrypted key) an RSA public key file is prompted for, since Azure only
+// accepts RSA keys at VM creation. AKS clusters skip it : nodes stay keyless.
+func (p *azurePrompter) postProcess(cfg *PromptedConfig) error {
+	if cfg.AzureAKS || cfg.AzureSSHPublicKey != "" {
+		return nil
+	}
+
+	deployKeyPath := cfg.KubeaidConfigDeployKeyPath
+	if deployKeyPath == "" {
+		deployKeyPath = cfg.SSHKeyPath
+	}
+	if material := rsaPublicKeyFromPrivateKeyFile(deployKeyPath); material != "" {
+		cfg.AzureSSHPublicKey = material
+		return nil
+	}
+
+	sshPublicKeyPath := defaultAzureSSHPublicKeyPath
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("VM SSH public key file (RSA):").
+				Description("Provisioned onto every VM. Azure only accepts RSA keys,\nand the deploy key isn't one — point at an RSA public key.").
+				Value(&sshPublicKeyPath).
+				Validate(validateRSAPublicKeyFile),
+		).Title("Azure VM SSH key").Description("Step 4/4 (cont.)"),
+	).Run(); err != nil {
+		return err
+	}
+
+	// The VM SSH key travels as material (an authorized_keys line), not as
+	// a path — validated RSA and readable by the input's Validate above.
+	sshPublicKey, err := os.ReadFile(expandTilde(sshPublicKeyPath))
+	if err != nil {
+		return fmt.Errorf("reading the VM SSH public key: %w", err)
+	}
+	cfg.AzureSSHPublicKey = strings.TrimSpace(string(sshPublicKey))
+	return nil
+}
+
 // validateRSAPublicKeyFile reports whether path points at a readable
 // authorized_keys style RSA public key. Azure rejects non-RSA keys at VM
 // creation time, so catching an ed25519 key here beats a mid-bootstrap ARM
@@ -217,7 +283,6 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 	}
 
 	haChoice := cfg.AzureCPReplicas != "1"
-	sshPublicKeyPath := defaultAzureSSHPublicKeyPath
 	oidcIssuerKeyPath := defaultAzureOIDCIssuerKeyPath
 	if cfg.AzureOIDCIssuerKeyPath != "" {
 		oidcIssuerKeyPath = cfg.AzureOIDCIssuerKeyPath
@@ -248,11 +313,6 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 			Title("Enable high availability for the control plane?").
 			Value(&haChoice),
 		huh.NewInput().
-			Title("VM SSH public key file (RSA):").
-			Description("Provisioned onto every VM. Azure only accepts RSA keys.").
-			Value(&sshPublicKeyPath).
-			Validate(validateRSAPublicKeyFile),
-		huh.NewInput().
 			Title("Workload-identity OIDC signing key (RSA private key file):").
 			Description("Signs the cluster's ServiceAccount tokens; its .pub feeds the JWKS document.\nGenerate with : ssh-keygen -t rsa -b 4096 -f ~/.ssh/azure-oidc-issuer -N \"\"").
 			Value(&oidcIssuerKeyPath).
@@ -280,14 +340,6 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 	if haChoice {
 		cfg.AzureCPReplicas = "3"
 	}
-
-	// The VM SSH key travels as material (an authorized_keys line), not as a
-	// path — validated RSA and readable by the input's Validate above.
-	sshPublicKey, err := os.ReadFile(expandTilde(sshPublicKeyPath))
-	if err != nil {
-		return fmt.Errorf("reading the VM SSH public key: %w", err)
-	}
-	cfg.AzureSSHPublicKey = strings.TrimSpace(string(sshPublicKey))
 
 	cfg.AzureOIDCIssuerKeyPath = expandTilde(oidcIssuerKeyPath)
 

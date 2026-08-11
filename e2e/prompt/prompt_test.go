@@ -456,11 +456,7 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
-	// Self-managed extras : the RSA VM login key and the workload-identity
-	// OIDC signing key pair.
-	c.expectString("VM SSH public key file")
-	c.sendLine(vmSSHPubPath)
-
+	// Self-managed extras : the workload-identity OIDC signing key pair.
 	c.expectString("OIDC signing key")
 	c.sendLine(oidcKeyPath)
 
@@ -478,6 +474,11 @@ func TestAzure_PromptFlow(t *testing.T) {
 
 	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
+
+	// The dummy deploy key is ed25519, which Azure VMs can't use — so the
+	// RSA VM login key fallback prompt appears after the Git/SSH step.
+	c.expectString("VM SSH public key file")
+	c.sendLine(vmSSHPubPath)
 
 	c.expectString("Looks good?")
 	c.acceptDefault()
