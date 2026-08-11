@@ -111,12 +111,16 @@ cloud:
     tenantID: {{ .AzureTenantID }}
     subscriptionID: {{ .AzureSubscriptionID }}
     location: {{ .AzureLocation }}
+{{- if .AzureAKS }}
+    aks: true
+{{- else }}
     storageAccount: {{ .AzureStorageAccount }}
     controlPlane:
       loadBalancerType: Public
       diskSizeGB: {{ .AzureCPDiskSizeGB }}
       vmSize: {{ .AzureCPVMSize }}
       replicas: {{ .AzureCPReplicas }}
+{{- end }}
 {{- end }}
 {{- if eq .CloudProvider "hetzner" }}
   hetzner:

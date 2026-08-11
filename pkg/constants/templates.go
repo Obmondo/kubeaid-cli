@@ -144,12 +144,29 @@ var (
 		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
+	// AKS clusters : Azure runs the cloud controller, the CSI drivers (with
+	// their StorageClasses and the snapshot controller) and the agent-pool
+	// autoscaler itself, and the whole self-managed workload-identity
+	// machinery (Crossplane, storage-account OIDC provider, UAMIs, the
+	// azure-workload-identity webhook) is skipped — so no azure-specific
+	// addon templates are rendered at all beyond the common set.
+	AzureAKSSpecificNonSecretTemplateNames = []string{}
+
 	AzureSpecificSecretTemplateNames = []string{
 		// For CrossPlane.
 		"sealed-secrets/crossplane/azure-credentials.yaml.tmpl",
 
 		// For ClusterAPI.
 		"sealed-secrets/capi-cluster/service-account-issuer-keys.yaml.tmpl",
+	}
+
+	// AKS clusters : CAPZ authenticates with the AAD service principal via an
+	// AzureClusterIdentity of type ServicePrincipal, whose client secret the
+	// chart reads from the cloud-credentials Secret — the same Secret name the
+	// AWS and Hetzner providers seal their credentials into.
+	AzureAKSSpecificSecretTemplateNames = []string{
+		// For Cluster API.
+		"sealed-secrets/capi-cluster/cloud-credentials.yaml.tmpl",
 	}
 
 	AzureDisasterRecoverySpecificNonSecretTemplateNames = []string{

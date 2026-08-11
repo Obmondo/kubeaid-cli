@@ -434,7 +434,12 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("service-user token")
 	c.sendLine("nbp_e2etoken")
 
-	// Step 3 — Azure credentials (all in one group + HA confirm).
+	// Step 3 — control-plane flavour select (before credentials). Default is
+	// the first option: self-managed.
+	c.expectString("Control plane:")
+	c.acceptDefault()
+
+	// Azure credentials form (all in one group + HA confirm).
 	c.expectString("Tenant ID:")
 	c.sendLine("tenant-123")
 

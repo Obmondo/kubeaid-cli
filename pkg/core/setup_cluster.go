@@ -315,6 +315,14 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// Any cloud provider specific tasks.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAzure:
+		// AKS clusters skip the whole workload-identity machinery : CAPZ
+		// authenticates with the AAD service principal directly, so there is
+		// no Crossplane-provisioned infrastructure (storage account, UAMIs)
+		// and no OIDC provider to create.
+		if config.AKSEnabled() {
+			break
+		}
+
 		// Install CrossPlane.
 		// Then set it up, by installing required Providers, Functions, Compositions and
 		// Composite Resource Definitions (XRDs).

@@ -96,6 +96,29 @@ aws:
 provider:
   azure: true
 
+{{- if .AzureConfig.AKS }}
+
+azure:
+  # Azure managed (AKS) control plane : the chart renders AzureManagedControlPlane
+  # + AzureManagedCluster + one AzureManagedMachinePool per node-group instead of
+  # AzureCluster + KubeadmControlPlane + MachineDeployments. Azure owns the
+  # control plane, node images and agent-pool autoscaling — hence no
+  # sshPublicKey, canonicalUbuntuImage or controlPlane block here. CAPZ
+  # authenticates with the AAD service principal : an AzureClusterIdentity of
+  # type ServicePrincipal referencing the clientSecret key of the
+  # cloud-credentials Secret.
+  aks: true
+  tenantID: {{ .AzureConfig.TenantID }}
+  subscriptionID: {{ .AzureConfig.SubscriptionID }}
+  location: {{ .AzureConfig.Location }}
+  resourceGroup: {{ .ClusterConfig.Name }}
+
+  clientID: {{ .AzureCredentials.ClientID }}
+  secretName: cloud-credentials
+
+  nodeGroups: {{- .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+{{- else }}
+
 azure:
   tenantID: {{ .AzureConfig.TenantID }}
   subscriptionID: {{ .AzureConfig.SubscriptionID }}
@@ -116,6 +139,7 @@ azure:
   controlPlane: {{- .AzureConfig.ControlPlane | toIndentYAML 2 | nindent 4 }}
 
   nodeGroups: {{- .AzureConfig.NodeGroups | toIndentYAML 2 | nindent 4 }}
+{{- end }}
 {{- end }}
 
 {{- if .HetznerConfig }}

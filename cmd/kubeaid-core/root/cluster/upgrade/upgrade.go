@@ -62,6 +62,17 @@ var UpgradeCmd = &cobra.Command{
 			})
 
 		case constants.CloudProviderAzure:
+			// AKS clusters are upgraded the GitOps way : Azure owns the
+			// control plane and CAPZ rolls it (plus the agent pools) when the
+			// version in the capi-cluster values changes.
+			if config.AKSEnabled() {
+				assert.Assert(cmd.Context(), false,
+					"`cluster upgrade` doesn't apply to AKS clusters : bump global.kubernetes.version in "+
+						"argocd-apps/values-capi-cluster.yaml in your kubeaid-config repo and let ArgoCD sync — "+
+						"CAPZ then upgrades the AKS control plane and rolls the agent pools",
+				)
+			}
+
 			core.UpgradeCluster(cmd.Context(), core.UpgradeClusterArgs{
 				SkipPRWorkflow: skipPRWorkflow,
 

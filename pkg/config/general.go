@@ -477,20 +477,32 @@ type (
 // Azure specific.
 type (
 	AzureConfig struct {
-		TenantID       string         `yaml:"tenantID"       validate:"notblank"`
-		SubscriptionID string         `yaml:"subscriptionID" validate:"notblank"`
-		AADApplication AADApplication `yaml:"aadApplication" validate:"required"`
-		Location       string         `yaml:"location"       validate:"notblank"`
+		TenantID       string          `yaml:"tenantID"       validate:"notblank"`
+		SubscriptionID string          `yaml:"subscriptionID" validate:"notblank"`
+		AADApplication *AADApplication `yaml:"aadApplication"`
+		Location       string          `yaml:"location"       validate:"notblank"`
 
-		StorageAccount string `yaml:"storageAccount" validate:"notblank"`
+		// AKS flips the cluster to an Azure managed (AKS) control plane,
+		// provisioned via CAPZ's AzureManagedControlPlane. Workers become
+		// AKS agent pools (AzureManagedMachinePool — CAPZ managed clusters
+		// support no other worker shape), scaled by AKS's built-in cluster
+		// autoscaler. The control plane, node images and SSH keys are all
+		// Azure-managed, and CAPZ authenticates with the AAD service
+		// principal directly — so controlPlane, sshPublicKey,
+		// canonicalUbuntuImage, storageAccount, workloadIdentity and
+		// aadApplication must be left unset. Cross-field rules live in
+		// pkg/config/parser/validate.go (validateAzureConfig).
+		AKS bool `yaml:"aks"`
 
-		WorkloadIdentity WorkloadIdentity `yaml:"workloadIdentity" validate:"required"`
+		StorageAccount string `yaml:"storageAccount"`
 
-		SSHPublicKey string `yaml:"sshPublicKey" validate:"notblank"`
+		WorkloadIdentity *WorkloadIdentity `yaml:"workloadIdentity"`
 
-		CanonicalUbuntuImage CanonicalUbuntuImage `yaml:"canonicalUbuntuImage" validate:"required"`
+		SSHPublicKey string `yaml:"sshPublicKey"`
 
-		ControlPlane AzureControlPlane            `yaml:"controlPlane" validate:"required"`
+		CanonicalUbuntuImage *CanonicalUbuntuImage `yaml:"canonicalUbuntuImage"`
+
+		ControlPlane *AzureControlPlane           `yaml:"controlPlane,omitempty"`
 		NodeGroups   []AzureAutoScalableNodeGroup `yaml:"nodeGroups"`
 	}
 

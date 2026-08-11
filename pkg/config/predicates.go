@@ -24,6 +24,21 @@ func EKSEnabled() bool {
 	return ParsedGeneralConfig.Cloud.AWS != nil && ParsedGeneralConfig.Cloud.AWS.EKS
 }
 
+// AKSEnabled reports whether the cluster runs an Azure managed (AKS) control
+// plane — CAPZ AzureManagedControlPlane instead of KubeadmControlPlane, with
+// workers as AKS agent pools (AzureManagedMachinePool).
+func AKSEnabled() bool {
+	return ParsedGeneralConfig.Cloud.Azure != nil && ParsedGeneralConfig.Cloud.Azure.AKS
+}
+
+// ManagedControlPlaneEnabled reports whether the cloud provider owns the
+// control plane (EKS or AKS). Such clusters have no control-plane Machines or
+// Nodes, no KubeadmControlPlane, and get their CNI installed by kubeaid-cli
+// itself instead of a postKubeadm hook.
+func ManagedControlPlaneEnabled() bool {
+	return EKSEnabled() || AKSEnabled()
+}
+
 // Returns whether we're using HCloud.
 func UsingHCloud() bool {
 	if ParsedGeneralConfig.Cloud.Hetzner == nil {

@@ -710,11 +710,145 @@ func TestValidateAzureConfig(t *testing.T) {
 			wantErrSub: "azure credentials not provided",
 		},
 		{
-			name:    "Azure credentials with no node-groups passes",
+			name:    "self-managed with the kubeadm fields passes",
 			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
-			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{}}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: selfManagedAzureConfig()}},
+		},
+		{
+			name:    "self-managed without controlPlane is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: func() *config.AzureConfig {
+				c := selfManagedAzureConfig()
+				c.ControlPlane = nil
+				return c
+			}()}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.controlPlane is required",
+		},
+		{
+			name:    "self-managed without workloadIdentity is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: func() *config.AzureConfig {
+				c := selfManagedAzureConfig()
+				c.WorkloadIdentity = nil
+				return c
+			}()}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.workloadIdentity is required",
+		},
+		{
+			name:    "AKS with a node-group passes",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS: true,
+				NodeGroups: []config.AzureAutoScalableNodeGroup{
+					aksNodeGroup("pool0"),
+				},
+			}}},
+		},
+		{
+			name:    "AKS with controlPlane set is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS:          true,
+				ControlPlane: &config.AzureControlPlane{},
+			}}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.controlPlane must not be set",
+		},
+		{
+			name:    "AKS with sshPublicKey set is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS:          true,
+				SSHPublicKey: "ssh-ed25519 AAAA",
+			}}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.sshPublicKey must not be set",
+		},
+		{
+			name:    "AKS with storageAccount set is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS:            true,
+				StorageAccount: "clustersa",
+			}}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.storageAccount must not be set",
+		},
+		{
+			name:    "AKS with workloadIdentity set is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS:              true,
+				WorkloadIdentity: &config.WorkloadIdentity{},
+			}}},
+			wantErr:    true,
+			wantErrSub: "cloud.azure.workloadIdentity must not be set",
+		},
+		{
+			name:    "AKS with disasterRecovery set is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{
+				Azure: &config.AzureConfig{
+					AKS: true,
+					NodeGroups: []config.AzureAutoScalableNodeGroup{
+						aksNodeGroup("pool0"),
+					},
+				},
+				DisasterRecovery: &config.DisasterRecoveryConfig{},
+			}},
+			wantErr:    true,
+			wantErrSub: "cloud.disasterRecovery isn't supported",
+		},
+		{
+			name:    "AKS without node-groups is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS: true,
+			}}},
+			wantErr:    true,
+			wantErrSub: "at least one node-group is required",
+		},
+		{
+			name:    "AKS with an invalid agent-pool name is rejected",
+			secrets: &config.SecretsConfig{Azure: &config.AzureCredentials{}},
+			general: &config.GeneralConfig{Cloud: config.CloudConfig{Azure: &config.AzureConfig{
+				AKS: true,
+				NodeGroups: []config.AzureAutoScalableNodeGroup{
+					aksNodeGroup("Primary-Pool"),
+				},
+			}}},
+			wantErr:    true,
+			wantErrSub: "is not a valid AKS agent-pool name",
 		},
 	}, validateAzureConfig)
+}
+
+// selfManagedAzureConfig returns an AzureConfig carrying every field the
+// self-managed (kubeadm) validation path requires.
+func selfManagedAzureConfig() *config.AzureConfig {
+	return &config.AzureConfig{
+		SSHPublicKey:         "ssh-ed25519 AAAA",
+		StorageAccount:       "clustersa",
+		AADApplication:       &config.AADApplication{PrincipalID: "principal"},
+		WorkloadIdentity:     &config.WorkloadIdentity{},
+		CanonicalUbuntuImage: &config.CanonicalUbuntuImage{Offer: "offer", SKU: "sku"},
+		ControlPlane:         &config.AzureControlPlane{},
+	}
+}
+
+// aksNodeGroup returns a minimal AKS node-group with the given agent-pool name.
+func aksNodeGroup(name string) config.AzureAutoScalableNodeGroup {
+	return config.AzureAutoScalableNodeGroup{
+		AutoScalableNodeGroup: config.AutoScalableNodeGroup{
+			NodeGroup: config.NodeGroup{Name: name},
+			MinSize:   1,
+			Maxsize:   3,
+		},
+		VMSize:     "Standard_D2s_v3",
+		DiskSizeGB: 128,
+	}
 }
 
 func TestValidateHetznerConfig(t *testing.T) {
