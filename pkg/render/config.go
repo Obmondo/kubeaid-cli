@@ -122,7 +122,14 @@ type PromptedConfig struct {
 	AWSRegion string
 	// AWSEKS selects an AWS managed (EKS) control plane instead of the
 	// self-managed kubeadm one. Skips the HA / AMI / SSH-key questions.
-	AWSEKS             bool
+	AWSEKS bool
+	// AWSNodeInstanceType sizes the default worker node-group; independent of
+	// the control-plane type so workers can differ from the CP in size AND
+	// architecture (ARM CP + amd64 workers by default).
+	AWSNodeInstanceType string
+	// AWSNodeAMIID is the worker node-group AMI, resolved for the worker
+	// instance type's architecture (AWSAMIID is the control plane's).
+	AWSNodeAMIID       string
 	AWSSSHKeyName      string
 	AWSCPInstanceType  string
 	AWSCPReplicas      string

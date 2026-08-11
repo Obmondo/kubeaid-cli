@@ -435,6 +435,10 @@ func (f *fakeFullApplicationServiceClient) RunResourceActionV2(context.Context, 
 	return nil, nil
 }
 
+// RunResourceAction's request type is deprecated upstream, but the method is
+// still part of the ApplicationServiceClient interface this fake satisfies.
+//
+//nolint:staticcheck
 func (f *fakeFullApplicationServiceClient) RunResourceAction(context.Context, *application.ResourceActionRunRequest, ...grpc.CallOption) (*application.ApplicationResponse, error) {
 	return nil, nil
 }

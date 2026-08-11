@@ -87,7 +87,7 @@ func ApplyManifestFromReader(ctx context.Context, clusterClient client.Client, r
 			continue
 		}
 
-		err = clusterClient.Patch(ctx, obj, client.Apply, client.ForceOwnership, client.FieldOwner(fieldOwnerKubeaidCLI))
+		err = clusterClient.Apply(ctx, client.ApplyConfigurationFromUnstructured(obj), client.ForceOwnership, client.FieldOwner(fieldOwnerKubeaidCLI))
 		if err != nil {
 			return fmt.Errorf("applying resource %s/%s (kind=%s): %w",
 				obj.GetNamespace(), obj.GetName(), obj.GetKind(), err)
