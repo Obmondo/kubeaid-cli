@@ -402,11 +402,11 @@ func validateAWSConfig() error {
 
 	awsConfig := config.ParsedGeneralConfig.Cloud.AWS
 
+	validateControlPlaneFlavour := validateAWSSelfManagedConfig
 	if awsConfig.EKS {
-		if err := validateAWSEKSConfig(awsConfig); err != nil {
-			return err
-		}
-	} else if err := validateAWSSelfManagedConfig(awsConfig); err != nil {
+		validateControlPlaneFlavour = validateAWSEKSConfig
+	}
+	if err := validateControlPlaneFlavour(awsConfig); err != nil {
 		return err
 	}
 
@@ -502,11 +502,11 @@ func validateAzureConfig() error {
 
 	azureConfig := config.ParsedGeneralConfig.Cloud.Azure
 
+	validateControlPlaneFlavour := validateAzureSelfManagedConfig
 	if azureConfig.AKS {
-		if err := validateAzureAKSConfig(azureConfig); err != nil {
-			return err
-		}
-	} else if err := validateAzureSelfManagedConfig(azureConfig); err != nil {
+		validateControlPlaneFlavour = validateAzureAKSConfig
+	}
+	if err := validateControlPlaneFlavour(azureConfig); err != nil {
 		return err
 	}
 
