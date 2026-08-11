@@ -528,6 +528,24 @@ func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config
 	return &sanitized
 }
 
+// awsNonSecretTemplateNames returns the AWS addon template set — the EKS one
+// when the cluster runs a managed control plane.
+func awsNonSecretTemplateNames() []string {
+	if config.EKSEnabled() {
+		return constants.AWSEKSSpecificNonSecretTemplateNames
+	}
+	return constants.AWSSpecificNonSecretTemplateNames
+}
+
+// azureNonSecretTemplateNames returns the Azure addon template set — the AKS
+// one when the cluster runs a managed control plane.
+func azureNonSecretTemplateNames() []string {
+	if config.AKSEnabled() {
+		return constants.AzureAKSSpecificNonSecretTemplateNames
+	}
+	return constants.AzureSpecificNonSecretTemplateNames
+}
+
 // Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
 func getEmbeddedNonSecretTemplateNames() []string {
 	// Templates common for all cloud providers.
@@ -559,11 +577,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Add cloud provider specific templates.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		awsTemplateNames := constants.AWSSpecificNonSecretTemplateNames
-		if config.EKSEnabled() {
-			awsTemplateNames = constants.AWSEKSSpecificNonSecretTemplateNames
-		}
-		embeddedTemplateNames = append(embeddedTemplateNames, awsTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames, awsNonSecretTemplateNames()...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recovery.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
@@ -573,11 +587,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		}
 
 	case constants.CloudProviderAzure:
-		azureTemplateNames := constants.AzureSpecificNonSecretTemplateNames
-		if config.AKSEnabled() {
-			azureTemplateNames = constants.AzureAKSSpecificNonSecretTemplateNames
-		}
-		embeddedTemplateNames = append(embeddedTemplateNames, azureTemplateNames...)
+		embeddedTemplateNames = append(embeddedTemplateNames, azureNonSecretTemplateNames()...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster
 		// recovery. Validation rejects the DR block for AKS clusters.
