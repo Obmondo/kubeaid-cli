@@ -26,7 +26,9 @@ func main() {
 		clusterName = os.Args[2]
 	}
 
-	if err := prompt.ConfigFromPrompt(os.Args[1], clusterName); err != nil {
+	// The result carries where it actually wrote; the e2e tests drive this
+	// through a PTY and match on prompt text, so nothing is printed for it.
+	if _, err := prompt.ConfigFromPrompt(os.Args[1], clusterName); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

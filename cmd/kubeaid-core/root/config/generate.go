@@ -67,11 +67,16 @@ first, review the output, then bootstrap.`,
 		// An existing config is not an error: the prompt offers to load it
 		// as the pre-filled starting point (or start fresh), and only
 		// rewrites the files after the final confirm.
-		if err := prompt.ConfigFromPrompt(globals.ConfigsDirectory, clusterName); err != nil {
+		// Where it actually wrote, which is not necessarily where it started:
+		// starting fresh replaces the cluster name, and a replaced name moves
+		// the files. Printing the directory we picked would send the operator
+		// to the config they chose to leave alone.
+		written, err := prompt.ConfigFromPrompt(globals.ConfigsDirectory, clusterName)
+		if err != nil {
 			assert.AssertErrNil(ctx, err, "Interactive config generation failed")
 		}
 
-		printNextStep(globals.ConfigsDirectory, clusterName)
+		printNextStep(written.ConfigsDirectory, written.ClusterName)
 	},
 }
 
