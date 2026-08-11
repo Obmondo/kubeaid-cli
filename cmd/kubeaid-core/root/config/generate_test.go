@@ -97,6 +97,23 @@ func defaultConfigsDirectoryHolding(t *testing.T, files map[string]string) strin
 	return workingDirectory
 }
 
+// huh's Options() positions both the cursor and the options scroll offset by
+// matching each option's value against the accessor, which reads as the zero
+// string before a value is set. A "" sentinel matched "+ new cluster", parking
+// the offset on it, so the saved clusters rendered off-screen above — the list
+// only appeared once a keypress recomputed the offset.
+//
+// A rendering bug no unit test can see, so guard the property that caused it.
+func TestNewClusterOptionValueIsNotTheZeroString(t *testing.T) {
+	assert.NotEmpty(t, newClusterOptionValue,
+		"an empty sentinel collides with an unset huh accessor")
+
+	// It must also not collide with a name clusterdir could return, or picking
+	// that cluster would be read as "+ new cluster".
+	assert.Contains(t, newClusterOptionValue, "\x00",
+		"a sentinel a directory name could equal is not a sentinel")
+}
+
 func TestResolveTargetClusterLetsAnExplicitDirectoryWin(t *testing.T) {
 	_, recorder := freshFlagState(t)
 	globals.ConfigsDirectory = "/explicit/path"

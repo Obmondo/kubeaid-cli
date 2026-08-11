@@ -183,14 +183,22 @@ func clusterNameInConfigsDirectory(configsDirectory string) string {
 	return general.Cluster.Name
 }
 
+// newClusterOptionValue marks the "+ new cluster" entry in the picker.
+//
+// Deliberately not "": huh's Options() positions the cursor by comparing each
+// option's value against whatever the accessor already holds, and an accessor
+// with no value yet reads as the zero string. An empty sentinel therefore
+// matched this entry, and Options() parks the scroll offset on the match — so
+// the saved clusters started off-screen above it, and only appeared once a
+// keypress recomputed the offset.
+const newClusterOptionValue = "\x00new-cluster"
+
 // promptTargetCluster asks which cluster this config is for.
 //
 // A picker is appropriate here in a way it is not for the cluster commands:
 // `config generate` is already interactive, and choosing wrong pre-fills a
 // form the operator then reviews rather than creating cloud infrastructure.
 func promptTargetCluster() (string, error) {
-	const newCluster = ""
-
 	existing := clusterdir.List()
 	if len(existing) == 0 {
 		return askNewClusterName()
@@ -200,7 +208,7 @@ func promptTargetCluster() (string, error) {
 	for _, name := range existing {
 		options = append(options, huh.NewOption(name, name))
 	}
-	options = append(options, huh.NewOption("+ new cluster", newCluster))
+	options = append(options, huh.NewOption("+ new cluster", newClusterOptionValue))
 
 	choice := existing[0]
 	err := huh.NewForm(
@@ -208,15 +216,21 @@ func promptTargetCluster() (string, error) {
 			huh.NewSelect[string]().
 				Title("Which cluster is this config for?").
 				Description("Configs live under ~/.config/kubeaid-cli/<cluster>/configs.").
-				Options(options...).
-				Value(&choice),
+				// Value before Options, which is what fixes the first frame:
+				// Options() is where the cursor and the scroll offset are both
+				// derived from the accessor, so the starting value has to be
+				// in place by then. Set afterwards, it moved the cursor and
+				// left the offset behind, and the list only straightened out
+				// once a keypress recomputed it.
+				Value(&choice).
+				Options(options...),
 		),
 	).Run()
 	if err != nil {
 		return "", err
 	}
 
-	if choice == newCluster {
+	if choice == newClusterOptionValue {
 		return askNewClusterName()
 	}
 	return choice, nil
