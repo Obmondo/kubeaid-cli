@@ -144,7 +144,7 @@ func validateRSAPublicKeyFile(path string) error {
 		return fmt.Errorf("not an SSH public key: %w", err)
 	}
 	if publicKey.Type() != ssh.KeyAlgoRSA {
-		return fmt.Errorf("Azure VMs only accept RSA keys, got %s", publicKey.Type())
+		return fmt.Errorf("azure VMs only accept RSA keys, got %s", publicKey.Type())
 	}
 	return nil
 }
