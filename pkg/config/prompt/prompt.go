@@ -16,6 +16,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	configpkg "github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
@@ -58,6 +59,7 @@ func askSaveInterruptedConfig(configsDirectory string) (bool, error) {
 func exitCleanlyOnAbort(
 	errPtr *error,
 	configsDirectory string,
+	pickedClusterName string,
 	cfg *PromptedConfig,
 	state *promptState,
 ) {
@@ -68,7 +70,16 @@ func exitCleanlyOnAbort(
 		return
 	}
 
-	save, err := askSaveInterruptedConfig(configsDirectory)
+	// A run that started fresh and got as far as naming a different cluster
+	// saves under that cluster, not on top of the one it started from — the
+	// same rule the completed path follows. Best-effort: if the name cannot
+	// be resolved, saving where we started beats losing the answers.
+	directory := configsDirectory
+	if target, err := resolveWriteTarget(configsDirectory, pickedClusterName, cfg.ClusterName); err == nil {
+		directory = target.ConfigsDirectory
+	}
+
+	save, err := askSaveInterruptedConfig(directory)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  Cancelled - failed reading save choice: %v\n", err)
 		os.Exit(1)
@@ -79,21 +90,64 @@ func exitCleanlyOnAbort(
 	}
 
 	expandPaths(cfg)
-	if err := writeConfigFiles(configsDirectory, cfg); err != nil {
+
+	// 0700 before writeFile's own MkdirAll settles for 0750 — secrets.yaml
+	// lands here, and a newly named cluster's directory will not exist yet.
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		fmt.Fprintf(os.Stderr, "  Cancelled - failed creating %s: %v\n", directory, err)
+		os.Exit(1)
+	}
+	if err := writeConfigFiles(directory, cfg); err != nil {
 		fmt.Fprintf(os.Stderr, "  Cancelled - failed saving partial config: %v\n", err)
 		os.Exit(1)
 	}
-	if err := writePromptState(configsDirectory, state); err != nil {
+	if err := writePromptState(directory, state); err != nil {
 		fmt.Fprintf(os.Stderr, "  Cancelled - failed saving prompt state: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Fprintf(os.Stderr, "  Saved partial config to %s. Run the command again to continue.\n", configsDirectory)
+	fmt.Fprintf(os.Stderr, "  Saved partial config to %s. Run the command again to continue.\n", directory)
 	os.Exit(130)
 }
 
-// ConfigFromPrompt interactively collects required configuration parameters from
-// the user and writes the generated config files to configsDirectory.
+// PromptResult is where the prompt actually wrote, and what the cluster ended
+// up being called. Neither is necessarily what the caller passed in: starting
+// fresh replaces the cluster name, and a replaced name moves the files.
+//
+// ClusterName is "" when the per-cluster convention was not in use, matching
+// what the caller passed — `cluster bootstrap` then needs the directory rather
+// than --cluster-name.
+type PromptResult struct {
+	ConfigsDirectory string
+	ClusterName      string
+}
+
+// resolveWriteTarget decides where this config is written and what the cluster
+// is called afterwards.
+//
+// pickedClusterName is "" whenever --configs-directory was spelled out or a
+// legacy outputs/configs is being reused. The operator chose those directories
+// by hand, so the name they type does not move anything.
+func resolveWriteTarget(configsDirectory, pickedClusterName, finalClusterName string) (
+	PromptResult, error,
+) {
+	if pickedClusterName == "" {
+		return PromptResult{ConfigsDirectory: configsDirectory}, nil
+	}
+	if finalClusterName == "" || finalClusterName == pickedClusterName {
+		return PromptResult{ConfigsDirectory: configsDirectory, ClusterName: pickedClusterName}, nil
+	}
+
+	directory, err := clusterdir.For(finalClusterName)
+	if err != nil {
+		return PromptResult{}, err
+	}
+	return PromptResult{ConfigsDirectory: directory, ClusterName: finalClusterName}, nil
+}
+
+// ConfigFromPrompt interactively collects required configuration parameters
+// from the user and writes the generated config files, returning where they
+// landed — see PromptResult, which is not always the directory passed in.
 //
 // The flow is:
 //   - Phase 1: Auto-detect K8s version (latest-1), KubeAid version (latest-1), SSH agent.
@@ -108,7 +162,7 @@ func exitCleanlyOnAbort(
 //     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
 //   - Phase 4: Collect optional Obmondo support details after the summary is accepted.
-func ConfigFromPrompt(configsDirectory, clusterName string) (returnErr error) {
+func ConfigFromPrompt(configsDirectory, clusterName string) (result PromptResult, returnErr error) {
 	detected := autoDetect()
 	cfg := defaultPromptedConfig(detected)
 	cfg.ConfigsDirectory = configsDirectory
@@ -134,31 +188,48 @@ func ConfigFromPrompt(configsDirectory, clusterName string) (returnErr error) {
 	// instead of the deeply-wrapped 'Failed preparing config files
 	// error=interactive config setup failed: collecting cluster
 	// basics: user aborted' chain that bubbles up through Prepare.
-	defer exitCleanlyOnAbort(&returnErr, configsDirectory, cfg, state)
+	defer exitCleanlyOnAbort(&returnErr, configsDirectory, clusterName, cfg, state)
 
 	if err := session.loadExistingConfigIfRequested(); err != nil {
-		return err
+		return PromptResult{}, err
 	}
 	if err := session.pickK8sProfileIfNeeded(); err != nil {
-		return err
+		return PromptResult{}, err
 	}
 	if err := session.runPromptLoop(); err != nil {
-		return err
+		return PromptResult{}, err
 	}
 
 	// Expand tilde in all file paths so that paths are absolute.
 	expandPaths(cfg)
 
-	if err := writeConfigFiles(configsDirectory, cfg); err != nil {
-		return fmt.Errorf("writing config files: %w", err)
+	// The cluster name is only settled once the basics form has run, and
+	// starting fresh invites a different one than the directory was chosen
+	// for. Writing where we started would drop this config on top of the
+	// cluster the operator just chose to leave alone.
+	target, err := resolveWriteTarget(configsDirectory, clusterName, cfg.ClusterName)
+	if err != nil {
+		return PromptResult{}, err
 	}
-	if err := removePromptState(configsDirectory); err != nil {
-		return fmt.Errorf("removing prompt state: %w", err)
+	cfg.ConfigsDirectory = target.ConfigsDirectory
+
+	// 0700 like the directory `config generate` creates: this holds
+	// secrets.yaml, and writeFile's own MkdirAll would settle for 0750.
+	if err := os.MkdirAll(target.ConfigsDirectory, 0o700); err != nil {
+		return PromptResult{}, fmt.Errorf(
+			"creating configs directory %s: %w", target.ConfigsDirectory, err)
+	}
+
+	if err := writeConfigFiles(target.ConfigsDirectory, cfg); err != nil {
+		return PromptResult{}, fmt.Errorf("writing config files: %w", err)
+	}
+	if err := removePromptState(target.ConfigsDirectory); err != nil {
+		return PromptResult{}, fmt.Errorf("removing prompt state: %w", err)
 	}
 
 	printWorkloadNetBirdNextSteps(cfg)
 
-	return nil
+	return target, nil
 }
 
 func defaultPromptedConfig(detected *autoDetectedConfig) *PromptedConfig {
@@ -194,6 +265,12 @@ func (s *promptSession) loadExistingConfigIfRequested() error {
 		return fmt.Errorf("confirming existing config load: %w", err)
 	}
 	if !loadExisting {
+		// Starting fresh means the operator is not continuing this config,
+		// and the cluster name pre-filled from the directory they landed in
+		// is part of it. Clearing it puts the question back on the screen
+		// instead of offering the old cluster as the answer — and the name
+		// they give then decides where this config is written.
+		s.cfg.ClusterName = ""
 		return nil
 	}
 

@@ -84,7 +84,10 @@ func ExistingConfigPresent(configsDirectory string) bool {
 	return false
 }
 
-func confirmLoadExistingConfig(configsDirectory string) (bool, error) {
+// Indirected so the session flow around it is testable: huh needs a TTY.
+var confirmLoadExistingConfig = promptLoadExistingConfig
+
+func promptLoadExistingConfig(configsDirectory string) (bool, error) {
 	loadExisting := true
 	err := huh.NewForm(
 		huh.NewGroup(
