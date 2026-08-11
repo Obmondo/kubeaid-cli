@@ -291,18 +291,22 @@ func (p *azurePrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedC
 	credGroup := huh.NewGroup(
 		huh.NewInput().
 			Title("Tenant ID:").
+			Description("az account show --query tenantId -o tsv").
 			Value(&cfg.AzureTenantID).
 			Validate(nonEmpty),
 		huh.NewInput().
 			Title("Subscription ID:").
+			Description("az account show --query id -o tsv").
 			Value(&cfg.AzureSubscriptionID).
 			Validate(nonEmpty),
 		huh.NewInput().
 			Title("Client ID:").
+			Description("appId from : az ad sp create-for-rbac --role Contributor \\\n  --scopes /subscriptions/<subscription-id>").
 			Value(&cfg.AzureClientID).
 			Validate(nonEmpty),
 		huh.NewInput().
 			Title("Client Secret:").
+			Description("password from the same az ad sp create-for-rbac output").
 			EchoMode(huh.EchoModePassword).
 			Value(&cfg.AzureClientSecret).
 			Validate(nonEmpty),
