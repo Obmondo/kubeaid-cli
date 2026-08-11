@@ -347,7 +347,7 @@ func verifyCGroupV2OnBareMetalHosts(ctx context.Context) {
 		assert.AssertErrNil(ctx, err, "Failed detecting CGroup version on Bare Metal host")
 
 		assert.Assert(
-			ctx, strings.TrimSpace(output) == "cgroup2fs",
+			ctx, strings.TrimSpace(output) == "cgroup2fs" || strings.Contains(output, "0x63677270"),
 			fmt.Sprintf(
 				"Bare Metal host %s still runs CGroup v1, which Kubernetes versions beyond %s don't support. Switch the host to CGroup v2 first (boot with systemd.unified_cgroup_hierarchy=1)",
 				bareMetalHostAddress(host), constants.MaxCGroupV1CompatibleK8sVersion,
