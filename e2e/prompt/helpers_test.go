@@ -5,6 +5,10 @@ package prompt_test
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +21,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/ssh"
 )
 
 var (
@@ -73,6 +78,37 @@ func setupDummySSHKey(t *testing.T) string {
 	dst := filepath.Join(t.TempDir(), "dummy_key.pem")
 	require.NoError(t, os.WriteFile(dst, data, 0o600)) //nolint:gosec // dst is under t.TempDir().
 	return dst
+}
+
+// setupAzureSelfManagedKeys generates the two RSA artifacts the Azure
+// self-managed prompt validates : a VM SSH public key (Azure only accepts
+// RSA) and a workload-identity OIDC signing key pair (private + .pub).
+// Returns the public-key path and the OIDC private-key path.
+func setupAzureSelfManagedKeys(t *testing.T) (sshPubPath, oidcKeyPath string) {
+	t.Helper()
+	dir := t.TempDir()
+
+	writeRSAPair := func(base string) (privPath, pubPath string) {
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+
+		privPath = filepath.Join(dir, base)
+		privPEM := pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(key),
+		})
+		require.NoError(t, os.WriteFile(privPath, privPEM, 0o600))
+
+		sshPub, err := ssh.NewPublicKey(&key.PublicKey)
+		require.NoError(t, err)
+		pubPath = privPath + ".pub"
+		require.NoError(t, os.WriteFile(pubPath, ssh.MarshalAuthorizedKey(sshPub), 0o600))
+		return privPath, pubPath
+	}
+
+	_, sshPubPath = writeRSAPair("vm_login_rsa")
+	oidcKeyPath, _ = writeRSAPair("azure-oidc-issuer")
+	return sshPubPath, oidcKeyPath
 }
 
 func setupDummyCert(t *testing.T) string {

@@ -30,9 +30,29 @@ cloud:
     subscriptionID: 22222222-2222-2222-2222-222222222222
     location: westeurope
     storageAccount: azureacmestorage
+    aadApplication:
+      principalID: 44444444-4444-4444-4444-444444444444
+    workloadIdentity:
+      openIDProviderSSHKeyPair:
+        privateKeyFilePath: /home/ops/.ssh/azure-oidc-issuer
+        publicKeyFilePath: /home/ops/.ssh/azure-oidc-issuer.pub
+    sshPublicKey: "ssh-rsa AAAAB3FAKEKEY ops@acme.com"
+    canonicalUbuntuImage:
+      offer: ubuntu-26_04-lts
+      sku: server
     controlPlane:
       loadBalancerType: Public
       diskSizeGB: 128
       vmSize: Standard_D2s_v3
       replicas: 3
+    # cpu / memory feed the cluster-autoscaler scale-from-zero capacity
+    # annotations — keep them in sync if you change vmSize.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        vmSize: Standard_F4s_v2
+        diskSizeGB: 128
 

@@ -410,6 +410,7 @@ func TestAWS_PromptFlow(t *testing.T) {
 func TestAzure_PromptFlow(t *testing.T) {
 	binary := buildTestBinary(t)
 	sshKeyPath := setupDummySSHKey(t)
+	vmSSHPubPath, oidcKeyPath := setupAzureSelfManagedKeys(t)
 	outputDir := t.TempDir()
 	c, cmd := newConsole(t, binary, outputDir)
 
@@ -455,6 +456,15 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
+	// Self-managed extras : the workload-identity OIDC signing key pair.
+	c.expectString("OIDC signing key")
+	c.sendLine(oidcKeyPath)
+
+	// The Microsoft Graph autofill fails against the fake credentials, so
+	// the manual service-principal object-id prompt appears.
+	c.expectString("service principal object ID")
+	c.sendLine("aad-principal-789")
+
 	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
@@ -464,6 +474,11 @@ func TestAzure_PromptFlow(t *testing.T) {
 
 	c.expectString("Your SSH private key")
 	c.sendLine(sshKeyPath)
+
+	// The dummy deploy key is ed25519, which Azure VMs can't use — so the
+	// RSA VM login key fallback prompt appears after the Git/SSH step.
+	c.expectString("VM SSH public key file")
+	c.sendLine(vmSSHPubPath)
 
 	c.expectString("Looks good?")
 	c.acceptDefault()
@@ -496,6 +511,12 @@ func TestAzure_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "replicas: 3")
 	assert.Contains(t, general, "storageAccount: e2eazuresa")
 	assert.Contains(t, general, "loadBalancerType: Public")
+	assert.Contains(t, general, "principalID: aad-principal-789")
+	assert.Contains(t, general, "sshPublicKey: \"ssh-rsa ")
+	assert.Contains(t, general, "privateKeyFilePath: "+oidcKeyPath)
+	assert.Contains(t, general, "publicKeyFilePath: "+oidcKeyPath+".pub")
+	assert.Contains(t, general, "offer: ubuntu-26_04-lts")
+	assert.Contains(t, general, "vmSize: Standard_F4s_v2")
 
 	// K8s version should be auto-detected.
 	var generalMap map[string]any

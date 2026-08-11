@@ -113,13 +113,43 @@ cloud:
     location: {{ .AzureLocation }}
 {{- if .AzureAKS }}
     aks: true
+    # The first node-group becomes the AKS System agent pool; AKS's built-in
+    # cluster autoscaler scales each pool between minSize and maxSize.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        vmSize: {{ .AzureNodeVMSize }}
+        diskSizeGB: 128
 {{- else }}
     storageAccount: {{ .AzureStorageAccount }}
+    aadApplication:
+      principalID: {{ .AzurePrincipalID }}
+    workloadIdentity:
+      openIDProviderSSHKeyPair:
+        privateKeyFilePath: {{ .AzureOIDCIssuerKeyPath }}
+        publicKeyFilePath: {{ .AzureOIDCIssuerKeyPath }}.pub
+    sshPublicKey: "{{ .AzureSSHPublicKey }}"
+    canonicalUbuntuImage:
+      offer: ubuntu-26_04-lts
+      sku: server
     controlPlane:
       loadBalancerType: Public
       diskSizeGB: {{ .AzureCPDiskSizeGB }}
       vmSize: {{ .AzureCPVMSize }}
       replicas: {{ .AzureCPReplicas }}
+    # cpu / memory feed the cluster-autoscaler scale-from-zero capacity
+    # annotations — keep them in sync if you change vmSize.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        vmSize: {{ .AzureNodeVMSize }}
+        diskSizeGB: 128
 {{- end }}
 {{- end }}
 {{- if eq .CloudProvider "hetzner" }}

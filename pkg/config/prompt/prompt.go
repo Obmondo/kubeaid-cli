@@ -289,6 +289,11 @@ func (s *promptSession) runPromptSteps() error {
 	if aws, ok := prompter.(*awsPrompter); ok {
 		aws.postProcess(s.cfg)
 	}
+	if azure, ok := prompter.(*azurePrompter); ok {
+		if err := azure.postProcess(s.cfg); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }

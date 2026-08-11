@@ -30,4 +30,14 @@ cloud:
     subscriptionID: 22222222-2222-2222-2222-222222222222
     location: westeurope
     aks: true
+    # The first node-group becomes the AKS System agent pool; AKS's built-in
+    # cluster autoscaler scales each pool between minSize and maxSize.
+    nodeGroups:
+      - name: default
+        minSize: 3
+        maxSize: 6
+        cpu: 4
+        memory: 8
+        vmSize: Standard_F4s_v2
+        diskSizeGB: 128
 
