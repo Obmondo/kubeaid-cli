@@ -253,6 +253,19 @@ const (
 	HCloudServersSubnetCIDR  = "10.0.0.0/24"
 	HetznerVSwitchSubnetCIDR = "10.0.1.0/24"
 
+	// DefaultPodCIDR is the cluster pod CIDR the capi-cluster chart's
+	// global.pods.cidrBlock defaults to (see
+	// argocd-helm-charts/capi-cluster/values.yaml in the KubeAid repo) when
+	// a cloud-provider-specific override isn't rendered. Managed clusters
+	// (AKS/EKS) install Cilium with ipam.mode=cluster-pool instead of the
+	// chart's default ipam.mode=kubernetes — see
+	// installCiliumOnManagedCluster — and need this same CIDR handed to
+	// Cilium's operator explicitly, since it can't be read back from
+	// Node.spec.podCIDR (that field never gets populated on those managed
+	// control planes; see the fix commit for the full story). Keep this in
+	// sync with the chart's default if that ever changes.
+	DefaultPodCIDR = "10.244.0.0/16"
+
 	HCloudServerImageUbuntu2604 = "ubuntu-26.04"
 
 	HCloudLocationHel1 = "hel1"

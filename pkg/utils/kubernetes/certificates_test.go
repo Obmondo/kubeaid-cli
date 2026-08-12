@@ -120,7 +120,7 @@ func TestIsCertificateReady(t *testing.T) {
 					},
 					map[string]any{
 						"type": "Issuing", "status": "False",
-						"reason":  "Failed",
+						"reason":  conditionReasonFailed,
 						"message": "order is in invalid state",
 					},
 				},
@@ -198,7 +198,7 @@ func TestWaitForCertificatesReady(t *testing.T) {
 			"conditions": []any{
 				map[string]any{"type": "Ready", "status": "False", "reason": "DoesNotExist"},
 				map[string]any{
-					"type": "Issuing", "status": "False", "reason": "Failed",
+					"type": "Issuing", "status": "False", "reason": conditionReasonFailed,
 					"message": "order is in invalid state",
 				},
 			},

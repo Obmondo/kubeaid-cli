@@ -12,6 +12,45 @@ spec:
     namespace: cert-manager
     server: https://kubernetes.default.svc
   project: kubeaid
+  # cert-manager-cainjector owns webhooks[].clientConfig.caBundle on both
+  # webhook configs — it patches in the real CA once its self-signed cert is
+  # ready, async from the chart's own manifest (which carries no caBundle /
+  # a placeholder). Without this, ArgoCD's sync re-applies the chart's
+  # manifest, wiping cainjector's patch, cainjector re-patches ~20s later,
+  # ArgoCD sees OutOfSync and re-syncs again — an infinite tug-of-war that
+  # never lets the App reach Synced (kubeaid-cli's syncArgoCDApp keeps
+  # re-triggering Sync as long as the App stays unsynced, so this can spin
+  # for as long as the operator lets it run).
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: cert-manager-webhook
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    # AKS injects kubernetes.azure.com/managedby: aks into
+    # webhooks[0].namespaceSelector on every admission webhook config — a
+    # field the chart doesn't declare at all. Without this, ArgoCD sees
+    # permanent drift on AKS and the App can never reach Synced, which
+    # blocks the "waiting for healthy state of ...ValidatingWebhookConfiguration"
+    # sync-wave gate forever (this, not caBundle, turned out to be the
+    # actual blocker — see argocd-helm-charts/cert-manager/examples/
+    # argocd-application-aks.yaml in the KubeAid repo, which documents this
+    # exact issue).
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      jsonPointers:
+        - /webhooks/0/namespaceSelector
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: cert-manager-webhook
+      jsonPointers:
+        - /webhooks/0/namespaceSelector
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
       path: argocd-helm-charts/cert-manager

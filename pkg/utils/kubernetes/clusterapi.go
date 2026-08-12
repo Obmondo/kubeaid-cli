@@ -45,6 +45,19 @@ const (
 	// there's no value to show.
 	emDash = "—"
 
+	// conditionStatusFalse is the v1beta1 metav1.ConditionStatus /
+	// clusterv1beta1.Condition "False" string value, shared across the
+	// package's condition-scanning helpers (isMachineFailed,
+	// isMachinePoolFailed, certificate readiness checks) so golangci-lint's
+	// goconst check doesn't flag the repeated literal.
+	conditionStatusFalse = "False"
+
+	// conditionReasonFailed is the cert-manager Issuing condition's
+	// "reason" value for a failed issuance attempt, shared with
+	// certificates_test.go so golangci-lint's goconst check doesn't flag
+	// the repeated literal.
+	conditionReasonFailed = "Failed"
+
 	// statusMaxWidth caps the Status column's char count to keep the
 	// lipgloss table from overflowing on long CAPH error messages.
 	// 120 fits a typical 140-column terminal once the Resource and
@@ -806,7 +819,20 @@ func hbmmLiveMessage(hbmm *caphV1Beta1.HetznerBareMetalMachine) string {
 //
 // Row shape mirrors summarizeCAPIStatus so the same renderCAPIStatusTable
 // produces a consistent UX across both wait phases.
+//
+// Managed control planes (EKS/AKS) create no Machine objects at all —
+// the cloud owns the control plane, and AKS agent pools in particular
+// are represented purely as MachinePools whose nodes never get
+// individual Machine CRs. Listing Machines there always returns an
+// empty slice, which the empty-list branch below treats as
+// permanently not-ready — deadlocking WaitForAllMachinesRunning
+// forever on every managed-control-plane bootstrap. Delegate to the
+// MachinePool-based predicate in that case instead.
 func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
+	if config.ManagedControlPlaneEnabled() {
+		return summarizeMachinePoolsForPivot(ctx, mgmtClient)
+	}
+
 	machines := &clusterAPIV1Beta1.MachineList{}
 	if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
 		return nil, false, err
@@ -836,6 +862,90 @@ func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([
 	}
 
 	return rows, allReady, nil
+}
+
+// summarizeMachinePoolsForPivot is the managed-control-plane (EKS/AKS)
+// counterpart to summarizeMachinesForPivot. It lists MachinePools in
+// the capi-cluster namespace and returns one capiStatusRow per pool
+// plus a `ready` flag set when every pool has: no DeletionTimestamp,
+// status.readyReplicas >= its desired replica count, and at least that
+// many status.nodeRefs populated. This mirrors clusterctl move's
+// "every node is provisioned" precondition without requiring Machine
+// objects that managed agent pools never create.
+//
+// Empty MachinePool list returns ready=false for the same reason
+// summarizeMachinesForPivot's empty-Machine-list case does — nothing
+// to move yet is a misconfiguration, not a no-op success.
+func summarizeMachinePoolsForPivot(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
+	machinePools := &clusterAPIV1Beta1.MachinePoolList{}
+	if err := mgmtClient.List(ctx, machinePools, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+		return nil, false, err
+	}
+
+	rows := make([]capiStatusRow, 0, len(machinePools.Items))
+	for _, mp := range machinePools.Items {
+		rows = append(rows, capiStatusRow{
+			Resource: "MachinePool/" + mp.Name,
+			Phase:    mp.Status.Phase,
+			Status:   machinePoolStatusDetail(&mp),
+			Failed:   isMachinePoolFailed(&mp),
+		})
+	}
+
+	if len(machinePools.Items) == 0 {
+		return rows, false, nil
+	}
+
+	allReady := true
+	for _, mp := range machinePools.Items {
+		desiredReplicas := int32(1)
+		if mp.Spec.Replicas != nil {
+			desiredReplicas = *mp.Spec.Replicas
+		}
+
+		if mp.DeletionTimestamp != nil ||
+			mp.Status.ReadyReplicas < desiredReplicas ||
+			int32(len(mp.Status.NodeRefs)) < desiredReplicas {
+			allReady = false
+			break
+		}
+	}
+
+	return rows, allReady, nil
+}
+
+// isMachinePoolFailed mirrors isMachineFailed for MachinePools: a
+// terminal Phase=Failed, or any non-True condition (v1beta2 preferred,
+// falling back to v1beta1) whose Reason indicates a failure.
+func isMachinePoolFailed(mp *clusterAPIV1Beta1.MachinePool) bool {
+	if mp.Status.Phase == string(clusterAPIV1Beta1.MachinePoolPhaseFailed) {
+		return true
+	}
+	if mp.Status.V1Beta2 != nil {
+		for _, c := range mp.Status.V1Beta2.Conditions {
+			if c.Status == metaV1.ConditionFalse && reasonIndicatesFailure(c.Reason) {
+				return true
+			}
+		}
+	}
+	for _, c := range mp.Status.Conditions {
+		if c.Status == conditionStatusFalse && reasonIndicatesFailure(c.Reason) {
+			return true
+		}
+	}
+	return false
+}
+
+// machinePoolStatusDetail mirrors machineStatusDetail for MachinePools,
+// reusing the same v1beta2-then-v1beta1 condition-message fallback so
+// the table stays uniform across Machine and MachinePool rows.
+func machinePoolStatusDetail(mp *clusterAPIV1Beta1.MachinePool) string {
+	if mp.Status.V1Beta2 != nil {
+		if msg := firstFailingV1Beta2Message(mp.Status.V1Beta2.Conditions); msg != "" {
+			return msg
+		}
+	}
+	return firstFailingV1Beta1Message(mp.Status.Conditions)
 }
 
 // clusterStatusDetail picks the most useful single-line summary for the
@@ -890,7 +1000,7 @@ func isMachineFailed(m *clusterAPIV1Beta1.Machine) bool {
 		}
 	}
 	for _, c := range m.Status.Conditions {
-		if c.Status == "False" && reasonIndicatesFailure(c.Reason) {
+		if c.Status == conditionStatusFalse && reasonIndicatesFailure(c.Reason) {
 			return true
 		}
 	}

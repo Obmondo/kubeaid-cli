@@ -177,7 +177,23 @@ func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
 		return nil, fmt.Errorf("failed reading main cluster's kubeconfig file: %w", err)
 	}
 
-	mainCluster, ok := kubeConfig.Clusters[config.ParsedGeneralConfig.Cluster.Name]
+	// Resolve the cluster entry via current-context rather than assuming the
+	// map key equals config.ParsedGeneralConfig.Cluster.Name. That holds for
+	// self-managed (kubeadm) clusters, where clusterctl synthesizes the
+	// kubeconfig with the cluster key set to the CAPI Cluster name. It does
+	// NOT hold for managed clusters (AKS via AzureManagedControlPlane, and
+	// likely EKS) : CAPZ pulls the kubeconfig straight from Azure, which
+	// names the cluster entry after the control plane resource (e.g.
+	// "<clusterName>-control-plane"), not the bare cluster name. The old
+	// exact-key lookup silently returned (nil, nil) here for every managed
+	// cluster, surfacing downstream as "Main cluster kubeconfig has no
+	// endpoint — cannot install Cilium" even though the kubeconfig was
+	// perfectly valid.
+	kubeContext, ok := kubeConfig.Contexts[kubeConfig.CurrentContext]
+	if !ok {
+		return nil, nil
+	}
+	mainCluster, ok := kubeConfig.Clusters[kubeContext.Cluster]
 	if !ok {
 		return nil, nil
 	}
