@@ -14,6 +14,7 @@ import (
 	"github.com/go-sprout/sprout/registry/encoding"
 	"github.com/go-sprout/sprout/registry/strings"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
@@ -44,5 +45,5 @@ func ParseAndExecuteTemplate(
 	var executedTemplate bytes.Buffer
 	err = parsedTemplate.Execute(&executedTemplate, values)
 	assert.AssertErrNil(ctx, err, "Failed executing template")
-	return executedTemplate.Bytes()
+	return render.StripTrailingWhitespace(executedTemplate.Bytes())
 }

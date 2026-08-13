@@ -58,5 +58,16 @@ func renderTemplate(name string, tmplStr string, data any) ([]byte, error) {
 		return nil, fmt.Errorf("rendering template %s: %w", name, err)
 	}
 
-	return rendered.Bytes(), nil
+	return StripTrailingWhitespace(rendered.Bytes()), nil
+}
+
+// StripTrailingWhitespace satisfies the yamllint trailing-spaces rule that the
+// kubeaid-config repos' CI runs over everything rendered here.
+func StripTrailingWhitespace(rendered []byte) []byte {
+	lines := bytes.Split(rendered, []byte("\n"))
+	for i, line := range lines {
+		lines[i] = bytes.TrimRight(line, " \t")
+	}
+
+	return bytes.Join(lines, []byte("\n"))
 }

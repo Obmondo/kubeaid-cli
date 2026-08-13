@@ -8,7 +8,7 @@ forkURLs:
     version: 29.0.9
   kubeaidConfig:
     url: git@github.com:acme/kubeaid-config.git
-    directory: 
+    directory:
 
 cluster:
   type: vpn
@@ -26,7 +26,7 @@ cluster:
     realm: acme
   netbird:
     dns: netbird.hybrid.acme.com
-    dnsZone: 
+    dnsZone:
   argoCD:
     deployKeys:
       kubeaidConfig:

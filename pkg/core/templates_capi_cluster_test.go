@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +14,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 // capiClusterTV returns a TemplateValues for an HCloud VPN cluster with a
@@ -101,4 +104,26 @@ func TestCapiClusterValuesSingleNodePublic(t *testing.T) {
 		assert.NotContains(t, out, "type: public",
 			"the normal VPN path stays on the chart's default private network")
 	})
+}
+
+// The audit policy kubeaid-cli injects into APIServer.Files separates its rule
+// groups with blank lines, which `nindent 8` turns into lines of 8 spaces.
+func TestCapiClusterValuesNoTrailingWhitespace(t *testing.T) {
+	tv := capiClusterTV(false)
+	tv.APIServer = config.APIServerConfig{
+		Files: []config.FileConfig{{
+			Path:    "/etc/kubernetes/audit-policy.yaml",
+			Content: "rules:\n  - level: None\n\n  - level: Metadata\n",
+		}},
+	}
+
+	out := templates.ParseAndExecuteTemplate(
+		context.Background(),
+		&KubeaidConfigFileTemplates,
+		"templates/argocd-apps/values-capi-cluster.yaml.tmpl",
+		tv,
+	)
+
+	assert.Empty(t, regexp.MustCompile(`(?m)[ \t]+$`).FindAllString(string(out), -1),
+		"rendered values-capi-cluster.yaml:\n%s", out)
 }
