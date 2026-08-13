@@ -201,6 +201,17 @@ func TestWriteTemplatedFile(t *testing.T) {
 			wantPerm:    0o600,
 		},
 		{
+			name: "empty values leave no trailing whitespace behind",
+			setupDest: func(t *testing.T) string {
+				return filepath.Join(t.TempDir(), "out.yaml")
+			},
+			template:    "directory: {{ .Dir }}\nname: {{ .Name }}\n",
+			data:        struct{ Dir, Name string }{Dir: "", Name: "demo"},
+			perm:        0o600,
+			wantContent: "directory:\nname: demo\n",
+			wantPerm:    0o600,
+		},
+		{
 			name: "overwrites existing file content via O_TRUNC",
 			setupDest: func(t *testing.T) string {
 				dir := t.TempDir()

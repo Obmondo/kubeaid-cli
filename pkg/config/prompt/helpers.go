@@ -12,6 +12,8 @@ import (
 	"text/template"
 
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 // deriveRealmFromDNS returns the first dot-separated segment of the
@@ -114,7 +116,7 @@ func renderTemplate(name string, tmplStr string, data any) ([]byte, error) {
 		return nil, fmt.Errorf("rendering template %s: %w", name, err)
 	}
 
-	return rendered.Bytes(), nil
+	return render.StripTrailingWhitespace(rendered.Bytes()), nil
 }
 
 // writeTemplatedFile renders a Go template string with the given data and writes it to disk.

@@ -7,16 +7,19 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+var trailingWhitespace = regexp.MustCompile(`(?m)[ \t]+$`)
+
 // updateGolden regenerates the golden fixtures in testdata/golden from the
 // current Render() output. Run:
 //
-//	go test ./pkg/config/prompt/... -run TestRenderGoldenParity -update-golden
+//	go test ./pkg/render/... -run TestRenderGoldenParity -update-golden
 var updateGolden = flag.Bool("update-golden", false, "write current Render() output as the golden fixtures")
 
 // goldenCase is one representative PromptedConfig for a provider/mode
@@ -318,6 +321,11 @@ func TestRenderGoldenParity(t *testing.T) {
 			secretsGoldenPath := filepath.Join("testdata", "golden", tc.name+".secrets.yaml")
 
 			if *updateGolden {
+				require.Empty(t, trailingWhitespace.FindAllString(string(gotGeneral), -1),
+					"refusing to write a golden fixture with trailing whitespace: %s", generalGoldenPath)
+				require.Empty(t, trailingWhitespace.FindAllString(string(gotSecrets), -1),
+					"refusing to write a golden fixture with trailing whitespace: %s", secretsGoldenPath)
+
 				// 0600 to satisfy gosec G306. Git records only the
 				// executable bit, so the committed fixtures are unaffected.
 				require.NoError(t, os.WriteFile(generalGoldenPath, gotGeneral, 0o600))
@@ -397,4 +405,39 @@ func TestRenderAlwaysEmitsGitKeyPathWithoutAgent(t *testing.T) {
 		assert.NotContains(t, string(general), "\n  privateKeyFilePath:",
 			"an agent operator has no key file, so the line would be a lie")
 	})
+}
+
+func TestStripTrailingWhitespace(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"empty input", "", ""},
+		{"an empty YAML value loses its space", "directory: \n", "directory:\n"},
+		{"a whitespace-only line becomes empty", "a:\n        \n  - b\n", "a:\n\n  - b\n"},
+		{"tabs are stripped too", "a:\t \nb:\n", "a:\nb:\n"},
+		{"leading indentation is preserved", "  a: 1\n    b: 2\n", "  a: 1\n    b: 2\n"},
+		{"a last line without a newline is still trimmed", "a: 1\nb:  ", "a: 1\nb:"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, string(StripTrailingWhitespace([]byte(tc.in))))
+		})
+	}
+}
+
+func TestRenderEmitsNoTrailingWhitespace(t *testing.T) {
+	for _, tc := range goldenCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			general, secrets, err := Render(tc.cfg)
+			require.NoError(t, err)
+
+			assert.Empty(t, trailingWhitespace.FindAllString(string(general), -1),
+				"general.yaml:\n%s", general)
+			assert.Empty(t, trailingWhitespace.FindAllString(string(secrets), -1),
+				"secrets.yaml:\n%s", secrets)
+		})
+	}
 }

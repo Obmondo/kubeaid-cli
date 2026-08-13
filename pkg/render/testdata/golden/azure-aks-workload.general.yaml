@@ -8,7 +8,7 @@ forkURLs:
     version: 31.0.4
   kubeaidConfig:
     url: git@github.com:acme/kubeaid-config.git
-    directory: 
+    directory:
 
 cluster:
   type: workload
