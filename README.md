@@ -3,7 +3,9 @@
 [![Release](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
-KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/KubeAid)-managed Kubernetes clusters — bootstrap, upgrade, recover, test, and delete — across AWS, Azure, Hetzner, and bare metal, the GitOps-native way.
+KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/KubeAid)-managed Kubernetes clusters — bootstrap, upgrade, recover, test, and delete — across AWS (self-managed or EKS), Azure (self-managed or AKS), Hetzner, and bare metal, the GitOps-native way.
+
+It is the entry point to the KubeAid platform: the CLI consumes the [KubeAid repository](https://github.com/Obmondo/KubeAid) — curated, vendored Helm charts, monitoring, and secure defaults, delivered as regular reviewed updates — so you don't carry the mental overhead of tracking what's broken, deprecated, or current best practice across the Kubernetes ecosystem.
 
 ## Table of contents
 
@@ -19,6 +21,7 @@ KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/
 - [Documentation](#documentation)
 - [Development](#development)
 - [Contributing](#contributing)
+- [Community and governance](#community-and-governance)
 - [Roadmap](https://github.com/Obmondo/kubeaid-cli/blob/main/ROADMAP.md)
 - [License](#license)
 
@@ -28,7 +31,7 @@ KubeAid CLI is a **single self-contained binary**. The only local requirement is
 
 How it provisions depends on the target:
 
-- **Cluster API clouds** — **AWS** (CAPA), **Azure** (CAPZ + Crossplane), and **Hetzner** (CAPH): it stands up a throwaway **K3D management cluster**, installs Cluster API there, provisions your target cluster, then `clusterctl move` **pivots** every Cluster API resource onto the target so it self-manages and the K3D cluster is discarded.
+- **Cluster API clouds** — **AWS** (CAPA, self-managed or a managed EKS control plane), **Azure** (CAPZ + Crossplane, self-managed or a managed AKS control plane), and **Hetzner** (CAPH): it stands up a throwaway **K3D management cluster**, installs Cluster API there, provisions your target cluster, then `clusterctl move` **pivots** every Cluster API resource onto the target so it self-manages and the K3D cluster is discarded.
 - **Generic bare metal** — **KubeOne** installs Kubernetes straight onto your hosts, with no K3D or Cluster API.
 - **Local** — the K3D cluster is simply the cluster itself.
 
@@ -39,7 +42,7 @@ From there it is **GitOps**. The engine renders your `general.yaml` into manifes
 - **Cluster lifecycle management** — bootstrap, upgrade, recover, test, and delete Kubernetes clusters
 - **Backup status reporting** — `backup status` shows CNPG and Velero backup health at a glance, see [`docs/backup-status.md`](docs/backup-status.md)
 - **Development environments** — spin up local K3D-based dev clusters
-- **Multi-cloud support** — AWS, Azure, Hetzner (cloud, bare-metal, hybrid), and generic bare-metal
+- **Multi-cloud support** — AWS, Azure, Hetzner (cloud, bare-metal, hybrid), and generic bare-metal, including managed EKS and AKS control planes
 - **GitOps native** — integrates with ArgoCD, KubeAid Config repos, and sealed secrets
 - **Config generation** — generate sample configuration files per cloud provider
 
@@ -127,7 +130,9 @@ kubeaid-cli [command] [flags]
 | Provider | Bootstrap | Upgrade | Recover | Delete |
 |---|---|---|---|---|
 | AWS | Yes | Yes | Yes | Yes |
+| AWS EKS (managed) | Yes | GitOps¹ | —² | Yes |
 | Azure | Yes | Yes | Yes | Yes |
+| Azure AKS (managed) | Yes | GitOps¹ | —² | Yes |
 | Hetzner Cloud | Yes | WIP | WIP | Yes |
 | Hetzner Bare Metal | Yes | WIP | WIP | Yes |
 | Hetzner Hybrid | Yes | WIP | WIP | Yes |
@@ -135,6 +140,12 @@ kubeaid-cli [command] [flags]
 | Local (K3D) | Yes | — | — | — |
 
 `WIP` — work in progress; landing soon, not yet generally available.
+
+¹ Managed control planes aren't upgraded via `cluster upgrade`: bump `global.kubernetes.version` in your
+kubeaid-config repo instead — CAPA/CAPZ then upgrades the control plane and rolls the node groups / agent pools.
+
+² `cluster recover` isn't wired for managed control planes yet — re-bootstrap and restore from the Velero backup
+manually.
 
 ## Kubernetes version support
 
@@ -146,7 +157,7 @@ Every Kubernetes version you request is validated at bootstrap. It must:
 
 | KubeAid CLI | AWS · Azure · Hetzner (Cluster API) | Bare metal (KubeOne) |
 |---|---|---|
-| `v0.29.x` | `v1.30` → latest released (non-EOL) | `v1.33` – `v1.35` |
+| `v0.31.x` | `v1.30` → latest released (non-EOL) | `v1.33` – `v1.35` |
 
 - **Cluster API clouds** — `v1.30` up to the latest released minor.
 - **Bare metal** — fixed to `v1.33`–`v1.35` by **KubeOne v1.13**; the range moves when KubeOne is upgraded.
@@ -216,6 +227,14 @@ Run `make help` to list every target.
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for dev
 setup, code standards, and how to open a pull request.
+
+## Community and governance
+
+- [Code of Conduct](CODE_OF_CONDUCT.md) — we follow the CNCF Community Code of Conduct.
+- [Governance](GOVERNANCE.md) — how decisions are made and how maintainers are added.
+- [Maintainers](MAINTAINERS.md) — current maintainers of the project.
+- [Adopters](ADOPTERS.md) — organizations running KubeAid CLI; add yours with a PR.
+- [Security policy](SECURITY.md) — how to report vulnerabilities privately.
 
 ## License
 
