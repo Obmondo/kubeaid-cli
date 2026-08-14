@@ -208,6 +208,8 @@ func TestPingKubernetesCluster(t *testing.T) {
 func TestGetMainClusterEndpoint(t *testing.T) {
 	const testClusterName = "test-cluster"
 	const testServerURL = "https://10.0.0.1:6443"
+	const testKubeContext = "ctx"
+	const testAzControlPlaneContext = "test-az1-control-plane"
 
 	tests := []struct {
 		name                   string
@@ -235,9 +237,30 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			wantErrSubstr: "failed reading main cluster's kubeconfig file",
 		},
 		{
-			name: "kubeconfig exists but cluster name not found returns nil",
+			name: "kubeconfig exists but current-context not found returns nil",
 			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
 				return &clientcmdapi.Config{
+					Clusters: map[string]*clientcmdapi.Cluster{
+						"other-cluster": {Server: testServerURL},
+					},
+					// No CurrentContext / Contexts set — simulates a
+					// kubeconfig whose current-context doesn't resolve.
+				}, nil
+			},
+			clusterName: testClusterName,
+			want:        nil,
+		},
+		{
+			name: "current-context's cluster not found in Clusters returns nil",
+			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
+				return &clientcmdapi.Config{
+					CurrentContext: testKubeContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						// Points at a cluster name managed-cluster kubeconfigs
+						// commonly use (e.g. AKS's "<name>-control-plane"),
+						// which isn't declared under Clusters here.
+						testKubeContext: {Cluster: testClusterName + "-control-plane"},
+					},
 					Clusters: map[string]*clientcmdapi.Cluster{
 						"other-cluster": {Server: testServerURL},
 					},
@@ -250,6 +273,10 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			name: "url.Parse fails on invalid server URL",
 			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
 				return &clientcmdapi.Config{
+					CurrentContext: testKubeContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						testKubeContext: {Cluster: testClusterName},
+					},
 					Clusters: map[string]*clientcmdapi.Cluster{
 						testClusterName: {Server: "://bad"},
 					},
@@ -263,6 +290,10 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			name: "cluster found but CreateKubernetesClient fails returns nil",
 			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
 				return &clientcmdapi.Config{
+					CurrentContext: testKubeContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						testKubeContext: {Cluster: testClusterName},
+					},
 					Clusters: map[string]*clientcmdapi.Cluster{
 						testClusterName: {Server: testServerURL},
 					},
@@ -278,6 +309,10 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			name: "cluster found and client created but ping fails returns nil",
 			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
 				return &clientcmdapi.Config{
+					CurrentContext: testKubeContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						testKubeContext: {Cluster: testClusterName},
+					},
 					Clusters: map[string]*clientcmdapi.Cluster{
 						testClusterName: {Server: testServerURL},
 					},
@@ -296,6 +331,10 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			name: "happy path returns parsed endpoint URL",
 			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
 				return &clientcmdapi.Config{
+					CurrentContext: testKubeContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						testKubeContext: {Cluster: testClusterName},
+					},
 					Clusters: map[string]*clientcmdapi.Cluster{
 						testClusterName: {Server: testServerURL},
 					},
@@ -308,6 +347,37 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 				return nil
 			},
 			clusterName: testClusterName,
+			want: func() *url.URL {
+				u, _ := url.Parse(testServerURL)
+				return u
+			}(),
+		},
+		{
+			name: "managed-cluster kubeconfig where cluster key differs from CAPI cluster name",
+			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
+				return &clientcmdapi.Config{
+					CurrentContext: testAzControlPlaneContext,
+					Contexts: map[string]*clientcmdapi.Context{
+						// Mirrors what CAPZ pulls for an AzureManagedControlPlane :
+						// the cluster entry is keyed by the control-plane
+						// resource name, not the bare CAPI Cluster name.
+						testAzControlPlaneContext: {Cluster: testAzControlPlaneContext},
+					},
+					Clusters: map[string]*clientcmdapi.Cluster{
+						testAzControlPlaneContext: {Server: testServerURL},
+					},
+				}, nil
+			},
+			createKubernetesClient: func(_ context.Context, _ string) (client.Client, error) {
+				return crFake.NewClientBuilder().WithScheme(newTestScheme(t)).Build(), nil
+			},
+			pingKubernetesCluster: func(_ context.Context, _ client.Client) error {
+				return nil
+			},
+			// The CAPI Cluster name ("test-az1") intentionally does NOT match
+			// any key under Clusters/Contexts above — resolution must go
+			// through current-context, not this field.
+			clusterName: "test-az1",
 			want: func() *url.URL {
 				u, _ := url.Parse(testServerURL)
 				return u

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -661,21 +662,73 @@ func installCiliumOnManagedCluster(ctx context.Context) {
 	assert.AssertErrNil(ctx, err, "Failed getting main cluster endpoint")
 	assert.AssertNotNil(ctx, endpoint, "Main cluster kubeconfig has no endpoint — cannot install Cilium")
 
-	// KUBECONFIG already points at the main cluster's kubeconfig here — the
-	// Helm SDK picks it up from the environment.
-	err = kubernetes.HelmInstallOrUpgrade(ctx, &kubernetes.HelmInstallArgs{
-		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/cilium"),
-
-		Namespace:   "cilium",
+	// Render (client-only, no cluster contact) then apply the manifests
+	// directly — mirroring what the self-managed flow's postKubeadmCommands
+	// hook does (`helm template ... | kubectl apply -f -`). Deliberately NOT
+	// using HelmInstallOrUpgrade here : that runs `helm install --wait`,
+	// which blocks until every Deployment (including cilium-operator) has
+	// available replicas.
+	//
+	// On a managed cluster every node starts NetworkUnavailable (no CNI
+	// yet), which the node controller reflects as the built-in
+	// node.kubernetes.io/network-unavailable:NoSchedule taint. DaemonSet
+	// pods (cilium-agent) get that toleration injected automatically by the
+	// DaemonSet controller; cilium-operator (a Deployment) does not, and
+	// nothing in the chart adds it either. So `--wait` deadlocks : it waits
+	// on an operator replica that can't schedule until Cilium itself clears
+	// the taint, and 10 minutes later fails with "context deadline
+	// exceeded" instead of ever converging. Applying without waiting lets
+	// cilium-agent's DaemonSet come up on its own (same as the self-managed
+	// path, which never waits either) and clear NetworkUnavailable, which
+	// then unblocks the operator. The cilium ArgoCD App adopts this release
+	// afterwards.
+	manifest, err := kubernetes.HelmRenderManifest(ctx, &kubernetes.HelmRenderArgs{
+		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/cilium"),
 		ReleaseName: "cilium",
+		Namespace:   "cilium",
 		Values: &helmValues.Options{
 			Values: []string{
 				"cilium.kubeProxyReplacement=true",
 				fmt.Sprintf("cilium.k8sServiceHost=%s", endpoint.Hostname()),
 				fmt.Sprintf("cilium.k8sServicePort=%s", endpoint.Port()),
+
+				// The chart defaults to ipam.mode=kubernetes, which hands
+				// out pod CIDRs by reading Node.spec.podCIDR — populated by
+				// kube-controller-manager's --allocate-node-cidrs on
+				// self-managed (kubeadm) clusters. AKS's managed control
+				// plane doesn't expose that flag for BYO-CNI
+				// (networkPlugin: none) clusters, so spec.podCIDR is never
+				// set and cilium-agent hangs forever on "required IPv4
+				// PodCIDR not available" — never reaching its startup
+				// probe, so this and every subsequent Helm-based install
+				// (Sealed Secrets included) that waits on cluster
+				// networking times out. cluster-pool is Cilium's own
+				// upstream default : the operator allocates per-node CIDRs
+				// itself out of clusterPoolIPv4PodCIDRList, no
+				// Node.spec.podCIDR involved. Presumably needed for EKS
+				// too, whenever that gets wired up.
+				"cilium.ipam.mode=cluster-pool",
+				fmt.Sprintf(
+					"cilium.ipam.operator.clusterPoolIPv4PodCIDRList[0]=%s",
+					constants.DefaultPodCIDR,
+				),
 			},
 		},
 	})
+	assert.AssertErrNil(ctx, err, "Failed rendering Cilium chart for the managed cluster")
+
+	// KUBECONFIG already points at the main cluster's kubeconfig here.
+	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, constants.OutputPathMainClusterKubeconfig)
+	assert.AssertErrNil(ctx, err, "Failed creating Kubernetes client for the managed cluster")
+
+	// The chart relies on `helm install --create-namespace` for its release
+	// namespace rather than declaring a Namespace manifest itself — since
+	// we're applying rendered manifests directly (no install action), that
+	// convenience doesn't happen for us. Create it explicitly first.
+	err = kubernetes.CreateNamespace(ctx, "cilium", clusterClient)
+	assert.AssertErrNil(ctx, err, "Failed creating cilium namespace on the managed cluster")
+
+	err = kubernetes.ApplyManifestFromReader(ctx, clusterClient, strings.NewReader(manifest))
 	assert.AssertErrNil(ctx, err, "Failed installing Cilium on the managed cluster")
 }
 

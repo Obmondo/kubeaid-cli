@@ -194,7 +194,7 @@ func isCertificateReady(
 	// holds the real reason — surface it (with the attempt count so a
 	// genuinely-stuck cert is distinguishable from a slow first try).
 	if issuingCond != nil &&
-		issuingCond["status"] == "False" && issuingCond["reason"] == "Failed" {
+		issuingCond["status"] == conditionStatusFalse && issuingCond["reason"] == conditionReasonFailed {
 		detail := conditionDetail(issuingCond)
 		if attempts, ok, _ := unstructured.NestedInt64(
 			cert.Object, "status", "failedIssuanceAttempts",

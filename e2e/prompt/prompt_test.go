@@ -69,6 +69,15 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 
 	// Step 4 — Git/SSH form: deploy key + config URL in one group,
 	// then Git SSH key in a second group (no SSH agent).
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -151,6 +160,15 @@ func TestLocal_PromptFlow(t *testing.T) {
 	// Step 3 — Local has no credential form.
 
 	// Step 4 — Git/SSH.
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -232,6 +250,15 @@ func TestLocal_PromptFlow_NetBirdDecline(t *testing.T) {
 	// Step 3 — Local has no credential form.
 
 	// Step 4 — Git/SSH.
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -330,10 +357,12 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
-	// After the credentials form returns, AMI lookup runs. If it fails
-	// (no network in CI), manual AMI inputs are shown — one for the
-	// control plane (arm64) and one for the worker node-group (amd64).
-	nextPrompt := c.expectAnyString("AMI ID for the control plane", "ArgoCD deploy key")
+	// AMI lookup runs inside the credentials form, before it returns. If it
+	// fails (no network in CI), manual AMI inputs are shown — one for the
+	// control plane (arm64) and one for the worker node-group (amd64) —
+	// before the form hands off to the security form below. If it
+	// succeeds, the security form's first prompt appears directly.
+	nextPrompt := c.expectAnyString("AMI ID for the control plane", "Enable risk exposure monitoring?")
 	if nextPrompt == "AMI ID for the control plane" {
 		c.sendLine("ami-0e2etestmanualcp1")
 		c.expectString("AMI ID for the worker node-group")
@@ -341,6 +370,15 @@ func TestAWS_PromptFlow(t *testing.T) {
 	}
 
 	// Step 4 — Git/SSH.
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -466,6 +504,15 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.sendLine("aad-principal-789")
 
 	// Step 4 — Git/SSH.
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
@@ -582,6 +629,15 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.acceptDefault()
 
 	// Step 4 — Git/SSH.
+	// Security form: applies to every provider, runs right before Git/SSH.
+	// Accept both confirms' defaults (risk exposure monitoring = Yes,
+	// runtime detection = Tetragon = No).
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
 
