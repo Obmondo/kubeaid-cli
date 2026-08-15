@@ -66,6 +66,7 @@
 - [OpenIDProviderSSHKeyPairConfig](#openidprovidersshkeypairconfig)
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
+- [SecurityConfig](#securityconfig)
 - [UserConfig](#userconfig)
 - [VG0Config](#vg0config)
 - [VSwitchConfig](#vswitchconfig)
@@ -133,10 +134,10 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| ami,omitempty | [`AMIConfig`](#amiconfig) |  |  |
+| ami | [`AMIConfig`](#amiconfig) |  |  |
 | instanceType | `string` |  |  |
 | rootVolumeSize | `uint32` |  |  |
-| sshKeyName,omitempty | `string` |  |  |
+| sshKeyName | `string` |  |  |
 | name | `string` |  | Nodegroup name.<br> |
 | labels | `map[string]string` | [] | Labels that you want to be propagated to each node in the nodegroup.<br><br>Each label should meet one of the following criterias to propagate to each of the nodes :<br><br>  1. Has node-role.kubernetes.io as prefix.<br>  2. Belongs to node-restriction.kubernetes.io domain.<br>  3. Belongs to node.cluster.x-k8s.io domain.<br><br>REFER : https://cluster-api.sigs.k8s.io/developer/architecture/controllers/metadata-propagation#machine.<br> |
 | taints | []`Taint` | [] | Taints that you want to be propagated to each node in the nodegroup.<br> |
@@ -154,7 +155,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | sshKeyName | `string` |  |  |
 | vpcID | `string` |  |  |
 | bastionEnabled | `bool` | True |  |
-| controlPlane,omitempty | [`AWSControlPlane`](#awscontrolplane) |  |  |
+| controlPlane | [`AWSControlPlane`](#awscontrolplane) |  |  |
 | nodeGroups | [][`AWSAutoScalableNodeGroup`](#awsautoscalablenodegroup) |  |  |
 
 ## AWSControlPlane
@@ -222,6 +223,7 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 | subscriptionID | `string` |  |  |
 | aadApplication | [`AADApplication`](#aadapplication) |  |  |
 | location | `string` |  |  |
+| aks | `bool` |  | AKS flips the cluster to an Azure managed (AKS) control plane,<br>provisioned via CAPZ's AzureManagedControlPlane. Workers become<br>AKS agent pools (AzureManagedMachinePool — CAPZ managed clusters<br>support no other worker shape), scaled by AKS's built-in cluster<br>autoscaler. The control plane, node images and SSH keys are all<br>Azure-managed, and CAPZ authenticates with the AAD service<br>principal directly — so controlPlane, sshPublicKey,<br>canonicalUbuntuImage, storageAccount, workloadIdentity and<br>aadApplication must be left unset. Cross-field rules live in<br>pkg/config/parser/validate.go (validateAzureConfig).<br> |
 | storageAccount | `string` |  |  |
 | workloadIdentity | [`WorkloadIdentity`](#workloadidentity) |  |  |
 | sshPublicKey | `string` |  |  |
@@ -295,10 +297,10 @@ REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1b
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| systemReserved,omitempty | `map[string]string` |  |  |
-| kubeReserved,omitempty | `map[string]string` |  |  |
-| evictionHard,omitempty | `map[string]string` |  |  |
-| maxPods,omitempty | `int32` |  |  |
+| systemReserved | `map[string]string` |  |  |
+| kubeReserved | `map[string]string` |  |  |
+| evictionHard | `map[string]string` |  |  |
+| maxPods | `int32` |  |  |
 
 ## BareMetalNodeGroup
 
@@ -357,6 +359,7 @@ REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1b
 | acmeDNS01 | [`ACMEDNS01Config`](#acmedns01config) |  | ACMEDNS01 switches the rendered ClusterIssuer's solver from<br>the HTTP-01 default to DNS-01. Required for the split-horizon<br>mesh pattern: NetBird-exposed services use real public DNS<br>names (e.g. argocd.staging.acme.com) that only resolve inside<br>the mesh — Let's Encrypt can never reach them over HTTP, but<br>proves ownership via a TXT record on the public zone instead.<br>Requires cluster.acmeEmail plus the provider credential in<br>secrets.yaml (acme.cloudflareApiToken).<br> |
 | apiServer | [`APIServerConfig`](#apiserverconfig) |  | Configuration options for the Kubernetes API server.<br> |
 | lockdown | `bool` |  | Lockdown pre-answers the end-of-bootstrap Host Firewall (CCNP)<br>step. nil = ask interactively (legacy behavior); true = apply<br>without prompting (CI-safe); false = skip the step.<br> |
+| security | [`SecurityConfig`](#securityconfig) |  | Security selects the optional security ArgoCD Apps. Omitting the<br>block leaves every one of them off, so existing clusters keep<br>their current app set across an upgrade.<br> |
 | keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance a VPN cluster hosts as<br>NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →<br>kubeaid-cli installs it; mode=external → operator runs it<br>elsewhere). Not supported on workload clusters — access there is<br>via the NetBird mesh (cluster.netbird.dns), so a keycloak block<br>on a workload cluster is rejected.<br> |
 | netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
@@ -576,7 +579,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | hcloud | [`HCloudControlPlane`](#hcloudcontrolplane) |  |  |
 | bareMetal | [`HetznerBareMetalControlPlane`](#hetznerbaremetalcontrolplane) |  |  |
 | regions | []`string` |  | Regions is the list of Hetzner regions (lower-case IDs: "fsn1", "hel1", "ash", ...)<br>the CAPH chart constrains control-plane placement to. At least one is required.<br> |
-| extraCertSANs,omitempty | []`string` |  | ExtraCertSANs are additional DNS names added to the apiserver's<br>TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,<br>hybrid). The chart merges these with endpoint.host into kubeadm's<br>apiServer.certSANs. Use for any additional hostnames clients reach<br>the apiserver under.<br> |
+| extraCertSANs | []`string` |  | ExtraCertSANs are additional DNS names added to the apiserver's<br>TLS cert SAN list, on every Hetzner mode (hcloud, bare-metal,<br>hybrid). The chart merges these with endpoint.host into kubeadm's<br>apiServer.certSANs. Use for any additional hostnames clients reach<br>the apiserver under.<br> |
 
 ## HetznerCredentials
 
@@ -815,6 +818,17 @@ KeycloakCredentials.</p>
 | keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
 | netbird | [`NetBirdCredentials`](#netbirdcredentials) |  |  |
 | acme | [`ACMECredentials`](#acmecredentials) |  |  |
+
+## SecurityConfig
+
+<p>SecurityConfig selects the optional security ArgoCD Apps. Both
+default to false so an existing cluster's app set is unchanged
+until its config opts in.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| vulnerabilityScanning | `bool` |  | VulnerabilityScanning deploys trivy-operator together with<br>version-checker. They are one switch because the chart's<br>ImageOutdatedAndVulnerable alert joins both metrics —<br>trivy-operator alone yields an alert that cannot fire.<br> |
+| runtimeDetection | `bool` |  | RuntimeDetection deploys tetragon. Observability-only until<br>TracingPolicy resources are applied. Needs a BTF-enabled<br>kernel (>= 5.4) on every node.<br> |
 
 ## UserConfig
 

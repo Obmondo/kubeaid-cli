@@ -87,21 +87,19 @@ cluster:
   # step. nil = ask interactively (legacy behavior); true = apply
   # without prompting (CI-safe); false = skip the step.
   lockdown:
-  # Security selects the optional security ArgoCD Apps. Omitting the block
-  # leaves every one of them off, so an existing cluster's App set does not
-  # change on upgrade.
+  # Security selects the optional security ArgoCD Apps. Omitting the
+  # block leaves every one of them off, so existing clusters keep
+  # their current app set across an upgrade.
   security:
-    # Deploys trivy-operator together with version-checker. They are one
-    # switch because trivy-operator's ImageOutdatedAndVulnerable alert joins
-    # a metric from each — trivy-operator alone installs an alert that can
-    # never fire. The alert only fires when a running image has fixable
-    # Critical/High CVEs AND a newer tag exists upstream, so every alert
-    # carries an upgrade you can actually apply.
-    vulnerabilityScanning: false
-    # Deploys tetragon: eBPF process, network and file events from every
-    # node. Observability-only until you apply TracingPolicy resources.
-    # Requires a BTF-enabled kernel (>= 5.4) on every node.
-    runtimeDetection: false
+    # VulnerabilityScanning deploys trivy-operator together with
+    # version-checker. They are one switch because the chart's
+    # ImageOutdatedAndVulnerable alert joins both metrics —
+    # trivy-operator alone yields an alert that cannot fire.
+    vulnerabilityScanning:
+    # RuntimeDetection deploys tetragon. Observability-only until
+    # TracingPolicy resources are applied. Needs a BTF-enabled
+    # kernel (>= 5.4) on every node.
+    runtimeDetection:
   # Keycloak declares the Keycloak instance a VPN cluster hosts as
   # NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →
   # kubeaid-cli installs it; mode=external → operator runs it
@@ -230,7 +228,7 @@ cloud:
     sshKeyName:
     vpcID:
     bastionEnabled: True
-    controlPlane,omitempty:
+    controlPlane:
       loadBalancerScheme: internet-facing
       replicas:
       instanceType:
@@ -243,6 +241,17 @@ cloud:
     aadApplication:
       principalID:
     location:
+    # AKS flips the cluster to an Azure managed (AKS) control plane,
+    # provisioned via CAPZ's AzureManagedControlPlane. Workers become
+    # AKS agent pools (AzureManagedMachinePool — CAPZ managed clusters
+    # support no other worker shape), scaled by AKS's built-in cluster
+    # autoscaler. The control plane, node images and SSH keys are all
+    # Azure-managed, and CAPZ authenticates with the AAD service
+    # principal directly — so controlPlane, sshPublicKey,
+    # canonicalUbuntuImage, storageAccount, workloadIdentity and
+    # aadApplication must be left unset. Cross-field rules live in
+    # pkg/config/parser/validate.go (validateAzureConfig).
+    aks:
     storageAccount:
     workloadIdentity:
       openIDProviderSSHKeyPair:
@@ -424,7 +433,7 @@ cloud:
       # hybrid). The chart merges these with endpoint.host into kubeadm's
       # apiServer.certSANs. Use for any additional hostnames clients reach
       # the apiserver under.
-      extraCertSANs,omitempty:
+      extraCertSANs:
     # Details about the node-groups.
     nodeGroups:
       # Details about node-groups in HCloud.
@@ -453,10 +462,10 @@ cloud:
       useSSHAgent:
     # Kubelet tuning applied to every host (control-plane and workers).
     kubelet:
-      systemReserved,omitempty:
-      kubeReserved,omitempty:
-      evictionHard,omitempty:
-      maxPods,omitempty:
+      systemReserved:
+      kubeReserved:
+      evictionHard:
+      maxPods:
     controlPlane:
       endpoint:
         host:

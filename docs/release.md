@@ -36,7 +36,7 @@ cog bump --auto            # or --patch / --minor / --major / --version X.Y.Z
 
 2. **Bump** — writes the new version into `CHANGELOG.md`, creates the release commit (`chore(version): vX.Y.Z`), and creates the tag `vX.Y.Z`.
 
-3. **Post-bump hooks** — pushes the tag to both remotes: `origin` (Gitea) and `github` (the public mirror). The GitHub push is what fires `.github/workflows/release.yaml` to build binaries.
+3. **Post-bump hooks** — pushes the tag to both remotes: `origin` (the GitHub repo) and `gitea` (the internal mirror). The GitHub push is what fires `.github/workflows/release.yaml` to build binaries.
 
 Merge commits are skipped when deriving the next version (`ignore_merge_commits = true` in `cog.toml`).
 

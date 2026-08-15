@@ -194,6 +194,7 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 - [NetBird VPN architecture](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
 - [Hetzner HCloud VPN cluster](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
 - [Bare-metal provisioning](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end
+- [Hetzner bare-metal network surface](docs/hetzner-bare-metal-network-surface.md) — the Cilium host-firewall policy locking down each node's public NIC
 
 ## Development
 

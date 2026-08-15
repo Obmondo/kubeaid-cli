@@ -66,8 +66,12 @@ func NewFieldFromAST(ctx context.Context, imports map[string]string, node *ast.F
 		// assert.AssertNotNil(ctx, node.Doc, "No doc comment found", slog.String("field", name))
 		// doc := strings.ReplaceAll(node.Doc.Text(), "\n", "<br>")
 
+		// The yaml tag may carry options ("controlPlane,omitempty"); only the
+		// part before the first comma is the key name.
+		yamlName, _, _ := strings.Cut(yamlStructTag, ",")
+
 		return Field{
-			Name:         yamlStructTag,
+			Name:         yamlName,
 			Type:         t,
 			Doc:          node.Doc.Text(),
 			DefaultValue: defaultStructTag,
