@@ -50,7 +50,9 @@ KubeAid CLI provisions, upgrades, tests, and recovers production Kubernetes clus
 | Provider            | Provisioning           | Management cluster   |
 | ------------------- | ---------------------- | -------------------- |
 | AWS                 | ClusterAPI (CAPA)      | K3D (local)          |
+| AWS EKS             | ClusterAPI (CAPA, `AWSManagedControlPlane`) | K3D (local) |
 | Azure               | ClusterAPI (CAPZ) + CrossPlane | K3D (local) |
+| Azure AKS           | ClusterAPI (CAPZ, managed) | K3D (local)     |
 | Hetzner HCloud      | ClusterAPI (CAPH)      | K3D (local)          |
 | Hetzner bare metal  | ClusterAPI (CAPH) + Robot API | K3D (local)   |
 | Hetzner hybrid      | ClusterAPI (CAPH)      | K3D (local)          |
@@ -120,7 +122,7 @@ sequenceDiagram
   participant Git as KubeAid Config
 
   Op->>Cli: cluster bootstrap
-  Cli->>Core: docker run + mounts
+  Cli->>Core: in-process call (embedded, no container)
   Core->>CP: ProvisionPrerequisiteInfrastructure
   Note over CP: Network, SSH keys, VSwitch, Hetzner OS install (parallel)
   Core->>Mgmt: create K3D + install CAPI providers
@@ -151,7 +153,7 @@ flowchart LR
     psg["Parsed{General,Secrets}Config"]
   end
 
-  subgraph RENDER["pkg/templates"]
+  subgraph RENDER["pkg/core/templates"]
     tpl["Go templates (embed.FS)"]
     out["outputs/configs/*.yaml"]
   end
@@ -337,23 +339,29 @@ classDiagram
     +InstallOSOnBareMetalServers(ctx)
     +GenerateStoragePlans(ctx, cfg)
   }
-  class BareMetal
-  class Local
 
   CloudProvider <|.. AWS
   CloudProvider <|.. Azure
   CloudProvider <|.. Hetzner
-  CloudProvider <|.. BareMetal
-  CloudProvider <|.. Local
 ```
+
+Only `aws`, `azure`, and `hetzner` (under [`pkg/cloud`](../pkg/cloud)) implement `CloudProvider`. BareMetal (KubeOne, no CAPI) and Local (the K3D management cluster *is* the main cluster) don't - see their rows in the table below.
 
 | Provider  | Package                                 | Distinctive work                                           |
 | --------- | --------------------------------------- | ---------------------------------------------------------- |
-| AWS       | [`pkg/cloud/aws`](../pkg/cloud/aws)     | CloudFormation IAM stack; CAPA provider                    |
-| Azure     | [`pkg/cloud/azure`](../pkg/cloud/azure) | CrossPlane provisions resource group, VNet, OIDC blob; Workload Identity |
+| AWS       | [`pkg/cloud/aws`](../pkg/cloud/aws)     | CloudFormation IAM stack; CAPA provider. `cloud.aws.eks: true` swaps in `AWSManagedControlPlane` - see [§5.1](#51-managed-control-planes-eks--aks) |
+| Azure     | [`pkg/cloud/azure`](../pkg/cloud/azure) | CrossPlane provisions resource group, VNet, OIDC blob; Workload Identity. `cloud.azure.aks: true` swaps in a CAPZ managed control plane - see [§5.1](#51-managed-control-planes-eks--aks) |
 | Hetzner   | [`pkg/cloud/hetzner`](../pkg/cloud/hetzner) | Network, VSwitch, NAT GW, failover IP; Robot API for bare-metal OS install and storage plans |
 | BareMetal | embedded in core (KubeOne)              | No CAPI; `kubeone apply` runs directly against target hosts, for both bootstrap and Kubernetes version upgrades (see [`upgrade-bare-metal.md`](./upgrade-bare-metal.md)) |
 | Local     | not applicable                          | The K3D management cluster *is* the main cluster            |
+
+### 5.1 Managed control planes (EKS / AKS)
+
+Setting `cloud.aws.eks: true` or `cloud.azure.aks: true` in `general.yaml` swaps the self-managed `KubeadmControlPlane` for the cloud's managed control plane - CAPA's `AWSManagedControlPlane` (EKS) or CAPZ's managed control plane (AKS). Workers stay self-managed MachineDeployments on AWS, and become `AzureManagedMachinePool` agent pools on AKS. Both flavours are guarded by `config.ManagedControlPlaneEnabled()` and cross-field validation in `pkg/config/parser/validate.go` (`validateAWSConfig` / `validateAzureConfig`).
+
+Managed clusters have no control-plane Nodes and no `KubeadmControlPlane` postKubeadm hook, so the cloud's default CNI is disabled (EKS: `AWSManagedControlPlane.spec.vpcCni.disable`; AKS: `networkPlugin: "none"`) and `installCiliumOnManagedCluster` (in [`pkg/core/bootstrap_cluster.go`](../pkg/core/bootstrap_cluster.go)) Helm-installs Cilium directly against the just-provisioned cluster - the `cilium` ArgoCD App adopts the same manifests once the main cluster's ArgoCD is up.
+
+`cluster bootstrap` and `cluster delete` are fully supported on managed control planes. `cluster upgrade` and `cluster recover` are guarded off: on a managed cluster, "upgrade" is just a GitOps bump of `global.kubernetes.version` (the cloud manages the control-plane version), not the `KubeadmControlPlane`/MachineTemplate recreate-and-replace `cluster upgrade` performs for self-managed clusters.
 
 ---
 
@@ -384,7 +392,7 @@ flowchart TD
 
 - [pkg/config/general.go](../pkg/config/general.go) - `GeneralConfig` struct tree.
 - [pkg/config/secrets.go](../pkg/config/secrets.go) - `SecretsConfig` struct tree.
-- [pkg/config/parser.go](../pkg/config/parser.go) - orchestrates parse → defaults → validate → hydrate.
+- [pkg/config/parser/](../pkg/config/parser) - orchestrates parse → defaults → validate → hydrate (`parse.go`, `validate.go`, …).
 
 **Top-level `GeneralConfig` fields:**
 
@@ -405,12 +413,12 @@ flowchart TD
 
 ## 7. Template engine
 
-Go templates ([`pkg/templates`](../pkg/templates)) embed every YAML manifest the CLI will ever emit. At runtime, templates are rendered with `ParsedGeneralConfig` as their data context and written into `outputs/configs/*.yaml`, which is the working copy of the KubeAid Config repo.
+Go templates live in two trees. [`pkg/core/templates`](../pkg/core/templates) embeds every KubeAid Config manifest (CAPI cluster, ArgoCD apps, Sealed Secrets, KubeOne) - rendered with `ParsedGeneralConfig` as their data context and written into `outputs/configs/*.yaml`, the working copy of the KubeAid Config repo. [`pkg/render/templates`](../pkg/render/templates) embeds just `general.yaml.tmpl` and `secrets.yaml.tmpl` - rendered by `config generate` from the interactive prompt's answers.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
 flowchart LR
-  embed[("embed.FS: pkg/templates/*.yaml")] --> render
+  embed[("embed.FS: pkg/core/templates/*.yaml")] --> render
   cfg["ParsedGeneralConfig"] --> render
   render["text/template render"] --> files["outputs/configs/*.yaml"]
   files --> commit["git add / commit / push"]
@@ -469,7 +477,7 @@ flowchart TD
 
 **Related code:**
 
-- [pkg/kubernetes/argocd](../pkg/kubernetes/argocd) - ArgoCD install, client, sync helpers.
+- [pkg/utils/kubernetes/argo.go](../pkg/utils/kubernetes/argo.go) - ArgoCD install, client, sync helpers.
 - [pkg/constants/constants.go](../pkg/constants/constants.go) - `ArgoCDApp*` names.
 - [pkg/core/setup_cluster.go](../pkg/core/setup_cluster.go) - the sync orchestration.
 
@@ -487,9 +495,9 @@ flowchart LR
     env["env / flags: AWS · HCloud · Robot"]
   end
 
-  subgraph CORE["kubeaid-core container"]
+  subgraph CORE["kubeaid-core (in-process)"]
     parse["pkg/config → ParsedSecretsConfig"]
-    render["pkg/templates → SealedSecret CRs"]
+    render["pkg/core/templates → SealedSecret CRs"]
     kubeseal["kubeseal (via controller pubkey)"]
   end
 
@@ -542,10 +550,10 @@ Every lifecycle command has its own entry point under [pkg/core](../pkg/core). T
 | Command                  | Entry point                                                     | What it does                                         |
 | ------------------------ | --------------------------------------------------------------- | ---------------------------------------------------- |
 | `cluster bootstrap`      | [bootstrap_cluster.go](../pkg/core/bootstrap_cluster.go)        | Four-phase provision (see §4)                        |
-| `cluster upgrade`        | [upgrade_cluster.go](../pkg/core/upgrade_cluster.go)            | Bump K8s version: update values file, recreate MachineTemplates, rolling replace |
+| `cluster upgrade`        | [upgrade_cluster.go](../pkg/core/upgrade_cluster.go)            | Bump K8s version: update values file, recreate MachineTemplates, rolling replace. Refused on EKS/AKS - see [§5.1](#51-managed-control-planes-eks--aks) |
 | `cluster test`           | [test_cluster.go](../pkg/core/test_cluster.go)                  | Smoke-test a provisioned cluster (Cilium, DNS, storage) |
 | `cluster delete`         | [delete_cluster.go](../pkg/core/delete_cluster.go)              | Delete Cluster CR, wait for CAPI cleanup, tear down infra |
-| `cluster recover`        | [recover_cluster.go](../pkg/core/recover_cluster.go)            | Restore from Velero backup onto a fresh cluster       |
+| `cluster recover`        | [recover_cluster.go](../pkg/core/recover_cluster.go)            | Restore from Velero backup onto a fresh cluster. Not yet supported on EKS/AKS |
 
 The shared primitives - create dev env, setup cluster, setup KubeAid Config - live alongside them ([create_dev_env.go](../pkg/core/create_dev_env.go), [setup_cluster.go](../pkg/core/setup_cluster.go), [setup_kubeaid_config.go](../pkg/core/setup_kubeaid_config.go)).
 
@@ -561,24 +569,24 @@ kubeaid-cli/
 │   └── kubeaid-storagectl/  # Bare-metal storage plan executor
 ├── pkg/
 │   ├── core/                # Lifecycle orchestration (bootstrap, upgrade, delete…)
+│   │   └── templates/       # embed.FS: KubeAid Config manifests (CAPI, ArgoCD apps, Sealed Secrets, KubeOne)
 │   ├── cloud/
 │   │   ├── aws/             # IAM, CAPA wiring
 │   │   ├── azure/           # CrossPlane, OIDC, Workload Identity
 │   │   ├── hetzner/         # Network, VSwitch, Robot API, storage plans
 │   │   └── cloud_provider.go
-│   ├── kubernetes/
-│   │   ├── argocd/          # ArgoCD client, install, sync
-│   │   ├── capi/            # ClusterAPI helpers, clusterctl move
-│   │   └── ...
-│   ├── config/              # GeneralConfig, SecretsConfig, parser, validator
-│   ├── templates/           # embed.FS of Go templates
+│   ├── config/
+│   │   ├── parser/          # parse → defaults → validate → hydrate
+│   │   └── ...              # GeneralConfig, SecretsConfig
+│   ├── render/
+│   │   └── templates/       # embed.FS: general.yaml.tmpl, secrets.yaml.tmpl (config generate)
 │   ├── constants/           # Shared names, env vars, flag names, timeouts
 │   ├── globals/             # Process-wide state (parsed configs, CP instance)
 │   └── utils/
 │       ├── assert/          # Fail-fast helpers (os.Exit on error)
 │       ├── git/             # Clone, commit, PR
 │       ├── commandexecutor/ # Run external CLIs (kubeone, clusterctl, helm)
-│       ├── kubernetes/      # Client factories, apply, wait
+│       ├── kubernetes/      # Client factories, apply, wait, argo.go (ArgoCD), clusterapi.go (CAPI helpers, clusterctl move)
 │       ├── logger/          # slog setup, context-attached attrs
 │       └── templates/       # Template rendering primitives
 ├── docs/                    # This file + per-feature guides
@@ -617,8 +625,8 @@ All build targets live in the [Makefile](../Makefile). Version, commit, and buil
 # 1. Build the CLI.
 make build
 
-# 2. Generate a config, then bootstrap against it. The CLI pulls the matching
-#    kubeaid-core image and runs the engine in a container.
+# 2. Generate a config, then bootstrap against it. The kubeaid-core engine
+#    is compiled into the binary and runs in-process - no image to pull.
 ./build/kubeaid-cli config generate --configs-directory ./outputs/configs/<cluster>/
 ./build/kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<cluster>/
 

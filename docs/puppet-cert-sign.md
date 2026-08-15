@@ -1,5 +1,11 @@
 # Puppet Server Certificate Generation via HTTP API
 
+> **Obmondo-internal runbook.** This is how Obmondo issues the mTLS
+> certificate `kubeaid-agent` uses to connect back to the Obmondo portal
+> (the `portal-connect` flow consumed by [`pkg/obmondo/connect.go`](../pkg/obmondo/connect.go)).
+> External users of `kubeaid-cli` don't need this — the portal issues and
+> hands over that material for you.
+
 ### Step 1: Generate a Private Key
 
 ```sh

@@ -78,6 +78,20 @@ check-k8s-eol: ## Check that pkg/config/parser/k8s-eol.json is up to date with e
 	fi
 	@echo "pkg/config/parser/k8s-eol.json is up to date with endoflife.date"
 
+.PHONY: check-generated
+check-generated: ## Check that generated config artifacts are up to date with the config structs
+	@go run ./tools/generators/cmd \
+		./pkg/config/general.go ./pkg/config/secrets.go
+	@if ! git diff --quiet -- docs/config-reference.md cmd/kubeaid-core/root/config/templates; then \
+		echo ""; \
+		echo "Generated config artifacts are out of date relative to pkg/config."; \
+		echo "Run 'make run-generators' locally and commit the regenerated files."; \
+		echo ""; \
+		git --no-pager diff --stat -- docs/config-reference.md cmd/kubeaid-core/root/config/templates; \
+		exit 1; \
+	fi
+	@echo "Generated config artifacts are up to date with pkg/config"
+
 .PHONY: build
 build: ## Build kubeaid-cli binary
 	@CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-cli ./cmd/kubeaid-cli

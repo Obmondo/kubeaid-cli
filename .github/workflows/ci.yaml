@@ -134,3 +134,17 @@ jobs:
 
       - name: Verify embedded K8s EOL snapshot
         run: make check-k8s-eol
+
+  check-generated-fresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Verify generated config artifacts
+        run: make check-generated

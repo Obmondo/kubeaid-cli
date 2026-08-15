@@ -359,4 +359,3 @@ The work ships as a stack of small PRs:
 - `pkg/config/parser/audit_logging.go` — pattern for `apiServer.files` / `extraArgs` / `extraVolumes` delivery via CAPI; AuthenticationConfiguration follows the same path.
 - [`Nerzal/gocloak`](https://github.com/Nerzal/gocloak) — Go client for Keycloak admin API.
 - [`kubeaid/argocd-helm-charts/netbird/README.md`](https://github.com/Obmondo/KubeAid/blob/master/argocd-helm-charts/netbird/README.md) — Keycloak realm prerequisites for `mode=external`; lists the exact OIDC clients, scopes, mappers, and role grants the operator must create by hand.
-- Plan source: `/home/ashish/.claude/plans/or-user-can-also-lively-sloth.md` (local; this doc is the in-repo committed version).
