@@ -13,20 +13,13 @@ It is the entry point to the KubeAid platform: the CLI consumes the [KubeAid rep
 ## Table of contents
 
 - [Architecture](#architecture)
-- [Features](#features)
 - [Installation](#installation)
-- [Prerequisites](#prerequisites)
 - [Quick start](#quick-start)
 - [Usage](#usage)
 - [Cloud providers](#cloud-providers)
-- [Kubernetes version support](#kubernetes-version-support)
 - [Configuration](#configuration)
 - [Documentation](#documentation)
-- [Development](#development)
 - [Contributing](#contributing)
-- [Community and governance](#community-and-governance)
-- [Roadmap](https://github.com/Obmondo/kubeaid-cli/blob/main/ROADMAP.md)
-- [License](#license)
 
 ## Architecture
 
