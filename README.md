@@ -68,8 +68,18 @@ go install github.com/Obmondo/kubeaid-cli/cmd/kubeaid-cli@latest
 
 ## Prerequisites
 
-- **Docker** — must be installed and running (used to run the local K3D cluster)
-- **SSH access to your Git repos** — either an `ssh-agent` with your key loaded, or an unencrypted private key file (`privateKeyFilePath` in `general.yaml`); use the agent for passphrased or YubiKey-backed keys
+**Docker** — installed and running. The CLI uses it for the local K3D cluster; everything else (Helm, K3D,
+clusterctl, KubeOne) is embedded in the binary.
+
+**SSH access to your Git repos** — the CLI pushes to your kubeaid-config repository over SSH. Pick one of two
+auth methods in `general.yaml`:
+
+| Method | When to use it | `general.yaml` |
+|---|---|---|
+| ssh-agent | Your key has a passphrase, or lives on a YubiKey / hardware token | `git.useSSHAgent: true` |
+| Private key file | An unencrypted key file on disk | `git.privateKeyFilePath: /path/to/key` |
+
+Exactly one of the two must be set.
 
 ## Quick start
 
