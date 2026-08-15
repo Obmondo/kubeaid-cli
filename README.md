@@ -2,6 +2,9 @@
 
 [![Release](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml/badge.svg)](https://github.com/Obmondo/kubeaid-cli/actions/workflows/release.yaml)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/Obmondo/kubeaid-cli?sort=semver)](https://github.com/Obmondo/kubeaid-cli/releases)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Obmondo/kubeaid-cli)](https://goreportcard.com/report/github.com/Obmondo/kubeaid-cli)
+[![Docs](https://img.shields.io/badge/docs-kubeaid.io-blue)](https://kubeaid.io/docs/kubeaid-cli/architecture)
 
 KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/KubeAid)-managed Kubernetes clusters — bootstrap, upgrade, recover, test, and delete — across AWS (self-managed or EKS), Azure (self-managed or AKS), Hetzner, and bare metal, the GitOps-native way.
 
