@@ -10,23 +10,12 @@ KubeAid CLI operates the full lifecycle of [KubeAid](https://github.com/Obmondo/
 
 It is the entry point to the KubeAid platform: the CLI consumes the [KubeAid repository](https://github.com/Obmondo/KubeAid) — curated, vendored Helm charts, monitoring, and secure defaults, delivered as regular reviewed updates — so you don't carry the mental overhead of tracking what's broken, deprecated, or current best practice across the Kubernetes ecosystem.
 
-## Table of contents
-
-- [Architecture](#architecture)
-- [Features](#features)
-- [Installation](#installation)
-- [Prerequisites](#prerequisites)
-- [Quick start](#quick-start)
-- [Usage](#usage)
-- [Cloud providers](#cloud-providers)
-- [Kubernetes version support](#kubernetes-version-support)
-- [Configuration](#configuration)
-- [Documentation](#documentation)
-- [Development](#development)
-- [Contributing](#contributing)
-- [Community and governance](#community-and-governance)
-- [Roadmap](https://github.com/Obmondo/kubeaid-cli/blob/main/ROADMAP.md)
-- [License](#license)
+→ [**Installation**](#installation)
+· [**Quick start**](#quick-start)
+· [**Cloud providers**](#cloud-providers)
+· [**Configuration**](#configuration)
+· [**Docs**](https://kubeaid.io/docs/kubeaid-cli/architecture)
+· [**Roadmap**](ROADMAP.md)
 
 ## Architecture
 
