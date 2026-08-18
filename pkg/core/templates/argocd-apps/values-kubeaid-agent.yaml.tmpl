@@ -2,3 +2,16 @@
 appConfig:
   kubeaidConfig:
     clusterName: {{ .ClusterConfig.Name }}
+
+# The security exporter follows the vulnerability-scanning answer rather than a
+# switch of its own. It reads what that answer deploys: trivy-operator's report
+# CRs are its primary source, and version-checker is what turns a finding into
+# an upgrade. Saying no leaves it out instead of running a collector with
+# nothing to collect.
+#
+# backup-exporter is deliberately absent, and stays absent. It needs S3
+# credentials and a bucket for every backend it reports on, so enabling it is a
+# manual, per-cluster act in that cluster's own values file -- not something the
+# CLI decides. Emitting nothing here leaves the chart's default (off) standing.
+securityExporter:
+  enabled: {{ .ClusterConfig.Security.VulnerabilityScanning }}
