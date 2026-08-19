@@ -1,0 +1,61 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 31.0.4
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory:
+
+cluster:
+  type: workload
+  name: hcloud-acme-workers
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  netbird:
+    dns: netbird.vpn.acme.com
+    dnsZone: hcloud-acme.local
+  lockdown: false
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  hetzner:
+    mode: hcloud
+    sshKeyPair:
+      name: hcloud-acme
+      useSSHAgent: true
+    hcloud:
+      zone: eu-central
+      imageName: ubuntu-26.04
+      hetznerNetwork:
+        cidr: "10.0.0.0/16"
+        hcloudServersSubnetCIDR: "10.0.0.0/24"
+    controlPlane:
+      hcloud:
+        machineType: cax21
+        replicas: 3
+        loadBalancer:
+          enabled: true
+          region: hel1
+          endpoint:
+      regions:
+        - hel1
+    nodeGroups:
+      hcloud:
+        - name: workers
+          machineType: cpx31
+          minSize: 1
+          maxSize: 3
+          cpu: 4
+          memory: 8
+

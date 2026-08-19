@@ -769,7 +769,7 @@ type (
 	// Details about node-groups in Hetzner.
 	HetznerNodeGroups struct {
 		// Details about node-groups in HCloud.
-		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud"`
+		HCloud []HCloudAutoScalableNodeGroup `yaml:"hcloud" validate:"dive"`
 
 		// Details about node-groups in Hetzner Bare Metal.
 		BareMetal []*HetznerBareMetalNodeGroup `yaml:"bareMetal"`
@@ -784,7 +784,7 @@ type (
 		MachineType string `yaml:"machineType" validate:"notblank"`
 
 		// The root volume size for each HCloud machine.
-		RootVolumeSize uint32 `validate:"required"`
+		RootVolumeSize uint32 `yaml:"rootVolumeSize" validate:"required"`
 	}
 
 	HetznerBareMetalNodeGroup struct {

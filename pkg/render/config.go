@@ -191,6 +191,17 @@ type PromptedConfig struct {
 	HetznerRobotUser     string
 	HetznerRobotPassword string
 
+	// Any one of these renders the nodeGroups.hcloud entry, so a partially
+	// filled group reaches validation and is rejected by field name rather
+	// than silently collapsing to [] and shipping a cluster with no workers.
+	// RootVolumeSize is absent on purpose — hydrateVMSpecs derives it.
+	HetznerNodeGroupName        string
+	HetznerNodeGroupMachineType string
+	HetznerNodeGroupMinSize     string
+	HetznerNodeGroupMaxSize     string
+	HetznerNodeGroupCPU         string
+	HetznerNodeGroupMemory      string
+
 	// HetznerBMKnownServerIDs is the cached Robot inventory fetched
 	// at credential-validation time (on Enter past the password
 	// field). Used to seed huh.Input.Suggestions for server-ID

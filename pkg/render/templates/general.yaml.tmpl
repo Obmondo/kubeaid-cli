@@ -189,7 +189,17 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
+{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize }}
+      hcloud:
+        - name: {{ .HetznerNodeGroupName }}
+          machineType: {{ .HetznerNodeGroupMachineType }}
+          minSize: {{ .HetznerNodeGroupMinSize }}
+          maxSize: {{ .HetznerNodeGroupMaxSize }}
+          cpu: {{ .HetznerNodeGroupCPU }}
+          memory: {{ .HetznerNodeGroupMemory }}
+{{- else }}
       hcloud: []
+{{- end }}
 {{- end }}
 {{- if eq .HetznerMode "hybrid" }}
     hcloud:
@@ -235,7 +245,17 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
+{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize }}
+      hcloud:
+        - name: {{ .HetznerNodeGroupName }}
+          machineType: {{ .HetznerNodeGroupMachineType }}
+          minSize: {{ .HetznerNodeGroupMinSize }}
+          maxSize: {{ .HetznerNodeGroupMaxSize }}
+          cpu: {{ .HetznerNodeGroupCPU }}
+          memory: {{ .HetznerNodeGroupMemory }}
+{{- else }}
       hcloud: []
+{{- end }}
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
           bareMetalHosts:

@@ -154,6 +154,43 @@ func goldenCases() []goldenCase {
 			},
 		},
 		{
+			// Same as hetzner-hcloud-workload but with a worker pool, so both the
+			// populated and the empty nodeGroups.hcloud paths stay pinned.
+			name: "hetzner-hcloud-nodegroup",
+			cfg: &PromptedConfig{
+				SSHUsername:                "git",
+				UseSSHAgent:                true,
+				KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+				KubeaidVersion:             "31.0.4",
+				KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+				KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
+				ClusterName:                "hcloud-acme-workers",
+				ClusterType:                "workload",
+				K8sVersion:                 "v1.35.6",
+				Lockdown:                   &hcloudWorkloadLockdown,
+				NetBirdDNS:                 "netbird.vpn.acme.com",
+				NetBirdDNSZone:             "hcloud-acme.local",
+				NetBirdAPIKey:              "nbp_faketoken2",
+
+				CloudProvider:        "hetzner",
+				HetznerMode:          "hcloud",
+				HetznerSSHKeyName:    "hcloud-acme",
+				HetznerHCloudZone:    "eu-central",
+				HetznerCPMachineType: "cax21",
+				HetznerCPReplicas:    "3",
+				HetznerRegion:        "hel1",
+				HetznerLBRegion:      "hel1",
+				HetznerAPIToken:      "fake-hcloud-token",
+
+				HetznerNodeGroupName:        "workers",
+				HetznerNodeGroupMachineType: "cpx31",
+				HetznerNodeGroupMinSize:     "1",
+				HetznerNodeGroupMaxSize:     "3",
+				HetznerNodeGroupCPU:         "4",
+				HetznerNodeGroupMemory:      "8",
+			},
+		},
+		{
 			// Mirrors TestRenderHetznerHybridVPN in render_hybrid_test.go —
 			// HCloud control plane, bare-metal worker node group, vSwitch,
 			// managed Keycloak. Already proven valid via validator.Struct().
@@ -196,6 +233,60 @@ func goldenCases() []goldenCase {
 					"1234570": "5.5.5.10",
 					"1234571": "5.5.5.11",
 				},
+
+				HetznerAPIToken:      "fake-token",
+				HetznerRobotUser:     "fake-user",
+				HetznerRobotPassword: "fake-pass",
+			},
+		},
+		{
+			// The hybrid copy of the nodeGroups block in general.yaml.tmpl: an
+			// hcloud worker pool alongside the bare-metal one.
+			name: "hetzner-hybrid-nodegroup",
+			cfg: &PromptedConfig{
+				SSHUsername:                "git",
+				UseSSHAgent:                true,
+				KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+				KubeaidVersion:             "29.0.9",
+				KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+				ClusterName:                "hybrid-acme-workers",
+				ClusterType:                "vpn",
+				ControlPlaneEndpoint:       "api.hybrid.acme.com",
+				ACMEEmail:                  "ops@acme.com",
+				NetBirdDNS:                 "netbird.hybrid.acme.com",
+				KeycloakMode:               "managed",
+				KeycloakDNS:                "keycloak.hybrid.acme.com",
+				KeycloakRealm:              "acme",
+				K8sVersion:                 "v1.35.4",
+				KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
+
+				CloudProvider: "hetzner",
+
+				HetznerMode:          "hybrid",
+				HetznerSSHKeyName:    "demo-hybrid",
+				HetznerCPReplicas:    "3",
+				HetznerHCloudZone:    "eu-central",
+				HetznerCPMachineType: "cax21",
+				HetznerRegion:        "hel1",
+				HetznerLBRegion:      "hel1",
+
+				HetznerVSwitchName:       "hybrid-acme-vswitch",
+				HetznerVSwitchVLANID:     "4001",
+				HetznerVSwitchSubnetCIDR: "10.0.1.0/24",
+
+				HetznerBMNodeGroupName:       "workers",
+				HetznerBMNodeGroupServerIDs:  []string{"1234570"},
+				HetznerBMNodeGroupPrivateIPs: []string{"10.0.1.10"},
+				HetznerBMServerPublicIPs: map[string]string{
+					"1234570": "5.5.5.10",
+				},
+
+				HetznerNodeGroupName:        "cloud-workers",
+				HetznerNodeGroupMachineType: "cpx31",
+				HetznerNodeGroupMinSize:     "2",
+				HetznerNodeGroupMaxSize:     "2",
+				HetznerNodeGroupCPU:         "4",
+				HetznerNodeGroupMemory:      "8",
 
 				HetznerAPIToken:      "fake-token",
 				HetznerRobotUser:     "fake-user",
