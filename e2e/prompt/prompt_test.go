@@ -67,6 +67,14 @@ func TestBareMetal_PromptFlow(t *testing.T) {
 	c.expectString("Control-plane endpoint")
 	c.acceptDefault()
 
+	// Security apps form: risk exposure monitoring (default Yes), then
+	// runtime detection (default No) in a second group.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	// Step 4 — Git/SSH form: deploy key + config URL in one group,
 	// then Git SSH key in a second group (no SSH agent).
 	c.expectString("ArgoCD deploy key")
@@ -150,6 +158,13 @@ func TestLocal_PromptFlow(t *testing.T) {
 
 	// Step 3 — Local has no credential form.
 
+	// Security apps form: accept both defaults.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
@@ -230,6 +245,13 @@ func TestLocal_PromptFlow_NetBirdDecline(t *testing.T) {
 	c.send("n\r")
 
 	// Step 3 — Local has no credential form.
+
+	// Security apps form: accept both defaults.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
 
 	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
@@ -328,6 +350,13 @@ func TestAWS_PromptFlow(t *testing.T) {
 
 	// HA confirm is in the same credentials form, after the cred group.
 	c.expectString("Enable high availability")
+	c.acceptDefault()
+
+	// Security apps form: accept both defaults.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
 	c.acceptDefault()
 
 	// After the credentials form returns, AMI lookup runs. If it fails
@@ -465,6 +494,13 @@ func TestAzure_PromptFlow(t *testing.T) {
 	c.expectString("service principal object ID")
 	c.sendLine("aad-principal-789")
 
+	// Security apps form: accept both defaults.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
+
 	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
 	c.sendLine(sshKeyPath)
@@ -579,6 +615,13 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	c.sendLine(sshKeyPath)
 
 	c.expectString("Enable high availability")
+	c.acceptDefault()
+
+	// Security apps form: accept both defaults.
+	c.expectString("Enable risk exposure monitoring?")
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
 	c.acceptDefault()
 
 	// Step 4 — Git/SSH.
