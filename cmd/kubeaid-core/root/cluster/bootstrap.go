@@ -25,9 +25,9 @@ var BootstrapCmd = &cobra.Command{
 	Short: "Bootstrap a KubeAid managed K8s cluster",
 
 	// Declared here rather than inherited from ClusterCmd because the Obmondo
-	// config has to be on disk before the shared prepare step parses it.
-	// PersistentPreRun is not additive in cobra — the closest one wins — so
-	// this calls the parent's logic itself.
+	// config has to be on disk before the shared prepare step parses it, so
+	// this calls the parent's logic itself once the fetch is done. ClusterCmd's
+	// hook skips this command for that reason — see preparedByCommand.
 	//
 	// Ordering is the whole point: prepare exits with "config files not
 	// found" when the directory is empty, which on a fresh machine is every
@@ -59,7 +59,7 @@ var BootstrapCmd = &cobra.Command{
 			obmondoPaths = obmondoConfigFromDisk(ctx, cmd)
 		}
 
-		PrepareClusterCommand(ctx)
+		prepareClusterCommand(ctx)
 	},
 
 	Run: func(cmd *cobra.Command, args []string) {

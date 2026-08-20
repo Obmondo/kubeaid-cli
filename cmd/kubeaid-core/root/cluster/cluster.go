@@ -23,17 +23,37 @@ var ClusterCmd = &cobra.Command{
 	Short: "Manage the lifecycle of a KubeAid managed K8s cluster",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		PrepareClusterCommand(cmd.Context())
+		if preparedByCommand(cmd) {
+			return
+		}
+		prepareClusterCommand(cmd.Context())
 	},
 }
 
-// PrepareClusterCommand parses and validates the cluster config, then sets up
-// the temp directory.
+// preparedByCommand reports whether cmd, or an ancestor of it, prepares itself
+// and so must not be prepared here first.
 //
-// Exported because BootstrapCmd declares its own PersistentPreRun — cobra
-// runs only the closest one, so the parent's would otherwise be skipped —
-// and because bootstrap must resolve its config before this runs, not after.
-func PrepareClusterCommand(ctx context.Context) {
+// Both mains set cobra.EnableTraverseRunHooks, so this hook and the
+// subcommand's both run, parent first. BootstrapCmd resolves the Obmondo
+// config onto disk inside its own hook and prepares afterwards; preparing here
+// would run before that fetch and exit on the empty configs directory every
+// --token run starts from. The chain is walked rather than compared so a
+// subcommand added under bootstrap inherits the same treatment instead of
+// silently getting the broken ordering back.
+func preparedByCommand(cmd *cobra.Command) bool {
+	for current := cmd; current != nil; current = current.Parent() {
+		if current == BootstrapCmd {
+			return true
+		}
+	}
+
+	return false
+}
+
+// prepareClusterCommand parses and validates the cluster config, then sets up
+// the temp directory. BootstrapCmd calls it from its own PersistentPreRun,
+// once the Obmondo config is on disk.
+func prepareClusterCommand(ctx context.Context) {
 	cleanup, err := configSetup.Prepare(ctx)
 	if err != nil {
 		slog.ErrorContext(
