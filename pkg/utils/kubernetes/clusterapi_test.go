@@ -1311,7 +1311,7 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 		name         string
 		secret       *coreV1.Secret
 		interceptGet func(callCount *atomic.Int32, realClient client.Client) interceptor.Funcs
-		outputPath   string
+		outputPath   func(t *testing.T) string
 		ctxTimeout   time.Duration
 		wantErr      bool
 		wantContent  []byte
@@ -1372,7 +1372,15 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 				},
 				Data: map[string][]byte{"value": kubeconfigData},
 			},
-			outputPath: "/nonexistent/dir/kubeconfig",
+			// Parent is a regular file: missing directories are created
+			// nowadays, so an uncreatable one — even as root, which CI
+			// runs as — is what makes the path invalid.
+			outputPath: func(t *testing.T) string {
+				t.Helper()
+				parent := filepath.Join(t.TempDir(), "not-a-dir")
+				require.NoError(t, os.WriteFile(parent, nil, 0o600))
+				return filepath.Join(parent, "kubeconfig")
+			},
 			ctxTimeout: 5 * time.Second,
 			wantErr:    true,
 		},
@@ -1397,9 +1405,9 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			config.ParsedGeneralConfig.Obmondo = nil
 
-			outPath := tc.outputPath
-			if outPath == "" {
-				outPath = filepath.Join(t.TempDir(), "kubeconfig.yaml")
+			outPath := filepath.Join(t.TempDir(), "kubeconfig.yaml")
+			if tc.outputPath != nil {
+				outPath = tc.outputPath(t)
 			}
 			outputPathMainClusterKubeconfig = outPath
 

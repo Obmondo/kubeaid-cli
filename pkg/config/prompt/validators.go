@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
@@ -56,6 +57,10 @@ func ClusterName(s string) error {
 
 	if strings.Contains(s, ".") {
 		return errors.New("cluster name cannot contain dots — use '-' instead (e.g. kam-acme-com)")
+	}
+
+	if s == clusterdir.ReservedLogsName {
+		return errors.New(`"logs" is reserved for the shared logs directory`)
 	}
 
 	if len(s) > maxClusterNameLen {

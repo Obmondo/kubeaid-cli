@@ -58,7 +58,10 @@ const (
 var (
 	waitForProvisioningPollInterval = time.Minute
 	saveKubeconfigPollInterval      = 2 * time.Second
-	outputPathMainClusterKubeconfig = constants.OutputPathMainClusterKubeconfig
+
+	// outputPathMainClusterKubeconfig is a test override. Read it via
+	// mainClusterKubeconfigPath, never directly.
+	outputPathMainClusterKubeconfig = ""
 
 	// capiWaitPollInterval is how often the live-status loop re-reads
 	// Cluster + Machine + HCloudMachine from the management cluster.
@@ -1406,7 +1409,11 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 
 	kubeConfig := secret.Data["value"]
 
-	if err := os.WriteFile(outputPathMainClusterKubeconfig, kubeConfig, 0o600); err != nil {
+	outputPath := mainClusterKubeconfigPath()
+	if err := utils.CreateIntermediateDirsForFile(outputPath); err != nil {
+		return fmt.Errorf("failed creating directories for the kubeconfig: %w", err)
+	}
+	if err := os.WriteFile(outputPath, kubeConfig, 0o600); err != nil {
 		return fmt.Errorf("failed saving kubeconfig to file: %w", err)
 	}
 
@@ -1431,10 +1438,22 @@ func GetClusterResource(ctx context.Context,
 	return cluster, nil
 }
 
+// mainClusterKubeconfigPath is the one way to read where the main cluster's
+// kubeconfig lives: the test override when set, else the constant at call
+// time (re-rooted after config parse, so never copied at init). The raw
+// variable must not reach client-go — an empty path silently falls back to
+// $KUBECONFIG / ~/.kube/config.
+func mainClusterKubeconfigPath() string {
+	if outputPathMainClusterKubeconfig != "" {
+		return outputPathMainClusterKubeconfig
+	}
+	return constants.OutputPathMainClusterKubeconfig
+}
+
 // Returns whether the 'clusterctl move' command has already been executed or not.
 func IsClusterctlMoveExecuted(ctx context.Context) bool {
 	mainClusterClient, err := createKubernetesClientFn(ctx,
-		outputPathMainClusterKubeconfig,
+		mainClusterKubeconfigPath(),
 	)
 	// Main cluster isn't reachable,
 	// which means 'clusterctl move' hasn't been executed.

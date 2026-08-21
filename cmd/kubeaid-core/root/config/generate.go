@@ -5,7 +5,6 @@ package config
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -20,9 +19,11 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/prompt"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 // SampleConfigFileGeneral / SampleConfigFileSecrets stay embedded — they
@@ -73,7 +74,20 @@ first, review the output, then bootstrap.`,
 		// to the config they chose to leave alone.
 		written, err := prompt.ConfigFromPrompt(globals.ConfigsDirectory, clusterName)
 		if err != nil {
-			assert.AssertErrNil(ctx, err, "Interactive config generation failed")
+			// Full chain to the log file; the terminal gets one plain line.
+			slog.WarnContext(ctx, "Interactive config generation failed", logger.Error(err))
+			fmt.Fprintf(os.Stderr, "\nConfig generation didn't finish: %v\nDetails: %s\n",
+				err, globals.LogFilePath)
+			os.Exit(1)
+		}
+
+		// When the config landed under the per-cluster convention, this
+		// run's log moves in next to it. Compared against where the files
+		// actually went — the prompt may have renamed the cluster, and an
+		// explicit --configs-directory never relocates anything.
+		if expected, err := clusterdir.For(written.ClusterName); err == nil &&
+			expected == filepath.Clean(written.ConfigsDirectory) {
+			setup.RelocateLogFile(ctx, filepath.Join(filepath.Dir(expected), "logs"))
 		}
 
 		printNextStep(written.ConfigsDirectory, written.ClusterName)
@@ -245,15 +259,7 @@ func askNewClusterName() (string, error) {
 				Description("Names the config directory, and is what --cluster-name takes later.").
 				Value(&name).
 				Validate(func(input string) error {
-					if strings.TrimSpace(input) == "" {
-						return errors.New("cluster name is required")
-					}
-					// Becomes a path segment, so a name containing a
-					// separator would silently write somewhere else.
-					if strings.ContainsAny(input, `/\`) {
-						return errors.New("cluster name cannot contain a path separator")
-					}
-					return nil
+					return clusterdir.ValidateName(strings.TrimSpace(input))
 				}),
 		),
 	).Run()
