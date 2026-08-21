@@ -89,20 +89,21 @@ Exactly one of the two must be set.
 1. Walk through the interactive prompt to generate `general.yaml` and `secrets.yaml`:
 
    ```sh
-   kubeaid-cli config generate --configs-directory ./outputs/configs/<cluster>/
+   kubeaid-cli config generate
    ```
 
-2. Review the generated files (the prompt covers everything required to
-   bootstrap; hand-edit only when you want to override defaults).
+2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (the prompt covers everything
+   required to bootstrap; hand-edit only when you want to override defaults).
 
 3. Bootstrap the cluster:
 
    ```sh
-   kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/<cluster>/
+   kubeaid-cli cluster bootstrap
    ```
 
-   `cluster bootstrap` fails fast if the configs are missing — run
-   `config generate` first.
+   The config is found under `~/.config/kubeaid-cli/<cluster>/configs/` automatically (pass
+   `--cluster-name <cluster>` to pick one non-interactively, or `--configs-directory` if you keep the config
+   somewhere else). `cluster bootstrap` fails fast if the configs are missing — run `config generate` first.
 
 ## Usage
 
@@ -128,7 +129,8 @@ kubeaid-cli [command] [flags]
 | Flag | Description |
 |---|---|
 | `--debug` | Enable debug logging |
-| `--configs-directory` | Path to directory containing `general.yaml` and `secrets.yaml` |
+| `--cluster-name` | Cluster whose config to use, from `~/.config/kubeaid-cli/<name>/configs` |
+| `--configs-directory` | Path to directory containing `general.yaml` and `secrets.yaml` (overrides `--cluster-name`) |
 
 ## Cloud providers
 
