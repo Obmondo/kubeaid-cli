@@ -178,6 +178,33 @@ var (
 	)
 )
 
+// UsePerClusterOutputs re-roots every output path under home, the cluster's
+// directory from clusterdir.Home (~/.config/kubeaid-cli/<cluster>), where
+// they sit next to the cluster's configs/. Called at most once per run, as
+// soon as the run has resolved which cluster it concerns — and only when
+// the operator did not choose the config location themselves: an explicit
+// --configs-directory (or a stdin config) keeps the historical
+// working-directory-relative "outputs/" layout, which scripts and the
+// contributor workflow point at.
+//
+// The re-rooted layout also drops the "outputs/" and "clusters/" levels:
+// the tree is already per-cluster, so they no longer separate anything.
+func UsePerClusterOutputs(home string) {
+	OutputsDirectory = home
+	OutputLogsDirectory = path.Join(home, "logs")
+	OutputPathManagementClusterK3DConfig = path.Join(home, "k3d.config.yaml")
+	OutputPathManagementClusterHostKubeconfig = path.Join(
+		home,
+		"kubeconfigs/management/host.yaml",
+	)
+	OutputPathManagementClusterContainerKubeconfig = path.Join(
+		home,
+		"kubeconfigs/management/container.yaml",
+	)
+	OutputPathMainClusterKubeconfig = path.Join(home, "kubeconfigs/main.yaml")
+	OutputPathJWKSDocument = path.Join(home, "workload-identity/openid-provider/jwks.json")
+}
+
 // ArgoCD.
 const (
 	ReleaseNameArgoCD = "argocd"

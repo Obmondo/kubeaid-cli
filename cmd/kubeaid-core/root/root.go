@@ -4,8 +4,10 @@
 package root
 
 import (
+	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -17,6 +19,8 @@ import (
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/config"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/devenv"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
@@ -27,15 +31,36 @@ var RootCmd = &cobra.Command{
 	Use: "kubeaid-core",
 
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Create outputs and logs directories.
-		err := os.MkdirAll(constants.OutputLogsDirectory, 0o750)
+		// The log file starts before any config is parsed, so which cluster
+		// this run concerns is not known yet. With the default config
+		// location the log goes to the shared per-user logs directory and
+		// moves into the cluster's own directory once the cluster is known
+		// (setup.RelocateLogFile); an explicit --configs-directory keeps
+		// the historical working-directory-relative outputs/logs.
+		logsDirectory := constants.OutputLogsDirectory
+		if parser.UsingDefaultConfigsDirectory() {
+			if shared, err := clusterdir.SharedLogsDir(); err == nil {
+				logsDirectory = shared
+			} else {
+				// No user config dir (HOME unset). Fall back to the legacy
+				// working-directory logs rather than refusing to run.
+				slog.Warn("No user config directory — logging under "+
+					constants.OutputLogsDirectory+" instead",
+					slog.String("error", err.Error()))
+			}
+		}
+
+		err := os.MkdirAll(logsDirectory, 0o750)
 		assert.AssertErrNil(cmd.Context(), err, "Failed ensuring that logs directory exists")
 
 		// Create logger.
 
+		// PID in the name: the shared logs directory serves every run on
+		// the machine, and same-second runs would otherwise O_TRUNC each
+		// other's log.
 		logFilePath := filepath.Join(
-			constants.OutputLogsDirectory,
-			time.Now().UTC().Format(time.RFC3339)+".log",
+			logsDirectory,
+			fmt.Sprintf("%s-%d.log", time.Now().UTC().Format(time.RFC3339), os.Getpid()),
 		)
 		logFile, err := os.OpenFile(logFilePath, //nolint:gosec // G302
 			os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
