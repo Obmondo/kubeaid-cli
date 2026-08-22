@@ -58,4 +58,10 @@ cloud:
           maxSize: 3
           cpu: 4
           memory: 8
+        - name: batch-arm
+          machineType: cax41
+          minSize: 1
+          maxSize: 4
+          cpu: 16
+          memory: 32
 

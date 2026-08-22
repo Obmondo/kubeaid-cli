@@ -16,6 +16,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 const promptStateFileName = ".kubeaid-prompt-state.yaml"
@@ -369,31 +370,22 @@ func applyHetznerConfigToPromptedConfig(hetzner *config.HetznerConfig, cfg *Prom
 			)
 		}
 	}
-	// Mirror the hcloud worker pool back onto cfg so a resumed session
-	// re-renders it instead of collapsing it to hcloud: [] — losing the
-	// cluster's workers. Like the bare-metal mapping above, only the
-	// first group round-trips through the prompt; extra groups stay a
-	// hand-edited general.yaml concern.
+	// Mirror every hcloud worker pool back onto cfg so a resumed session
+	// re-renders all of them instead of collapsing the list to
+	// hcloud: [] — losing the cluster's workers. The file wins outright
+	// (no per-field merge): the groups in general.yaml ARE the pools.
 	if len(hetzner.NodeGroups.HCloud) > 0 {
-		nodeGroup := hetzner.NodeGroups.HCloud[0]
-		cfg.HetznerNodeGroupName = firstNonEmpty(nodeGroup.Name, cfg.HetznerNodeGroupName)
-		cfg.HetznerNodeGroupMachineType = firstNonEmpty(
-			nodeGroup.MachineType,
-			cfg.HetznerNodeGroupMachineType,
-		)
-		cfg.HetznerNodeGroupMinSize = firstNonEmpty(
-			uintString(nodeGroup.MinSize),
-			cfg.HetznerNodeGroupMinSize,
-		)
-		cfg.HetznerNodeGroupMaxSize = firstNonEmpty(
-			uintString(nodeGroup.Maxsize),
-			cfg.HetznerNodeGroupMaxSize,
-		)
-		cfg.HetznerNodeGroupCPU = firstNonEmpty(uint32String(nodeGroup.CPU), cfg.HetznerNodeGroupCPU)
-		cfg.HetznerNodeGroupMemory = firstNonEmpty(
-			uint32String(nodeGroup.Memory),
-			cfg.HetznerNodeGroupMemory,
-		)
+		cfg.HetznerNodeGroups = make([]render.HCloudNodeGroup, 0, len(hetzner.NodeGroups.HCloud))
+		for _, nodeGroup := range hetzner.NodeGroups.HCloud {
+			cfg.HetznerNodeGroups = append(cfg.HetznerNodeGroups, render.HCloudNodeGroup{
+				Name:        nodeGroup.Name,
+				MachineType: nodeGroup.MachineType,
+				MinSize:     uintString(nodeGroup.MinSize),
+				MaxSize:     uintString(nodeGroup.Maxsize),
+				CPU:         uint32String(nodeGroup.CPU),
+				Memory:      uint32String(nodeGroup.Memory),
+			})
+		}
 	}
 }
 

@@ -154,8 +154,10 @@ func goldenCases() []goldenCase {
 			},
 		},
 		{
-			// Same as hetzner-hcloud-workload but with a worker pool, so both the
-			// populated and the empty nodeGroups.hcloud paths stay pinned.
+			// Same as hetzner-hcloud-workload but with two worker pools, so the
+			// empty, populated AND multi-group nodeGroups.hcloud paths stay
+			// pinned — the capi-cluster chart renders one MachineDeployment
+			// per entry.
 			name: "hetzner-hcloud-nodegroup",
 			cfg: &PromptedConfig{
 				SSHUsername:                "git",
@@ -182,12 +184,24 @@ func goldenCases() []goldenCase {
 				HetznerLBRegion:      "hel1",
 				HetznerAPIToken:      "fake-hcloud-token",
 
-				HetznerNodeGroupName:        "workers",
-				HetznerNodeGroupMachineType: "cpx31",
-				HetznerNodeGroupMinSize:     "1",
-				HetznerNodeGroupMaxSize:     "3",
-				HetznerNodeGroupCPU:         "4",
-				HetznerNodeGroupMemory:      "8",
+				HetznerNodeGroups: []HCloudNodeGroup{
+					{
+						Name:        "workers",
+						MachineType: "cpx31",
+						MinSize:     "1",
+						MaxSize:     "3",
+						CPU:         "4",
+						Memory:      "8",
+					},
+					{
+						Name:        "batch-arm",
+						MachineType: "cax41",
+						MinSize:     "1",
+						MaxSize:     "4",
+						CPU:         "16",
+						Memory:      "32",
+					},
+				},
 			},
 		},
 		{
@@ -281,12 +295,14 @@ func goldenCases() []goldenCase {
 					"1234570": "5.5.5.10",
 				},
 
-				HetznerNodeGroupName:        "cloud-workers",
-				HetznerNodeGroupMachineType: "cpx31",
-				HetznerNodeGroupMinSize:     "2",
-				HetznerNodeGroupMaxSize:     "2",
-				HetznerNodeGroupCPU:         "4",
-				HetznerNodeGroupMemory:      "8",
+				HetznerNodeGroups: []HCloudNodeGroup{{
+					Name:        "cloud-workers",
+					MachineType: "cpx31",
+					MinSize:     "2",
+					MaxSize:     "2",
+					CPU:         "4",
+					Memory:      "8",
+				}},
 
 				HetznerAPIToken:      "fake-token",
 				HetznerRobotUser:     "fake-user",

@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 type hetznerPrompter struct{}
@@ -67,14 +68,14 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 			fmt.Sprintf("  CP replicas:   %s", cfg.HetznerCPReplicas),
 		)
 		// Hybrid clusters usually have no hcloud worker pool (their
-		// workers are bare-metal), so only show one that's actually set.
-		if cfg.HetznerNodeGroupName != "" {
+		// workers are bare-metal), so only pools actually set show up.
+		for _, nodeGroup := range cfg.HetznerNodeGroups {
 			lines = append(lines, fmt.Sprintf(
 				"  Workers:       %s-%s × %s (%s)",
-				cfg.HetznerNodeGroupMinSize,
-				cfg.HetznerNodeGroupMaxSize,
-				cfg.HetznerNodeGroupMachineType,
-				cfg.HetznerNodeGroupName,
+				nodeGroup.MinSize,
+				nodeGroup.MaxSize,
+				nodeGroup.MachineType,
+				nodeGroup.Name,
 			))
 		}
 	}
@@ -248,29 +249,21 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 		cfg.HetznerRegion = defaultHetznerRegion
 		cfg.HetznerLBRegion = cfg.HetznerRegion
 
-		// Default worker node-group, only-if-empty so a pool mapped back
-		// from a resumed config wins. Without one, general.yaml renders
+		// Default worker node-group, only-when-none so pools mapped back
+		// from a resumed config win. Without one, general.yaml renders
 		// nodeGroups.hcloud: [] and the cluster comes up with zero
 		// workers. Hybrid mode deliberately gets no such default — its
 		// workers are the bare-metal node group, and an hcloud pool
 		// there stays an explicit general.yaml opt-in.
-		if cfg.HetznerNodeGroupName == "" {
-			cfg.HetznerNodeGroupName = defaultHetznerNodeGroupName
-		}
-		if cfg.HetznerNodeGroupMachineType == "" {
-			cfg.HetznerNodeGroupMachineType = defaultHetznerNodeGroupMachineType
-		}
-		if cfg.HetznerNodeGroupMinSize == "" {
-			cfg.HetznerNodeGroupMinSize = defaultHetznerNodeGroupMinSize
-		}
-		if cfg.HetznerNodeGroupMaxSize == "" {
-			cfg.HetznerNodeGroupMaxSize = defaultHetznerNodeGroupMaxSize
-		}
-		if cfg.HetznerNodeGroupCPU == "" {
-			cfg.HetznerNodeGroupCPU = defaultHetznerNodeGroupCPU
-		}
-		if cfg.HetznerNodeGroupMemory == "" {
-			cfg.HetznerNodeGroupMemory = defaultHetznerNodeGroupMemory
+		if len(cfg.HetznerNodeGroups) == 0 {
+			cfg.HetznerNodeGroups = []render.HCloudNodeGroup{{
+				Name:        defaultHetznerNodeGroupName,
+				MachineType: defaultHetznerNodeGroupMachineType,
+				MinSize:     defaultHetznerNodeGroupMinSize,
+				MaxSize:     defaultHetznerNodeGroupMaxSize,
+				CPU:         defaultHetznerNodeGroupCPU,
+				Memory:      defaultHetznerNodeGroupMemory,
+			}}
 		}
 		return nil
 

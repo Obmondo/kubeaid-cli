@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 const (
@@ -249,10 +250,10 @@ func TestLoadExistingPromptedConfigHetznerHybridTopology(t *testing.T) {
 	assert.False(t, missingProviderPromptConfig(got))
 }
 
-// A resumed hcloud config's worker pool must survive the round-trip: render
-// with a pool, load it back, and every node-group field lands on cfg — so a
-// re-render keeps the workers instead of collapsing them to hcloud: [].
-func TestLoadExistingPromptedConfigHetznerHCloudWorkerPool(t *testing.T) {
+// A resumed hcloud config's worker pools must survive the round-trip: render
+// with pools, load them back, and every node-group lands on cfg — so a
+// re-render keeps ALL the workers instead of collapsing them to hcloud: [].
+func TestLoadExistingPromptedConfigHetznerHCloudWorkerPools(t *testing.T) {
 	dir := t.TempDir()
 	want := completePromptedConfig(constants.CloudProviderHetzner)
 	want.HetznerMode = constants.HetznerModeHCloud
@@ -263,12 +264,10 @@ func TestLoadExistingPromptedConfigHetznerHCloudWorkerPool(t *testing.T) {
 	want.HetznerCPReplicas = "3"
 	want.HetznerLBRegion = "hel1"
 	want.HetznerRegion = "hel1"
-	want.HetznerNodeGroupName = "default"
-	want.HetznerNodeGroupMachineType = "cpx31"
-	want.HetznerNodeGroupMinSize = "3"
-	want.HetznerNodeGroupMaxSize = "6"
-	want.HetznerNodeGroupCPU = "4"
-	want.HetznerNodeGroupMemory = "8"
+	want.HetznerNodeGroups = []render.HCloudNodeGroup{
+		{Name: "default", MachineType: "cpx31", MinSize: "3", MaxSize: "6", CPU: "4", Memory: "8"},
+		{Name: "batch-arm", MachineType: "cax41", MinSize: "1", MaxSize: "4", CPU: "16", Memory: "32"},
+	}
 
 	require.NoError(t, writeConfigFiles(dir, want))
 
@@ -276,12 +275,8 @@ func TestLoadExistingPromptedConfigHetznerHCloudWorkerPool(t *testing.T) {
 	require.NoError(t, loadExistingPromptedConfig(dir, got))
 
 	assert.Equal(t, constants.HetznerModeHCloud, got.HetznerMode)
-	assert.Equal(t, "default", got.HetznerNodeGroupName)
-	assert.Equal(t, "cpx31", got.HetznerNodeGroupMachineType)
-	assert.Equal(t, "3", got.HetznerNodeGroupMinSize)
-	assert.Equal(t, "6", got.HetznerNodeGroupMaxSize)
-	assert.Equal(t, "4", got.HetznerNodeGroupCPU)
-	assert.Equal(t, "8", got.HetznerNodeGroupMemory)
+	assert.Equal(t, want.HetznerNodeGroups, got.HetznerNodeGroups,
+		"every worker pool must round-trip, not just the first")
 	assert.False(t, missingProviderPromptConfig(got))
 }
 

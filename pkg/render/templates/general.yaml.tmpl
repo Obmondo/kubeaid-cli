@@ -189,14 +189,16 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
-{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize .HetznerNodeGroupCPU .HetznerNodeGroupMemory }}
+{{- if .HetznerNodeGroups }}
       hcloud:
-        - name: {{ .HetznerNodeGroupName }}
-          machineType: {{ .HetznerNodeGroupMachineType }}
-          minSize: {{ .HetznerNodeGroupMinSize }}
-          maxSize: {{ .HetznerNodeGroupMaxSize }}
-          cpu: {{ .HetznerNodeGroupCPU }}
-          memory: {{ .HetznerNodeGroupMemory }}
+{{- range .HetznerNodeGroups }}
+        - name: {{ .Name }}
+          machineType: {{ .MachineType }}
+          minSize: {{ .MinSize }}
+          maxSize: {{ .MaxSize }}
+          cpu: {{ .CPU }}
+          memory: {{ .Memory }}
+{{- end }}
 {{- else }}
       hcloud: []
 {{- end }}
@@ -245,14 +247,16 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
-{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize .HetznerNodeGroupCPU .HetznerNodeGroupMemory }}
+{{- if .HetznerNodeGroups }}
       hcloud:
-        - name: {{ .HetznerNodeGroupName }}
-          machineType: {{ .HetznerNodeGroupMachineType }}
-          minSize: {{ .HetznerNodeGroupMinSize }}
-          maxSize: {{ .HetznerNodeGroupMaxSize }}
-          cpu: {{ .HetznerNodeGroupCPU }}
-          memory: {{ .HetznerNodeGroupMemory }}
+{{- range .HetznerNodeGroups }}
+        - name: {{ .Name }}
+          machineType: {{ .MachineType }}
+          minSize: {{ .MinSize }}
+          maxSize: {{ .MaxSize }}
+          cpu: {{ .CPU }}
+          memory: {{ .Memory }}
+{{- end }}
 {{- else }}
       hcloud: []
 {{- end }}
