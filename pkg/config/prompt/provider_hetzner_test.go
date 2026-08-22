@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 func TestHetznerPrompter_SummaryLines(t *testing.T) {
@@ -29,6 +31,30 @@ func TestHetznerPrompter_SummaryLines(t *testing.T) {
 				"  Machine type:  cax21",
 				"  LB region:     hel1",
 				"  CP replicas:   3",
+				"  Mode:          hcloud",
+			},
+		},
+		{
+			name: "hcloud mode with worker pools shows one workers line per pool",
+			cfg: &PromptedConfig{
+				HetznerMode:          "hcloud",
+				HetznerHCloudZone:    "eu-central",
+				HetznerCPMachineType: "cax21",
+				HetznerLBRegion:      "hel1",
+				HetznerCPReplicas:    "3",
+
+				HetznerNodeGroups: []render.HCloudNodeGroup{
+					{Name: "default", MachineType: "cpx31", MinSize: "3", MaxSize: "6"},
+					{Name: "batch-arm", MachineType: "cax41", MinSize: "1", MaxSize: "4"},
+				},
+			},
+			want: []string{
+				"  Zone:          eu-central",
+				"  Machine type:  cax21",
+				"  LB region:     hel1",
+				"  CP replicas:   3",
+				"  Workers:       3-6 × cpx31 (default)",
+				"  Workers:       1-4 × cax41 (batch-arm)",
 				"  Mode:          hcloud",
 			},
 		},

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 const (
@@ -246,6 +247,36 @@ func TestLoadExistingPromptedConfigHetznerHybridTopology(t *testing.T) {
 	assert.Equal(t, "hybrid-workers", got.HetznerBMNodeGroupName)
 	assert.Equal(t, want.HetznerBMNodeGroupServerIDs, got.HetznerBMNodeGroupServerIDs)
 	assert.Equal(t, want.HetznerBMNodeGroupPrivateIPs, got.HetznerBMNodeGroupPrivateIPs)
+	assert.False(t, missingProviderPromptConfig(got))
+}
+
+// A resumed hcloud config's worker pools must survive the round-trip: render
+// with pools, load them back, and every node-group lands on cfg — so a
+// re-render keeps ALL the workers instead of collapsing them to hcloud: [].
+func TestLoadExistingPromptedConfigHetznerHCloudWorkerPools(t *testing.T) {
+	dir := t.TempDir()
+	want := completePromptedConfig(constants.CloudProviderHetzner)
+	want.HetznerMode = constants.HetznerModeHCloud
+	want.HetznerSSHKeyName = "hcloud-key"
+	want.HetznerAPIToken = "hcloud-token"
+	want.HetznerHCloudZone = "eu-central"
+	want.HetznerCPMachineType = "cax21"
+	want.HetznerCPReplicas = "3"
+	want.HetznerLBRegion = "hel1"
+	want.HetznerRegion = "hel1"
+	want.HetznerNodeGroups = []render.HCloudNodeGroup{
+		{Name: "default", MachineType: "cpx31", MinSize: "3", MaxSize: "6", CPU: "4", Memory: "8"},
+		{Name: "batch-arm", MachineType: "cax41", MinSize: "1", MaxSize: "4", CPU: "16", Memory: "32"},
+	}
+
+	require.NoError(t, writeConfigFiles(dir, want))
+
+	got := &PromptedConfig{}
+	require.NoError(t, loadExistingPromptedConfig(dir, got))
+
+	assert.Equal(t, constants.HetznerModeHCloud, got.HetznerMode)
+	assert.Equal(t, want.HetznerNodeGroups, got.HetznerNodeGroups,
+		"every worker pool must round-trip, not just the first")
 	assert.False(t, missingProviderPromptConfig(got))
 }
 

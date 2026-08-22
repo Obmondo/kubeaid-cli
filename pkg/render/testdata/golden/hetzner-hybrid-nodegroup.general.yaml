@@ -1,0 +1,93 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 29.0.9
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory:
+
+cluster:
+  type: vpn
+  name: hybrid-acme-workers
+  k8sVersion: v1.35.4
+  enableAuditLogging: false
+  acmeEmail: ops@acme.com
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  keycloak:
+    mode: managed
+    dns: keycloak.hybrid.acme.com
+    realm: acme
+  netbird:
+    dns: netbird.hybrid.acme.com
+    dnsZone:
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  hetzner:
+    mode: hybrid
+    sshKeyPair:
+      name: demo-hybrid
+      useSSHAgent: true
+    hcloud:
+      zone: eu-central
+      imageName: ubuntu-26.04
+      hetznerNetwork:
+        cidr: "10.0.0.0/16"
+        hcloudServersSubnetCIDR: "10.0.0.0/24"
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      vSwitch:
+        name: hybrid-acme-vswitch
+        vlanID: 4001
+        subnetCIDRBlock: "10.0.1.0/24"
+      # Cilium host firewall (CiliumClusterwideNetworkPolicy) on each node's
+      # public NIC. enabled gates whether the policy is rendered; allowSshFrom
+      # restricts SSH (empty = from anywhere, IPv4/CIDR only). 80/443 are
+      # world-public; 6443 is reachable only from the node public IPs, not the
+      # world. allowPublic is a legacy no-op (ignored, warns if set) — set extra
+      # world ports via the cilium chart's hostNetworkPolicy.publicPorts. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        enabled: true
+        allowSshFrom: []
+        allowPublic: []
+    controlPlane:
+      hcloud:
+        machineType: cax21
+        replicas: 3
+        loadBalancer:
+          enabled: true
+          region: hel1
+          endpoint: api.hybrid.acme.com
+      regions:
+        - hel1
+    nodeGroups:
+      hcloud:
+        - name: cloud-workers
+          machineType: cpx31
+          minSize: 2
+          maxSize: 2
+          cpu: 4
+          memory: 8
+      bareMetal:
+        - name: workers
+          bareMetalHosts:
+            # Robot main IP: 5.5.5.10
+            - serverID: "1234570"
+              privateIP: 10.0.1.10
+

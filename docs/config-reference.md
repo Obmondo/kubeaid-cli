@@ -459,6 +459,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | machineType | `string` |  | HCloud machine type.<br>You can browse all available HCloud machine types here : https://hetzner.com/cloud.<br> |
+| rootVolumeSize | `uint32` |  | The root volume size for each HCloud machine.<br> |
 | minSize | `uint` |  | Minimum number of replicas in the nodegroup.<br> |
 | maxSize | `uint` |  | Maximum number of replicas in the nodegroup.<br> |
 | name | `string` |  | Nodegroup name.<br> |

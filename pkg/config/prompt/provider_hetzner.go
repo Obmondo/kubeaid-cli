@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/huh"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 type hetznerPrompter struct{}
@@ -19,6 +20,18 @@ const (
 	defaultHetznerHCloudZone  = "eu-central"
 	defaultHetznerMachineType = "cax21"
 	defaultHetznerRegion      = "hel1"
+
+	// Worker node-group defaults for hcloud mode — the same
+	// 4 vCPU / 8 GB / 3-6 replica baseline the AWS and Azure templates
+	// use for their default worker pools. cpx31 is the smallest
+	// current-gen x86 type meeting that baseline (the ARM cax21 stays
+	// control-plane only, mirroring AWS's ARM CP + x86 workers split).
+	defaultHetznerNodeGroupName        = "default"
+	defaultHetznerNodeGroupMachineType = "cpx31"
+	defaultHetznerNodeGroupMinSize     = "3"
+	defaultHetznerNodeGroupMaxSize     = "6"
+	defaultHetznerNodeGroupCPU         = "4"
+	defaultHetznerNodeGroupMemory      = "8"
 )
 
 // hcloudAPITokenHelp is shown under the "Cloud API token" prompt.
@@ -54,6 +67,17 @@ func (p *hetznerPrompter) SummaryLines(cfg *PromptedConfig) []string {
 			fmt.Sprintf("  LB region:     %s", cfg.HetznerLBRegion),
 			fmt.Sprintf("  CP replicas:   %s", cfg.HetznerCPReplicas),
 		)
+		// Hybrid clusters usually have no hcloud worker pool (their
+		// workers are bare-metal), so only pools actually set show up.
+		for _, nodeGroup := range cfg.HetznerNodeGroups {
+			lines = append(lines, fmt.Sprintf(
+				"  Workers:       %s-%s × %s (%s)",
+				nodeGroup.MinSize,
+				nodeGroup.MaxSize,
+				nodeGroup.MachineType,
+				nodeGroup.Name,
+			))
+		}
 	}
 
 	if cfg.HetznerMode == constants.HetznerModeBareMetal {
@@ -224,6 +248,23 @@ func (p *hetznerPrompter) RunCredentialsForm(cfg *PromptedConfig, detected *auto
 		cfg.HetznerCPMachineType = defaultHetznerMachineType
 		cfg.HetznerRegion = defaultHetznerRegion
 		cfg.HetznerLBRegion = cfg.HetznerRegion
+
+		// Default worker node-group, only-when-none so pools mapped back
+		// from a resumed config win. Without one, general.yaml renders
+		// nodeGroups.hcloud: [] and the cluster comes up with zero
+		// workers. Hybrid mode deliberately gets no such default — its
+		// workers are the bare-metal node group, and an hcloud pool
+		// there stays an explicit general.yaml opt-in.
+		if len(cfg.HetznerNodeGroups) == 0 {
+			cfg.HetznerNodeGroups = []render.HCloudNodeGroup{{
+				Name:        defaultHetznerNodeGroupName,
+				MachineType: defaultHetznerNodeGroupMachineType,
+				MinSize:     defaultHetznerNodeGroupMinSize,
+				MaxSize:     defaultHetznerNodeGroupMaxSize,
+				CPU:         defaultHetznerNodeGroupCPU,
+				Memory:      defaultHetznerNodeGroupMemory,
+			}}
+		}
 		return nil
 
 	case constants.HetznerModeHybrid:

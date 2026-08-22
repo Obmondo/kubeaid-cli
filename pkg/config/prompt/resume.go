@@ -16,6 +16,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
 
 const promptStateFileName = ".kubeaid-prompt-state.yaml"
@@ -367,6 +368,23 @@ func applyHetznerConfigToPromptedConfig(hetzner *config.HetznerConfig, cfg *Prom
 			cfg.HetznerBMNodeGroupServerIDs, cfg.HetznerBMNodeGroupPrivateIPs = hetznerBareMetalHostValues(
 				nodeGroup.BareMetalHosts,
 			)
+		}
+	}
+	// Mirror every hcloud worker pool back onto cfg so a resumed session
+	// re-renders all of them instead of collapsing the list to
+	// hcloud: [] — losing the cluster's workers. The file wins outright
+	// (no per-field merge): the groups in general.yaml ARE the pools.
+	if len(hetzner.NodeGroups.HCloud) > 0 {
+		cfg.HetznerNodeGroups = make([]render.HCloudNodeGroup, 0, len(hetzner.NodeGroups.HCloud))
+		for _, nodeGroup := range hetzner.NodeGroups.HCloud {
+			cfg.HetznerNodeGroups = append(cfg.HetznerNodeGroups, render.HCloudNodeGroup{
+				Name:        nodeGroup.Name,
+				MachineType: nodeGroup.MachineType,
+				MinSize:     uintString(nodeGroup.MinSize),
+				MaxSize:     uintString(nodeGroup.Maxsize),
+				CPU:         uint32String(nodeGroup.CPU),
+				Memory:      uint32String(nodeGroup.Memory),
+			})
 		}
 	}
 }

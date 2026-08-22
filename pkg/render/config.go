@@ -191,6 +191,13 @@ type PromptedConfig struct {
 	HetznerRobotUser     string
 	HetznerRobotPassword string
 
+	// HCloud worker node-groups. Every group in the slice renders, so a
+	// partially filled group reaches validation and is rejected by field
+	// name rather than silently collapsing to [] and shipping a cluster
+	// with no workers. An empty slice renders hcloud: [] — hybrid's
+	// default, where the workers are the bare-metal node group.
+	HetznerNodeGroups []HCloudNodeGroup
+
 	// HetznerBMKnownServerIDs is the cached Robot inventory fetched
 	// at credential-validation time (on Enter past the password
 	// field). Used to seed huh.Input.Suggestions for server-ID
@@ -253,6 +260,21 @@ type PromptedConfig struct {
 	BareMetalNodeGroupName     string
 
 	Obmondo *ObmondoConfig
+}
+
+// HCloudNodeGroup is one hcloud worker node-group as the prompt carries
+// it — string-typed like every other prompted value. The full slice
+// renders into nodeGroups.hcloud, one entry per group, matching the
+// capi-cluster chart's one-MachineDeployment-per-group fan-out.
+// RootVolumeSize is absent on purpose — hydrateVMSpecs derives it from
+// the machine type at parse time.
+type HCloudNodeGroup struct {
+	Name        string
+	MachineType string
+	MinSize     string
+	MaxSize     string
+	CPU         string
+	Memory      string
 }
 
 // KubeaidIsSSH reports whether KubeaidForkURL is an SSH-form Git URL.
