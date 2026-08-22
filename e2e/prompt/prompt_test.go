@@ -666,6 +666,14 @@ func TestHetznerHCloud_PromptFlow(t *testing.T) {
 	assert.Contains(t, general, "cidr: \"10.0.0.0/16\"")
 	assert.Contains(t, general, "hcloudServersSubnetCIDR: \"10.0.0.0/24\"")
 
+	// The default worker node-group — without it the cluster comes up
+	// with zero workers.
+	assert.NotContains(t, general, "hcloud: []")
+	assert.Contains(t, general, "- name: default")
+	assert.Contains(t, general, "machineType: cpx31")
+	assert.Contains(t, general, "minSize: 3")
+	assert.Contains(t, general, "maxSize: 6")
+
 	keyName := strings.TrimSuffix(filepath.Base(sshKeyPath), filepath.Ext(sshKeyPath))
 	assert.Contains(t, general, "name: "+keyName)
 

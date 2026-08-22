@@ -249,6 +249,42 @@ func TestLoadExistingPromptedConfigHetznerHybridTopology(t *testing.T) {
 	assert.False(t, missingProviderPromptConfig(got))
 }
 
+// A resumed hcloud config's worker pool must survive the round-trip: render
+// with a pool, load it back, and every node-group field lands on cfg — so a
+// re-render keeps the workers instead of collapsing them to hcloud: [].
+func TestLoadExistingPromptedConfigHetznerHCloudWorkerPool(t *testing.T) {
+	dir := t.TempDir()
+	want := completePromptedConfig(constants.CloudProviderHetzner)
+	want.HetznerMode = constants.HetznerModeHCloud
+	want.HetznerSSHKeyName = "hcloud-key"
+	want.HetznerAPIToken = "hcloud-token"
+	want.HetznerHCloudZone = "eu-central"
+	want.HetznerCPMachineType = "cax21"
+	want.HetznerCPReplicas = "3"
+	want.HetznerLBRegion = "hel1"
+	want.HetznerRegion = "hel1"
+	want.HetznerNodeGroupName = "default"
+	want.HetznerNodeGroupMachineType = "cpx31"
+	want.HetznerNodeGroupMinSize = "3"
+	want.HetznerNodeGroupMaxSize = "6"
+	want.HetznerNodeGroupCPU = "4"
+	want.HetznerNodeGroupMemory = "8"
+
+	require.NoError(t, writeConfigFiles(dir, want))
+
+	got := &PromptedConfig{}
+	require.NoError(t, loadExistingPromptedConfig(dir, got))
+
+	assert.Equal(t, constants.HetznerModeHCloud, got.HetznerMode)
+	assert.Equal(t, "default", got.HetznerNodeGroupName)
+	assert.Equal(t, "cpx31", got.HetznerNodeGroupMachineType)
+	assert.Equal(t, "3", got.HetznerNodeGroupMinSize)
+	assert.Equal(t, "6", got.HetznerNodeGroupMaxSize)
+	assert.Equal(t, "4", got.HetznerNodeGroupCPU)
+	assert.Equal(t, "8", got.HetznerNodeGroupMemory)
+	assert.False(t, missingProviderPromptConfig(got))
+}
+
 func TestAWSProviderPromptStateDoesNotDependOnEnvOrGitSSH(t *testing.T) {
 	clearAWSEnvironment(t)
 

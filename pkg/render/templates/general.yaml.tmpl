@@ -189,7 +189,7 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
-{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize }}
+{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize .HetznerNodeGroupCPU .HetznerNodeGroupMemory }}
       hcloud:
         - name: {{ .HetznerNodeGroupName }}
           machineType: {{ .HetznerNodeGroupMachineType }}
@@ -245,7 +245,7 @@ cloud:
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
-{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize }}
+{{- if or .HetznerNodeGroupName .HetznerNodeGroupMachineType .HetznerNodeGroupMinSize .HetznerNodeGroupMaxSize .HetznerNodeGroupCPU .HetznerNodeGroupMemory }}
       hcloud:
         - name: {{ .HetznerNodeGroupName }}
           machineType: {{ .HetznerNodeGroupMachineType }}

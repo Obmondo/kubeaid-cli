@@ -369,6 +369,32 @@ func applyHetznerConfigToPromptedConfig(hetzner *config.HetznerConfig, cfg *Prom
 			)
 		}
 	}
+	// Mirror the hcloud worker pool back onto cfg so a resumed session
+	// re-renders it instead of collapsing it to hcloud: [] — losing the
+	// cluster's workers. Like the bare-metal mapping above, only the
+	// first group round-trips through the prompt; extra groups stay a
+	// hand-edited general.yaml concern.
+	if len(hetzner.NodeGroups.HCloud) > 0 {
+		nodeGroup := hetzner.NodeGroups.HCloud[0]
+		cfg.HetznerNodeGroupName = firstNonEmpty(nodeGroup.Name, cfg.HetznerNodeGroupName)
+		cfg.HetznerNodeGroupMachineType = firstNonEmpty(
+			nodeGroup.MachineType,
+			cfg.HetznerNodeGroupMachineType,
+		)
+		cfg.HetznerNodeGroupMinSize = firstNonEmpty(
+			uintString(nodeGroup.MinSize),
+			cfg.HetznerNodeGroupMinSize,
+		)
+		cfg.HetznerNodeGroupMaxSize = firstNonEmpty(
+			uintString(nodeGroup.Maxsize),
+			cfg.HetznerNodeGroupMaxSize,
+		)
+		cfg.HetznerNodeGroupCPU = firstNonEmpty(uint32String(nodeGroup.CPU), cfg.HetznerNodeGroupCPU)
+		cfg.HetznerNodeGroupMemory = firstNonEmpty(
+			uint32String(nodeGroup.Memory),
+			cfg.HetznerNodeGroupMemory,
+		)
+	}
 }
 
 func applySecretsConfigToPromptedConfig(secrets *config.SecretsConfig, cfg *PromptedConfig) {

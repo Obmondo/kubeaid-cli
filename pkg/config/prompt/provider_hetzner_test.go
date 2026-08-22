@@ -33,6 +33,29 @@ func TestHetznerPrompter_SummaryLines(t *testing.T) {
 			},
 		},
 		{
+			name: "hcloud mode with a worker pool shows the workers line",
+			cfg: &PromptedConfig{
+				HetznerMode:          "hcloud",
+				HetznerHCloudZone:    "eu-central",
+				HetznerCPMachineType: "cax21",
+				HetznerLBRegion:      "hel1",
+				HetznerCPReplicas:    "3",
+
+				HetznerNodeGroupName:        "default",
+				HetznerNodeGroupMachineType: "cpx31",
+				HetznerNodeGroupMinSize:     "3",
+				HetznerNodeGroupMaxSize:     "6",
+			},
+			want: []string{
+				"  Zone:          eu-central",
+				"  Machine type:  cax21",
+				"  LB region:     hel1",
+				"  CP replicas:   3",
+				"  Workers:       3-6 × cpx31 (default)",
+				"  Mode:          hcloud",
+			},
+		},
+		{
 			name: "bare-metal mode shows server IDs and endpoint, omits hcloud fields",
 			cfg: &PromptedConfig{
 				HetznerMode: "bare-metal",
