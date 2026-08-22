@@ -105,6 +105,16 @@ Exactly one of the two must be set.
    `--cluster-name <cluster>` to pick one non-interactively, or `--configs-directory` if you keep the config
    somewhere else). `cluster bootstrap` fails fast if the configs are missing — run `config generate` first.
 
+4. Talk to the cluster — everything the CLI produced lives in the cluster's directory:
+
+   ```sh
+   export KUBECONFIG=~/.config/kubeaid-cli/<cluster>/kubeconfigs/main.yaml
+   kubectl get nodes
+   ```
+
+   Run logs are in `~/.config/kubeaid-cli/<cluster>/logs/`. (With an explicit `--configs-directory`, outputs
+   keep the historical `./outputs/` layout in your working directory instead.)
+
 ## Usage
 
 ```
