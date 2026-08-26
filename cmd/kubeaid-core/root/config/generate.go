@@ -5,24 +5,23 @@ package config
 
 import (
 	_ "embed"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/prompt"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/setup"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 // SampleConfigFileGeneral / SampleConfigFileSecrets stay embedded — they
@@ -73,28 +72,33 @@ first, review the output, then bootstrap.`,
 		// to the config they chose to leave alone.
 		written, err := prompt.ConfigFromPrompt(globals.ConfigsDirectory, clusterName)
 		if err != nil {
-			assert.AssertErrNil(ctx, err, "Interactive config generation failed")
+			// Full chain to the log file; the terminal gets one plain line.
+			slog.WarnContext(ctx, "Interactive config generation failed", logger.Error(err))
+			fmt.Fprintf(os.Stderr, "\nConfig generation didn't finish: %v\nDetails: %s\n",
+				err, globals.LogFilePath)
+			os.Exit(1)
 		}
+
+		// The run knows its home now, so the log moves in — judged from
+		// where the files actually went, since the prompt may have renamed
+		// the cluster and a replaced name moves the files.
+		setup.RelocateLogFile(ctx, clusterdir.LogsDirForConfigs(written.ConfigsDirectory))
 
 		printNextStep(written.ConfigsDirectory, written.ClusterName)
 	},
 }
 
 // Indirected so resolveTargetCluster is testable: huh needs a TTY.
-var (
-	confirmReuseDefaultConfigsDirectory = promptReuseDefaultConfigsDirectory
-	askTargetCluster                    = promptTargetCluster
-)
+var askTargetCluster = promptTargetCluster
 
 // resolveTargetCluster points globals.ConfigsDirectory at where this run's
 // config should be written, and returns the cluster name when the per-cluster
 // convention was used ("" when it was not).
 //
-// Precedence: an explicit --configs-directory wins, then --cluster-name, then
-// an outputs/configs that already exists — but that last one is now offered
-// rather than taken, because with no flags the default directory is always
-// what gets looked at, and a config left in it names whichever cluster it was
-// written for. Taken silently, that stale name is what the prompt pre-fills.
+// Precedence: an explicit --configs-directory wins (that directory is also
+// where the run's outputs land), then --cluster-name, then the interactive
+// cluster picker. Nothing in the working directory is ever picked up
+// implicitly.
 func resolveTargetCluster() (string, error) {
 	if !parser.UsingDefaultConfigsDirectory() {
 		return "", nil
@@ -109,18 +113,6 @@ func resolveTargetCluster() (string, error) {
 		return globals.ClusterName, nil
 	}
 
-	// An existing directory with nothing in it is not something to reuse —
-	// an aborted run leaves one behind — so there is nothing to ask about.
-	if prompt.ExistingConfigPresent(globals.ConfigsDirectory) {
-		reuse, err := confirmReuseDefaultConfigsDirectory(globals.ConfigsDirectory)
-		if err != nil {
-			return "", err
-		}
-		if reuse {
-			return "", nil
-		}
-	}
-
 	name, err := askTargetCluster()
 	if err != nil {
 		return "", err
@@ -133,54 +125,6 @@ func resolveTargetCluster() (string, error) {
 	globals.ConfigsDirectory = directory
 
 	return name, nil
-}
-
-// promptReuseDefaultConfigsDirectory offers the config already sitting in the
-// default directory, naming the cluster it was written for so that reusing it
-// is a decision rather than something the operator discovers afterwards in a
-// pre-filled form.
-func promptReuseDefaultConfigsDirectory(configsDirectory string) (bool, error) {
-	description := configsDirectory
-	if name := clusterNameInConfigsDirectory(configsDirectory); name != "" {
-		description += "\ncluster: " + name
-	}
-
-	reuse := true
-	err := huh.NewForm(
-		huh.NewGroup(
-			huh.NewConfirm().
-				Title("A config already exists in the default directory. Use it?").
-				Description(description).
-				Affirmative("Use it").
-				Negative("Choose a cluster").
-				Value(&reuse),
-		),
-	).Run()
-	if err != nil {
-		return false, err
-	}
-	return reuse, nil
-}
-
-// clusterNameInConfigsDirectory peeks at the cluster name in a directory's
-// general.yaml. Best-effort: the name only decorates a prompt the operator is
-// already reading, so failing to read it must not replace that prompt with an
-// error. A partial file from an interrupted run is the normal case here.
-func clusterNameInConfigsDirectory(configsDirectory string) string {
-	data, err := os.ReadFile(filepath.Join(configsDirectory, "general.yaml"))
-	if err != nil {
-		return ""
-	}
-
-	var general struct {
-		Cluster struct {
-			Name string `yaml:"name"`
-		} `yaml:"cluster"`
-	}
-	if err := yaml.Unmarshal(data, &general); err != nil {
-		return ""
-	}
-	return general.Cluster.Name
 }
 
 // newClusterOptionValue marks the "+ new cluster" entry in the picker.
@@ -244,16 +188,13 @@ func askNewClusterName() (string, error) {
 				Title("Cluster name").
 				Description("Names the config directory, and is what --cluster-name takes later.").
 				Value(&name).
+				// The strict new-cluster rule, not clusterdir's looser
+				// directory gate: this name is about to become a Kubernetes
+				// object name, and the config prompt one screen later
+				// validates it with this same rule — accepting more here
+				// would walk the operator into a dead end.
 				Validate(func(input string) error {
-					if strings.TrimSpace(input) == "" {
-						return errors.New("cluster name is required")
-					}
-					// Becomes a path segment, so a name containing a
-					// separator would silently write somewhere else.
-					if strings.ContainsAny(input, `/\`) {
-						return errors.New("cluster name cannot contain a path separator")
-					}
-					return nil
+					return prompt.ClusterName(strings.TrimSpace(input))
 				}),
 		),
 	).Run()
@@ -264,12 +205,12 @@ func askNewClusterName() (string, error) {
 }
 
 // printNextStep spells out the command that consumes what was just written.
-// Without the cluster name, `cluster bootstrap` would look in outputs/configs
-// and not find it — so the operator needs the flag, and should not have to
-// work that out from a not-found error.
+// The printed command includes --cluster-name only when it is actually
+// needed: with several saved clusters, bootstrap refuses to guess; with
+// just this one, it auto-selects and the flag would be noise.
 func printNextStep(configsDirectory, clusterName string) {
 	next := "kubeaid-cli cluster bootstrap"
-	if clusterName != "" {
+	if clusterName != "" && len(clusterdir.List()) > 1 {
 		next += " --" + constants.FlagNameClusterName + " " + clusterName
 	}
 

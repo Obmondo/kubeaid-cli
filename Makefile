@@ -100,7 +100,11 @@ build: ## Build kubeaid-cli binary
 build-storagectl: ## Build kubeaid-storagectl binary
 	@go build -ldflags="$(LDFLAGS)" -o ./build/kubeaid-storagectl ./cmd/kubeaid-storagectl
 
+# CONFIGS_DIR matches the contributor flow in docs/DEVELOPMENT.md; outputs
+# land in the configs directory the run was pointed at.
+CONFIGS_DIR ?= ./outputs/configs/local
+
 .PHONY: management-cluster-delete
-management-cluster-delete: ## Delete the management k3d cluster
-	KUBECONFIG=./outputs/kubeconfigs/clusters/management/container.yaml \
+management-cluster-delete: ## Delete the management k3d cluster (set CONFIGS_DIR=<path> if not the DEVELOPMENT.md default)
+	KUBECONFIG="$(CONFIGS_DIR)/kubeconfigs/management/container.yaml" \
 		k3d cluster delete $(MANAGEMENT_CLUSTER_NAME)

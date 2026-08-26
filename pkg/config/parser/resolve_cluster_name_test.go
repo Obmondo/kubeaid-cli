@@ -5,6 +5,7 @@ package parser
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -52,14 +53,55 @@ func TestResolveConfigsDirectoryLetsAnExplicitDirectoryWin(t *testing.T) {
 	require.Equal(t, "/explicit/path", globals.ConfigsDirectory)
 }
 
-// Without --cluster-name the old working-directory default has to survive
-// untouched, or every existing operator's invocation changes meaning.
-func TestResolveConfigsDirectoryLeavesTheDefaultAloneWithoutAClusterName(t *testing.T) {
+// The common case: `config generate` collected the cluster name already,
+// and one cluster is all the operator has — bootstrap must not demand the
+// name a second time.
+func TestResolveConfigsDirectoryAutoSelectsTheOnlySavedCluster(t *testing.T) {
 	resetFlags(t)
+
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	dir := filepath.Join(configHome, "kubeaid-cli", "prod-eu", "configs")
+	require.NoError(t, os.MkdirAll(dir, 0o700))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "general.yaml"), []byte("cluster:\n  name: prod-eu\n"), 0o600))
 
 	require.NoError(t, ResolveConfigsDirectory(context.Background()))
 
-	require.Equal(t, constants.FlagNameConfigsDirectoryDefaultValue, globals.ConfigsDirectory)
+	require.Equal(t, dir, globals.ConfigsDirectory)
+}
+
+// There is no implicit default: naming neither a directory nor a cluster is
+// refused, with the two flags spelled out so the fix is a copy-paste.
+func TestResolveConfigsDirectoryRefusesToGuessWithoutAnySource(t *testing.T) {
+	resetFlags(t)
+
+	err := ResolveConfigsDirectory(context.Background())
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), constants.FlagNameClusterName)
+	require.Contains(t, err.Error(), constants.FlagNameConfigsDirectory)
+}
+
+// The refusal exists to hand the operator a copy-paste fix, so when clusters
+// have been saved, their names must actually appear in the error.
+func TestResolveConfigsDirectoryRefusalListsTheSavedClusters(t *testing.T) {
+	resetFlags(t)
+
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	for _, cluster := range []string{"prod-eu", "staging-01"} {
+		dir := filepath.Join(configHome, "kubeaid-cli", cluster, "configs")
+		require.NoError(t, os.MkdirAll(dir, 0o700))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(dir, "general.yaml"), []byte("cluster:\n  name: "+cluster+"\n"), 0o600))
+	}
+
+	err := ResolveConfigsDirectory(context.Background())
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "prod-eu")
+	require.Contains(t, err.Error(), "staging-01")
 }
 
 func TestUsingDefaultConfigsDirectory(t *testing.T) {

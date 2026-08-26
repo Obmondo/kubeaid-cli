@@ -4,50 +4,79 @@
 package parser
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
-	"path"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
-var stdinReader io.Reader = os.Stdin
-
-// ResolveConfigsDirectory resolves the configs directory from a local path,
-// stdin ("-"), or --cluster-name. For stdin, it writes the received YAML to a
-// temp directory and updates globals.ConfigsDirectory to point there.
+// ResolveConfigsDirectory resolves the configs directory from a local path
+// or --cluster-name; with neither flag, the one cluster that has a saved
+// config is used — that is the common case, an operator who just ran
+// `config generate` and manages a single cluster, and there is nothing to
+// guess between.
+//
+// With two or more saved clusters the run is refused: cluster commands
+// create and destroy real infrastructure, so which cluster is never
+// guessed. A stale ./outputs/configs in the working directory is likewise
+// never picked up silently — an operator who wants a custom location says
+// so with --configs-directory.
 func ResolveConfigsDirectory(ctx context.Context) error {
-	if globals.ConfigsDirectory == "-" {
-		return resolveFromStdin(ctx)
+	// An explicit --configs-directory always wins; --cluster-name only fills
+	// in when no directory was given, so neither flag can silently override
+	// the other.
+	if !UsingDefaultConfigsDirectory() {
+		return nil
 	}
 
-	// An explicit --configs-directory always wins; --cluster-name only fills
-	// in for the default, so neither flag can silently override the other.
-	if globals.ClusterName != "" && UsingDefaultConfigsDirectory() {
-		directory, err := clusterdir.For(globals.ClusterName)
-		if err != nil {
-			return err
+	clusterName := globals.ClusterName
+	if clusterName == "" {
+		saved := clusterdir.List()
+		if len(saved) != 1 {
+			return noConfigSourceError(saved)
 		}
-		globals.ConfigsDirectory = directory
+		clusterName = saved[0]
+		slog.InfoContext(ctx, "Using the only cluster with a saved config",
+			slog.String("cluster", clusterName))
+		// Straight to the terminal as well: outside debug mode stdout only
+		// carries ERROR, and the operator must see which cluster this run
+		// is about to act on.
+		fmt.Fprintf(os.Stderr, "Using cluster %q — the only one with a saved config\n", clusterName)
+	}
 
-		slog.InfoContext(ctx, "Resolved configs directory from cluster name",
-			slog.String("cluster", globals.ClusterName),
-			slog.String("path", directory),
+	directory, err := clusterdir.For(clusterName)
+	if err != nil {
+		return err
+	}
+	globals.ConfigsDirectory = directory
+
+	slog.InfoContext(ctx, "Resolved configs directory from cluster name",
+		slog.String("cluster", clusterName),
+		slog.String("path", directory),
+	)
+	return nil
+}
+
+// noConfigSourceError names the clusters that already have a config on disk,
+// so the operator's next command is a copy-paste rather than a search.
+func noConfigSourceError(available []string) error {
+	if len(available) == 0 {
+		return fmt.Errorf(
+			"no config source: run `kubeaid-cli config generate` first, then re-run with --%s <name> (or --%s <path>)",
+			constants.FlagNameClusterName, constants.FlagNameConfigsDirectory,
 		)
 	}
 
-	// Local path — nothing to resolve.
-	return nil
+	return fmt.Errorf(
+		"no config source — several clusters have a saved config, pass --%s <name> (or --%s <path>) to say which one:\n  %s",
+		constants.FlagNameClusterName, constants.FlagNameConfigsDirectory,
+		strings.Join(available, "\n  "),
+	)
 }
 
 // UsingDefaultConfigsDirectory reports whether --configs-directory was left
@@ -56,103 +85,4 @@ func ResolveConfigsDirectory(ctx context.Context) error {
 // indistinguishable, which is harmless because it resolves the same way.
 func UsingDefaultConfigsDirectory() bool {
 	return globals.ConfigsDirectory == constants.FlagNameConfigsDirectoryDefaultValue
-}
-
-// resolveFromStdin reads YAML from stdinReader and writes it as general.yaml to a temp directory.
-// An empty secrets.yaml is also created so ParseConfigFiles doesn't fail.
-func resolveFromStdin(ctx context.Context) error {
-	slog.InfoContext(ctx, "Reading config from stdin")
-
-	data, err := io.ReadAll(stdinReader)
-	if err != nil {
-		return fmt.Errorf("reading from stdin: %w", err)
-	}
-
-	if len(data) == 0 {
-		return fmt.Errorf("no data received from stdin")
-	}
-
-	tmpDir, err := os.MkdirTemp("", "kubeaid-configs-*")
-	if err != nil {
-		return fmt.Errorf("creating temp directory: %w", err)
-	}
-
-	// Split into multiple YAML documents if both configs are provided in one stream.
-	// First document = general.yaml, second document = secrets.yaml.
-	docs, err := splitYAMLDocuments(data)
-	if err != nil {
-		return fmt.Errorf("parsing stdin YAML: %w", err)
-	}
-	if len(docs) == 0 {
-		return fmt.Errorf("no YAML documents found on stdin")
-	}
-
-	//nolint:gosec // tmpDir is created by os.MkdirTemp, and the file name is a fixed constant.
-	if err := os.WriteFile(path.Join(tmpDir, "general.yaml"), docs[0], 0o600); err != nil {
-		return fmt.Errorf("writing general.yaml: %w", err)
-	}
-
-	secretsContent := []byte("{}\n")
-	if len(docs) > 1 {
-		secretsContent = docs[1]
-	}
-
-	//nolint:gosec // tmpDir is created by os.MkdirTemp, and the file name is a fixed constant.
-	if err := os.WriteFile(path.Join(tmpDir, "secrets.yaml"), secretsContent, 0o600); err != nil {
-		return fmt.Errorf("writing secrets.yaml: %w", err)
-	}
-
-	globals.ConfigsDirectory = tmpDir
-
-	slog.InfoContext(ctx, "Config files written from stdin",
-		slog.String("path", tmpDir),
-	)
-
-	return nil
-}
-
-// splitYAMLDocuments parses a multi-document YAML stream and returns each
-// document re-encoded as its own byte slice. Empty documents (e.g. a stray
-// leading "---") are skipped.
-func splitYAMLDocuments(data []byte) ([][]byte, error) {
-	decoder := yaml.NewDecoder(bytes.NewReader(data))
-
-	var docs [][]byte
-	for {
-		var node yaml.Node
-		if err := decoder.Decode(&node); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			return nil, fmt.Errorf("decoding YAML document: %w", err)
-		}
-
-		// Skip empty documents — yaml.Node.Kind is zero for a document
-		// with no content (e.g. a bare "---" separator).
-		if node.Kind == 0 {
-			continue
-		}
-
-		out, err := yaml.Marshal(&node)
-		if err != nil {
-			return nil, fmt.Errorf("re-encoding YAML document: %w", err)
-		}
-		docs = append(docs, out)
-	}
-
-	return docs, nil
-}
-
-// CleanupTempConfigsDirectory removes the temp directory if one was created during resolution.
-// Safe to call even if configs were loaded from a local path.
-func CleanupTempConfigsDirectory() {
-	if !strings.HasPrefix(globals.ConfigsDirectory, os.TempDir()) {
-		return
-	}
-	if !strings.Contains(globals.ConfigsDirectory, "kubeaid-configs-") {
-		return
-	}
-
-	_ = os.RemoveAll(globals.ConfigsDirectory)
-	globals.ConfigsDirectory = constants.FlagNameConfigsDirectoryDefaultValue
 }

@@ -54,16 +54,13 @@ func preparedByCommand(cmd *cobra.Command) bool {
 // the temp directory. BootstrapCmd calls it from its own PersistentPreRun,
 // once the Obmondo config is on disk.
 func prepareClusterCommand(ctx context.Context) {
-	cleanup, err := configSetup.Prepare(ctx)
-	if err != nil {
+	if err := configSetup.Prepare(ctx); err != nil {
 		slog.ErrorContext(
 			ctx, "Failed preparing config files",
 			slog.String("error", err.Error()),
 		)
-		cleanup()
 		os.Exit(1)
 	}
-	cobra.OnFinalize(cleanup)
 
 	// Initialize temp directory.
 	if err := utils.InitTempDir(ctx); err != nil {

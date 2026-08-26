@@ -36,10 +36,10 @@ const (
 	// fetchFailure is what bootstrap reports once it has got as far as
 	// asking Obmondo for the config; prepareFailure and configFilesNotFound
 	// are the regression — the shared prepare step running first and exiting
-	// on the empty configs directory a --token run always starts from.
+	// on the missing config source a --token run always starts from.
 	fetchFailure        = "Failed fetching cluster configuration from Obmondo"
 	prepareFailure      = "Failed preparing config files"
-	configFilesNotFound = "config files not found"
+	configFilesNotFound = "no config source"
 )
 
 func TestMain(m *testing.M) {

@@ -259,11 +259,11 @@ func TestLoadExistingPromptedConfigHetznerHCloudWorkerPools(t *testing.T) {
 	want.HetznerMode = constants.HetznerModeHCloud
 	want.HetznerSSHKeyName = "hcloud-key"
 	want.HetznerAPIToken = "hcloud-token"
-	want.HetznerHCloudZone = "eu-central"
-	want.HetznerCPMachineType = "cax21"
+	want.HetznerHCloudZone = defaultHetznerHCloudZone
+	want.HetznerCPMachineType = defaultHetznerMachineType
 	want.HetznerCPReplicas = "3"
-	want.HetznerLBRegion = "hel1"
-	want.HetznerRegion = "hel1"
+	want.HetznerLBRegion = defaultHetznerRegion
+	want.HetznerRegion = defaultHetznerRegion
 	want.HetznerNodeGroups = []render.HCloudNodeGroup{
 		{Name: "default", MachineType: "cpx31", MinSize: "3", MaxSize: "6", CPU: "4", Memory: "8"},
 		{Name: "batch-arm", MachineType: "cax41", MinSize: "1", MaxSize: "4", CPU: "16", Memory: "32"},
