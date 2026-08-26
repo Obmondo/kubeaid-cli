@@ -1,4 +1,60 @@
 - - -
+## v0.31.8 - 2026-08-26
+#### Features
+- (**aws**) worker node-group defaults to amd64 (c6i.xlarge), each with its own AMI - (cece3bd) - Ashish Jaiswal
+- (**aws**) default to ARM (Graviton) on Ubuntu 26.04, with a 3-node default node-group - (ab1af98) - Ashish Jaiswal
+- (**azure**) run AKS kube-proxy-free — Cilium replaces kube-proxy - (0763308) - Ashish Jaiswal
+- (**azure**) add AKS (managed control plane) cluster support - (faeb73d) - Ashish Jaiswal
+- (**config**) ask whether to deploy the optional security apps - (1ce7617) - Ashish Jaiswal
+- (**kubeaid-agent**) follow the vulnerability-scanning answer for the exporter - (ffb796a) - Ashish Jaiswal
+- (**prompt**) show az CLI commands for the Azure credential inputs - (a245bf8) - Ashish Jaiswal
+- (**prompt**) reuse an RSA deploy key as the Azure VM login key - (a379a26) - Ashish Jaiswal
+- (**prompt**) complete the Azure self-managed flow to AWS parity - (a5200cb) - Ashish Jaiswal
+- give each cluster one home for configs and outputs - (7a28ff2) - Ashish Jaiswal
+- round-trip every hcloud worker node-group, not just one - (18a227d) - Ashish Jaiswal
+#### Bug Fixes
+- (**aws**) keep the control-plane default small (t4g.medium) - (3f120da) - Ashish Jaiswal
+- (**cluster**) stop the shared prepare step preempting bootstrap's config fetch - (9d4b01e) - iminfinity
+- (**config**) show the saved clusters in the picker's first frame - (88b7ed2) - Ashish Jaiswal
+- (**config**) ask before reusing a config in the default directory - (b73240a) - Ashish Jaiswal
+- (**kubeaid-agent**) use the subchart's values key for the security exporter - (afc3b28) - Ashish Jaiswal
+- (**prompt**) start fresh asks for a cluster name and writes under it - (7d33be4) - Ashish Jaiswal
+- (**prompt**) stop re-asking for SSH keys the config already supplies - (6e779cd) - Ashish Jaiswal
+- (**prompt**) lowercase the RSA-key validation error (staticcheck ST1005) - (bc22512) - Ashish Jaiswal
+- (**prompt**) default Azure self-managed VMs to Ubuntu 26.04 - (cc31d17) - Ashish Jaiswal
+- (**prompt**) name the Azure compute service in the control-plane select - (6aee407) - Ashish Jaiswal
+- (**render**) strip trailing whitespace so kubeaid-config yamllint passes - (5380995) - iminfinity
+- give hcloud clusters a default worker pool and stop resume wiping it - (d449710) - Ashish Jaiswal
+- render hcloud worker node groups so clusters no longer come up with zero workers - (33d42de) - iminfinity
+- check for cgroup in kubeone cluster upgrade with magic number - (ae2d98b) - Faizan Ahmad
+- resolve lint findings and restore the prompt-package coverage gate - (c7c3695) - Ashish Jaiswal
+#### Documentation
+- (**readme**) quick start uses the default config location - (8ef7eeb) - Ashish Jaiswal
+- (**readme**) move the k8s version matrix to docs/, drop Contributing from the TOC - (d0258f4) - Ashish Jaiswal
+- (**readme**) trim the table of contents to the high-traffic sections - (66a2e98) - Ashish Jaiswal
+- (**readme**) tighten the prerequisites auth table - (d68553c) - Ashish Jaiswal
+- (**readme**) keep the list-style table of contents - (47ac983) - Ashish Jaiswal
+- (**readme**) present prerequisites as a clear pick-one auth table - (fb6668a) - Ashish Jaiswal
+- (**readme**) replace the 15-item table of contents with a one-line nav - (656949d) - Ashish Jaiswal
+- (**readme**) add version, Go Report Card and docs badges - (2766ec2) - Ashish Jaiswal
+- (**readme**) surface EKS/AKS support and align with the KubeAid platform framing - (00d4747) - Ashish Jaiswal
+- fix architecture drift, regenerate config artifacts, guard generators in CI - (2c37110) - Ashish Jaiswal
+- add the AKS workload-identity design - (320fed5) - Ashish Jaiswal
+#### Tests
+- answer the two new security confirms in the prompt-flow e2e tests - (f195b1d) - iminfinity
+#### Continuous Integration
+- bump the Go image to 1.26.5 - (4e23c70) - Ashish Jaiswal
+#### Refactoring
+- (**aws**) flatten the AMI resolution into guard-style helpers - (b603189) - Ashish Jaiswal
+- (**config**) replace else-if validator chains with pick-then-check - (de31b59) - Ashish Jaiswal
+- (**core**) extract per-cloud addon template-set selection - (25c2577) - Ashish Jaiswal
+- drop remaining if/else and else-if branches - (bcd5d23) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**deps**) bump velero to v1.18.1 - (34d6575) - Ashish Jaiswal
+- refresh k8s-eol.json from endoflife.date - (d819a3b) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.7 - 2026-08-10
 #### Bug Fixes
 - (**render**) always emit git's privateKeyFilePath without an agent - (7ac46a7) - Ashish Jaiswal
