@@ -1311,7 +1311,7 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 		name         string
 		secret       *coreV1.Secret
 		interceptGet func(callCount *atomic.Int32, realClient client.Client) interceptor.Funcs
-		outputPath   string
+		outputPath   func(t *testing.T) string
 		ctxTimeout   time.Duration
 		wantErr      bool
 		wantContent  []byte
@@ -1372,7 +1372,15 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 				},
 				Data: map[string][]byte{"value": kubeconfigData},
 			},
-			outputPath: "/nonexistent/dir/kubeconfig",
+			// Parent is a regular file: missing directories are created
+			// nowadays, so an uncreatable one — even as root, which CI
+			// runs as — is what makes the path invalid.
+			outputPath: func(t *testing.T) string {
+				t.Helper()
+				parent := filepath.Join(t.TempDir(), "not-a-dir")
+				require.NoError(t, os.WriteFile(parent, nil, 0o600))
+				return filepath.Join(parent, "kubeconfig")
+			},
 			ctxTimeout: 5 * time.Second,
 			wantErr:    true,
 		},
@@ -1397,9 +1405,12 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			config.ParsedGeneralConfig.Obmondo = nil
 
-			outPath := tc.outputPath
-			if outPath == "" {
-				outPath = filepath.Join(t.TempDir(), "kubeconfig.yaml")
+			// Nested under a directory that does not exist yet: under the
+			// per-cluster layout <home>/kubeconfigs/ is never pre-created,
+			// so the save must create the intermediate directories itself.
+			outPath := filepath.Join(t.TempDir(), "kubeconfigs", "main.yaml")
+			if tc.outputPath != nil {
+				outPath = tc.outputPath(t)
 			}
 			outputPathMainClusterKubeconfig = outPath
 
@@ -2094,4 +2105,42 @@ func TestSummarizeControlPlaneRolloutTransientError(t *testing.T) {
 	require.Error(t, err)
 	assert.False(t, ready)
 	assert.Nil(t, rows)
+}
+
+// Mutates outputPathMainClusterKubeconfig and the constants output paths;
+// not parallel.
+func TestMainClusterKubeconfigPath(t *testing.T) {
+	origOverride := outputPathMainClusterKubeconfig
+	constantPaths := []*string{
+		&constants.OutputsDirectory,
+		&constants.OutputLogsDirectory,
+		&constants.OutputPathManagementClusterK3DConfig,
+		&constants.OutputPathManagementClusterHostKubeconfig,
+		&constants.OutputPathManagementClusterContainerKubeconfig,
+		&constants.OutputPathMainClusterKubeconfig,
+		&constants.OutputPathJWKSDocument,
+	}
+	origValues := make([]string, len(constantPaths))
+	for i, p := range constantPaths {
+		origValues[i] = *p
+	}
+	t.Cleanup(func() {
+		outputPathMainClusterKubeconfig = origOverride
+		for i, p := range constantPaths {
+			*p = origValues[i]
+		}
+	})
+
+	outputPathMainClusterKubeconfig = ""
+
+	// The constant must be read at call time: setup.Prepare re-roots the
+	// output paths long after this package is initialized, so an init-time
+	// copy would hand client-go the stale working-directory path.
+	home := t.TempDir()
+	constants.UseOutputsHome(home)
+	assert.Equal(t, filepath.Join(home, "kubeconfigs/main.yaml"), mainClusterKubeconfigPath())
+
+	// The test override wins over the constant.
+	outputPathMainClusterKubeconfig = filepath.Join(t.TempDir(), "override.yaml")
+	assert.Equal(t, outputPathMainClusterKubeconfig, mainClusterKubeconfigPath())
 }

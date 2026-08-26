@@ -92,8 +92,9 @@ Exactly one of the two must be set.
    kubeaid-cli config generate
    ```
 
-2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (the prompt covers everything
-   required to bootstrap; hand-edit only when you want to override defaults).
+2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (on macOS the per-user root is
+   `~/Library/Application Support/kubeaid-cli/` instead). The prompt covers everything required to bootstrap;
+   hand-edit only when you want to override defaults.
 
 3. Bootstrap the cluster:
 
@@ -101,9 +102,26 @@ Exactly one of the two must be set.
    kubeaid-cli cluster bootstrap
    ```
 
-   The config is found under `~/.config/kubeaid-cli/<cluster>/configs/` automatically (pass
-   `--cluster-name <cluster>` to pick one non-interactively, or `--configs-directory` if you keep the config
-   somewhere else). `cluster bootstrap` fails fast if the configs are missing — run `config generate` first.
+   With one saved config, that's it. With several, cluster commands never guess — pass
+   `--cluster-name <cluster>` (the refusal lists them). For a config kept elsewhere, pass
+   `--configs-directory <path>`; nothing in the working directory is ever picked up implicitly.
+
+4. Talk to the cluster. Bootstrap ends by printing the exact `export KUBECONFIG=...` line for your platform
+   and provider — copy it from there:
+
+   ```sh
+   # printed at the end of `cluster bootstrap`; on Linux it looks like:
+   export KUBECONFIG=~/.config/kubeaid-cli/<cluster>/kubeconfigs/main.yaml
+   kubectl get nodes
+   ```
+
+   (For a local K3D cluster the k3d cluster is both management and workload cluster, so the printed path is
+   `kubeconfigs/management/host.yaml` instead of `main.yaml`.)
+
+   Everything the CLI produces — kubeconfigs, run logs (`<cluster>/logs/`), the generated k3d config —
+   lands in the cluster's directory. With an explicit `--configs-directory`, it all lands in that
+   directory instead, next to your config files: the location you chose applies to outputs too.
+   (Rendered Kubernetes manifests are pushed to your kubeaid-config repository, not stored locally.)
 
 ## Usage
 
@@ -129,7 +147,7 @@ kubeaid-cli [command] [flags]
 | Flag | Description |
 |---|---|
 | `--debug` | Enable debug logging |
-| `--cluster-name` | Cluster whose config to use, from `~/.config/kubeaid-cli/<name>/configs` |
+| `--cluster-name` | Cluster whose config to use, from `~/.config/kubeaid-cli/<name>/configs`; needed only when several clusters have a saved config |
 | `--configs-directory` | Path to directory containing `general.yaml` and `secrets.yaml` (overrides `--cluster-name`) |
 
 ## Cloud providers

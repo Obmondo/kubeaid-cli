@@ -24,7 +24,7 @@ func TestClusterName(t *testing.T) {
 		},
 		{
 			name:  "dashes and digits pass",
-			input: "kam-acme-com-01",
+			input: "prod-acme-com-01",
 		},
 		{
 			name:     "empty is required",
@@ -36,7 +36,7 @@ func TestClusterName(t *testing.T) {
 			// The reason this validator exists: parser.validateClusterName
 			// rejects dots, but only after the whole prompt has run.
 			name:     "dotted name is rejected with a hint",
-			input:    "kam.acme.com",
+			input:    "prod.acme.com",
 			wantErr:  true,
 			errParts: []string{"dots", "-"},
 		},
@@ -63,6 +63,14 @@ func TestClusterName(t *testing.T) {
 			input:    "stag_ing",
 			wantErr:  true,
 			errParts: []string{"lowercase"},
+		},
+		{
+			// Exact match only: the lowercase rule already rejects "Logs",
+			// so unlike clusterdir.ValidateName no case-folding is needed.
+			name:     "the reserved logs name is rejected",
+			input:    "logs",
+			wantErr:  true,
+			errParts: []string{"reserved"},
 		},
 		{
 			name:  "63 characters passes",

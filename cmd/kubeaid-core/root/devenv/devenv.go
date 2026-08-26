@@ -21,15 +21,12 @@ var DevenvCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		ctx := cmd.Context()
 
-		cleanup, err := configSetup.Prepare(ctx)
-		if err != nil {
+		if err := configSetup.Prepare(ctx); err != nil {
 			slog.ErrorContext(ctx, "Failed preparing config files",
 				slog.String("error", err.Error()),
 			)
-			cleanup()
 			os.Exit(1)
 		}
-		cobra.OnFinalize(cleanup)
 
 		// Initialize temp directory.
 		if err := utils.InitTempDir(ctx); err != nil {

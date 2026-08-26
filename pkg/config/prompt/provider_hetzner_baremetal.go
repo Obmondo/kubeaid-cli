@@ -20,6 +20,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"gopkg.in/yaml.v3"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/render"
 )
@@ -1029,16 +1030,42 @@ func validateWorkerTopology(cfg *PromptedConfig) error {
 	return nil
 }
 
-// scanSiblingConfigsForServerIDs walks the parent of configsDirectory
-// looking for other clusters' general.yaml, and builds a map of
-// serverID → cluster-name. Used to surface "you already gave this
-// server to cluster X" warnings at prompt time. Best-effort: errors
-// in scanning (missing dir, malformed YAML) are silenced — the
-// resulting empty map just disables the check.
+// scanSiblingConfigsForServerIDs looks for other clusters' general.yaml
+// and builds a map of serverID → cluster-name. Used to surface "you
+// already gave this server to cluster X" warnings at prompt time.
+// Best-effort: errors in scanning (missing dir, malformed YAML) are
+// silenced — the resulting empty map just disables the check.
 func scanSiblingConfigsForServerIDs(configsDirectory string) map[string]string {
 	if configsDirectory == "" {
 		return nil
 	}
+
+	// Under the per-cluster convention the siblings of <cluster>/configs
+	// are logs/ and kubeconfigs/, never another cluster — the other
+	// clusters live under the per-user root, one <name>/configs each.
+	if self := clusterdir.OwnerOfConfigs(configsDirectory); self != "" {
+		out := map[string]string{}
+		for _, name := range clusterdir.List() {
+			if name == self {
+				continue
+			}
+			dir, err := clusterdir.For(name)
+			if err != nil {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(dir, "general.yaml"))
+			if err != nil {
+				continue
+			}
+			for _, id := range extractServerIDs(body) {
+				out[id] = name
+			}
+		}
+		return out
+	}
+
+	// An operator-chosen directory: its cluster siblings sit next to it
+	// (…/configs/<cluster>), so walk the parent as before.
 	parent := filepath.Dir(filepath.Clean(configsDirectory))
 	entries, err := os.ReadDir(parent)
 	if err != nil {

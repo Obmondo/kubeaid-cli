@@ -46,8 +46,13 @@ const (
 	// state. Operators who supply the flag explicitly retain full control.
 	ManagementClusterNamePrefix = "mgmt-"
 
-	FlagNameConfigsDirectory             = "configs-directory"
-	FlagNameConfigsDirectoryDefaultValue = "outputs/configs"
+	FlagNameConfigsDirectory = "configs-directory"
+
+	// FlagNameConfigsDirectoryDefaultValue is empty on purpose: with no
+	// explicit directory the config is located under the per-user root via
+	// --cluster-name (or the run is told to pass one of the two flags).
+	// There is no implicit working-directory pickup.
+	FlagNameConfigsDirectoryDefaultValue = ""
 
 	// FlagNameClusterName locates a cluster's config by name, under
 	// ~/.config/kubeaid-cli/<name>/configs, so a follow-up command does not
@@ -177,6 +182,32 @@ var (
 		"workload-identity/openid-provider/jwks.json",
 	)
 )
+
+// UseOutputsHome re-roots every output path under home: the cluster's
+// directory from clusterdir.Home (~/.config/kubeaid-cli/<cluster>) when the
+// config lives under the per-user root, or the operator's own
+// --configs-directory — their choice of location applies to outputs too.
+// Called at most once per run, as soon as setup.Prepare has resolved the
+// home; the working-directory-relative defaults above only ever serve a
+// run that fails before then, or one with no per-user config directory.
+//
+// The re-rooted layout also drops the "outputs/" and "clusters/" levels:
+// the tree is already per-cluster, so they no longer separate anything.
+func UseOutputsHome(home string) {
+	OutputsDirectory = home
+	OutputLogsDirectory = path.Join(home, "logs")
+	OutputPathManagementClusterK3DConfig = path.Join(home, "k3d.config.yaml")
+	OutputPathManagementClusterHostKubeconfig = path.Join(
+		home,
+		"kubeconfigs/management/host.yaml",
+	)
+	OutputPathManagementClusterContainerKubeconfig = path.Join(
+		home,
+		"kubeconfigs/management/container.yaml",
+	)
+	OutputPathMainClusterKubeconfig = path.Join(home, "kubeconfigs/main.yaml")
+	OutputPathJWKSDocument = path.Join(home, "workload-identity/openid-provider/jwks.json")
+}
 
 // ArgoCD.
 const (

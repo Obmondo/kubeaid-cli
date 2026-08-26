@@ -285,6 +285,42 @@ func TestScanSiblingConfigsForServerIDs(t *testing.T) {
 		got := scanSiblingConfigsForServerIDs(filepath.Join(parent, "demo"))
 		assert.Empty(t, got)
 	})
+
+	// Under the per-cluster convention the configs directory's siblings are
+	// logs/ and kubeconfigs/, never another cluster — the scan must look at
+	// the per-user root instead, or the duplicate-serverID warning never
+	// fires again.
+	t.Run("per-cluster layout scans the other saved clusters", func(t *testing.T) {
+		configHome := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", configHome)
+		root := filepath.Join(configHome, "kubeaid-cli")
+
+		writeCluster := func(name, yaml string) {
+			dir := filepath.Join(root, name, "configs")
+			require.NoError(t, os.MkdirAll(dir, 0o700))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "general.yaml"), []byte(yaml), 0o600))
+		}
+
+		writeCluster("demo", `cloud:
+  hetzner:
+    controlPlane:
+      bareMetal:
+        bareMetalHosts:
+          - serverID: "999"
+`)
+		writeCluster("staging", `cloud:
+  hetzner:
+    controlPlane:
+      bareMetal:
+        bareMetalHosts:
+          - serverID: "100"
+`)
+
+		got := scanSiblingConfigsForServerIDs(filepath.Join(root, "demo", "configs"))
+		assert.Equal(t, "staging", got["100"])
+		_, selfFound := got["999"]
+		assert.False(t, selfFound, "self cluster must be skipped")
+	})
 }
 
 func TestNextPrivateIPInSubnet(t *testing.T) {

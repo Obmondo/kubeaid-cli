@@ -20,6 +20,10 @@ Let's try to bootstrap a local K3D cluster!
 - Bootstrap the cluster:
   `./build/kubeaid-cli cluster bootstrap --configs-directory ./outputs/configs/local/`.
 
+  With an explicit `--configs-directory`, everything the run produces (kubeconfigs, logs, the generated
+  k3d config) lands in that same directory, next to the config files. The per-user
+  `~/.config/kubeaid-cli/` tree is only used when the CLI is run without the flag.
+
 ## Debugging cluster provisioning using ClusterAPI
 
 If cluster provisioning by ClusterAPI gets stuck, then you can :
