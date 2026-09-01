@@ -400,7 +400,50 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		bar.Substep("Synced capi-cluster ArgoCD app")
 	}
 
+	// kube-prometheus is workload-only (see the root sync filter above), so this has nothing to
+	// check on the management cluster.
+	if args.ClusterType != constants.ClusterTypeManagement {
+		fixScrapeNamespacesIfNeeded(ctx)
+	}
+
 	printHelpTextForArgoCDDashboardAccess(ctx, args.ClusterType)
+}
+
+// fixScrapeNamespacesIfNeeded catches any namespace that has a PodMonitor/ServiceMonitor but is
+// missing from prometheus_scrape_namespaces in this cluster's *-vars.jsonnet, right after
+// SetupCluster's ArgoCD sync - instead of it only surfacing later as a permanent
+// PrometheusKubernetesListWatchFailures alert. A static, pre-deploy scan of the config repo can't
+// be trusted to find every such namespace (an app's ServiceMonitor may live on a not-yet-merged
+// branch, or the app may not be GitOps-managed at all), so this runs against what's actually live.
+// Non-fatal: bootstrap has already succeeded by this point.
+func fixScrapeNamespacesIfNeeded(ctx context.Context) {
+	missingScrapeNamespaces, err := CheckPrometheusScrapeNamespaces(ctx)
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Skipping Prometheus scrape-namespace RBAC check", slog.Any("err", err),
+		)
+		return
+	}
+	if len(missingScrapeNamespaces) == 0 {
+		return
+	}
+
+	if err := AddMissingScrapeNamespaces(ctx, missingScrapeNamespaces); err != nil {
+		slog.WarnContext(ctx,
+			"Namespaces with a PodMonitor/ServiceMonitor but missing prometheus-k8s RBAC - "+
+				"add them to prometheus_scrape_namespaces in this cluster's *-vars.jsonnet "+
+				"and rebuild kube-prometheus",
+			slog.Any("namespaces", missingScrapeNamespaces),
+			slog.Any("auto_fix_err", err),
+		)
+		return
+	}
+
+	slog.WarnContext(ctx,
+		"Added missing prometheus-k8s RBAC namespaces to *-vars.jsonnet and regenerated "+
+			"kube-prometheus manifests - review the diff, commit, and push so ArgoCD picks it up",
+		slog.Any("namespaces", missingScrapeNamespaces),
+	)
 }
 
 // Syncs the Infrastructure Provider component of the CAPI Cluster ArgoCD App and waits for the

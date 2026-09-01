@@ -18,6 +18,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/cluster"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/config"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/devenv"
+	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/monitoring"
 	"github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -143,6 +144,7 @@ func init() {
 	RootCmd.AddCommand(config.ConfigCmd)
 	RootCmd.AddCommand(devenv.DevenvCmd)
 	RootCmd.AddCommand(backup.BackupCmd)
+	RootCmd.AddCommand(monitoring.MonitoringCmd)
 	RootCmd.AddCommand(cluster.ClusterCmd)
 	RootCmd.AddCommand(version.VersionCommand)
 
