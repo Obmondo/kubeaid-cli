@@ -1,4 +1,10 @@
 - - -
+## v0.31.9 - 2026-09-04
+#### Features
+- (**aws**) let a cluster name the ~/.aws profile its credentials come from - (bdb6b76) - Ashish Jaiswal
+
+- - -
+
 ## v0.31.8 - 2026-08-26
 #### Features
 - (**aws**) worker node-group defaults to amd64 (c6i.xlarge), each with its own AMI - (cece3bd) - Ashish Jaiswal
