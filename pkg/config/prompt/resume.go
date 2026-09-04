@@ -395,6 +395,7 @@ func applySecretsConfigToPromptedConfig(secrets *config.SecretsConfig, cfg *Prom
 	}
 
 	if secrets.AWS != nil {
+		cfg.AWSProfile = firstNonEmpty(secrets.AWS.Profile, cfg.AWSProfile)
 		cfg.AWSAccessKeyID = firstNonEmpty(secrets.AWS.AWSAccessKeyID, cfg.AWSAccessKeyID)
 		cfg.AWSSecretAccessKey = firstNonEmpty(secrets.AWS.AWSSecretAccessKey, cfg.AWSSecretAccessKey)
 		cfg.AWSSessionToken = firstNonEmpty(secrets.AWS.AWSSessionToken, cfg.AWSSessionToken)

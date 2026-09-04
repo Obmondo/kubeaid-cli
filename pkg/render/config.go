@@ -138,11 +138,15 @@ type PromptedConfig struct {
 	AWSNodeInstanceType string
 	// AWSNodeAMIID is the worker node-group AMI, resolved for the worker
 	// instance type's architecture (AWSAMIID is the control plane's).
-	AWSNodeAMIID       string
-	AWSSSHKeyName      string
-	AWSCPInstanceType  string
-	AWSCPReplicas      string
-	AWSAMIID           string
+	AWSNodeAMIID      string
+	AWSSSHKeyName     string
+	AWSCPInstanceType string
+	AWSCPReplicas     string
+	AWSAMIID          string
+	// AWSProfile is the ~/.aws profile this cluster's credentials are read
+	// from. Only set when the machine carries more than one profile and the
+	// operator picked one; empty means the SDK default profile.
+	AWSProfile         string
 	AWSAccessKeyID     string
 	AWSSecretAccessKey string
 	AWSSessionToken    string

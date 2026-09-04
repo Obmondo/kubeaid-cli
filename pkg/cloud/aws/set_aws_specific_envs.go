@@ -41,6 +41,7 @@ func SetAWSSpecificEnvs(ctx context.Context) error {
 	utils.MustSetEnv(constants.EnvNameAWSSecretKey, awsCredentials.AWSSecretAccessKey)
 	utils.MustSetEnv(constants.EnvNameAWSSessionToken, awsCredentials.AWSSessionToken)
 	utils.MustSetEnv(constants.EnvNameAWSRegion, config.ParsedGeneralConfig.Cloud.AWS.Region)
+	utils.MustSetEnv(constants.EnvNameAWSProfile, awsCredentials.Profile)
 
 	credentialsCmdOutput, err := executeCredentialsCmd(ctx)
 	if err != nil {

@@ -23,12 +23,14 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 		constants.EnvNameAWSSecretKey,
 		constants.EnvNameAWSSessionToken,
 		constants.EnvNameAWSRegion,
+		constants.EnvNameAWSProfile,
 		constants.EnvNameAWSB64EcodedCredentials,
 	}
 
 	tests := []struct {
 		name    string
 		stub    func(ctx context.Context) (string, error)
+		profile string
 		wantErr bool
 		errMsg  string
 		wantB64 string
@@ -39,6 +41,18 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 				return "WARNING: `encode-as-profile` should only be used for bootstrapping.\n  base64credentials  \n", nil
 			},
 			wantB64: "base64credentials",
+		},
+		{
+			// The embedded clusterawsadm commands build their own SDK config,
+			// so the selected profile has to reach them for the shared config
+			// they read, and an inherited one has to be cleared when none is
+			// selected.
+			name: "exports the selected profile",
+			stub: func(_ context.Context) (string, error) {
+				return "rawcredentials", nil
+			},
+			profile: "work",
+			wantB64: "rawcredentials",
 		},
 		{
 			name: "sets env vars when output has no warning prefix",
@@ -82,8 +96,13 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 				}
 			})
 
+			// Left over from the developer's shell or a previous cluster, this
+			// must not survive into the clusterawsadm commands.
+			require.NoError(t, os.Setenv(constants.EnvNameAWSProfile, "inherited"))
+
 			config.ParsedSecretsConfig = &config.SecretsConfig{
 				AWS: &config.AWSCredentials{
+					Profile:            tc.profile,
 					AWSAccessKeyID:     "aws-access-key",
 					AWSSecretAccessKey: "aws-secret-key",
 					AWSSessionToken:    "test-session-token",
@@ -110,6 +129,7 @@ func TestSetAWSSpecificEnvs(t *testing.T) {
 			assert.Equal(t, "aws-secret-key", os.Getenv(constants.EnvNameAWSSecretKey))
 			assert.Equal(t, "test-session-token", os.Getenv(constants.EnvNameAWSSessionToken))
 			assert.Equal(t, "eu-west-1", os.Getenv(constants.EnvNameAWSRegion))
+			assert.Equal(t, tc.profile, os.Getenv(constants.EnvNameAWSProfile))
 			assert.Equal(t, tc.wantB64, os.Getenv(constants.EnvNameAWSB64EcodedCredentials))
 		})
 	}

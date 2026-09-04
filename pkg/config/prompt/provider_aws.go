@@ -12,11 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/huh"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
 // Canonical's unauthenticated simplestreams index for released AWS images.
@@ -214,37 +217,253 @@ func newAWSProvider() *awsPrompter {
 }
 
 func (p *awsPrompter) SummaryLines(cfg *PromptedConfig) []string {
+	var lines []string
+
+	// Only shown when a profile was actually chosen — an empty one means the
+	// SDK's default resolution, which there is nothing to report about.
+	if cfg.AWSProfile != "" {
+		lines = append(lines, fmt.Sprintf("  Profile:       %s", cfg.AWSProfile))
+	}
+
 	if cfg.AWSEKS {
-		return []string{
+		return append(lines,
 			fmt.Sprintf("  Region:        %s", cfg.AWSRegion),
 			"  Control plane: EKS (managed by AWS)",
-		}
+		)
 	}
-	return []string{
+
+	return append(lines,
 		fmt.Sprintf("  Region:        %s", cfg.AWSRegion),
 		fmt.Sprintf("  Instance type: %s", cfg.AWSCPInstanceType),
 		fmt.Sprintf("  CP replicas:   %s", cfg.AWSCPReplicas),
-	}
+	)
 }
 
-// detectAWSCredentials reports whether AWS credentials are reachable via
-// ~/.aws files. On success it also returns the path where they were found.
-func detectAWSCredentials() (source string, ok bool) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", false
+// awsSharedCredentialsFilePath and awsSharedConfigFilePath return the two
+// ~/.aws file locations, honouring the SDK's overrides so a direnv-style setup
+// pointing elsewhere is still read.
+func awsSharedCredentialsFilePath() string {
+	if override := os.Getenv(constants.EnvNameAWSSharedCredentialsFile); override != "" {
+		return override
 	}
 
-	for _, candidate := range []string{
-		filepath.Join(home, ".aws", "credentials"),
-		filepath.Join(home, ".aws", "config"),
-	} {
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate, true
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	return filepath.Join(home, ".aws", "credentials")
+}
+
+func awsSharedConfigFilePath() string {
+	if override := os.Getenv(constants.EnvNameAWSConfigFile); override != "" {
+		return override
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	return filepath.Join(home, ".aws", "config")
+}
+
+// awsINISectionRegexp captures the body of an ini section header.
+var awsINISectionRegexp = regexp.MustCompile(`^\s*\[([^\]]+)\]`)
+
+// parseAWSProfileNames extracts the profile names from one ~/.aws file.
+// In config, profiles are "[profile foo]" plus a bare "[default]", and the
+// other section kinds (sso-session, services) are not profiles; in
+// credentials, every section "[foo]" is a profile.
+func parseAWSProfileNames(contents string, isConfigFile bool) []string {
+	var names []string
+
+	for _, line := range strings.Split(contents, "\n") {
+		match := awsINISectionRegexp.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+
+		section := strings.TrimSpace(match[1])
+
+		if isConfigFile {
+			if section != "default" && !strings.HasPrefix(section, "profile ") {
+				continue
+			}
+			section = strings.TrimSpace(strings.TrimPrefix(section, "profile "))
+		}
+
+		// Profile names containing spaces are quoted in the ini files.
+		section = strings.Trim(section, `"'`)
+
+		if section != "" {
+			names = append(names, section)
 		}
 	}
 
-	return "", false
+	return names
+}
+
+// detectAWSProfiles lists the profiles configured across ~/.aws/config and
+// ~/.aws/credentials, sorted and de-duplicated.
+func detectAWSProfiles() []string {
+	seen := map[string]bool{}
+	profiles := []string{}
+
+	for _, file := range []struct {
+		path     string
+		isConfig bool
+	}{
+		{awsSharedConfigFilePath(), true},
+		{awsSharedCredentialsFilePath(), false},
+	} {
+		if file.path == "" {
+			continue
+		}
+
+		contents, err := os.ReadFile(file.path)
+		if err != nil {
+			continue
+		}
+
+		for _, name := range parseAWSProfileNames(string(contents), file.isConfig) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			profiles = append(profiles, name)
+		}
+	}
+
+	sort.Strings(profiles)
+
+	return profiles
+}
+
+// preferredAWSProfile picks which profile the selection prompt starts on :
+// whatever AWS_PROFILE already names, else "default", else the first listed.
+func preferredAWSProfile(profiles []string) string {
+	if len(profiles) == 0 {
+		return ""
+	}
+
+	for _, candidate := range []string{os.Getenv(constants.EnvNameAWSProfile), "default"} {
+		if candidate != "" && slices.Contains(profiles, candidate) {
+			return candidate
+		}
+	}
+
+	return profiles[0]
+}
+
+// prefillAWSCredentialsFromEnv seeds the credential inputs from the SDK's own
+// environment variables, so an operator who already has them exported confirms
+// them instead of retyping. Only blanks are filled : values recovered from an
+// existing secrets.yaml are the operator's stated choice and win.
+//
+// They are prefilled rather than accepted silently because env vars live for
+// one shell session, while `cluster bootstrap` needs the credentials on every
+// later run — so they have to reach secrets.yaml.
+func prefillAWSCredentialsFromEnv(cfg *PromptedConfig) {
+	before := cfg.AWSAccessKeyID
+
+	cfg.AWSAccessKeyID = firstNonEmpty(
+		cfg.AWSAccessKeyID, os.Getenv(constants.EnvNameAWSAccessKey),
+	)
+	cfg.AWSSecretAccessKey = firstNonEmpty(
+		cfg.AWSSecretAccessKey, os.Getenv(constants.EnvNameAWSSecretKey),
+	)
+	cfg.AWSSessionToken = firstNonEmpty(
+		cfg.AWSSessionToken, os.Getenv(constants.EnvNameAWSSessionToken),
+	)
+
+	if before == "" && cfg.AWSAccessKeyID != "" {
+		slog.Info("Prefilled the AWS credentials from the environment — confirm them to store them")
+	}
+}
+
+// manualAWSCredentialsChoice is the sentinel index the profile select uses for
+// "type the keys in instead". Profile options carry their index in the list,
+// so it can't collide with one.
+const manualAWSCredentialsChoice = -1
+
+// chooseAWSProfile settles where this cluster's AWS credentials come from,
+// before anything else asks for them.
+//
+// It returns whether the credential inputs still need to be shown, seeding them
+// from the environment when they do. cfg.AWSProfile is left empty when the
+// SDK's own default resolution is the right answer — nothing configured, or a
+// lone "default" profile.
+//
+// A config never ends up carrying both a profile and keys : at bootstrap the
+// keys would win, so the profile would be a lie.
+func chooseAWSProfile(cfg *PromptedConfig) (promptForKeys bool, err error) {
+	profiles := detectAWSProfiles()
+
+	switch {
+	case len(profiles) == 0:
+		// Nothing in ~/.aws to pick from. Drop any profile carried over from a
+		// previous run — it no longer resolves to anything.
+		slog.Info("No AWS profiles found in ~/.aws — prompting for credentials")
+		cfg.AWSProfile = ""
+		prefillAWSCredentialsFromEnv(cfg)
+
+		return true, nil
+
+	case len(profiles) == 1:
+		// One profile, no question to ask. It gets named only when it would
+		// actually be used : not when the config already carries keys (they
+		// win), and not when it is "default" (which the SDK resolves anyway).
+		if profiles[0] != "default" && cfg.AWSAccessKeyID == "" {
+			cfg.AWSProfile = profiles[0]
+		}
+		slog.Info("Using the only AWS profile found in ~/.aws",
+			slog.String("profile", profiles[0]),
+		)
+
+		return false, nil
+	}
+
+	options := make([]huh.Option[int], 0, len(profiles)+1)
+	for i, profile := range profiles {
+		options = append(options, huh.NewOption(profile, i))
+	}
+	options = append(options,
+		huh.NewOption("Enter credentials manually", manualAWSCredentialsChoice),
+	)
+
+	selected := slices.Index(profiles, firstNonEmpty(cfg.AWSProfile, preferredAWSProfile(profiles)))
+	if selected < 0 {
+		selected = 0
+	}
+
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[int]().
+				Title("AWS profile to use for this cluster:").
+				Description("Found several profiles in ~/.aws — the chosen one is stored in secrets.yaml.").
+				Options(options...).
+				Value(&selected),
+		).Title("AWS credentials").Description("Step 3/4 (cont.)"),
+	).Run(); err != nil {
+		return false, err
+	}
+
+	if selected == manualAWSCredentialsChoice {
+		cfg.AWSProfile = ""
+		prefillAWSCredentialsFromEnv(cfg)
+
+		return true, nil
+	}
+
+	cfg.AWSProfile = profiles[selected]
+	// The chosen profile is now the source of truth, so keys carried over from
+	// a previous run must go — they would otherwise win over it at bootstrap.
+	cfg.AWSAccessKeyID = ""
+	cfg.AWSSecretAccessKey = ""
+	cfg.AWSSessionToken = ""
+
+	return false, nil
 }
 
 func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedConfig) error {
@@ -278,6 +497,14 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		return err
 	}
 
+	// Where the credentials come from is settled before we decide whether to
+	// ask for keys : on a machine carrying several AWS accounts, the SDK's
+	// default profile is rarely the account this cluster belongs to.
+	promptForKeys, err := chooseAWSProfile(cfg)
+	if err != nil {
+		return err
+	}
+
 	haChoice := cfg.AWSCPReplicas != "1"
 
 	credGroup := huh.NewGroup(
@@ -293,15 +520,7 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		huh.NewInput().
 			Title("Session Token (leave empty if not needed):").
 			Value(&cfg.AWSSessionToken),
-	)
-
-	if source, ok := detectAWSCredentials(); ok {
-		slog.Info("Using existing AWS credentials", slog.String("source", source))
-		// Hide the credential inputs — SDK will pick them up automatically.
-		credGroup = credGroup.WithHide(true)
-	} else {
-		slog.Info("No AWS credentials found in ~/.aws — prompting")
-	}
+	).WithHide(!promptForKeys)
 
 	haGroup := huh.NewGroup(
 		huh.NewConfirm().
@@ -312,7 +531,7 @@ func (p *awsPrompter) RunCredentialsForm(cfg *PromptedConfig, _ *autoDetectedCon
 		return cfg.AWSEKS
 	})
 
-	err := huh.NewForm(
+	err = huh.NewForm(
 		credGroup,
 		haGroup.Title("AWS credentials").Description("Step 3/4 (cont.)"),
 	).Run()

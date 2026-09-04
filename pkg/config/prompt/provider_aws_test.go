@@ -44,6 +44,34 @@ func TestAWSPrompter_SummaryLines(t *testing.T) {
 				"  CP replicas:   ",
 			},
 		},
+		{
+			name: "a chosen profile is reported first",
+			cfg: &PromptedConfig{
+				AWSProfile:        "work",
+				AWSRegion:         "eu-west-1",
+				AWSCPInstanceType: "t3.medium",
+				AWSCPReplicas:     "3",
+			},
+			want: []string{
+				"  Profile:       work",
+				"  Region:        eu-west-1",
+				"  Instance type: t3.medium",
+				"  CP replicas:   3",
+			},
+		},
+		{
+			name: "EKS with a chosen profile",
+			cfg: &PromptedConfig{
+				AWSProfile: "work",
+				AWSEKS:     true,
+				AWSRegion:  "eu-west-1",
+			},
+			want: []string{
+				"  Profile:       work",
+				"  Region:        eu-west-1",
+				"  Control plane: EKS (managed by AWS)",
+			},
+		},
 	}
 
 	p := newAWSProvider()
@@ -54,62 +82,316 @@ func TestAWSPrompter_SummaryLines(t *testing.T) {
 	}
 }
 
-func TestDetectAWSCredentials(t *testing.T) {
+func TestParseAWSProfileNames(t *testing.T) {
 	tests := []struct {
-		name      string
-		setupHome func(t *testing.T) string
-		wantOK    bool
-		wantBase  string
+		name         string
+		contents     string
+		isConfigFile bool
+		want         []string
 	}{
 		{
-			name: "credentials file is detected",
-			setupHome: func(t *testing.T) string {
-				home := t.TempDir()
-				require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws"), 0o700))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(home, ".aws", "credentials"),
-					[]byte("[default]\n"),
-					0o600,
-				))
-				return home
-			},
-			wantOK:   true,
-			wantBase: "credentials",
+			name: "config file: default plus prefixed profiles",
+			contents: strings.Join([]string{
+				"[default]",
+				"region = eu-west-1",
+				"[profile staging]",
+				"region = eu-central-1",
+				"  [profile prod]  ",
+				"region = us-east-1",
+			}, "\n"),
+			isConfigFile: true,
+			want:         []string{"default", "staging", "prod"},
 		},
 		{
-			name: "config file is detected when credentials missing",
-			setupHome: func(t *testing.T) string {
-				home := t.TempDir()
-				require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws"), 0o700))
-				require.NoError(t, os.WriteFile(
-					filepath.Join(home, ".aws", "config"),
-					[]byte("[default]\nregion=eu-west-1\n"),
-					0o600,
-				))
-				return home
-			},
-			wantOK:   true,
-			wantBase: "config",
+			name: "config file: non-profile sections are skipped",
+			contents: strings.Join([]string{
+				"[sso-session corp]",
+				"sso_region = eu-west-1",
+				"[services localstack]",
+				"[profile staging]",
+			}, "\n"),
+			isConfigFile: true,
+			want:         []string{"staging"},
 		},
 		{
-			name: "no AWS files means not detected",
-			setupHome: func(t *testing.T) string {
-				return t.TempDir()
-			},
-			wantOK: false,
+			// Without the `profile ` prefix, `[staging]` in config is not a
+			// profile the SDK would resolve — only `[default]` is.
+			name:         "config file: a bare section is not a profile",
+			contents:     "[staging]\n[default]\n",
+			isConfigFile: true,
+			want:         []string{"default"},
+		},
+		{
+			name:         "credentials file: every section is a profile",
+			contents:     "[default]\naws_access_key_id = A\n\n[work]\naws_access_key_id = B\n",
+			isConfigFile: false,
+			want:         []string{"default", "work"},
+		},
+		{
+			name:         "quoted profile names are unquoted",
+			contents:     "[profile \"two words\"]\n",
+			isConfigFile: true,
+			want:         []string{"two words"},
+		},
+		{
+			name:         "comments and blank lines are ignored",
+			contents:     "# [profile commented]\n\n; another comment\n[profile real]\n",
+			isConfigFile: true,
+			want:         []string{"real"},
+		},
+		{
+			name:         "empty file yields nothing",
+			contents:     "",
+			isConfigFile: true,
+			want:         nil,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			home := tc.setupHome(t)
-			t.Setenv("HOME", home)
+			assert.Equal(t, tc.want, parseAWSProfileNames(tc.contents, tc.isConfigFile))
+		})
+	}
+}
 
-			source, ok := detectAWSCredentials()
-			assert.Equal(t, tc.wantOK, ok)
-			if tc.wantOK {
-				assert.Equal(t, tc.wantBase, filepath.Base(source))
+// writeAWSFiles points HOME at a temp dir and writes the given ~/.aws files
+// into it. An empty string means "don't write this file".
+func writeAWSFiles(t *testing.T, configContents, credentialsContents string) {
+	t.Helper()
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// Nothing from the developer's shell may leak into the decision.
+	t.Setenv("AWS_CONFIG_FILE", "")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "")
+	t.Setenv("AWS_ACCESS_KEY_ID", "")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
+	t.Setenv("AWS_SESSION_TOKEN", "")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(home, ".aws"), 0o700))
+
+	for name, contents := range map[string]string{
+		"config":      configContents,
+		"credentials": credentialsContents,
+	} {
+		if contents == "" {
+			continue
+		}
+		require.NoError(t, os.WriteFile(
+			filepath.Join(home, ".aws", name), []byte(contents), 0o600,
+		))
+	}
+}
+
+func TestDetectAWSProfiles(t *testing.T) {
+	tests := []struct {
+		name        string
+		config      string
+		credentials string
+		want        []string
+	}{
+		{
+			name: "no AWS files means no profiles",
+			want: []string{},
+		},
+		{
+			name:   "single default profile",
+			config: "[default]\nregion = eu-west-1\n",
+			want:   []string{"default"},
+		},
+		{
+			name:   "several profiles are sorted",
+			config: "[default]\n[profile staging]\n[profile prod]\n",
+			want:   []string{"default", "prod", "staging"},
+		},
+		{
+			name:        "profiles from both files are merged and de-duplicated",
+			config:      "[default]\n[profile staging]\n",
+			credentials: "[default]\n[work]\n",
+			want:        []string{"default", "staging", "work"},
+		},
+		{
+			name:        "credentials-only setup is picked up",
+			credentials: "[personal]\n[work]\n",
+			want:        []string{"personal", "work"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			writeAWSFiles(t, tc.config, tc.credentials)
+
+			assert.Equal(t, tc.want, detectAWSProfiles())
+		})
+	}
+}
+
+func TestPreferredAWSProfile(t *testing.T) {
+	tests := []struct {
+		name     string
+		profiles []string
+		envVar   string
+		want     string
+	}{
+		{
+			name:     "AWS_PROFILE wins when it is one of the profiles",
+			profiles: []string{"default", "prod", "staging"},
+			envVar:   "prod",
+			want:     "prod",
+		},
+		{
+			name:     "AWS_PROFILE naming an unknown profile is ignored",
+			profiles: []string{"default", "prod"},
+			envVar:   "gone",
+			want:     "default",
+		},
+		{
+			name:     "default is preferred when present",
+			profiles: []string{"acme", "default"},
+			want:     "default",
+		},
+		{
+			name:     "first profile otherwise",
+			profiles: []string{"acme", "prod"},
+			want:     "acme",
+		},
+		{
+			name:     "no profiles yields nothing",
+			profiles: nil,
+			want:     "",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("AWS_PROFILE", tc.envVar)
+
+			assert.Equal(t, tc.want, preferredAWSProfile(tc.profiles))
+		})
+	}
+}
+
+// chooseAWSProfile only opens a form when there is more than one profile — the
+// no-profile and single-profile paths must settle without any input.
+func TestChooseAWSProfileNonInteractivePaths(t *testing.T) {
+	tests := []struct {
+		name           string
+		config         string
+		credentials    string
+		cfg            *PromptedConfig
+		wantProfile    string
+		wantPromptKeys bool
+	}{
+		{
+			name:           "nothing in ~/.aws falls back to typing keys in",
+			wantPromptKeys: true,
+		},
+		{
+			name:        "a lone default profile is left to the SDK",
+			config:      "[default]\nregion = eu-west-1\n",
+			wantProfile: "",
+		},
+		{
+			name:        "a lone named profile is pinned, since there is no [default] to resolve",
+			credentials: "[work]\naws_access_key_id = A\n",
+			wantProfile: "work",
+		},
+		{
+			// Keys already in the config win at bootstrap, so naming a profile
+			// beside them would be a lie.
+			name:        "a lone named profile is not pinned over existing keys",
+			credentials: "[work]\naws_access_key_id = A\n",
+			cfg:         &PromptedConfig{AWSAccessKeyID: "AKIAEXISTING"},
+			wantProfile: "",
+		},
+		{
+			// The profile can no longer resolve — it must not survive.
+			name:           "a stale profile is dropped when ~/.aws is gone",
+			cfg:            &PromptedConfig{AWSProfile: "gone"},
+			wantProfile:    "",
+			wantPromptKeys: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			writeAWSFiles(t, tc.config, tc.credentials)
+
+			cfg := tc.cfg
+			if cfg == nil {
+				cfg = &PromptedConfig{}
 			}
+
+			promptForKeys, err := chooseAWSProfile(cfg)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantPromptKeys, promptForKeys)
+			assert.Equal(t, tc.wantProfile, cfg.AWSProfile)
+		})
+	}
+}
+
+// Credentials exported in the shell are worth confirming rather than retyping,
+// but they must reach secrets.yaml : env vars last one shell session, and
+// `cluster bootstrap` needs them on every later run.
+func TestChooseAWSProfilePrefillsFromEnv(t *testing.T) {
+	tests := []struct {
+		name        string
+		credentials string
+		// resumed stands in for a secrets.yaml recovered from a previous run.
+		resumed          *PromptedConfig
+		wantPromptKeys   bool
+		wantAccessKeyID  string
+		wantSecretKey    string
+		wantSessionToken string
+	}{
+		{
+			name:             "no ~/.aws seeds the inputs from the environment",
+			wantPromptKeys:   true,
+			wantAccessKeyID:  "AKIAFROMENV",
+			wantSecretKey:    "env-secret",
+			wantSessionToken: "env-token",
+		},
+		{
+			name: "credentials already in the config win over the environment",
+			resumed: &PromptedConfig{
+				AWSAccessKeyID:     "AKIAFROMCONFIG",
+				AWSSecretAccessKey: "config-secret",
+			},
+			wantPromptKeys:  true,
+			wantAccessKeyID: "AKIAFROMCONFIG",
+			wantSecretKey:   "config-secret",
+			// Blank in the config, so the environment still fills this one in.
+			wantSessionToken: "env-token",
+		},
+		{
+			// A profile is chosen, so no keys are collected — seeding them
+			// would put keys in secrets.yaml that silently beat the profile.
+			name:           "a resolvable profile leaves the environment alone",
+			credentials:    "[work]\naws_access_key_id = A\n",
+			wantPromptKeys: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			writeAWSFiles(t, "", tc.credentials)
+			t.Setenv("AWS_ACCESS_KEY_ID", "AKIAFROMENV")
+			t.Setenv("AWS_SECRET_ACCESS_KEY", "env-secret")
+			t.Setenv("AWS_SESSION_TOKEN", "env-token")
+
+			cfg := tc.resumed
+			if cfg == nil {
+				cfg = &PromptedConfig{}
+			}
+
+			promptForKeys, err := chooseAWSProfile(cfg)
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantPromptKeys, promptForKeys)
+			assert.Equal(t, tc.wantAccessKeyID, cfg.AWSAccessKeyID)
+			assert.Equal(t, tc.wantSecretKey, cfg.AWSSecretAccessKey)
+			assert.Equal(t, tc.wantSessionToken, cfg.AWSSessionToken)
 		})
 	}
 }

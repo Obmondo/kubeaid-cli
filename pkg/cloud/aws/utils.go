@@ -7,13 +7,12 @@ import (
 	"context"
 	"fmt"
 
-	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"sigs.k8s.io/cluster-api-provider-aws/v2/cmd/clusterawsadm/cmd/bootstrap/iam"
 )
 
 var getCallerIdentity = func(ctx context.Context) (*sts.GetCallerIdentityOutput, error) {
-	awsSDKConfig, err := awsSDKGoV2Config.LoadDefaultConfig(ctx)
+	awsSDKConfig, err := LoadSDKConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("initiating AWS SDK config: %w", err)
 	}
