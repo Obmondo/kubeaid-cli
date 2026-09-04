@@ -394,6 +394,29 @@ flowchart TD
 - [pkg/config/secrets.go](../pkg/config/secrets.go) - `SecretsConfig` struct tree.
 - [pkg/config/parser/](../pkg/config/parser) - orchestrates parse → defaults → validate → hydrate (`parse.go`, `validate.go`, …).
 
+### 6.1 AWS credential resolution
+
+`secrets.yaml` can name a `~/.aws` profile instead of carrying keys, so a machine that manages several AWS accounts does not have to have its `~/.aws/config` rewritten per cluster:
+
+```yaml
+aws:
+  profile: acme-prod
+```
+
+Resolution order, in `hydrateAWSCredentials` ([`pkg/config/parser/parse.go`](../pkg/config/parser/parse.go)):
+
+1. `accessKeyID` / `secretAccessKey` / `sessionToken` spelled out in `secrets.yaml` win outright.
+2. Otherwise the credentials are read from `aws.profile` in `~/.aws`.
+3. With neither, the SDK's own default resolution applies (`AWS_PROFILE`, `[default]`, instance role, …).
+
+`config generate` fills `aws.profile` in: it lists the profiles across `~/.aws/config` and `~/.aws/credentials` and, when there is more than one, asks which account this cluster belongs to (with "enter credentials manually" as the way out). A lone profile that isn't `default` is recorded too, since the SDK would otherwise look for a `[default]` section that doesn't exist.
+
+When there is no profile to use — no `~/.aws`, or the operator chose to type keys in — the credential inputs are seeded from `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`, blanks only, so values recovered from an existing `secrets.yaml` still win. They are prefilled rather than accepted silently because environment variables last one shell session while `cluster bootstrap` needs the credentials on every later run, so they have to be confirmed into `secrets.yaml`. A config never ends up carrying both a profile and keys: the keys would win at bootstrap, making the profile a lie.
+
+Every AWS SDK client is built through `awsCloudProvider.LoadSDKConfig` ([`pkg/cloud/aws/aws.go`](../pkg/cloud/aws/aws.go)), which pins the selected profile via `WithSharedConfigProfile`. `SetAWSSpecificEnvs` also exports `AWS_PROFILE`, so the embedded `clusterawsadm` commands — which build their own SDK config — read the same profile's shared config as the rest of the run, and a stale profile inherited from the operator's shell is cleared.
+
+Their *credentials* come from the static keys exported alongside it. Worth knowing when reasoning about this: an `AWS_PROFILE` env var does **not** outrank `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`. `resolveCredentialChain` only takes the profile branch when the profile was set programmatically (it inspects the `LoadOptions`, not the `EnvConfig`), so env-var credentials win over an env-var profile — but lose to `WithSharedConfigProfile`.
+
 **Top-level `GeneralConfig` fields:**
 
 | Field            | Purpose                                                       |

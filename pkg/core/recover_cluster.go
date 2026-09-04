@@ -8,9 +8,9 @@ import (
 	"log/slog"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob"
-	awsSDKGoV2Config "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 
+	awsCloudProvider "github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
 	awsServices "github.com/Obmondo/kubeaid-cli/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
@@ -51,7 +51,7 @@ func RecoverCluster(ctx context.Context, managementClusterName string, skipPRWor
 
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
-		awsSDKConfig, err := awsSDKGoV2Config.LoadDefaultConfig(ctx)
+		awsSDKConfig, err := awsCloudProvider.LoadSDKConfig(ctx)
 		assert.AssertErrNil(ctx, err, "Failed initiating AWS SDK config")
 
 		s3Client := s3.NewFromConfig(awsSDKConfig)

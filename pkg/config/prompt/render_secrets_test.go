@@ -257,3 +257,70 @@ func TestRenderObmondoSupportConfig(t *testing.T) {
 	parsed := &config.SecretsConfig{}
 	require.NoError(t, yaml.Unmarshal(secretsBody, parsed))
 }
+
+// TestRenderSecretsAWSProfile covers the three shapes the aws: block can take.
+// A profile alone is the multi-account case from issue #87 : the keys stay in
+// ~/.aws and are resolved from the named profile at bootstrap, so secrets.yaml
+// must carry the profile and no keys.
+func TestRenderSecretsAWSProfile(t *testing.T) {
+	cases := []struct {
+		name           string
+		cfg            *PromptedConfig
+		wantContains   []string
+		wantNotContain []string
+	}{
+		{
+			name: "profile only",
+			cfg: &PromptedConfig{
+				CloudProvider: "aws",
+				AWSProfile:    "work",
+			},
+			wantContains:   []string{"aws:", `profile: "work"`},
+			wantNotContain: []string{"accessKeyID:", "secretAccessKey:"},
+		},
+		{
+			name: "credentials only",
+			cfg: &PromptedConfig{
+				CloudProvider:      "aws",
+				AWSAccessKeyID:     "AKIAFAKEEXAMPLE",
+				AWSSecretAccessKey: "fake/secret:key#1",
+				AWSSessionToken:    "fake-session-token",
+			},
+			wantContains:   []string{"aws:", `accessKeyID: "AKIAFAKEEXAMPLE"`},
+			wantNotContain: []string{"profile:"},
+		},
+		{
+			name: "neither renders no aws block",
+			cfg: &PromptedConfig{
+				CloudProvider: "aws",
+			},
+			wantNotContain: []string{"aws:"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, writeConfigFiles(dir, tc.cfg))
+
+			body, err := os.ReadFile(filepath.Join(dir, "secrets.yaml"))
+			require.NoError(t, err)
+
+			for _, want := range tc.wantContains {
+				assert.Contains(t, string(body), want, "raw bytes:\n%s", string(body))
+			}
+			for _, unwanted := range tc.wantNotContain {
+				assert.NotContains(t, string(body), unwanted, "raw bytes:\n%s", string(body))
+			}
+
+			parsed := &config.SecretsConfig{}
+			require.NoError(t, yaml.Unmarshal(body, parsed),
+				"rendered secrets.yaml must parse cleanly — raw bytes:\n%s", string(body))
+
+			if tc.cfg.AWSProfile != "" {
+				require.NotNil(t, parsed.AWS)
+				assert.Equal(t, tc.cfg.AWSProfile, parsed.AWS.Profile)
+			}
+		})
+	}
+}

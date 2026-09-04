@@ -13,7 +13,6 @@ import (
 	"slices"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	awsConfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/util/version"
@@ -113,19 +112,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		err = yaml.Unmarshal([]byte(secretsConfigFileContents), config.ParsedSecretsConfig)
 		assert.AssertErrNil(ctx, err, "Failed unmarshalling secrets config")
 
-		// The AWS credentials and region were not provided via the config file.
-		// We'll retrieve them using the files in ~/.aws.
-		// And we panic on failure.
+		// Any AWS credentials the config file didn't carry are retrieved from
+		// the files in ~/.aws. And we panic on failure.
 
-		if (globals.CloudProviderName == constants.CloudProviderAWS) &&
-			(config.ParsedSecretsConfig.AWS == nil) {
-			awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
-
-			config.ParsedSecretsConfig.AWS = &config.AWSCredentials{
-				AWSAccessKeyID:     awsCredentials.AccessKeyID,
-				AWSSecretAccessKey: awsCredentials.SecretAccessKey,
-				AWSSessionToken:    awsCredentials.SessionToken,
-			}
+		if globals.CloudProviderName == constants.CloudProviderAWS {
+			hydrateAWSCredentials(ctx)
 		}
 
 		// Auto-generate any required-but-blank random secrets
@@ -276,12 +267,40 @@ func setCloudProvider(ctx context.Context) {
 	}
 }
 
+// hydrateAWSCredentials fills the AWS credentials in the secrets config from
+// the files in ~/.aws, unless secrets.yaml already carries them. The profile
+// read is aws.profile, or the SDK default profile when that is unset.
+// Panics on any error.
+func hydrateAWSCredentials(ctx context.Context) {
+	if config.ParsedSecretsConfig.AWS == nil {
+		config.ParsedSecretsConfig.AWS = &config.AWSCredentials{}
+	}
+	awsSecrets := config.ParsedSecretsConfig.AWS
+
+	// Credentials spelled out in secrets.yaml win — nothing to resolve.
+	if awsSecrets.AWSAccessKeyID != "" {
+		return
+	}
+
+	awsCredentials := mustGetCredentialsFromAWSConfigFile(ctx)
+
+	awsSecrets.AWSAccessKeyID = awsCredentials.AccessKeyID
+	awsSecrets.AWSSecretAccessKey = awsCredentials.SecretAccessKey
+	awsSecrets.AWSSessionToken = awsCredentials.SessionToken
+}
+
 // Retrieve AWS credentials using the files in ~/.aws.
 // Panics on any error.
 func mustGetCredentialsFromAWSConfigFile(ctx context.Context) *aws.Credentials {
-	slog.InfoContext(ctx, "Trying to pickup AWS credentials from ~/.aws/config")
+	profile := awsCloudProvider.SelectedProfile()
+	if profile == "" {
+		profile = "(SDK default)"
+	}
+	slog.InfoContext(ctx, "Trying to pickup AWS credentials from ~/.aws/config",
+		slog.String("profile", profile),
+	)
 
-	awsConfig, err := awsConfig.LoadDefaultConfig(ctx)
+	awsConfig, err := awsCloudProvider.LoadSDKConfig(ctx)
 	assert.AssertErrNil(ctx, err, "Failed constructing AWS config using files in ~/.aws")
 
 	awsCredentials, err := awsConfig.Credentials.Retrieve(ctx)

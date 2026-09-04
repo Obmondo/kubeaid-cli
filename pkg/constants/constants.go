@@ -15,11 +15,25 @@ const (
 	EnvNameSSHAuthSock   = "SSH_AUTH_SOCK"
 	EnvNameSSHKnownHosts = "SSH_KNOWN_HOSTS"
 
-	EnvNameAWSAccessKey            = "AWS_ACCESS_KEY_ID"
-	EnvNameAWSSecretKey            = "AWS_SECRET_ACCESS_KEY"
-	EnvNameAWSSessionToken         = "AWS_SESSION_TOKEN"
-	EnvNameAWSRegion               = "AWS_REGION"
-	EnvNameAWSB64EcodedCredentials = "AWS_B64ENCODED_CREDENTIALS"
+	EnvNameAWSAccessKey    = "AWS_ACCESS_KEY_ID"
+	EnvNameAWSSecretKey    = "AWS_SECRET_ACCESS_KEY"
+	EnvNameAWSSessionToken = "AWS_SESSION_TOKEN"
+	EnvNameAWSRegion       = "AWS_REGION"
+	// EnvNameAWSProfile points the embedded clusterawsadm commands, which
+	// build their own AWS SDK config, at the same profile as the rest of the
+	// run — and clears a stale one inherited from the operator's shell.
+	//
+	// Their credentials come from the static keys exported alongside this:
+	// an env-var profile does NOT outrank env-var credentials (only a
+	// programmatic WithSharedConfigProfile does). What this settles is the
+	// rest of the shared config those commands read.
+	EnvNameAWSProfile = "AWS_PROFILE"
+	// EnvNameAWSConfigFile and EnvNameAWSSharedCredentialsFile relocate the
+	// two ~/.aws files. Read when listing the profiles to choose between, so
+	// a direnv-style setup pointing elsewhere is seen.
+	EnvNameAWSConfigFile            = "AWS_CONFIG_FILE"
+	EnvNameAWSSharedCredentialsFile = "AWS_SHARED_CREDENTIALS_FILE"
+	EnvNameAWSB64EcodedCredentials  = "AWS_B64ENCODED_CREDENTIALS"
 
 	EnvNameHCloudToken   = "HCLOUD_TOKEN"
 	EnvNameRobotUser     = "ROBOT_USER"

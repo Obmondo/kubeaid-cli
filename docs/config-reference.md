@@ -175,7 +175,8 @@ NOTE : Generally, refer to the KubeadmControlPlane CRD instead of the correspond
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| accessKeyID | `string` |  |  |
+| profile | `string` |  | Profile names the ~/.aws/{config,credentials} profile the<br>credentials for this cluster are resolved from. Set it when the<br>machine carries several AWS accounts and the SDK default profile<br>is not the right one. Leave the key fields blank alongside it —<br>they are filled in from the profile at parse time. Machine-local<br>(profile names differ per operator), which is why it lives here<br>and not in general.yaml.<br> |
+| accessKeyID | `string` |  | AWSAccessKeyID, AWSSecretAccessKey and AWSSessionToken are the<br>resolved credentials. Supply them directly to bypass ~/.aws<br>entirely; otherwise leave them blank and they are resolved from<br>Profile (or the SDK default profile when Profile is empty).<br> |
 | secretAccessKey | `string` |  |  |
 | sessionToken | `string` |  |  |
 
