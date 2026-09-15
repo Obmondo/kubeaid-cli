@@ -123,6 +123,26 @@ func (p *sshConnPool) getOrOpen(ctx context.Context, address, privateKey, touchR
 	return conn, nil
 }
 
+// invalidate closes and drops the cached connection for one address, so the
+// next getOrOpen dials fresh.
+//
+// Needed because getOrOpen returns cached connections without probing them,
+// and closeAll only runs at the phase boundary. Any event that kills the
+// remote sshd mid-phase — a hardware reset, an OS install — leaves a cached
+// connection that looks fine and blocks forever on first use. Callers that
+// knowingly reboot a host must invalidate it.
+//
+// No-op when the address isn't pooled.
+func (p *sshConnPool) invalidate(address string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if conn, ok := p.connections[address]; ok {
+		_ = conn.Close()
+		delete(p.connections, address)
+	}
+}
+
 // closeAll closes every cached connection and clears the map.
 // Safe to call multiple times — the map is iterated and emptied
 // in one critical section. Errors from individual Close calls are

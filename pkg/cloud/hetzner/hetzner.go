@@ -61,10 +61,12 @@ type floatingIPClient interface {
 type Hetzner struct {
 	hcloudClient *hcloud.Client
 	robotClient  *resty.Client
-	// robotFailoverClient is the same Robot API with a timeout long
-	// enough to hold a Failover IP switch open (90-110s) and retries
-	// off. See newRobotFailoverRestyClient.
-	robotFailoverClient *resty.Client
+	// robotNoRetryClient is the same Robot API with retries off and a
+	// timeout long enough for Robot's slow, non-idempotent POSTs (Failover
+	// IP switch, hardware reset). See newRobotNoRetryRestyClient. Reach
+	// it through noRetryRobotClient(), which falls back to robotClient
+	// when tests build Hetzner directly.
+	robotNoRetryClient *resty.Client
 
 	serverTypeClient   serverTypeClient
 	networkClient      networkClient
@@ -113,7 +115,7 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 			robotWebServiceUserCredentials.User,
 			robotWebServiceUserCredentials.Password,
 		)
-		hetznerClient.robotFailoverClient = newRobotFailoverRestyClient(
+		hetznerClient.robotNoRetryClient = newRobotNoRetryRestyClient(
 			robotWebServiceUserCredentials.User,
 			robotWebServiceUserCredentials.Password,
 		)
@@ -159,21 +161,42 @@ func newRobotRestyClient(robotUser, robotPassword string) *resty.Client {
 		})
 }
 
-// newRobotFailoverRestyClient builds the Robot client used for the
-// Failover IP switch POST.
+// newRobotNoRetryRestyClient builds the Robot client for POSTs that Robot
+// accepts immediately but executes slowly, and that must therefore never be
+// retried: the Failover IP switch (POST /failover/{ip}, 90-110s) and the
+// hardware reset (POST /reset/{id}).
 //
 // Two deliberate departures from the shared client:
 //
-//   - Timeout long enough to outlast the 90-110s switch. The shared
-//     20s guarantees a client-side abort mid-switch.
-//   - No retries. The POST is not idempotent in practice — the first
-//     request has usually been accepted by the time the client gives
-//     up, so a retry just collects a 409 while Robot applies it.
-//     pointFailoverIPTo verifies the outcome by polling instead.
-func newRobotFailoverRestyClient(robotUser, robotPassword string) *resty.Client {
+//   - No retries. The shared client retries on `err != nil`, which includes
+//     its own 20s timeout, so the retry fires on a request that already
+//     SUCCEEDED server-side. For the failover switch that lands a 409 while
+//     Robot is still applying it. For the reset it presses the button again
+//     on a host that is mid-POST — a server re-reset during BIOS/PXE init
+//     can wedge outright and never come back (no SSH, no ping). Running
+//     the hosts in parallel makes this far likelier than a manual click,
+//     since concurrent load is what pushes Robot past 20s and into 429s
+//     (also a retry trigger). Callers verify the outcome by observing the
+//     server instead: pointFailoverIPTo polls the Failover IP,
+//     bootHBMSIntoRescue waits for the host to drop off the network.
+//   - Timeout long enough that a slow-but-successful request isn't aborted
+//     client-side. Sized for the longer of the two (the switch).
+//
+// Reach it through noRetryRobotClient(), not the field.
+func newRobotNoRetryRestyClient(robotUser, robotPassword string) *resty.Client {
 	return newRobotRestyClient(robotUser, robotPassword).
-		SetTimeout(constants.HRobotFailoverSwitchTimeout).
+		SetTimeout(constants.HRobotNoRetryTimeout).
 		SetRetryCount(0)
+}
+
+// noRetryRobotClient returns the no-retry Robot client, falling back to the
+// shared client when the no-retry one wasn't built (tests construct Hetzner
+// directly). Shared by the failover switch and the hardware reset.
+func (h *Hetzner) noRetryRobotClient() *resty.Client {
+	if h.robotNoRetryClient != nil {
+		return h.robotNoRetryClient
+	}
+	return h.robotClient
 }
 
 func (*Hetzner) SetupDisasterRecovery(_ context.Context) error {
