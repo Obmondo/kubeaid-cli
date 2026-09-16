@@ -34,7 +34,7 @@ cilium:
   */ -}}
   {{- if .HetznerConfig }}
   extraArgs:
-    - "--devices=eth+,enp+,eno+"
+    - "--devices=vswitch+,eth+,enp+,eno+"
   {{- end }}
 {{- end }}
 {{- if and .HetznerBareMetalFirewallEnabled .HetznerConfig .HetznerConfig.BareMetal }}
