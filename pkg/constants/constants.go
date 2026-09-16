@@ -317,6 +317,18 @@ const (
 	// a throwaway installimage run costs.
 	HRobotRescueOSLinux        = "linux"
 	HBMSRescueBootPollInterval = 20 * time.Second
+	// HBMSResetSettleMaxWaitTime bounds how long we wait for a host to drop
+	// off the network after the reset is accepted. The hardware reset is
+	// asynchronous — Robot returns 200 as soon as it is queued, while the
+	// host stays up and pingable for a few more seconds. Without observing
+	// the down edge, the first reachability poll answers against the
+	// pre-reboot OS and we declare the rescue boot finished before it began.
+	HBMSResetSettleMaxWaitTime = 2 * time.Minute
+	// HBMSResetSettlePollInterval is the TCP-probe cadence used while waiting
+	// for that down edge. Tighter than the boot poll: the window between the
+	// reset landing and the host going dark is short, and missing it costs a
+	// false "already reachable".
+	HBMSResetSettlePollInterval = 5 * time.Second
 	// HBMSRescueBootMaxWaitTime is the per-server upper bound the post-reset
 	// SSH probe waits for the rescue system to come up. A rescue boot is just
 	// a hardware reset (1-3 min) into a ramdisk Debian that starts sshd — far
@@ -347,15 +359,19 @@ const (
 	// bootstrap forever if Robot never brings a server to "ready".
 	HBMSVSwitchAttachMaxWaitTime = 10 * time.Minute
 
-	// Switching a Failover IP takes 90-110s server-side (see
-	// https://docs.hetzner.com/robot/dedicated-server/ip/failover/),
-	// so POST /failover/{ip} holds the connection open far past the
-	// shared 20s Robot client timeout. A client-side abort there is
-	// not harmless: Robot has already accepted the switch, and the
-	// retry lands on a 409 while it is still being applied — the
-	// "unexpected status 409" the bootstrap used to die on.
-	HRobotFailoverSwitchTimeout = 3 * time.Minute
-	HRobotFailoverPollInterval  = 15 * time.Second
+	// HRobotNoRetryTimeout bounds the single attempt made by the no-retry
+	// Robot client (POST /failover/{ip} and POST /reset/{id}). Both are
+	// accepted immediately and executed slowly server-side — a Failover IP
+	// switch takes 90-110s (see
+	// https://docs.hetzner.com/robot/dedicated-server/ip/failover/), and
+	// the reset endpoint routinely answers slower than the shared client's
+	// 20s. A client-side abort on either is actively harmful, because the
+	// request has already been accepted: a retried switch lands a 409 while
+	// Robot is still applying it (the "unexpected status 409" the bootstrap
+	// used to die on), and a retried reset presses the button again on a
+	// host that is mid-POST. Sized for the longer of the two.
+	HRobotNoRetryTimeout       = 3 * time.Minute
+	HRobotFailoverPollInterval = 15 * time.Second
 	// 5 min covers the 90-110s switch plus a queued second switch
 	// (Robot serialises them per IP) without hanging the bootstrap.
 	HRobotFailoverMaxWaitTime = 5 * time.Minute

@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-resty/resty/v2"
 	caphV1Beta1 "github.com/syself/cluster-api-provider-hetzner/api/v1beta1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -195,7 +194,7 @@ func (h *Hetzner) pointFailoverIPTo(ctx context.Context, failoverIP, targetServe
 
 	slog.InfoContext(ctx, "Pointing the Failover IP to the given server IP (Hetzner takes 90-110s to switch)")
 
-	response, err := h.failoverClient().NewRequest().
+	response, err := h.noRetryRobotClient().NewRequest().
 		SetContext(ctx).
 		SetFormData(map[string]string{
 			"active_server_ip": targetServerIP,
@@ -274,15 +273,4 @@ func (h *Hetzner) waitForFailoverIP(ctx context.Context, failoverIP, targetServe
 		)
 		h.sleepFunc(constants.HRobotFailoverPollInterval)
 	}
-}
-
-// failoverClient returns the Robot client to use for the failover
-// switch POST — a long-timeout, no-retry clone of the shared one.
-// Falls back to the shared client when the long-timeout one wasn't
-// built (tests construct Hetzner directly).
-func (h *Hetzner) failoverClient() *resty.Client {
-	if h.robotFailoverClient != nil {
-		return h.robotFailoverClient
-	}
-	return h.robotClient
 }

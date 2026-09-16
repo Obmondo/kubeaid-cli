@@ -112,6 +112,19 @@ func (h *Hetzner) bootHBMSIntoRescue(
 	if err := h.resetHBMS(hbmsCtx, host.ServerID); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
+
+	// Any pooled connection now points at an OS that is being reset out from
+	// under it. The pool hands back cached connections without a liveness
+	// check, and kubeone's SSH carries no keepalive — so a later reuse would
+	// block on a socket whose peer vanished until the kernel gives up
+	// (~15 min with Linux defaults). Drop it and let the post-boot probe open
+	// a fresh one against the rescue system.
+	h.sshPool.invalidate(address)
+
+	// Confirm the reset landed before waiting for the host to come back,
+	// otherwise the first probe answers against the pre-reboot OS.
+	h.waitForHBMSDown(hbmsCtx, address)
+
 	if err := h.waitForHBMSReachable(hbmsCtx, host.ServerID, address, privateKey); err != nil {
 		return fmt.Errorf("server %s: %w", host.ServerID, err)
 	}
@@ -148,8 +161,16 @@ func (h *Hetzner) activateHRobotRescue(
 }
 
 // resetHBMS triggers a hardware reset on the given HBMS via the HRobot API.
+//
+// Deliberately uses the no-retry Robot client, NOT the shared robotClient:
+// the reset POST is not idempotent, and retrying it presses the button
+// again on a host that is already rebooting. See newRobotNoRetryRestyClient
+// for the full reasoning.
+//
+// 409 is treated as success — Robot is already applying a reset, which is
+// the state we were asking for.
 func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
-	response, err := h.robotClient.NewRequest().
+	response, err := h.noRetryRobotClient().NewRequest().
 		SetFormDataFromValues(url.Values{
 			"type": []string{constants.HRobotResetTypeHardware},
 		}).
@@ -157,12 +178,44 @@ func (h *Hetzner) resetHBMS(ctx context.Context, serverID string) error {
 	if err != nil {
 		return fmt.Errorf("resetting Hetzner bare-metal server %s: %w", serverID, err)
 	}
-	if response.StatusCode() != http.StatusOK {
+	switch response.StatusCode() {
+	case http.StatusOK:
+		slog.InfoContext(ctx, "Triggered hardware reset")
+
+	case http.StatusConflict:
+		slog.InfoContext(ctx, "Hardware reset already in progress, continuing")
+
+	default:
 		return fmt.Errorf("resetting Hetzner bare-metal server %s: unexpected status %d", serverID, response.StatusCode())
 	}
-
-	slog.InfoContext(ctx, "Triggered hardware reset")
 	return nil
+}
+
+// waitForHBMSDown polls until the HBMS stops answering on port 22, confirming
+// the reset actually landed.
+//
+// The hardware reset is asynchronous: Robot returns 200 as soon as it is
+// queued, while the host stays up for several more seconds. waitForHBMSReachable
+// polls with no initial delay, so without this the first probe answers against
+// the PRE-reboot OS and the rescue boot is declared finished before it started.
+//
+// Not fatal on timeout: a host that never visibly goes down may simply have
+// dropped off between two probes. Log and fall through to the up-wait, which
+// is the real gate.
+func (h *Hetzner) waitForHBMSDown(ctx context.Context, address string) {
+	deadline := time.Now().Add(constants.HBMSResetSettleMaxWaitTime)
+
+	for time.Now().Before(deadline) {
+		if !isTCPPortOpen(ctx, address, 22, 3*time.Second) {
+			slog.InfoContext(ctx, "Hetzner bare-metal server went down, reset confirmed")
+			return
+		}
+		time.Sleep(constants.HBMSResetSettlePollInterval)
+	}
+
+	slog.WarnContext(ctx, "Hetzner bare-metal server never observed going down after reset, waiting for rescue anyway",
+		slog.Duration("waited", constants.HBMSResetSettleMaxWaitTime),
+	)
 }
 
 // waitForHBMSReachable polls via SSH until the HBMS becomes reachable after the rescue boot.
