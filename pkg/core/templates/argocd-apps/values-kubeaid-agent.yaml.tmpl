@@ -14,10 +14,12 @@ appConfig:
 # manual, per-cluster act in that cluster's own values file -- not something the
 # CLI decides. Emitting nothing here leaves the chart's default (off) standing.
 #
-# The key is the SUBCHART's name, not camelCase. Both exporters are local
-# subcharts of kubeaid-agent, and Helm keys subchart values by chart name, so
+# The key is the SUBCHART's name, not camelCase. The exporters are subcharts of
+# kubeaid-agent, and Helm keys subchart values by chart name, so
 # "securityExporter" would be silently ignored -- the subchart default (on)
 # would apply and a cluster that declined scanning would get the exporter
-# anyway.
-security-exporter:
+# anyway. The chart was renamed kubeaid-security-exporter, telling it apart from
+# the linuxaid one that scans the nodes; it still accepts the old
+# security-exporter key for enablement, but new clusters get the current name.
+kubeaid-security-exporter:
   enabled: {{ .ClusterConfig.Security.VulnerabilityScanning }}
