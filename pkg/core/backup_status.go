@@ -56,14 +56,17 @@ const (
 	tabwriterPadding  = 3
 )
 
-// backup-exporter's Service coordinates: the label its Helm chart stamps on the Service, the
+// backup-exporter's Service coordinates: the labels its Helm chart stamps on the Service, the
 // name its chart is expected to give the Service port that serves backupExporterAPIPath, and
-// that HTTP path itself.
+// that HTTP path itself. The component label is hard-coded by the chart, so neither a chart
+// rename nor a nameOverride can hide the exporter; the name label is what older charts stamped
+// and is only tried second.
 const (
-	backupExporterLabelKey        = "app.kubernetes.io/name"
-	backupExporterLabelValue      = "backup-exporter"
-	backupExporterServicePortName = "http"
-	backupExporterAPIPath         = "/api/v1/backups"
+	backupExporterComponentLabelKey = "app.kubernetes.io/component"
+	backupExporterLabelKey          = "app.kubernetes.io/name"
+	backupExporterLabelValue        = "backup-exporter"
+	backupExporterServicePortName   = "http"
+	backupExporterAPIPath           = "/api/v1/backups"
 )
 
 // backupExporterDefaultNamespace is where the KubeAid chart installs backup-exporter, and so
@@ -172,7 +175,7 @@ func findBackupExporterService(ctx context.Context, clientset k8sclientset.Inter
 	case 0:
 		return nil, fmt.Errorf(
 			"no backup-exporter service found (label %s=%s) in any namespace; is the backup-exporter chart installed?",
-			backupExporterLabelKey, backupExporterLabelValue)
+			backupExporterComponentLabelKey, backupExporterLabelValue)
 
 	case 1:
 		return &services[0], nil
@@ -186,23 +189,29 @@ func findBackupExporterService(ctx context.Context, clientset k8sclientset.Inter
 
 		return nil, fmt.Errorf(
 			"found %d backup-exporter services (label %s=%s) and none in %s, expected exactly 1: %s",
-			len(services), backupExporterLabelKey, backupExporterLabelValue,
+			len(services), backupExporterComponentLabelKey, backupExporterLabelValue,
 			backupExporterDefaultNamespace, strings.Join(found, ", "))
 	}
 }
 
 // listBackupExporterServices lists the Services carrying backup-exporter's chart label in one
-// namespace, or in every namespace when namespace is metaV1.NamespaceAll.
+// namespace, or in every namespace when namespace is metaV1.NamespaceAll. The component label is
+// tried first and the older name label second, so a cluster on either chart is found.
 func listBackupExporterServices(ctx context.Context, clientset k8sclientset.Interface, namespace string) ([]coreV1.Service, error) {
-	services, err := clientset.CoreV1().Services(namespace).List(ctx, metaV1.ListOptions{
-		LabelSelector: backupExporterLabelKey + "=" + backupExporterLabelValue,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed listing services labeled %s=%s: %w",
-			backupExporterLabelKey, backupExporterLabelValue, err)
+	for _, labelKey := range []string{backupExporterComponentLabelKey, backupExporterLabelKey} {
+		services, err := clientset.CoreV1().Services(namespace).List(ctx, metaV1.ListOptions{
+			LabelSelector: labelKey + "=" + backupExporterLabelValue,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed listing services labeled %s=%s: %w",
+				labelKey, backupExporterLabelValue, err)
+		}
+		if len(services.Items) > 0 {
+			return services.Items, nil
+		}
 	}
 
-	return services.Items, nil
+	return nil, nil
 }
 
 // fetchBackupStatus returns the raw GET /api/v1/backups response body, reached by port-forwarding
