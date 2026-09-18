@@ -738,6 +738,26 @@ func backupExporterServiceFixture() *coreV1.Service {
 	}
 }
 
+// backupExporterComponentServiceFixture returns a Service labelled the way the chart labels it
+// now, with the component label rather than the older name one.
+func backupExporterComponentServiceFixture() *coreV1.Service {
+	return &coreV1.Service{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name:      "kubeaid-backup-exporter",
+			Namespace: "monitoring",
+			Labels:    map[string]string{backupExporterComponentLabelKey: backupExporterLabelValue},
+		},
+	}
+}
+
+func TestFindBackupExporterService_ByComponentLabel(t *testing.T) {
+	clientset := fake.NewSimpleClientset(backupExporterComponentServiceFixture())
+
+	service, err := findBackupExporterService(context.Background(), clientset)
+	require.NoError(t, err)
+	assert.Equal(t, "kubeaid-backup-exporter", service.Name)
+}
+
 func TestFindBackupExporterService(t *testing.T) {
 	// Seeded into every case below to confirm the label selector actually filters, rather
 	// than findBackupExporterService just returning whatever Services happen to exist.
