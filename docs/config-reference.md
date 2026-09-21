@@ -648,6 +648,7 @@ We enforce the user to use SSH, for authenticating to the Git server.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | imagePath | `string` | /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst |  |
+| firmware | `string` | efi |  |
 | vg0 | [`VG0Config`](#vg0config) |  |  |
 
 ## KeycloakConfig
