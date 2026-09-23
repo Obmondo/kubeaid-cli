@@ -1,4 +1,16 @@
 - - -
+## v0.31.10 - 2026-09-23
+#### Bug Fixes
+- (**backup**) discover the exporter by its component label - (4c255b7) - Ashish Jaiswal
+- (**cilium**) addig vswitch+ network interface to the list of usable devices - (34a03fd) - Archisman
+- (**hetzner**) logic to put Hetzner Bare Metal servers into rescue mode - (575f18c) - Archisman
+- (**templates**) emit the renamed kubeaid-security-exporter key - (0acbb2a) - Ashish Jaiswal
+#### Miscellaneous Chores
+- (**config**) refresh the embedded K8s EOL snapshot - (f87a59c) - aman
+- (**kubeone**) bump the Cilium version to 1.20.2 - (8bcf8a6) - aman
+
+- - -
+
 ## v0.31.9 - 2026-09-04
 #### Features
 - (**aws**) let a cluster name the ~/.aws profile its credentials come from - (bdb6b76) - Ashish Jaiswal
