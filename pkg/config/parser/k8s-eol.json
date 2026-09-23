@@ -1,5 +1,14 @@
 [
   {
+    "cycle": "1.37",
+    "releaseDate": "2026-08-26",
+    "eol": "2027-10-28",
+    "latest": "1.37.0",
+    "latestReleaseDate": "2026-08-26",
+    "lts": false,
+    "support": "2027-08-28"
+  },
+  {
     "cycle": "1.36",
     "releaseDate": "2026-04-22",
     "eol": "2027-06-28",
