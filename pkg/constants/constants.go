@@ -577,12 +577,12 @@ const (
 	MaxCGroupV1CompatibleK8sVersion = "v1.34"
 
 	// For the Bare Metal provider though, the story is a bit different.
-	// We're using KubeOne v1.13. And you can see the K8s versions officially supported by KubeOne
-	// here : https://docs.kubermatic.com/kubeone/v1.13/architecture/compatibility/supported-versions.
+	// We're using KubeOne v1.14. And you can see the K8s versions officially supported by KubeOne
+	// here : https://docs.kubermatic.com/kubeone/v1.14/architecture/compatibility/supported-versions.
 	// That range becomes the range of K8s version supported by KubeAid CLI.
 	// NOTE : We need update this range manually, when upgrading KubeOne.
-	MinKubeOneSupportedK8sVersion = "v1.33"
-	MaxKubeOneSupportedK8sVersion = "v1.35"
+	MinKubeOneSupportedK8sVersion = "v1.34"
+	MaxKubeOneSupportedK8sVersion = "v1.36"
 
 	// EKS clusters bootstrap their (self-managed MachineDeployment) workers
 	// with CAPA's NodeadmConfig on AL2023 AMIs, which upstream supports for
