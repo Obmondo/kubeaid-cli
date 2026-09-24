@@ -252,3 +252,19 @@ setup, code standards, and how to open a pull request.
 ## License
 
 [Apache License, Version 2.0](LICENSE)
+
+**kubeaid-cli itself is Apache 2.0.** The [KubeAid](https://github.com/Obmondo/KubeAid) chart repository it defaults to is licensed AGPLv3, and since the two are easy to conflate, here's the actual delineation:
+
+- **kubeaid-cli** is the tool you run. It has no opinions of its own about charts or licenses — every command just bootstraps a cluster (via Cluster API or KubeOne) and renders whatever chart repo you've pointed it at in `general.yaml`, then hands off to ArgoCD. It carries no AGPL code.
+- **KubeAid** is 125+ preconfigured charts plus Obmondo's own tooling on top (a jsonnet build system, shared operators, network policies, Keycloak SSO wiring, operational docs). It's an integration, not a hard dependency: point the chart-source field at your own repo, under whatever license you want, and every CLI command behaves exactly the same. There's no hardcoded fallback to Obmondo's repo baked into the CLI. KubeAid just saves you the trouble of hand-configuring 125+ charts from scratch.
+
+**In plain terms, here's what you're actually free to do:**
+
+You can use kubeaid-cli, as-is, commercially or otherwise, with any chart source you like, with no AGPL obligations whatsoever — because the CLI itself never carries AGPL code. Beyond that, in every situation below except the last one, you're in the clear too:
+
+- **Bring your own chart repo.** Point the chart-source field in `general.yaml` at your own repo, under whatever license you want. You're not running Obmondo's code at all, so AGPL never enters the picture.
+- **Run KubeAid's charts unmodified.** Just using AGPL-licensed software — installing it, running it, even in production — doesn't trigger any obligation. No source-sharing requirement kicks in.
+- **The one case that does trigger it:** if you modify KubeAid's own authored parts (the jsonnet build system, wrapper charts, bundled operators) *and* run that modified version as a live network service, AGPLv3's network-use clause requires you to make your modified source available to users of that service.
+- **Vendored charts keep their own license.** Anything KubeAid merely pulls in from elsewhere (e.g. upstream community charts) stays under whatever license it originally shipped with — AGPL only covers the code Obmondo itself wrote.
+
+**Why AGPL, specifically:** some of the charts KubeAid vendors are themselves GPL — [`k8s-event-logger`](https://github.com/nathanielks/k8s-event-logger) is one, plain GPLv3. Once a GPL component is in the mix, the combined project can't be licensed more permissively than GPL. So AGPL isn't an arbitrary choice sitting next to kubeaid-cli's Apache 2.0 — it's the license the vendored dependencies require.
