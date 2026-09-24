@@ -23,10 +23,13 @@ apt install zfsutils-linux -y
     echo 'label: gpt' | sfdisk /dev/{{ $disk.Name }} --force --no-reread
   fi
 
+  {{/* The filler partitions are >= 4KiB in size, since CEPH v20 crashes when the system has
+       1KiB partitions. */}}
+
   {{- if eq $disk.Allocations.OS 0 }}
-  echo ",1K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
-  echo ",1K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
-  echo ",1K,L" | sfdisk -N 3 /dev/{{ $disk.Name }} --force --no-reread
+  echo ",4K,L" | sfdisk -N 1 /dev/{{ $disk.Name }} --force --no-reread
+  echo ",4K,L" | sfdisk -N 2 /dev/{{ $disk.Name }} --force --no-reread
+  echo ",4K,L" | sfdisk -N 3 /dev/{{ $disk.Name }} --force --no-reread
   {{- end }}
 
   sfdisk --delete /dev/{{ $disk.Name }} 4 || true
@@ -37,7 +40,7 @@ apt install zfsutils-linux -y
   echo ",1K,L" | sfdisk -N 4 /dev/{{ $disk.Name }} --force --no-reread
   {{- end }}
 
-  {{- $partitionSize := "1K" }}
+  {{- $partitionSize := "4K" }}
   {{- if gt $disk.Allocations.ZFS 0 }}
   {{- $partitionSize = printf "%dG" $disk.Allocations.ZFS }}
   {{- end }}
