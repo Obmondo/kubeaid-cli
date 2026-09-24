@@ -209,6 +209,7 @@ flowchart TB
 | -------------------- | --------------------------------------------------------------------------------------------- | ----------------------- |
 | `kubeaid-cli`        | The whole tool — parses config, renders manifests, drives Cluster API / KubeOne and ArgoCD. The `kubeaid-core` engine is compiled in. | Operator workstation    |
 | `kubeaid-storagectl` | Applies storage plans (disk partition, ZFS pool, Ceph prep).                                  | On each bare-metal host |
+| `siem-reconciler`    | Reconciles the SIEM stack's API state (Keycloak, IRIS, Wazuh, Velociraptor) from a tenants file; see [siem-reconciler.md](siem-reconciler.md). | Job/CronJob in the cluster |
 
 Operators install only `kubeaid-cli`. Go, the CAPI providers, `kubectl`, `clusterctl`, and `helm` are vendored into the binary; **Docker** is required only to run a local [K3D](https://k3d.io/) cluster (Kubernetes-in-Docker) — and only for the Cluster API clouds, since the bare-metal (KubeOne) path installs directly onto the hosts.
 
@@ -589,7 +590,8 @@ kubeaid-cli/
 ├── cmd/
 │   ├── kubeaid-cli/         # Binary entry point (embeds kubeaid-core root)
 │   ├── kubeaid-core/        # Engine: Cobra command tree, compiled into kubeaid-cli
-│   └── kubeaid-storagectl/  # Bare-metal storage plan executor
+│   ├── kubeaid-storagectl/  # Bare-metal storage plan executor
+│   └── siem-reconciler/     # SIEM tenant reconciler (pkg/siem, pkg/keycloak)
 ├── pkg/
 │   ├── core/                # Lifecycle orchestration (bootstrap, upgrade, delete…)
 │   │   └── templates/       # embed.FS: KubeAid Config manifests (CAPI, ArgoCD apps, Sealed Secrets, KubeOne)
@@ -605,6 +607,8 @@ kubeaid-cli/
 │   │   └── templates/       # embed.FS: general.yaml.tmpl, secrets.yaml.tmpl (config generate)
 │   ├── constants/           # Shared names, env vars, flag names, timeouts
 │   ├── globals/             # Process-wide state (parsed configs, CP instance)
+│   ├── keycloak/            # Idempotent Keycloak admin-API reconciler (bootstrap + SIEM)
+│   ├── siem/                # siem-reconciler: config, secrets, iris, wazuh, velociraptor, reconcile
 │   └── utils/
 │       ├── assert/          # Fail-fast helpers (os.Exit on error)
 │       ├── git/             # Clone, commit, PR
