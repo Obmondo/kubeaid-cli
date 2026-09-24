@@ -262,7 +262,7 @@ func (r *Reconciler) updateClientSettings(
 		have := asStrings(cur[key])
 		if add := missing(have, want); len(add) > 0 {
 			cur[key] = append(have, add...)
-			drift = append(drift, key)
+			drift = append(drift, key+"+="+strings.Join(add, " "))
 		}
 	}
 
@@ -291,7 +291,7 @@ func (r *Reconciler) updateClientSettings(
 		have := splitHashes(asString(attrs[attrPostLogoutRedirectURIs]))
 		if add := missing(have, spec.PostLogoutRedirectURIs); len(add) > 0 {
 			attrs[attrPostLogoutRedirectURIs] = strings.Join(append(have, add...), "##")
-			drift = append(drift, "attributes."+attrPostLogoutRedirectURIs)
+			drift = append(drift, "attributes."+attrPostLogoutRedirectURIs+"+="+strings.Join(add, " "))
 		}
 	}
 	cur["attributes"] = attrs

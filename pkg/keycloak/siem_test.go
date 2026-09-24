@@ -233,7 +233,7 @@ func TestEnsureClient_DriftSupersetsAndSecret(t *testing.T) {
 	results, err := r.EnsureClient(ctx, testRealm, spec)
 	require.NoError(t, err)
 	assert.Equal(t, ChangeUpdated, results[0].Change)
-	assert.Equal(t, "name,redirectUris", results[0].Detail)
+	assert.Equal(t, "name,redirectUris+=https://dashboard.example.com/login", results[0].Detail)
 	assert.Equal(t, KindClientSecret, results[1].Kind)
 	assert.Equal(t, ChangeUpdated, results[1].Change)
 	assert.Equal(t, 0, fake.writeCount)
