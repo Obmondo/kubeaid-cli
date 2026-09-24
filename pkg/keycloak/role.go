@@ -34,7 +34,7 @@ func (r *Reconciler) AssignClientServiceAccountRole(
 		return err
 	}
 
-	svcAccount, err := r.api.GetClientServiceAccount(ctx, r.token, realm, srcID)
+	svcAccount, err := r.api.GetClientServiceAccount(ctx, r.tok(ctx), realm, srcID)
 	if err != nil {
 		return fmt.Errorf(
 			"reading service-account user for client %q in realm %q: %w",
@@ -48,7 +48,7 @@ func (r *Reconciler) AssignClientServiceAccountRole(
 		)
 	}
 
-	existing, err := r.api.GetClientRolesByUserID(ctx, r.token, realm, targetID, *svcAccount.ID)
+	existing, err := r.api.GetClientRolesByUserID(ctx, r.tok(ctx), realm, targetID, *svcAccount.ID)
 	if err != nil {
 		return fmt.Errorf(
 			"reading existing service-account roles in realm %q: %w", realm, err,
@@ -60,7 +60,7 @@ func (r *Reconciler) AssignClientServiceAccountRole(
 		}
 	}
 
-	role, err := r.api.GetClientRole(ctx, r.token, realm, targetID, roleName)
+	role, err := r.api.GetClientRole(ctx, r.tok(ctx), realm, targetID, roleName)
 	if err != nil {
 		return fmt.Errorf(
 			"looking up role %q on client %q in realm %q: %w",
@@ -75,7 +75,7 @@ func (r *Reconciler) AssignClientServiceAccountRole(
 	}
 
 	if err := r.api.AddClientRolesToUser(
-		ctx, r.token, realm, targetID, *svcAccount.ID, []gocloak.Role{*role},
+		ctx, r.tok(ctx), realm, targetID, *svcAccount.ID, []gocloak.Role{*role},
 	); err != nil {
 		return fmt.Errorf(
 			"granting role %q from client %q to service-account of %q in realm %q: %w",
@@ -89,7 +89,7 @@ func (r *Reconciler) AssignClientServiceAccountRole(
 // Keycloak's internal id (the UUID admin APIs require for further
 // lookups). Returns a wrapped error if not found.
 func (r *Reconciler) lookupClientInternalID(ctx context.Context, realm, clientID string) (string, error) {
-	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+	clients, err := r.api.GetClients(ctx, r.tok(ctx), realm, gocloak.GetClientsParams{
 		ClientID: gocloak.StringP(clientID),
 	})
 	if err != nil {

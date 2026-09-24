@@ -68,7 +68,7 @@ const keycloakAttrDeviceAuthorizationGrantEnabled = "oauth2.device.authorization
 // or the secret Keycloak generated and we read back). Public
 // clients return "".
 func (r *Reconciler) ReconcileClient(ctx context.Context, realm string, spec ClientSpec) (string, error) {
-	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+	clients, err := r.api.GetClients(ctx, r.tok(ctx), realm, gocloak.GetClientsParams{
 		ClientID: gocloak.StringP(spec.ClientID),
 	})
 	if err != nil {
@@ -83,7 +83,7 @@ func (r *Reconciler) ReconcileClient(ctx context.Context, realm string, spec Cli
 	}
 
 	created := buildClient(spec)
-	id, err := r.api.CreateClient(ctx, r.token, realm, created)
+	id, err := r.api.CreateClient(ctx, r.tok(ctx), realm, created)
 	if err != nil {
 		return "", fmt.Errorf("creating client %q in realm %q: %w", spec.ClientID, realm, err)
 	}
@@ -118,7 +118,7 @@ func findClientByClientID(clients []*gocloak.Client, clientID string) *gocloak.C
 // idOfClient is Keycloak's internal id (returned from CreateClient
 // or in Client.ID), not the user-facing ClientID.
 func (r *Reconciler) fetchClientSecret(ctx context.Context, realm, idOfClient string) (string, error) {
-	cred, err := r.api.GetClientSecret(ctx, r.token, realm, idOfClient)
+	cred, err := r.api.GetClientSecret(ctx, r.tok(ctx), realm, idOfClient)
 	if err != nil {
 		return "", fmt.Errorf("reading secret for client %q: %w", idOfClient, err)
 	}
@@ -179,7 +179,7 @@ func buildClient(spec ClientSpec) gocloak.Client {
 func (r *Reconciler) EnsureClientDeviceAuthorizationGrant(
 	ctx context.Context, realm, clientID string, enabled bool,
 ) error {
-	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+	clients, err := r.api.GetClients(ctx, r.tok(ctx), realm, gocloak.GetClientsParams{
 		ClientID: gocloak.StringP(clientID),
 	})
 	if err != nil {
@@ -210,7 +210,7 @@ func (r *Reconciler) EnsureClientDeviceAuthorizationGrant(
 	// from the JSON body via `omitempty`, so Secret stays untouched
 	// for confidential clients too.
 	client.Attributes = &attrs
-	if err := r.api.UpdateClient(ctx, r.token, realm, *client); err != nil {
+	if err := r.api.UpdateClient(ctx, r.tok(ctx), realm, *client); err != nil {
 		return fmt.Errorf("updating attributes on client %q: %w", clientID, err)
 	}
 	return nil
