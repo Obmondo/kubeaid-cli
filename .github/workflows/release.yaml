@@ -35,7 +35,7 @@ jobs:
       - name: Append the security scan result to the job summary
         run: |
           {
-            echo "### 🛡️ Sourcecode security scan result :"
+            echo "### 🛡️ Sourcecode security & license scan result :"
             echo ""
             echo '```terraform'
             cat security-scan-result.txt

@@ -21,6 +21,7 @@ scan:
     - vuln
     - secret
     - misconfig
+    - license
   skip-dirs:
     - e2e/compose/configs
 
@@ -31,3 +32,8 @@ pkg:
   types:
     - os
     - library
+
+# Classify dependency licenses (e.g. flag copyleft/AGPL/GPL Go modules pulled in
+# transitively) so a license drift shows up in the same scan as vulnerabilities.
+license:
+  full: true
