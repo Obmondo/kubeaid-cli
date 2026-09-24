@@ -25,6 +25,10 @@ const (
 	pathSegClientScopes    = "client-scopes"
 	pathSegUsers           = "users"
 	pathSegProtocolMappers = "protocol-mappers"
+	pathSegRoles           = "roles"
+	pathSegGroups          = "groups"
+	pathSegModels          = "models"
+	pathSegFlows           = "flows"
 )
 
 // fakeKeycloak is an in-memory mock of just enough of Keycloak's
@@ -234,9 +238,9 @@ func (f *fakeKeycloak) handleRealmsPrefixed(w http.ResponseWriter, r *http.Reque
 		f.handleUsersList(w, r, realm)
 	case parts[1] == pathSegUsers && len(parts) >= 3:
 		f.handleUserByID(w, r, realm, parts[2:])
-	case parts[1] == "roles":
+	case parts[1] == pathSegRoles:
 		f.handleRealmRoles(w, r, realm, parts[2:])
-	case parts[1] == "groups":
+	case parts[1] == pathSegGroups:
 		f.handleGroups(w, r, realm, parts[2:])
 	case parts[1] == "authentication":
 		f.handleAuthentication(w, r, realm, parts[2:])
@@ -332,11 +336,11 @@ func (f *fakeKeycloak) handleClientByID(w http.ResponseWriter, r *http.Request, 
 		f.handleClientDefaultScope(w, r, realm, clientInternalID, parts[2])
 	case len(parts) == 2 && parts[1] == "service-account-user":
 		f.handleClientServiceAccount(w, r, realm, clientInternalID)
-	case len(parts) == 2 && parts[1] == "roles":
+	case len(parts) == 2 && parts[1] == pathSegRoles:
 		f.handleClientRolesList(w, r, realm, clientInternalID)
-	case len(parts) == 3 && parts[1] == "roles":
+	case len(parts) == 3 && parts[1] == pathSegRoles:
 		f.handleClientRoleByName(w, r, realm, clientInternalID, parts[2])
-	case len(parts) >= 3 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
+	case len(parts) >= 3 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
 		f.handleClientMappers(w, r, realm, clientInternalID, parts[3:])
 	case len(parts) >= 3 && parts[1] == "scope-mappings":
 		f.handleClientScopeMappings(w, r, realm, clientInternalID, parts[2:])
@@ -612,10 +616,10 @@ func (f *fakeKeycloak) handleClientScopeByID(w http.ResponseWriter, r *http.Requ
 	switch {
 	case len(parts) == 2 && parts[1] == pathSegProtocolMappers:
 		f.handleScopeProtocolMappersList(w, r, realm, scopeID)
-	case len(parts) == 3 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
+	case len(parts) == 3 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
 		// Keycloak's POST endpoint is /protocol-mappers/models
 		f.handleScopeProtocolMapperCreate(w, r, realm, scopeID)
-	case len(parts) == 4 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
+	case len(parts) == 4 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
 		// /protocol-mappers/models/{mapperID} — PUT updates the
 		// named mapper in-place. Matches gocloak.UpdateClientScopeProtocolMapper.
 		f.handleScopeProtocolMapperUpdate(w, r, realm, scopeID, parts[3])
@@ -893,7 +897,7 @@ func newTestReconciler(t *testing.T) (*Reconciler, *fakeKeycloak) {
 // the built-in "browser" flow. Caller holds f.mu.
 func (f *fakeKeycloak) seedRealmState(realm string) {
 	f.realmReps[realm] = map[string]any{
-		"realm":               realm,
+		keyRealm:              realm,
 		"enabled":             true,
 		"bruteForceProtected": false,
 		"otpPolicyType":       "totp",
@@ -903,7 +907,7 @@ func (f *fakeKeycloak) seedRealmState(realm string) {
 		"browserFlow":         "browser",
 	}
 	f.requiredActions[realm] = map[string]map[string]any{
-		"CONFIGURE_TOTP": {"alias": "CONFIGURE_TOTP", "name": "Configure OTP", "enabled": true, "defaultAction": false},
+		"CONFIGURE_TOTP": {keyAlias: "CONFIGURE_TOTP", keyName: "Configure OTP", "enabled": true, "defaultAction": false},
 	}
 	f.flows[realm] = map[string][]map[string]any{"browser": stockBrowserFlow(f.nextID)}
 }
@@ -1077,13 +1081,13 @@ func (f *fakeKeycloak) handleAuthentication(w http.ResponseWriter, r *http.Reque
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	case len(rest) == 1 && rest[0] == "flows" && r.Method == http.MethodGet:
+	case len(rest) == 1 && rest[0] == pathSegFlows && r.Method == http.MethodGet:
 		out := []map[string]any{}
 		for alias := range flows {
 			out = append(out, map[string]any{"id": "flow-" + alias, "alias": alias})
 		}
 		writeJSON(w, out)
-	case len(rest) == 3 && rest[0] == "flows" && rest[2] == "copy" && r.Method == http.MethodPost:
+	case len(rest) == 3 && rest[0] == pathSegFlows && rest[2] == "copy" && r.Method == http.MethodPost:
 		src, ok := flows[rest[1]]
 		if !ok {
 			http.Error(w, "flow not found", http.StatusNotFound)
@@ -1110,7 +1114,7 @@ func (f *fakeKeycloak) handleAuthentication(w http.ResponseWriter, r *http.Reque
 		flows[newName] = cp
 		f.noteWrite()
 		w.WriteHeader(http.StatusCreated)
-	case len(rest) == 3 && rest[0] == "flows" && rest[2] == "executions":
+	case len(rest) == 3 && rest[0] == pathSegFlows && rest[2] == "executions":
 		execs, ok := flows[rest[1]]
 		if !ok {
 			http.Error(w, "flow not found", http.StatusNotFound)

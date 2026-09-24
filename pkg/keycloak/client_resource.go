@@ -153,7 +153,7 @@ func buildClient(spec ClientSpec) gocloak.Client {
 	}
 	if spec.DeviceAuthorizationGrantEnabled {
 		c.Attributes = &map[string]string{
-			keycloakAttrDeviceAuthorizationGrantEnabled: "true",
+			keycloakAttrDeviceAuthorizationGrantEnabled: valueTrue,
 		}
 	}
 	return c

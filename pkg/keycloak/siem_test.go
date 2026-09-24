@@ -23,6 +23,9 @@ const (
 	testTenantName  = "Tenant 001"
 	testClientID    = "dashboard"
 	testBrowserFlow = "browser"
+	testAnalystRole = "analyst"
+	testGroup       = "tenant-001"
+	testClaimName   = "claim.name"
 )
 
 func boolP(b bool) *bool { return &b }
@@ -96,17 +99,17 @@ func TestEnsureRolesGroupsAndMappings(t *testing.T) {
 
 	run := func() []Change {
 		var out []Change
-		for _, role := range []RealmRoleSpec{{Name: "analyst"}, {Name: "tenant-001", Description: testTenantName}} {
+		for _, role := range []RealmRoleSpec{{Name: testAnalystRole}, {Name: testGroup, Description: testTenantName}} {
 			c, err := r.EnsureRealmRole(ctx, testRealm, role)
 			require.NoError(t, err)
 			out = append(out, c)
 		}
-		for _, g := range []string{"tenant-001", "analysts"} {
+		for _, g := range []string{testGroup, "analysts"} {
 			c, err := r.EnsureGroup(ctx, testRealm, g)
 			require.NoError(t, err)
 			out = append(out, c)
 		}
-		c, err := r.EnsureGroupRealmRoles(ctx, testRealm, "tenant-001", []string{"tenant-001"})
+		c, err := r.EnsureGroupRealmRoles(ctx, testRealm, testGroup, []string{testGroup})
 		require.NoError(t, err)
 		return append(out, c)
 	}
@@ -126,8 +129,8 @@ func TestEnsureRolesGroupsAndMappings(t *testing.T) {
 
 	// Description drift is corrected; a group whose name merely
 	// contains another group's name is not mistaken for it.
-	fake.realmRoles[testRealm]["tenant-001"]["description"] = "changed"
-	c, err := r.EnsureRealmRole(ctx, testRealm, RealmRoleSpec{Name: "tenant-001", Description: testTenantName})
+	fake.realmRoles[testRealm][testGroup]["description"] = "changed"
+	c, err := r.EnsureRealmRole(ctx, testRealm, RealmRoleSpec{Name: testGroup, Description: testTenantName})
 	require.NoError(t, err)
 	assert.Equal(t, ChangeUpdated, c)
 	c, err = r.EnsureGroup(ctx, testRealm, "tenant-00")
@@ -152,9 +155,9 @@ func siemClientSpec() ManagedClientSpec {
 		ProtocolMappers: []ProtocolMapperSpec{{
 			Name:           "realm roles",
 			ProtocolMapper: "oidc-usermodel-realm-role-mapper",
-			Config:         map[string]string{"claim.name": "roles", "multivalued": "true", "introspection.token.claim": "true"},
+			Config:         map[string]string{testClaimName: "roles", "multivalued": valueTrue, "introspection.token.claim": valueTrue},
 		}},
-		ScopeMappingsRealm:        []string{"analyst"},
+		ScopeMappingsRealm:        []string{testAnalystRole},
 		ScopeMappingsClient:       map[string][]string{realmManagementClientID: {"query-users"}},
 		ServiceAccountClientRoles: map[string][]string{realmManagementClientID: {"view-users"}},
 	}
@@ -166,7 +169,7 @@ func seedClientPrereqs(t *testing.T, r *Reconciler, fake *fakeKeycloak) {
 	_, err := r.ReconcileClient(ctx, testRealm, ClientSpec{ClientID: realmManagementClientID})
 	require.NoError(t, err)
 	require.NoError(t, r.ReconcileClientScope(ctx, testRealm, ClientScopeSpec{Name: "email", Protocol: protocolOIDC}))
-	_, err = r.EnsureRealmRole(ctx, testRealm, RealmRoleSpec{Name: "analyst"})
+	_, err = r.EnsureRealmRole(ctx, testRealm, RealmRoleSpec{Name: testAnalystRole})
 	require.NoError(t, err)
 	fake.writeCount = 0
 }
@@ -249,7 +252,7 @@ func TestEnsureClient_DriftSupersetsAndSecret(t *testing.T) {
 
 	// Mapper config drift is corrected in place.
 	for _, m := range fake.clientMappers[testRealm] {
-		asMap(m[0]["config"])["claim.name"] = "wrong"
+		asMap(m[0]["config"])[testClaimName] = "wrong"
 	}
 	results, err = r.EnsureClient(ctx, testRealm, spec)
 	require.NoError(t, err)
@@ -368,7 +371,7 @@ func TestEnsureIdentityProvider(t *testing.T) {
 		Enabled:      true,
 		Config:       map[string]string{"issuer": "https://idp.example.com", "clientId": "kc"},
 		ClientSecret: "hidden",
-		Group:        "tenant-001",
+		Group:        testGroup,
 	}
 
 	r.SetDryRun(true)
@@ -385,7 +388,7 @@ func TestEnsureIdentityProvider(t *testing.T) {
 	require.NoError(t, err)
 	allNone(t, results)
 	assert.Equal(t, writes, fake.writeCount, "masked secret must not count as drift")
-	assert.Equal(t, "/tenant-001", asMap(fake.idpMappers[testRealm]["tenant-001-idp"][0]["config"])["group"])
+	assert.Equal(t, "/"+testGroup, asMap(fake.idpMappers[testRealm]["tenant-001-idp"][0]["config"])["group"])
 
 	spec.Config["issuer"] = "https://new.example.com"
 	results, err = r.EnsureIdentityProvider(ctx, testRealm, spec)
