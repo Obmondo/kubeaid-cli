@@ -11,14 +11,16 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const irisComponent = "iris"
+
 func TestPrintAndSummarize(t *testing.T) {
 	t.Parallel()
 	results := []Result{
 		{Component: "keycloak", Kind: "group", Name: "tenant-001", Action: ActionOK},
 		{Component: "keycloak", Kind: "client", Name: "iris", Action: ActionUpdate, Detail: "redirectUris"},
-		{Component: "iris", Kind: "customer", Name: "Tenant A", Action: ActionCreate},
+		{Component: irisComponent, Kind: "customer", Name: "Tenant A", Action: ActionCreate},
 		{Component: "wazuh", Kind: "api", Name: "login", Action: ActionError, Detail: "boom"},
-		{Component: "iris", Kind: "service-account", Name: "svc", Action: ActionSkip},
+		{Component: irisComponent, Kind: "service-account", Name: "svc", Action: ActionSkip},
 	}
 	assert.Equal(t, Summary{Changes: 2, Errors: 1}, Summarize(results))
 

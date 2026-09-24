@@ -302,55 +302,45 @@ func (c *Config) applyDefaults() {
 		c.Keycloak.AdminUsername = DefaultKeycloakAdmin
 	}
 	if f := c.Keycloak.MFAFlow; f != nil {
-		if f.Alias == "" {
-			f.Alias = DefaultMFAFlowAlias
-		}
-		if f.CopyFrom == "" {
-			f.CopyFrom = DefaultMFAFlowCopyFrom
-		}
+		f.Alias = orDefault(f.Alias, DefaultMFAFlowAlias)
+		f.CopyFrom = orDefault(f.CopyFrom, DefaultMFAFlowCopyFrom)
 	}
 	for i := range c.Tenants {
-		t := &c.Tenants[i]
-		if t.IdP == nil {
-			continue
-		}
-		if t.IdP.Alias == "" {
-			t.IdP.Alias = c.GroupName(*t) + "-idp"
-		}
-		if t.IdP.DisplayName == "" {
-			t.IdP.DisplayName = t.Name
-		}
-		if t.IdP.ProviderID == "" {
-			t.IdP.ProviderID = DefaultIdPProvider
+		if idp := c.Tenants[i].IdP; idp != nil {
+			idp.Alias = orDefault(idp.Alias, c.GroupName(c.Tenants[i])+"-idp")
+			idp.DisplayName = orDefault(idp.DisplayName, c.Tenants[i].Name)
+			idp.ProviderID = orDefault(idp.ProviderID, DefaultIdPProvider)
 		}
 	}
 	for i := range c.Secrets {
 		for j := range c.Secrets[i].Keys {
-			if c.Secrets[i].Keys[j].Generator == "" {
-				c.Secrets[i].Keys[j].Generator = GeneratorPassword
-			}
+			k := &c.Secrets[i].Keys[j]
+			k.Generator = orDefault(k.Generator, GeneratorPassword)
 		}
 	}
-	if iris := c.Components.IRIS; iris != nil && iris.InitialCustomer == "" {
-		iris.InitialCustomer = DefaultIRISInitialCust
+	c.applyComponentDefaults()
+}
+
+func (c *Config) applyComponentDefaults() {
+	if iris := c.Components.IRIS; iris != nil {
+		iris.InitialCustomer = orDefault(iris.InitialCustomer, DefaultIRISInitialCust)
 	}
 	if w := c.Components.Wazuh; w != nil {
-		if w.CredSecretRef.UsernameKey == "" {
-			w.CredSecretRef.UsernameKey = DefaultWazuhUsernameKey
-		}
-		if w.CredSecretRef.PasswordKey == "" {
-			w.CredSecretRef.PasswordKey = DefaultWazuhPasswordKey
-		}
-		if w.AdminAPIRole == "" {
-			w.AdminAPIRole = DefaultWazuhAdminRole
-		}
-		if w.AnalystAPIRole == "" {
-			w.AnalystAPIRole = DefaultWazuhAnalystRole
-		}
+		w.CredSecretRef.UsernameKey = orDefault(w.CredSecretRef.UsernameKey, DefaultWazuhUsernameKey)
+		w.CredSecretRef.PasswordKey = orDefault(w.CredSecretRef.PasswordKey, DefaultWazuhPasswordKey)
+		w.AdminAPIRole = orDefault(w.AdminAPIRole, DefaultWazuhAdminRole)
+		w.AnalystAPIRole = orDefault(w.AnalystAPIRole, DefaultWazuhAnalystRole)
 	}
-	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil && v.APIClientSecretRef.Key == "" {
-		v.APIClientSecretRef.Key = DefaultVeloAPIClientKey
+	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil {
+		v.APIClientSecretRef.Key = orDefault(v.APIClientSecretRef.Key, DefaultVeloAPIClientKey)
 	}
+}
+
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
 }
 
 var (
@@ -374,7 +364,14 @@ func (c *Config) Validate() error {
 		fail("keycloak.url and keycloak.realm are required")
 	}
 	validateRef(fail, "keycloak.adminSecretRef", c.Keycloak.AdminSecretRef)
+	c.validateTenants(fail)
+	c.validateClients(fail)
+	c.validateSecrets(fail)
+	c.validateComponents(fail)
+	return errors.Join(errs...)
+}
 
+func (c *Config) validateTenants(fail func(string, ...any)) {
 	codes, names := map[string]bool{}, map[string]bool{}
 	for i, t := range c.Tenants {
 		where := fmt.Sprintf("tenants[%d]", i)
@@ -399,7 +396,9 @@ func (c *Config) Validate() error {
 			validateRef(fail, where+".idp.clientSecretRef", *t.IdP.ClientSecretRef)
 		}
 	}
+}
 
+func (c *Config) validateClients(fail func(string, ...any)) {
 	clientIDs := map[string]bool{}
 	for i, cl := range c.Clients {
 		where := fmt.Sprintf("clients[%d]", i)
@@ -424,7 +423,9 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
+}
 
+func (c *Config) validateSecrets(fail func(string, ...any)) {
 	for i, s := range c.Secrets {
 		where := fmt.Sprintf("secrets[%d]", i)
 		if s.Namespace == "" || s.Name == "" || len(s.Keys) == 0 {
@@ -441,9 +442,6 @@ func (c *Config) Validate() error {
 			}
 		}
 	}
-
-	c.validateComponents(fail)
-	return errors.Join(errs...)
 }
 
 func (c *Config) validateComponents(fail func(string, ...any)) {

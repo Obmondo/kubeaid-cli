@@ -49,7 +49,7 @@ func (s Store) Read(ctx context.Context, ref config.SecretRef) (string, error) {
 	}
 	v, ok := sec.Data[ref.Key]
 	if !ok || len(v) == 0 {
-		return "", fmt.Errorf("Secret %s/%s has no key %q", ref.Namespace, ref.Name, ref.Key)
+		return "", fmt.Errorf("secret %s/%s has no key %q", ref.Namespace, ref.Name, ref.Key)
 	}
 	return strings.TrimRight(string(v), "\r\n"), nil
 }
