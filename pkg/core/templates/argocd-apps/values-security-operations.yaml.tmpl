@@ -215,6 +215,22 @@ velociraptor:
       - ip: {{ .SecOps.KeycloakHostAliasIP }}
         hostnames: [{{ .SecOps.KeycloakHost }}]
 {{- end }}
+{{- if .SecOps.ReconcilerEnabled }}
+    # Mints the reconciler's Velociraptor API client before the server starts and
+    # stores it in Secret velociraptor-api-client; the publisher init container
+    # runs the reconciler image (the chart checks that both match).
+    apiClient:
+      enabled: true
+      publisherImage:
+        repository: {{ .SecOps.ReconcilerImage }}
+        tag: {{ .SecOps.ReconcilerImageTag }}
+      {{- with .SecOps.ReconcilerImagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . }}
+        {{- end }}
+      {{- end }}
+{{- end }}
     gui:
       publicUrl: https://{{ .SecOps.VelociraptorHost }}/app/index.html
       ingress:

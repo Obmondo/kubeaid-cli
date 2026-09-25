@@ -78,6 +78,9 @@ type SecurityOperationsValues struct {
 	ReconcilerImageTag         string
 	ReconcilerImagePullSecrets []string
 	ReconcilerDryRun           bool
+	// ReconcilerImage is the reconciler image repository with the chart's
+	// default filled in: the Velociraptor API client publisher runs it too.
+	ReconcilerImage string
 
 	CentralIndexerDN string
 
@@ -194,6 +197,7 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		ReconcilerImageTag:         cfg.Reconciler.ImageTag,
 		ReconcilerImagePullSecrets: cfg.Reconciler.ImagePullSecrets,
 		ReconcilerDryRun:           cfg.Reconciler.DryRun == nil || *cfg.Reconciler.DryRun,
+		ReconcilerImage:            cfg.Reconciler.ImageRepository,
 
 		CentralIndexerDN: securityOperationsCentralIndexerDN,
 
@@ -202,6 +206,10 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 
 		AdminRole:   "administrator",
 		AnalystRole: "analyst",
+	}
+
+	if values.ReconcilerImage == "" {
+		values.ReconcilerImage = constants.SecurityOperationsDefaultReconcilerImage
 	}
 
 	for _, tenant := range cfg.Tenants {

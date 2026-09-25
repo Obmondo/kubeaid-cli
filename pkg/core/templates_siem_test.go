@@ -369,6 +369,14 @@ func TestSIEMCentralValuesReconciler(t *testing.T) {
 	}, values["reconciler"])
 	assert.Equal(t, []any{}, values["tenants"])
 	assert.Equal(t, []any{}, dig(t, values, "misp", "wazuhCdbExport", "targets"))
+	// The Velociraptor API client publisher runs the reconciler image; the
+	// chart fails the render when the two differ.
+	assert.Equal(t, map[string]any{
+		"enabled": true,
+		"publisherImage": map[string]any{
+			"repository": "ghcr.io/obmondo/siem-reconciler", "tag": "v1.2.3",
+		},
+	}, dig(t, values, "velociraptor", "velociraptor", "apiClient"))
 
 	// A private registry: repository and tag together.
 	soc.Reconciler.ImageRepository = "registry.example.com/soc/siem-reconciler"
@@ -378,12 +386,23 @@ func TestSIEMCentralValuesReconciler(t *testing.T) {
 		"repository": "registry.example.com/soc/siem-reconciler", "tag": "v1.2.3",
 	}, dig(t, values, "reconciler", "image"))
 	assert.NotContains(t, digMap(t, values, "reconciler"), "imagePullSecrets")
+	assert.Equal(t, dig(t, values, "reconciler", "image"),
+		dig(t, values, "velociraptor", "velociraptor", "apiClient", "publisherImage"))
+	assert.NotContains(t, digMap(t, values, "velociraptor", "velociraptor", "apiClient"), "imagePullSecrets")
 
 	soc.Reconciler.ImagePullSecrets = []string{"registry-pull"}
 	tv.SecOps = buildSecurityOperationsValues()
 	values = renderDocs(t, siemValuesTmpl, tv)[0]
 	assert.Equal(t, []any{map[string]any{"name": "registry-pull"}},
 		dig(t, values, "reconciler", "imagePullSecrets"))
+	assert.Equal(t, []any{map[string]any{"name": "registry-pull"}},
+		dig(t, values, "velociraptor", "velociraptor", "apiClient", "imagePullSecrets"))
+
+	// Without the reconciler the chart default (no API client) stays.
+	soc.Reconciler.Enabled = false
+	tv.SecOps = buildSecurityOperationsValues()
+	values = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.NotContains(t, digMap(t, values, "velociraptor", "velociraptor"), "apiClient")
 }
 
 func TestSIEMTenantBaseValues(t *testing.T) {
@@ -696,4 +715,3 @@ func TestSIEMIRISKeycloakSync(t *testing.T) {
 	assert.Equal(t, "soc", dig(t, central, "dfir-iris", "keycloakSync", "keycloak", "realm"))
 	assert.Equal(t, "iris-keycloak-sync", dig(t, central, "dfir-iris", "keycloakSync", "existingSecret"))
 }
-

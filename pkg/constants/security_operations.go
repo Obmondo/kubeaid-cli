@@ -22,6 +22,10 @@ const (
 	SecurityOperationsDefaultIngressClass  = "traefik"
 	SecurityOperationsDefaultAgentPortBase = 20000
 
+	// SecurityOperationsDefaultReconcilerImage is the umbrella chart's
+	// reconciler.image.repository.
+	SecurityOperationsDefaultReconcilerImage = "ghcr.io/obmondo/siem-reconciler"
+
 	// Secrets every Wazuh release reads (wazuh chart README section 11).
 	SecretNameWazuhIndexerCred   = "wazuh-indexer-cred"
 	SecretNameWazuhDashboardCred = "wazuh-dashboard-cred"
