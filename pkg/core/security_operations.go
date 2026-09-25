@@ -266,17 +266,25 @@ func securityOperationsSecretFiles() []securityOperationsSecret {
 // credentials Secret into clusterDir, through SealIfPlaintextChanged so an
 // unchanged Secret keeps its ciphertext. Returns the written paths, relative
 // to clusterDir.
-func createOrUpdateSecurityOperationsSealedSecretFiles(ctx context.Context, clusterDir string) ([]string, error) {
+//
+// Secrets in a namespace listed in keep are left untouched (see
+// credentialsFromClusterDir).
+func createOrUpdateSecurityOperationsSealedSecretFiles(ctx context.Context, clusterDir string,
+	keep map[string]bool,
+) ([]string, error) {
 	var written []string
 
 	for _, secret := range securityOperationsSecretFiles() {
+		if keep[secret.Data.Namespace] {
+			continue
+		}
 		destinationFilePath := path.Join(clusterDir, secret.RelativePath)
 		ctxWithPath := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("path", destinationFilePath),
 		})
 
 		if secret.Data.Password == "" {
-			return written, fmt.Errorf("secrets.yaml has no password for %s/%s",
+			return written, fmt.Errorf("no password for %s/%s",
 				secret.Data.Namespace, secret.Data.Name)
 		}
 
@@ -327,13 +335,20 @@ func irisOptions(customerName string) string {
 // RenderSecurityOperations renders only the security operations files into
 // clusterDir (a local k8s/<cluster> checkout): the Applications, both values
 // files and the sealed Wazuh credentials. Nothing else in clusterDir is
-// touched and no git operation runs. secrets.yaml must already be filled
-// (parser.FillMissingSecrets). Returns the written paths, relative to
-// clusterDir.
+// touched and no git operation runs. It needs no secrets.yaml: the Wazuh
+// credentials come from clusterDir itself (credentialsFromClusterDir), so a
+// release rendered before keeps its passwords and new ones get fresh ones.
+// Returns the written paths, relative to clusterDir.
 func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string, error) {
 	if !config.SecurityOperationsEnabled() {
 		return nil, fmt.Errorf("cluster.securityOperations is not enabled in general.yaml")
 	}
+
+	creds, keep, err := credentialsFromClusterDir(clusterDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading the credential state in %s: %w", clusterDir, err)
+	}
+	config.ParsedSecretsConfig.SecurityOperations = creds
 
 	templateValues := &TemplateValues{
 		ForksConfig: config.ParsedGeneralConfig.Forks,
@@ -347,7 +362,7 @@ func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string,
 		written = append(written, relativePath)
 	}
 
-	sealed, err := createOrUpdateSecurityOperationsSealedSecretFiles(ctx, clusterDir)
+	sealed, err := createOrUpdateSecurityOperationsSealedSecretFiles(ctx, clusterDir, keep)
 	written = append(written, sealed...)
 	return written, err
 }

@@ -11,19 +11,24 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	configSetup "github.com/Obmondo/kubeaid-cli/pkg/config/setup"
+	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/core"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 const (
 	flagNameClusterDir        = "cluster-dir"
+	flagNameGeneralConfig     = "general-config"
 	flagNameSealedSecretsCert = "sealed-secrets-cert"
+
+	// generalConfigFileName is kubeaid-cli's copy of general.yaml in a
+	// cluster's kubeaid-config directory.
+	generalConfigFileName = "kubeaid-cli.general.yaml"
 )
 
 var SiemCmd = &cobra.Command{
@@ -34,7 +39,7 @@ var SiemCmd = &cobra.Command{
 var RenderCmd = &cobra.Command{
 	Use:   "render",
 	Short: "Render only the security operations files into an existing cluster's config directory",
-	Long: `Renders the files for cluster.securityOperations in general.yaml, and nothing else:
+	Long: `Renders the files for cluster.securityOperations, and nothing else:
 
   argocd-apps/templates/security-operations.yaml   (central + one wazuh-<code> Application per tenant)
   argocd-apps/values-security-operations.yaml
@@ -42,7 +47,12 @@ var RenderCmd = &cobra.Command{
   sealed-secrets/security-operations/wazuh-{indexer,dashboard}-cred.yaml
   sealed-secrets/wazuh-<code>/wazuh-{indexer-cred,dashboard-cred,api-cred,authd-pass}.yaml
 
-Missing Wazuh passwords and their hashes are generated into secrets.yaml first.
+It reads only forkURLs and cluster.securityOperations from the general config
+(default: ` + generalConfigFileName + ` in --` + flagNameClusterDir + `); no secrets.yaml, no cloud
+credentials. The Wazuh passwords live only in the sealed Secrets: a release
+rendered before keeps its sealed files and password hashes, a new tenant (or
+one whose files are missing) gets fresh passwords.
+
 No git operation runs: review, commit and push the files yourself. Meant for
 clusters whose other kubeaid-config files are maintained by hand.
 
@@ -52,22 +62,21 @@ through the cluster in $KUBECONFIG (read-only).`,
 
 	Args: cobra.NoArgs,
 
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Parses general.yaml and secrets.yaml like every cluster command,
-		// filling missing generated secrets into secrets.yaml.
-		return configSetup.Prepare(cmd.Context())
-	},
-
 	RunE: func(cmd *cobra.Command, args []string) error {
 		dir := clusterDir
-		if dir == "" {
-			dir = utils.GetClusterDir()
-		}
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			return fmt.Errorf(
 				"cluster directory %q does not exist - pass --%s with a local checkout of k8s/<cluster> in the kubeaid-config repository",
 				dir, flagNameClusterDir,
 			)
+		}
+
+		generalConfigPath := generalConfig
+		if generalConfigPath == "" {
+			generalConfigPath = filepath.Join(dir, generalConfigFileName)
+		}
+		if err := parser.LoadSecurityOperationsConfig(generalConfigPath); err != nil {
+			return err
 		}
 
 		kubernetes.SealingCertSource = sealedSecretsCert
@@ -102,6 +111,7 @@ func printWritten(out io.Writer, dir string, written []string) {
 
 var (
 	clusterDir        string
+	generalConfig     string
 	sealedSecretsCert string
 )
 
@@ -109,9 +119,14 @@ func init() {
 	SiemCmd.AddCommand(RenderCmd)
 
 	RenderCmd.Flags().StringVar(&clusterDir, flagNameClusterDir, "",
-		"Local checkout of the cluster's directory (k8s/<cluster>) in the kubeaid-config repository."+
-			" Default: the cluster directory in kubeaid-cli's working copy")
+		"Local checkout of the cluster's directory (k8s/<cluster>) in the kubeaid-config repository")
 	RenderCmd.MarkFlagDirname(flagNameClusterDir)
+	_ = RenderCmd.MarkFlagRequired(flagNameClusterDir)
+
+	RenderCmd.Flags().StringVar(&generalConfig, flagNameGeneralConfig, "",
+		"General config with cluster.securityOperations and forkURLs. Default: "+
+			generalConfigFileName+" in --"+flagNameClusterDir)
+	RenderCmd.MarkFlagFilename(flagNameGeneralConfig)
 
 	RenderCmd.Flags().StringVar(&sealedSecretsCert, flagNameSealedSecretsCert, "",
 		"Sealed-secrets controller certificate (file path or URL) to seal with."+

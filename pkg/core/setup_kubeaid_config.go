@@ -305,7 +305,7 @@ func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *Templa
 	// Wazuh credentials of the security operations stack: one Secret per
 	// namespace and login, so rendered in a loop rather than from the
 	// one-file-per-template list above.
-	_, err := createOrUpdateSecurityOperationsSealedSecretFiles(ctx, clusterDir)
+	_, err := createOrUpdateSecurityOperationsSealedSecretFiles(ctx, clusterDir, nil)
 	assert.AssertErrNil(ctx, err, "Failed generating security operations sealed secrets")
 }
 

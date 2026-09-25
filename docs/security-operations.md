@@ -57,8 +57,9 @@ most 65535.
 
 ## secrets.yaml
 
-Filled in on every run when blank (like the NetBird and Keycloak secrets); existing
-passwords are never changed:
+Used by the cluster commands (bootstrap, upgrade); `kubeaid-cli siem render` does not use it
+(next section). Filled in on every run when blank (like the NetBird and Keycloak secrets);
+existing passwords are never changed:
 
 ```yaml
 securityOperations:
@@ -117,17 +118,25 @@ namespaces exist before the `secrets` and `wazuh-<code>` Apps sync.
 For a cluster whose other kubeaid-config files are maintained by hand:
 
 ```sh
-kubeaid-cli siem render --cluster-name <cluster> \
+kubeaid-cli siem render \
   --cluster-dir ~/src/kubeaid-config/k8s/<cluster> \
   --sealed-secrets-cert ./sealed-secrets.pem
 ```
 
-It parses `general.yaml` and `secrets.yaml` like the cluster commands (and so fills missing
-secrets into `secrets.yaml`), then writes only the files listed above and prints them. It runs
-no git operation: review the diff, commit and push yourself.
+It reads only `forkURLs` and `cluster.securityOperations` from the general config, by default
+`kubeaid-cli.general.yaml` in `--cluster-dir` (add the block there), then writes only the files
+listed above and prints them. It needs no `secrets.yaml`, no cloud credentials and runs no git
+operation: review the diff, commit and push yourself.
 
-- `--cluster-dir`: a local checkout of `k8s/<cluster>`. Default: the cluster directory in
-  kubeaid-cli's own working copy, which only exists after another command cloned it.
+The Wazuh passwords exist only inside the sealed Secrets; the rendered values hold their
+bcrypt hashes. A release (the central search, or one tenant) whose sealed files and hashes
+are already in `--cluster-dir` is left exactly as it is. A new tenant, or one whose sealed
+files are missing, gets fresh passwords; delete a tenant's sealed files to rotate them (its
+pods then need a restart). The plaintext of a running release can be read back from the
+cluster (`kubectl get secret`) if it is ever needed.
+
+- `--cluster-dir` (required): a local checkout of `k8s/<cluster>`.
+- `--general-config`: another file holding `forkURLs` and `cluster.securityOperations`.
 - `--sealed-secrets-cert`: the sealed-secrets controller's public certificate (file or URL).
   Without it the certificate is fetched from the controller (`sealed-secrets` namespace)
   through the cluster `$KUBECONFIG` points at, which needs read access to the service proxy.
