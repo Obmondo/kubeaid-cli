@@ -28,13 +28,9 @@ wazuh:
       existingSecret: wazuh-indexer-cred
     config:
       # The central search indexer may connect as a node (cross-cluster search).
-      nodesDn: |
-        _meta:
-          type: "nodes_dn"
-          config_version: 2
-        central_search:
-          nodes_dn:
-            - "{{ .SecOps.CentralIndexerDN }}"
+      # The static nodes_dn list: nodes_dn.yml is not read by default.
+      extraNodesDn:
+        - "{{ .SecOps.CentralIndexerDN }}"
     networkPolicy:
       extraIngresses:
         - ports:
