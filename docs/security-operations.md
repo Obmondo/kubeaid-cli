@@ -20,6 +20,7 @@ cluster:
     domain: example.com            # required
     hostPrefix: ""                 # hosts: <hostPrefix><component>.<domain>
     # chartRevision: my-branch     # KubeAid revision of the charts; default forks.kubeaid.version
+    # configRevision: my-branch    # kubeaid-config revision of the values files; default HEAD
     keycloak:
       url: https://keycloak.example.com/auth  # default https://<cluster.keycloak.dns>/auth
       realm: soc                   # default soc

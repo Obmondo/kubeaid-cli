@@ -294,6 +294,11 @@ type (
 		// from. Empty: the KubeAid fork version (forks.kubeaid.version).
 		ChartRevision string `yaml:"chartRevision"`
 
+		// ConfigRevision is the kubeaid-config git revision the Applications
+		// read their values files from. Empty: HEAD (the default branch). Set
+		// it to a feature branch to try the stack before that branch is merged.
+		ConfigRevision string `yaml:"configRevision"`
+
 		// Domain is the base domain of every SOC host name. Required.
 		Domain string `yaml:"domain"`
 

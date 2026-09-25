@@ -135,6 +135,10 @@ cluster:
     # security-operations and wazuh-<code> Applications take their charts
     # from. Empty: the KubeAid fork version (forks.kubeaid.version).
     chartRevision:
+    # ConfigRevision is the kubeaid-config git revision the Applications
+    # read their values files from. Empty: HEAD (the default branch). Set
+    # it to a feature branch to try the stack before that branch is merged.
+    configRevision:
     # Domain is the base domain of every SOC host name. Required.
     domain:
     # HostPrefix is put in front of every host name: central hosts are

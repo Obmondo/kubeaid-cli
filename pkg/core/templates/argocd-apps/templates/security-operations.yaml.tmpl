@@ -24,7 +24,7 @@ spec:
         valueFiles:
           - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-security-operations.yaml
     - repoURL: {{ .KubeaidConfigFork.URL }}
-      targetRevision: HEAD
+      targetRevision: {{ .SecOps.ConfigRevision }}
       ref: values
   syncPolicy:
     syncOptions:
@@ -108,7 +108,7 @@ spec:
                     <options>{{ .IRISOptions }}</options>
                   </integration>
     - repoURL: {{ $.KubeaidConfigFork.URL }}
-      targetRevision: HEAD
+      targetRevision: {{ $.SecOps.ConfigRevision }}
       ref: values
   syncPolicy:
     syncOptions:

@@ -862,6 +862,7 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 |-------|------|---------|-------------|
 | enabled | `bool` |  |  |
 | chartRevision | `string` |  | ChartRevision is the KubeAid git revision (branch, tag) the<br>security-operations and wazuh-<code> Applications take their charts<br>from. Empty: the KubeAid fork version (forks.kubeaid.version).<br> |
+| configRevision | `string` |  | ConfigRevision is the kubeaid-config git revision the Applications<br>read their values files from. Empty: HEAD (the default branch). Set<br>it to a feature branch to try the stack before that branch is merged.<br> |
 | domain | `string` |  | Domain is the base domain of every SOC host name. Required.<br> |
 | hostPrefix | `string` |  | HostPrefix is put in front of every host name: central hosts are<br><hostPrefix><component>.<domain> (wazuh, iris, misp, velociraptor),<br>tenant dashboards <hostPrefix>wazuh-<code>.<domain>.<br> |
 | keycloak | [`SecurityOperationsKeycloakConfig`](#securityoperationskeycloakconfig) |  | Keycloak is the realm every component logs in through.<br> |

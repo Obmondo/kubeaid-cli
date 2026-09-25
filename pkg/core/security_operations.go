@@ -37,6 +37,8 @@ const securityOperationsIRISMinLevel = 10
 type SecurityOperationsValues struct {
 	// ChartRevision is the KubeAid revision the Applications use.
 	ChartRevision string
+	// ConfigRevision is the kubeaid-config revision of the values files.
+	ConfigRevision string
 
 	Domain     string
 	HostPrefix string
@@ -130,6 +132,11 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		return fmt.Sprintf("%s%s.%s", cfg.HostPrefix, name, cfg.Domain)
 	}
 
+	configRevision := cfg.ConfigRevision
+	if configRevision == "" {
+		configRevision = "HEAD"
+	}
+
 	chartRevision := cfg.ChartRevision
 	if chartRevision == "" {
 		chartRevision = config.ParsedGeneralConfig.Forks.KubeaidFork.Version
@@ -138,7 +145,8 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 	keycloakURL := strings.TrimSuffix(cfg.Keycloak.URL, "/")
 
 	values := &SecurityOperationsValues{
-		ChartRevision: chartRevision,
+		ChartRevision:  chartRevision,
+		ConfigRevision: configRevision,
 
 		Domain:     cfg.Domain,
 		HostPrefix: cfg.HostPrefix,

@@ -271,6 +271,17 @@ func TestSIEMChartRevision(t *testing.T) {
 		source := asMap(t, digList(t, app, "spec", "sources")[0])
 		assert.Equal(t, "feat/security-operations", source["targetRevision"], name)
 		assert.Equal(t, "master", dig(t, app, "metadata", "labels", "kubeaid.io/version"), name)
+		values := asMap(t, digList(t, app, "spec", "sources")[1])
+		assert.Equal(t, "HEAD", values["targetRevision"], name)
+	}
+
+	// A feature branch of kubeaid-config for the values files.
+	config.ParsedGeneralConfig.Cluster.SecurityOperations.ConfigRevision = "feature-branch"
+	tv.SecOps = buildSecurityOperationsValues()
+	for name, app := range siemApps(t, tv) {
+		values := asMap(t, digList(t, app, "spec", "sources")[1])
+		assert.Equal(t, "feature-branch", values["targetRevision"], name)
+		assert.Equal(t, "values", values["ref"], name)
 	}
 }
 
