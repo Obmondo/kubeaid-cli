@@ -95,15 +95,17 @@ func linuxScript(b config.EnrolmentBundle, env [][2]string) string {
 	for _, kv := range env {
 		fmt.Fprintf(&s, "export %s=%s\n", kv[0], shQuote(kv[1]))
 	}
+	// apt-get/dnf install resolve the package's dependencies (lsb-release,
+	// adduser on minimal images), which dpkg -i and rpm -i do not.
 	fmt.Fprintf(&s, `V=%s
 if command -v dpkg >/dev/null 2>&1; then
   F="wazuh-agent_${V}_$(dpkg --print-architecture).deb"
   curl -fsSLo "/tmp/$F" "%s/apt/pool/main/w/wazuh-agent/$F"
-  dpkg -i "/tmp/$F"
+  apt-get install -y "/tmp/$F"
 else
   F="wazuh-agent-${V}.$(uname -m).rpm"
   curl -fsSLo "/tmp/$F" "%s/yum/$F"
-  rpm -ihv "/tmp/$F"
+  if command -v dnf >/dev/null 2>&1; then dnf install -y "/tmp/$F"; else yum install -y "/tmp/$F"; fi
 fi
 rm -f "/tmp/$F"
 systemctl daemon-reload
