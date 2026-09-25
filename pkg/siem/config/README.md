@@ -14,13 +14,15 @@ Kubernetes Secret.
 | Field | Type | Req. | Meaning |
 |---|---|---|---|
 | `domain` | string | yes | Base DNS domain (informational). |
-| `tenantGroupPrefix` | string | no (`tenant-`) | `prefix + code` names the tenant's Keycloak group and realm role, Wazuh agent group, Wazuh policies `<g>_agents` / `<g>_group`, role `<g>_readonly` and rule `oidc_<g with - as _>`. Lowercase letters, digits, dashes. |
+| `tenantGroupPrefix` | string | no (`tenant-`) | `prefix + code` names the tenant's Keycloak group and realm role (the OpenSearch backend role) and the rule `oidc_<g with - as _>` on the tenant's Wazuh manager. Lowercase letters, digits, dashes. |
 | `keycloak` | object | yes | See below. |
 | `operators` | object | yes | `adminRole`, `analystRole` (realm roles), `analystGroup` (group). Empty entries are skipped. |
 | `tenants` | list | yes | See below. |
 | `clients` | list | no | Keycloak OIDC clients. |
 | `secrets` | list | no | Secrets created with random values when missing. |
-| `components` | object | yes | `iris`, `wazuh`, `velociraptor`; an absent component is skipped. |
+| `secretCopies` | list | no | Single Secret keys copied into other Secrets, see below. |
+| `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`; an absent component is skipped. |
+| `enrolment` | list | no | Per-tenant agent enrolment bundle Secrets, see below. |
 
 ## `keycloak`
 
@@ -46,8 +48,9 @@ Kubernetes Secret.
 | `idp` | object | Optional broker: `alias` (default `<group>-idp`), `displayName` (default `name`), `providerId` (default `oidc`), `enabled` (default true), `trustEmail`, `config` (map of Keycloak IdP config keys; only listed keys are compared), `clientSecretRef` (used on create only). A hardcoded-group mapper puts every brokered user in the tenant group. |
 
 Per tenant the reconciler ensures: Keycloak group + realm role `<group>` with the
-group granting the role, IRIS customer `name`, Velociraptor org `name`, Wazuh
-agent group, policies, role and rule.
+group granting the role, IRIS customer `name` and Velociraptor org `name`. Its
+Wazuh manager (if listed under `components.wazuh`) gets the rule mapping the group
+to `tenantApiRole`.
 
 ## `clients[]`
 
@@ -64,10 +67,22 @@ to match this Secret; omit to leave the secret alone).
 
 ## `secrets[]`
 
-`{namespace, name, keys: [{key, generator}]}` with `generator` one of
-`password` (default, 32 alphanumerics), `hex32`, `base64-32`. Missing Secrets are
+`{namespace, name, keys: [{key, generator, value}]}` with `generator` one of
+`password` (default, 32 alphanumerics), `hex32`, `base64-32`, or a literal `value`
+(e.g. an OIDC client id next to its generated secret; `generator` is then
+ignored). Secrets may live in any namespace, including tenant namespaces. Missing Secrets are
 created; missing keys are added to Secrets the reconciler may write to. Existing
 values are never changed; Secrets owned by a SealedSecret are only checked.
+
+## `secretCopies[]`
+
+`{from: SecretRef, to: SecretRef}`. The `to` key is created, or overwritten when
+its bytes differ from `from` (other keys of the target Secret are kept; a missing
+target Secret is created). Targets are unique and never the source. A missing
+source is an error for that entry only. Values are compared, never printed. Run as
+part of the `secrets` component, after generation, so a copy may name a generated
+Secret as its source. Credentials sealed into the tenant namespaces are only read
+by the reconciler, never generated or copied by it.
 
 ## `components`
 
@@ -75,11 +90,51 @@ values are never changed; Secrets owned by a SealedSecret are only checked.
   `caFile`, `insecureSkipVerify`, `initialCustomer` (default `IrisInitialClient`),
   `serviceAccounts: [{login, groups}]` (existing IRIS logins; groups and every
   tenant customer plus `initialCustomer` are added, never removed).
-- `wazuh`: `url`, `credSecretRef: {namespace, name, usernameKey (API_USERNAME),
-  passwordKey (API_PASSWORD)}`, `caFile`, `insecureSkipVerify` (default false),
-  `adminApiRole` (default `administrator`), `analystApiRole` (default `readonly`),
-  `createGroups` (create missing agent groups through the API).
+- `wazuh`: a **list**, one Wazuh manager per tenant (each manager belongs to one
+  tenant, usually in namespace `wazuh-<code>`). Per entry: `tenant` (req., a code
+  from `tenants`, at most one entry per tenant), `url`, `credSecretRef: {namespace,
+  name, usernameKey (API_USERNAME), passwordKey (API_PASSWORD)}`, `caFile`,
+  `insecureSkipVerify` (default false), `adminApiRole` (default `administrator`),
+  `analystApiRole` (default `readonly`), `tenantApiRole` (default `readonly`). The
+  reconciler maps `operators.adminRole` to `adminApiRole`, `operators.analystRole`
+  to `analystApiRole` and the tenant group to `tenantApiRole`, each through a rule
+  `oidc_<role>` on the backend role. The API roles must exist.
+- `wazuhCentral`: the central search-only OpenSearch indexer. `url`,
+  `credSecretRef: {namespace, name, usernameKey (INDEXER_USERNAME), passwordKey
+  (INDEXER_PASSWORD)}` (basic auth), `caFile`, `insecureSkipVerify`,
+  `remotes: [{alias, seeds}]` (cross-cluster search connections; `alias` matches
+  `^[a-z0-9_-]+$` and is unique, `seeds` is a non-empty list of `host:port`
+  transport addresses). Each remote is set as the persistent cluster setting
+  `cluster.remote.<alias>.seeds`; remotes not listed are reported, never removed.
+  Optional `dashboardConfigSecret: {namespace, name}`: a Secret whose one key
+  `wazuh.yml` is the Wazuh dashboard app config listing every `wazuh` manager
+  (URL without port, port, API credentials copied from its `credSecretRef`,
+  `run_as: true`). The first host id is `1513629884013` (the dashboard image's
+  start script expects it), the others `t<code>`.
 - `velociraptor`: exactly one of `apiClientSecretRef` (key default
   `api_client.yaml`) and `apiClientFile`; `address` overrides the api_client's
   `api_connection_string`; `serverMonitoring: [{artifact, parameters}]` must be
   running (only listed parameters compared; other artifacts are never removed).
+
+## `enrolment[]`
+
+Per tenant a Secret an agent installer can be handed. Created when missing and
+updated when its rendered content differs; it holds no generated value of its own.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `tenant` | string, req. | A code from `tenants`. |
+| `namespace`, `name` | string, req. | The bundle Secret; unique. |
+| `managerHost` | string, req. | Host agents connect to. |
+| `registrationPort` | int, req. | authd enrolment port (1-65535). |
+| `eventsPort` | int, req. | Agent events port (1-65535). |
+| `agentVersion` | string | Wazuh agent package version the scripts install, default `4.14.8-1`. Must not be newer than the manager. |
+| `authdSecretRef` | SecretRef, req. | The manager's authd password, copied into the bundle. A missing Secret is an error for this bundle only. |
+
+Bundle keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`, and
+the install scripts `install-linux.sh` (deb or rpm), `install-windows.ps1` (MSI)
+and `install-macos.sh` (pkg). The scripts install the Wazuh agent `agentVersion`
+from packages.wazuh.com and set
+`WAZUH_MANAGER`, `WAZUH_MANAGER_PORT`, `WAZUH_REGISTRATION_SERVER`,
+`WAZUH_REGISTRATION_PORT` and `WAZUH_REGISTRATION_PASSWORD`; agent groups are not
+used.

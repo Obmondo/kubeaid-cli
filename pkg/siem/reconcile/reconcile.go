@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package reconcile runs the SIEM reconciler components in order
-// (secrets, keycloak, iris, wazuh, velociraptor) and collects their
-// per-object results. A failing component is reported and the run
-// continues with the next one.
+// (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral,
+// velociraptor) and collects their per-object results. A failing
+// component (or Wazuh manager) is reported and the run continues with
+// the next one.
 package reconcile
 
 import (
@@ -17,25 +18,33 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/enrolment"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/httpx"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/iris"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/secrets"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/velociraptor"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/wazuh"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/wazuhcentral"
 )
 
-// Component names, in run order.
+// Component names, in run order. Wazuh results carry one component
+// per manager ("wazuh/<code>"); --only wazuh selects all of them.
 const (
 	ComponentSecrets      = secrets.Component
+	ComponentEnrolment    = enrolment.Component
 	ComponentKeycloak     = "keycloak"
 	ComponentIRIS         = iris.Component
 	ComponentWazuh        = wazuh.Component
+	ComponentWazuhCentral = wazuhcentral.Component
 	ComponentVelociraptor = velociraptor.Component
 )
 
 // Components lists every component in run order.
-var Components = []string{ComponentSecrets, ComponentKeycloak, ComponentIRIS, ComponentWazuh, ComponentVelociraptor}
+var Components = []string{
+	ComponentSecrets, ComponentEnrolment, ComponentKeycloak, ComponentIRIS,
+	ComponentWazuh, ComponentWazuhCentral, ComponentVelociraptor,
+}
 
 // Options configure a run.
 type Options struct {
@@ -79,6 +88,10 @@ func Run(ctx context.Context, opts Options) []report.Result {
 	var results []report.Result
 	if selected(ComponentSecrets) {
 		results = append(results, secrets.Ensure(ctx, opts.Kube, cfg.Secrets, opts.DryRun)...)
+		results = append(results, secrets.Copy(ctx, opts.Kube, cfg.SecretCopies, cfg.Secrets, opts.DryRun)...)
+	}
+	if selected(ComponentEnrolment) {
+		results = append(results, enrolment.Ensure(ctx, opts.Kube, cfg.Enrolment, opts.DryRun)...)
 	}
 	if selected(ComponentKeycloak) {
 		results = append(results, runKeycloak(ctx, cfg, store, opts.DryRun)...)
@@ -86,8 +99,13 @@ func Run(ctx context.Context, opts Options) []report.Result {
 	if selected(ComponentIRIS) && cfg.Components.IRIS != nil {
 		results = append(results, runIRIS(ctx, cfg, store, opts.DryRun)...)
 	}
-	if selected(ComponentWazuh) && cfg.Components.Wazuh != nil {
-		results = append(results, runWazuh(ctx, cfg, store, opts.DryRun)...)
+	if selected(ComponentWazuh) {
+		for _, w := range cfg.Components.Wazuh {
+			results = append(results, runWazuh(ctx, cfg, w, store, opts.DryRun)...)
+		}
+	}
+	if selected(ComponentWazuhCentral) && cfg.Components.WazuhCentral != nil {
+		results = append(results, runWazuhCentral(ctx, cfg, opts.Kube, store, opts.DryRun)...)
 	}
 	if selected(ComponentVelociraptor) && cfg.Components.Velociraptor != nil {
 		results = append(results, runVelociraptor(ctx, cfg, store, opts.DryRun)...)
@@ -125,39 +143,76 @@ func IRISSpec(cfg *config.Config) iris.Spec {
 	return spec
 }
 
-func runWazuh(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {
-	wc := cfg.Components.Wazuh
-	ref := wc.CredSecretRef
-	user, err := store.Read(ctx, config.SecretRef{Namespace: ref.Namespace, Name: ref.Name, Key: ref.UsernameKey})
+func runWazuh(ctx context.Context, cfg *config.Config, wc config.Wazuh, store secrets.Store, dryRun bool) []report.Result {
+	component := wazuh.ComponentName(wc.Tenant)
+	user, pass, err := readCreds(ctx, store, wc.CredSecretRef)
 	if err != nil {
-		return errorResult(ComponentWazuh, "credentials", err)
-	}
-	pass, err := store.Read(ctx, config.SecretRef{Namespace: ref.Namespace, Name: ref.Name, Key: ref.PasswordKey})
-	if err != nil {
-		return errorResult(ComponentWazuh, "credentials", err)
+		return errorResult(component, "credentials", err)
 	}
 	hc, err := httpx.Client(wc.CAFile, wc.InsecureSkipVerify)
 	if err != nil {
-		return errorResult(ComponentWazuh, "http", err)
+		return errorResult(component, "http", err)
 	}
 	client := &wazuh.Client{BaseURL: wc.URL, Username: user, Password: pass, HTTP: hc}
-	return wazuh.Reconcile(ctx, client, WazuhSpec(cfg), dryRun)
+	return wazuh.Reconcile(ctx, client, WazuhSpec(cfg, wc), dryRun)
 }
 
-// WazuhSpec derives the desired Wazuh API RBAC from the config.
-func WazuhSpec(cfg *config.Config) wazuh.Spec {
-	wc := cfg.Components.Wazuh
-	spec := wazuh.Spec{CreateGroups: wc.CreateGroups}
-	if r := cfg.Operators.AdminRole; r != "" {
-		spec.Operators = append(spec.Operators, wazuh.RoleMapping{Rule: wazuh.RuleName(r), BackendRole: r, APIRole: wc.AdminAPIRole})
+// WazuhSpec derives the desired API RBAC of one tenant's manager: the
+// operator roles and the tenant group, each mapped through a rule.
+func WazuhSpec(cfg *config.Config, wc config.Wazuh) wazuh.Spec {
+	spec := wazuh.Spec{Tenant: wc.Tenant}
+	mapTo := func(backendRole, apiRole string) {
+		if backendRole != "" {
+			spec.Mappings = append(spec.Mappings, wazuh.RoleMapping{Rule: wazuh.RuleName(backendRole), BackendRole: backendRole, APIRole: apiRole})
+		}
 	}
-	if r := cfg.Operators.AnalystRole; r != "" {
-		spec.Operators = append(spec.Operators, wazuh.RoleMapping{Rule: wazuh.RuleName(r), BackendRole: r, APIRole: wc.AnalystAPIRole})
+	mapTo(cfg.Operators.AdminRole, wc.AdminAPIRole)
+	mapTo(cfg.Operators.AnalystRole, wc.AnalystAPIRole)
+	mapTo(cfg.GroupName(config.Tenant{Code: wc.Tenant}), wc.TenantAPIRole)
+	return spec
+}
+
+func runWazuhCentral(ctx context.Context, cfg *config.Config, kube kubernetes.Interface, store secrets.Store, dryRun bool) []report.Result {
+	wc := cfg.Components.WazuhCentral
+	var results []report.Result
+	if d := wc.DashboardConfigSecret; d != nil {
+		results = append(results, wazuhcentral.EnsureDashboardConfig(ctx, kube, *d, cfg.Components.Wazuh, dryRun)...)
 	}
-	for _, t := range cfg.Tenants {
-		spec.TenantGroups = append(spec.TenantGroups, cfg.GroupName(t))
+	if len(wc.Remotes) == 0 {
+		return results
+	}
+	user, pass, err := readCreds(ctx, store, wc.CredSecretRef)
+	if err != nil {
+		return append(results, errorResult(ComponentWazuhCentral, "credentials", err)...)
+	}
+	hc, err := httpx.Client(wc.CAFile, wc.InsecureSkipVerify)
+	if err != nil {
+		return append(results, errorResult(ComponentWazuhCentral, "http", err)...)
+	}
+	client := &wazuhcentral.Client{BaseURL: wc.URL, Username: user, Password: pass, HTTP: hc}
+	return append(results, wazuhcentral.Reconcile(ctx, client, WazuhCentralSpec(cfg), dryRun)...)
+}
+
+// WazuhCentralSpec derives the desired cross-cluster search remotes.
+func WazuhCentralSpec(cfg *config.Config) wazuhcentral.Spec {
+	var spec wazuhcentral.Spec
+	for _, r := range cfg.Components.WazuhCentral.Remotes {
+		spec.Remotes = append(spec.Remotes, wazuhcentral.Remote{Alias: r.Alias, Seeds: r.Seeds})
 	}
 	return spec
+}
+
+// readCreds reads a username/password pair.
+func readCreds(ctx context.Context, store secrets.Store, ref config.WazuhCredsRef) (string, string, error) {
+	user, err := store.Read(ctx, config.SecretRef{Namespace: ref.Namespace, Name: ref.Name, Key: ref.UsernameKey})
+	if err != nil {
+		return "", "", err
+	}
+	pass, err := store.Read(ctx, config.SecretRef{Namespace: ref.Namespace, Name: ref.Name, Key: ref.PasswordKey})
+	if err != nil {
+		return "", "", err
+	}
+	return user, pass, nil
 }
 
 func runVelociraptor(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {

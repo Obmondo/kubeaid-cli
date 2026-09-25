@@ -39,8 +39,10 @@ var RootCmd = &cobra.Command{
 	Use:   "siem-reconciler",
 	Short: "Reconcile Keycloak, DFIR-IRIS, Wazuh and Velociraptor with tenants.json",
 	Long: `siem-reconciler reads tenants.json and makes the SIEM components match it:
-Kubernetes Secrets (create-if-missing), Keycloak realm/clients/roles/groups/MFA flow,
-IRIS customers, Wazuh API RBAC and Velociraptor orgs and server monitoring.
+Kubernetes Secrets (create-if-missing, key copies), Wazuh agent enrolment bundles,
+Keycloak realm/clients/roles/groups/MFA flow, IRIS customers, the API RBAC of each
+tenant's Wazuh manager, the central indexer's cross-cluster search remotes and
+Wazuh dashboard config, and Velociraptor orgs and server monitoring.
 
 It defaults to --dry-run=true: it prints what it would change and writes nothing.
 It prints one line per object and a final "N changes" line, and exits 1 when any

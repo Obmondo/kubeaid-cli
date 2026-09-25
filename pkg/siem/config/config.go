@@ -30,6 +30,10 @@ const (
 	DefaultWazuhPasswordKey  = "API_PASSWORD"
 	DefaultWazuhAdminRole    = "administrator"
 	DefaultWazuhAnalystRole  = "readonly"
+	DefaultWazuhTenantRole   = "readonly"
+	DefaultIndexerUserKey    = "INDEXER_USERNAME"
+	DefaultIndexerPassKey    = "INDEXER_PASSWORD"
+	DefaultWazuhAgentVersion = "4.14.8-1"
 	DefaultVeloAPIClientKey  = "api_client.yaml"
 	DefaultIdPProvider       = "oidc"
 )
@@ -40,15 +44,20 @@ type Config struct {
 	// in clients are given in full).
 	Domain string `json:"domain"`
 	// TenantGroupPrefix prefixes a tenant code to form its Keycloak
-	// group, realm role, Wazuh agent group and Wazuh RBAC names.
+	// group and realm role, which is also the OpenSearch backend role
+	// the tenant's Wazuh manager maps to its tenant API role.
 	TenantGroupPrefix string `json:"tenantGroupPrefix,omitempty"`
 
-	Keycloak   Keycloak          `json:"keycloak"`
-	Operators  Operators         `json:"operators"`
-	Tenants    []Tenant          `json:"tenants"`
-	Clients    []Client          `json:"clients,omitempty"`
-	Secrets    []GeneratedSecret `json:"secrets,omitempty"`
-	Components Components        `json:"components"`
+	Keycloak  Keycloak          `json:"keycloak"`
+	Operators Operators         `json:"operators"`
+	Tenants   []Tenant          `json:"tenants"`
+	Clients   []Client          `json:"clients,omitempty"`
+	Secrets   []GeneratedSecret `json:"secrets,omitempty"`
+	// SecretCopies copy single Secret keys between namespaces.
+	SecretCopies []SecretCopy `json:"secretCopies,omitempty"`
+	Components   Components   `json:"components"`
+	// Enrolment lists the per-tenant agent enrolment bundle Secrets.
+	Enrolment []EnrolmentBundle `json:"enrolment,omitempty"`
 }
 
 // SecretRef points at one key of a Kubernetes Secret.
@@ -192,13 +201,29 @@ const (
 type GeneratedKey struct {
 	Key       string `json:"key"`
 	Generator string `json:"generator,omitempty"`
+	// Value, when set, is the literal value the key is created with
+	// (e.g. an OIDC client id next to its generated secret); Generator
+	// is then ignored.
+	Value string `json:"value,omitempty"`
+}
+
+// SecretCopy copies one Secret key to another Secret, typically into
+// a tenant namespace. The target key is created or overwritten when it
+// differs from the source.
+type SecretCopy struct {
+	From SecretRef `json:"from"`
+	To   SecretRef `json:"to"`
 }
 
 // Components holds the per-application API settings; a nil component
 // is skipped.
 type Components struct {
-	IRIS         *IRIS         `json:"iris,omitempty"`
-	Wazuh        *Wazuh        `json:"wazuh,omitempty"`
+	IRIS *IRIS `json:"iris,omitempty"`
+	// Wazuh lists the Wazuh managers, one per tenant.
+	Wazuh []Wazuh `json:"wazuh,omitempty"`
+	// WazuhCentral is the central search-only indexer that reaches the
+	// tenants' indexers through cross-cluster search.
+	WazuhCentral *WazuhCentral `json:"wazuhCentral,omitempty"`
 	Velociraptor *Velociraptor `json:"velociraptor,omitempty"`
 }
 
@@ -222,21 +247,68 @@ type IRISServiceAccount struct {
 	Groups []string `json:"groups,omitempty"`
 }
 
-// Wazuh is the Wazuh manager API.
+// Wazuh is one tenant's Wazuh manager API. The whole manager belongs
+// to the tenant.
 type Wazuh struct {
+	// Tenant is the code of the tenant owning this manager.
+	Tenant             string        `json:"tenant"`
 	URL                string        `json:"url"`
 	CredSecretRef      WazuhCredsRef `json:"credSecretRef"`
 	CAFile             string        `json:"caFile,omitempty"`
 	InsecureSkipVerify bool          `json:"insecureSkipVerify,omitempty"`
 	// AdminAPIRole / AnalystAPIRole are the Wazuh API roles the
-	// operator realm roles map to.
+	// operator realm roles map to; TenantAPIRole is the one the
+	// tenant's group maps to.
 	AdminAPIRole   string `json:"adminApiRole,omitempty"`
 	AnalystAPIRole string `json:"analystApiRole,omitempty"`
-	// CreateGroups creates missing agent groups through the API.
-	CreateGroups bool `json:"createGroups,omitempty"`
+	TenantAPIRole  string `json:"tenantApiRole,omitempty"`
 }
 
-// WazuhCredsRef points at the Wazuh API user's Secret.
+// WazuhCentral is the central OpenSearch indexer.
+type WazuhCentral struct {
+	URL                string        `json:"url"`
+	CredSecretRef      WazuhCredsRef `json:"credSecretRef"`
+	CAFile             string        `json:"caFile,omitempty"`
+	InsecureSkipVerify bool          `json:"insecureSkipVerify,omitempty"`
+	// Remotes are the cross-cluster search connections to ensure;
+	// remotes not listed are never removed.
+	Remotes []RemoteCluster `json:"remotes,omitempty"`
+	// DashboardConfigSecret, when set, is the Secret the reconciler
+	// writes the Wazuh dashboard app's wazuh.yml to, listing every
+	// manager under components.wazuh with its API credentials.
+	DashboardConfigSecret *ObjectRef `json:"dashboardConfigSecret,omitempty"`
+}
+
+// ObjectRef names a namespaced object.
+type ObjectRef struct {
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
+}
+
+// RemoteCluster is one cross-cluster search connection (sniff mode).
+type RemoteCluster struct {
+	Alias string   `json:"alias"`
+	Seeds []string `json:"seeds"`
+}
+
+// EnrolmentBundle is a Secret holding what an agent needs to enrol
+// with a tenant's manager: host, ports, the authd password (copied
+// from AuthdSecretRef) and install scripts.
+type EnrolmentBundle struct {
+	Tenant           string    `json:"tenant"`
+	Namespace        string    `json:"namespace"`
+	Name             string    `json:"name"`
+	ManagerHost      string    `json:"managerHost"`
+	RegistrationPort int       `json:"registrationPort"`
+	EventsPort       int       `json:"eventsPort"`
+	AuthdSecretRef   SecretRef `json:"authdSecretRef"`
+	// AgentVersion is the Wazuh agent package version the install
+	// scripts fetch, e.g. "4.14.8-1". It must not be newer than the
+	// manager.
+	AgentVersion string `json:"agentVersion,omitempty"`
+}
+
+// WazuhCredsRef points at a Wazuh API or indexer user's Secret.
 type WazuhCredsRef struct {
 	Namespace   string `json:"namespace"`
 	Name        string `json:"name"`
@@ -325,11 +397,21 @@ func (c *Config) applyComponentDefaults() {
 	if iris := c.Components.IRIS; iris != nil {
 		iris.InitialCustomer = orDefault(iris.InitialCustomer, DefaultIRISInitialCust)
 	}
-	if w := c.Components.Wazuh; w != nil {
+	for i := range c.Components.Wazuh {
+		w := &c.Components.Wazuh[i]
 		w.CredSecretRef.UsernameKey = orDefault(w.CredSecretRef.UsernameKey, DefaultWazuhUsernameKey)
 		w.CredSecretRef.PasswordKey = orDefault(w.CredSecretRef.PasswordKey, DefaultWazuhPasswordKey)
 		w.AdminAPIRole = orDefault(w.AdminAPIRole, DefaultWazuhAdminRole)
 		w.AnalystAPIRole = orDefault(w.AnalystAPIRole, DefaultWazuhAnalystRole)
+		w.TenantAPIRole = orDefault(w.TenantAPIRole, DefaultWazuhTenantRole)
+	}
+	for i := range c.Enrolment {
+		e := &c.Enrolment[i]
+		e.AgentVersion = orDefault(e.AgentVersion, DefaultWazuhAgentVersion)
+	}
+	if wc := c.Components.WazuhCentral; wc != nil {
+		wc.CredSecretRef.UsernameKey = orDefault(wc.CredSecretRef.UsernameKey, DefaultIndexerUserKey)
+		wc.CredSecretRef.PasswordKey = orDefault(wc.CredSecretRef.PasswordKey, DefaultIndexerPassKey)
 	}
 	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil {
 		v.APIClientSecretRef.Key = orDefault(v.APIClientSecretRef.Key, DefaultVeloAPIClientKey)
@@ -346,7 +428,11 @@ func orDefault(v, def string) string {
 var (
 	codePattern   = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`)
 	prefixPattern = regexp.MustCompile(`^[a-z0-9-]*$`)
+	aliasPattern  = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	agentPattern  = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+$`)
 )
+
+const maxPort = 65535
 
 // Validate checks the config for errors that would make a run
 // meaningless or dangerous. All problems are reported together.
@@ -367,7 +453,9 @@ func (c *Config) Validate() error {
 	c.validateTenants(fail)
 	c.validateClients(fail)
 	c.validateSecrets(fail)
+	c.validateSecretCopies(fail)
 	c.validateComponents(fail)
+	c.validateEnrolment(fail)
 	return errors.Join(errs...)
 }
 
@@ -432,8 +520,9 @@ func (c *Config) validateSecrets(fail func(string, ...any)) {
 			fail("%s needs namespace, name and at least one key", where)
 		}
 		for j, k := range s.Keys {
-			switch k.Generator {
-			case GeneratorPassword, GeneratorHex32, GeneratorBase64:
+			switch {
+			case k.Value != "":
+			case k.Generator == GeneratorPassword, k.Generator == GeneratorHex32, k.Generator == GeneratorBase64:
 			default:
 				fail("%s.keys[%d].generator %q is not one of password, hex32, base64-32", where, j, k.Generator)
 			}
@@ -441,6 +530,23 @@ func (c *Config) validateSecrets(fail func(string, ...any)) {
 				fail("%s.keys[%d].key is required", where, j)
 			}
 		}
+	}
+}
+
+func (c *Config) validateSecretCopies(fail func(string, ...any)) {
+	targets := map[string]bool{}
+	for i, cp := range c.SecretCopies {
+		where := fmt.Sprintf("secretCopies[%d]", i)
+		validateRef(fail, where+".from", cp.From)
+		validateRef(fail, where+".to", cp.To)
+		to := cp.To.Namespace + "/" + cp.To.Name + "/" + cp.To.Key
+		switch {
+		case cp.From == cp.To:
+			fail("%s copies %s onto itself", where, to)
+		case targets[to]:
+			fail("%s.to %s is not unique", where, to)
+		}
+		targets[to] = true
 	}
 }
 
@@ -456,14 +562,7 @@ func (c *Config) validateComponents(fail func(string, ...any)) {
 			}
 		}
 	}
-	if w := c.Components.Wazuh; w != nil {
-		if w.URL == "" {
-			fail("components.wazuh.url is required")
-		}
-		if w.CredSecretRef.Namespace == "" || w.CredSecretRef.Name == "" {
-			fail("components.wazuh.credSecretRef needs namespace and name")
-		}
-	}
+	c.validateWazuh(fail)
 	if v := c.Components.Velociraptor; v != nil {
 		if (v.APIClientSecretRef == nil) == (v.APIClientFile == "") {
 			fail("components.velociraptor needs exactly one of apiClientSecretRef and apiClientFile")
@@ -477,6 +576,98 @@ func (c *Config) validateComponents(fail func(string, ...any)) {
 			}
 		}
 	}
+}
+
+func (c *Config) validateWazuh(fail func(string, ...any)) {
+	tenants := c.tenantCodes()
+	seen := map[string]bool{}
+	for i, w := range c.Components.Wazuh {
+		where := fmt.Sprintf("components.wazuh[%d]", i)
+		switch {
+		case !tenants[w.Tenant]:
+			fail("%s.tenant %q is not a tenant code", where, w.Tenant)
+		case seen[w.Tenant]:
+			fail("%s.tenant %q already has a manager", where, w.Tenant)
+		}
+		seen[w.Tenant] = true
+		if w.URL == "" {
+			fail("%s.url is required", where)
+		}
+		if w.CredSecretRef.Namespace == "" || w.CredSecretRef.Name == "" {
+			fail("%s.credSecretRef needs namespace and name", where)
+		}
+	}
+	wc := c.Components.WazuhCentral
+	if wc == nil {
+		return
+	}
+	if wc.URL == "" {
+		fail("components.wazuhCentral.url is required")
+	}
+	if wc.CredSecretRef.Namespace == "" || wc.CredSecretRef.Name == "" {
+		fail("components.wazuhCentral.credSecretRef needs namespace and name")
+	}
+	if d := wc.DashboardConfigSecret; d != nil && (d.Namespace == "" || d.Name == "") {
+		fail("components.wazuhCentral.dashboardConfigSecret needs namespace and name")
+	}
+	aliases := map[string]bool{}
+	for i, r := range wc.Remotes {
+		where := fmt.Sprintf("components.wazuhCentral.remotes[%d]", i)
+		switch {
+		case !aliasPattern.MatchString(r.Alias):
+			fail("%s.alias %q must match %s", where, r.Alias, aliasPattern)
+		case aliases[r.Alias]:
+			fail("%s.alias %q is not unique", where, r.Alias)
+		}
+		aliases[r.Alias] = true
+		if len(r.Seeds) == 0 {
+			fail("%s.seeds must not be empty", where)
+		}
+		for j, s := range r.Seeds {
+			if strings.TrimSpace(s) == "" {
+				fail("%s.seeds[%d] is empty", where, j)
+			}
+		}
+	}
+}
+
+func (c *Config) validateEnrolment(fail func(string, ...any)) {
+	tenants := c.tenantCodes()
+	seen := map[string]bool{}
+	for i, e := range c.Enrolment {
+		where := fmt.Sprintf("enrolment[%d]", i)
+		if !tenants[e.Tenant] {
+			fail("%s.tenant %q is not a tenant code", where, e.Tenant)
+		}
+		if e.Namespace == "" || e.Name == "" {
+			fail("%s needs namespace and name", where)
+		} else if id := e.Namespace + "/" + e.Name; seen[id] {
+			fail("%s: Secret %s is not unique", where, id)
+		} else {
+			seen[id] = true
+		}
+		if strings.TrimSpace(e.ManagerHost) == "" {
+			fail("%s.managerHost is required", where)
+		}
+		if e.RegistrationPort < 1 || e.RegistrationPort > maxPort {
+			fail("%s.registrationPort %d is not in 1-%d", where, e.RegistrationPort, maxPort)
+		}
+		if e.EventsPort < 1 || e.EventsPort > maxPort {
+			fail("%s.eventsPort %d is not in 1-%d", where, e.EventsPort, maxPort)
+		}
+		validateRef(fail, where+".authdSecretRef", e.AuthdSecretRef)
+		if !agentPattern.MatchString(e.AgentVersion) {
+			fail("%s.agentVersion %q must look like 4.14.8-1", where, e.AgentVersion)
+		}
+	}
+}
+
+func (c *Config) tenantCodes() map[string]bool {
+	out := make(map[string]bool, len(c.Tenants))
+	for _, t := range c.Tenants {
+		out[t.Code] = true
+	}
+	return out
 }
 
 func validateRef(fail func(string, ...any), where string, ref SecretRef) {

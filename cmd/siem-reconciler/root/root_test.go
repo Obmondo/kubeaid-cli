@@ -58,5 +58,5 @@ func TestPublishValidatesInput(t *testing.T) {
 }
 
 func TestJoinComponents(t *testing.T) {
-	assert.Equal(t, "secrets,keycloak,iris,wazuh,velociraptor", joinComponents())
+	assert.Equal(t, "secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor", joinComponents())
 }

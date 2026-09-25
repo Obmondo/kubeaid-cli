@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package secrets reads the Kubernetes Secrets the SIEM reconciler
-// needs and creates missing generated Secrets. It never overwrites an
-// existing value.
+// needs, creates missing generated Secrets (never overwriting a
+// generated value), copies keys between Secrets and writes Secrets
+// rendered from the config (Apply).
 package secrets
 
 import (
@@ -43,13 +44,9 @@ type Store struct {
 
 // Read returns the value of one Secret key. The value is never logged.
 func (s Store) Read(ctx context.Context, ref config.SecretRef) (string, error) {
-	sec, err := s.Kube.CoreV1().Secrets(ref.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+	v, err := s.ReadRaw(ctx, ref)
 	if err != nil {
-		return "", fmt.Errorf("reading Secret %s/%s: %w", ref.Namespace, ref.Name, err)
-	}
-	v, ok := sec.Data[ref.Key]
-	if !ok || len(v) == 0 {
-		return "", fmt.Errorf("secret %s/%s has no key %q", ref.Namespace, ref.Name, ref.Key)
+		return "", err
 	}
 	return strings.TrimRight(string(v), "\r\n"), nil
 }
@@ -163,13 +160,15 @@ func generate(keys []config.GeneratedKey) (map[string][]byte, error) {
 			v   string
 			err error
 		)
-		switch k.Generator {
-		case config.GeneratorHex32:
+		switch {
+		case k.Value != "":
+			v = k.Value
+		case k.Generator == config.GeneratorHex32:
 			raw := make([]byte, hex32Bytes)
 			if _, err = rand.Read(raw); err == nil {
 				v = hex.EncodeToString(raw)
 			}
-		case config.GeneratorBase64:
+		case k.Generator == config.GeneratorBase64:
 			v, err = randval.Base64Key(hex32Bytes)
 		default:
 			v, err = randval.Password()
@@ -182,14 +181,78 @@ func generate(keys []config.GeneratedKey) (map[string][]byte, error) {
 	return out, nil
 }
 
+// Copy copies each source key to its target key: the target Secret is
+// created when missing, and the key is set when its bytes differ.
+// generated are the Secrets Ensure creates in the same run: in dry-run
+// mode a source that does not exist yet but will be generated is
+// reported as a create instead of an error. A missing source is an
+// error for that copy only.
+func Copy(ctx context.Context, kube kubernetes.Interface, copies []config.SecretCopy, generated []config.GeneratedSecret, dryRun bool) []report.Result {
+	willGenerate := map[string]bool{}
+	for _, g := range generated {
+		for _, k := range g.Keys {
+			willGenerate[refString(config.SecretRef{Namespace: g.Namespace, Name: g.Name, Key: k.Key})] = true
+		}
+	}
+	store := Store{Kube: kube}
+	results := make([]report.Result, 0, len(copies))
+	for _, cp := range copies {
+		res := report.Result{Component: Component, Kind: "copy", Name: refString(cp.To), Detail: "from " + refString(cp.From)}
+		value, err := store.ReadRaw(ctx, cp.From)
+		switch {
+		case err != nil && dryRun && willGenerate[refString(cp.From)]:
+			res.Action = report.ActionCreate
+			res.Detail += " (generated in this run)"
+		case err != nil:
+			res.Action, res.Detail = report.ActionError, err.Error()
+		default:
+			res.Action, _, err = Apply(ctx, kube, cp.To.Namespace, cp.To.Name, map[string][]byte{cp.To.Key: value}, dryRun)
+			if err != nil {
+				res.Detail = err.Error()
+			}
+		}
+		results = append(results, res)
+	}
+	return results
+}
+
+// ReadRaw returns one Secret key's bytes unchanged, for copies.
+func (s Store) ReadRaw(ctx context.Context, ref config.SecretRef) ([]byte, error) {
+	sec, err := s.Kube.CoreV1().Secrets(ref.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("reading Secret %s/%s: %w", ref.Namespace, ref.Name, err)
+	}
+	v, ok := sec.Data[ref.Key]
+	if !ok || len(v) == 0 {
+		return nil, fmt.Errorf("secret %s/%s has no key %q", ref.Namespace, ref.Name, ref.Key)
+	}
+	return v, nil
+}
+
+func refString(r config.SecretRef) string { return r.Namespace + "/" + r.Name + "/" + r.Key }
+
 // Publish stores data under key in the named Secret, creating the
 // Secret when missing and replacing the key when its value differs.
 // Used by `siem-reconciler publish-api-client`, whose input (the
 // Velociraptor API client) is re-minted on every server start.
 func Publish(ctx context.Context, kube kubernetes.Interface, namespace, name, key string, data []byte) (report.Action, error) {
+	a, _, err := Apply(ctx, kube, namespace, name, map[string][]byte{key: data}, false)
+	return a, err
+}
+
+// Apply makes the named Secret hold data: the Secret is created when
+// missing, and the given keys are replaced when any value differs.
+// Other keys are kept. It returns the action and the names of the keys
+// that differ (never their values). In dry-run mode nothing is
+// written. Used for Secrets whose content is rendered from the config
+// and other Secrets (enrolment bundles, the Wazuh dashboard config).
+func Apply(ctx context.Context, kube kubernetes.Interface, namespace, name string, data map[string][]byte, dryRun bool) (report.Action, []string, error) {
 	client := kube.CoreV1().Secrets(namespace)
 	cur, err := client.Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
+		if dryRun {
+			return report.ActionCreate, nil, nil
+		}
 		sec := &corev1.Secret{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
@@ -197,25 +260,37 @@ func Publish(ctx context.Context, kube kubernetes.Interface, namespace, name, ke
 				Labels:    map[string]string{managedByLabel: managedByValue},
 			},
 			Type: corev1.SecretTypeOpaque,
-			Data: map[string][]byte{key: data},
+			Data: data,
 		}
 		if _, err := client.Create(ctx, sec, metav1.CreateOptions{}); err != nil {
-			return report.ActionError, fmt.Errorf("creating Secret %s/%s: %w", namespace, name, err)
+			return report.ActionError, nil, fmt.Errorf("creating Secret %s/%s: %w", namespace, name, err)
 		}
-		return report.ActionCreate, nil
+		return report.ActionCreate, nil, nil
 	}
 	if err != nil {
-		return report.ActionError, fmt.Errorf("reading Secret %s/%s: %w", namespace, name, err)
+		return report.ActionError, nil, fmt.Errorf("reading Secret %s/%s: %w", namespace, name, err)
 	}
-	if bytes.Equal(cur.Data[key], data) {
-		return report.ActionOK, nil
+	var changed []string
+	for k, v := range data {
+		if cur.Data == nil || !bytes.Equal(cur.Data[k], v) {
+			changed = append(changed, k)
+		}
+	}
+	sort.Strings(changed)
+	if len(changed) == 0 {
+		return report.ActionOK, nil, nil
+	}
+	if dryRun {
+		return report.ActionUpdate, changed, nil
 	}
 	if cur.Data == nil {
 		cur.Data = map[string][]byte{}
 	}
-	cur.Data[key] = data
-	if _, err := client.Update(ctx, cur, metav1.UpdateOptions{}); err != nil {
-		return report.ActionError, fmt.Errorf("updating Secret %s/%s: %w", namespace, name, err)
+	for k, v := range data {
+		cur.Data[k] = v
 	}
-	return report.ActionUpdate, nil
+	if _, err := client.Update(ctx, cur, metav1.UpdateOptions{}); err != nil {
+		return report.ActionError, changed, fmt.Errorf("updating Secret %s/%s: %w", namespace, name, err)
+	}
+	return report.ActionUpdate, changed, nil
 }

@@ -34,6 +34,9 @@ func TestParseOnly(t *testing.T) {
 	got, err := ParseOnly("keycloak, iris")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"keycloak", "iris"}, got)
+	got, err = ParseOnly("wazuh,wazuhcentral,enrolment")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"wazuh", "wazuhcentral", "enrolment"}, got)
 	got, err = ParseOnly("")
 	require.NoError(t, err)
 	assert.Nil(t, got)
@@ -51,12 +54,19 @@ func TestSpecsFromExample(t *testing.T) {
 	assert.Equal(t, "Tenant A", is.Customers[0].Name)
 	assert.Equal(t, "svc_ai", is.ServiceAccounts[0].Login)
 
-	ws := WazuhSpec(cfg)
-	assert.Equal(t, []string{"tenant-001", "tenant-002"}, ws.TenantGroups)
-	require.Len(t, ws.Operators, 2)
-	assert.Equal(t, "oidc_administrator", ws.Operators[0].Rule)
-	assert.Equal(t, "readonly", ws.Operators[1].APIRole)
-	assert.True(t, ws.CreateGroups)
+	ws := WazuhSpec(cfg, cfg.Components.Wazuh[1])
+	assert.Equal(t, "002", ws.Tenant)
+	require.Len(t, ws.Mappings, 3)
+	assert.Equal(t, "oidc_administrator", ws.Mappings[0].Rule)
+	assert.Equal(t, "administrator", ws.Mappings[0].APIRole)
+	assert.Equal(t, "readonly", ws.Mappings[1].APIRole)
+	assert.Equal(t, "oidc_tenant_002", ws.Mappings[2].Rule)
+	assert.Equal(t, "tenant-002", ws.Mappings[2].BackendRole)
+	assert.Equal(t, "readonly", ws.Mappings[2].APIRole)
+
+	cs := WazuhCentralSpec(cfg)
+	require.Len(t, cs.Remotes, 2)
+	assert.Equal(t, "t001", cs.Remotes[0].Alias)
 
 	vs := VelociraptorSpec(cfg)
 	assert.Equal(t, []string{"Tenant A", "Tenant B"}, vs.Orgs)
@@ -68,11 +78,11 @@ func TestSpecsFromExample(t *testing.T) {
 			sync = c
 		}
 	}
-	cs := ClientSpec(sync, "x")
-	assert.Equal(t, "x", cs.Secret)
-	assert.Equal(t, []string{"query-groups", "query-users", "view-users"}, sortedCopy(cs.ScopeMappingsClient["realm-management"]))
-	require.NotNil(t, cs.FullScopeAllowed)
-	assert.False(t, *cs.FullScopeAllowed)
+	kc := ClientSpec(sync, "x")
+	assert.Equal(t, "x", kc.Secret)
+	assert.Equal(t, []string{"query-groups", "query-users", "view-users"}, sortedCopy(kc.ScopeMappingsClient["realm-management"]))
+	require.NotNil(t, kc.FullScopeAllowed)
+	assert.False(t, *kc.FullScopeAllowed)
 }
 
 func TestRunReportsMissingCredentialsPerComponent(t *testing.T) {
@@ -85,14 +95,32 @@ func TestRunReportsMissingCredentialsPerComponent(t *testing.T) {
 	for _, r := range results {
 		byComponent[r.Component] = append(byComponent[r.Component], r)
 	}
-	assert.Len(t, byComponent[ComponentSecrets], len(cfg.Secrets))
+	assert.Len(t, byComponent[ComponentSecrets], len(cfg.Secrets)+len(cfg.SecretCopies))
 	for _, r := range byComponent[ComponentSecrets] {
-		assert.Equal(t, report.ActionCreate, r.Action)
+		want := report.ActionCreate
+		if r.Kind == "copy" {
+			want = report.ActionError // the IRIS API key is not generated
+		}
+		assert.Equal(t, want, r.Action, "%s %s: %s", r.Kind, r.Name, r.Detail)
 	}
-	for _, c := range []string{ComponentKeycloak, ComponentIRIS, ComponentWazuh, ComponentVelociraptor} {
+	for _, c := range []string{ComponentKeycloak, ComponentIRIS, "wazuh/001", "wazuh/002", ComponentVelociraptor} {
 		require.Len(t, byComponent[c], 1, c)
 		assert.Equal(t, report.ActionError, byComponent[c][0].Action, c)
 	}
+	require.Len(t, byComponent[ComponentEnrolment], len(cfg.Enrolment))
+	for _, r := range byComponent[ComponentEnrolment] {
+		assert.Equal(t, report.ActionError, r.Action, "the authd Secrets are sealed in, not generated")
+	}
+	central := map[string]report.Action{}
+	for _, r := range byComponent[ComponentWazuhCentral] {
+		central[r.Kind+"/"+r.Name] = r.Action
+	}
+	assert.Equal(t, map[string]report.Action{
+		"dashboard-host/001": report.ActionError,
+		"dashboard-host/002": report.ActionError,
+		"dashboard-config/security-operations/wazuh-app-config": report.ActionSkip,
+		"setup/credentials": report.ActionError,
+	}, central)
 	for _, a := range kube.Actions() {
 		assert.Equal(t, "get", a.GetVerb(), "dry run only reads")
 	}
@@ -105,6 +133,60 @@ func TestRunOnlyFilter(t *testing.T) {
 	for _, r := range results {
 		assert.Equal(t, ComponentSecrets, r.Component)
 	}
+	results = Run(context.Background(), Options{Config: cfg, Kube: fake.NewClientset(), DryRun: true, Only: []string{ComponentWazuh}})
+	require.Len(t, results, 2)
+	assert.Equal(t, "wazuh/001", results[0].Component)
+	assert.Equal(t, "wazuh/002", results[1].Component)
+}
+
+func TestRunEnrolmentAndSecretCopies(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := loadExample(t)
+	kube := fake.NewClientset(
+		secret("wazuh-001", "wazuh-authd-pass", map[string]string{"authd.pass": "pw"}),
+		secret("security-operations", "iris-keycloak-sync", map[string]string{"IRIS_API_KEY": "k"}),
+	)
+	results := Run(ctx, Options{Config: cfg, Kube: kube, Only: []string{ComponentSecrets, ComponentEnrolment}})
+	got := map[string]report.Action{}
+	for _, r := range results {
+		got[r.Component+"/"+r.Kind+"/"+r.Name] = r.Action
+	}
+	assert.Equal(t, report.ActionCreate, got["secrets/copy/wazuh-002/iris-api-key/IRIS_API_KEY"])
+	assert.Equal(t, report.ActionCreate, got["enrolment/bundle/wazuh-001/enrolment-bundle"])
+	assert.Equal(t, report.ActionError, got["enrolment/bundle/wazuh-002/enrolment-bundle"])
+	sec, err := kube.CoreV1().Secrets("wazuh-001").Get(ctx, "iris-api-key", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "k", string(sec.Data["IRIS_API_KEY"]))
+	_, err = kube.CoreV1().Secrets("wazuh-001").Get(ctx, "enrolment-bundle", metav1.GetOptions{})
+	require.NoError(t, err)
+}
+
+func TestRunWazuhManagers(t *testing.T) {
+	t.Parallel()
+	var logins []string
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/security/user/authenticate" {
+			u, _, _ := r.BasicAuth()
+			logins = append(logins, u)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	cfg := loadExample(t)
+	for i := range cfg.Components.Wazuh {
+		cfg.Components.Wazuh[i].URL = srv.URL
+	}
+	kube := fake.NewClientset(
+		secret("wazuh-001", "wazuh-api-cred", map[string]string{"API_USERNAME": "wui-001", "API_PASSWORD": "p"}),
+	)
+	results := Run(context.Background(), Options{Config: cfg, Kube: kube, DryRun: true, Only: []string{ComponentWazuh}})
+	require.Len(t, results, 2)
+	assert.Equal(t, "wazuh/001", results[0].Component)
+	assert.Equal(t, "api", results[0].Kind, "manager 001 was reached with its own credentials")
+	assert.Equal(t, "wazuh/002", results[1].Component)
+	assert.Equal(t, "credentials", results[1].Name)
+	assert.Equal(t, []string{"wui-001"}, logins)
 }
 
 func secret(ns, name string, data map[string]string) *corev1.Secret {

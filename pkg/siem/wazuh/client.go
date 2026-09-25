@@ -1,11 +1,12 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-// Package wazuh reconciles the Wazuh manager API's RBAC for the SIEM
-// tenants: rules mapping Keycloak realm roles (OpenSearch backend
-// roles) to API roles, and per tenant a read-only role limited to the
-// tenant's agent group. It also creates missing agent groups. Users,
-// agents and the stock roles/policies are never modified.
+// Package wazuh reconciles the RBAC of the per-tenant Wazuh manager
+// APIs: rules mapping Keycloak realm roles (OpenSearch backend roles)
+// of the SOC operators and of the manager's tenant to existing API
+// roles. Each manager belongs to one tenant, so there are no per-group
+// policies or agent groups. Users, agents, roles and policies are never
+// modified; rule links are only added.
 package wazuh
 
 import (

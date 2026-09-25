@@ -25,7 +25,18 @@ func TestLoadExample(t *testing.T) {
 	assert.Equal(t, GeneratorPassword, cfg.Secrets[1].Keys[0].Generator)
 	assert.Len(t, cfg.Clients, 5)
 	assert.Equal(t, "IrisInitialClient", cfg.Components.IRIS.InitialCustomer)
-	assert.Equal(t, "readonly", cfg.Components.Wazuh.AnalystAPIRole)
+	require.Len(t, cfg.Components.Wazuh, 2)
+	assert.Equal(t, "readonly", cfg.Components.Wazuh[0].AnalystAPIRole)
+	assert.Equal(t, DefaultWazuhUsernameKey, cfg.Components.Wazuh[1].CredSecretRef.UsernameKey)
+	assert.Equal(t, DefaultWazuhTenantRole, cfg.Components.Wazuh[1].TenantAPIRole)
+	require.NotNil(t, cfg.Components.WazuhCentral)
+	assert.Equal(t, "t002", cfg.Components.WazuhCentral.Remotes[1].Alias)
+	assert.Equal(t, "wazuh-app-config", cfg.Components.WazuhCentral.DashboardConfigSecret.Name)
+	require.Len(t, cfg.SecretCopies, 2)
+	assert.Equal(t, "wazuh-002", cfg.SecretCopies[1].To.Namespace)
+	require.Len(t, cfg.Enrolment, 2)
+	assert.Equal(t, 21025, cfg.Enrolment[1].RegistrationPort)
+	assert.Equal(t, DefaultWazuhAgentVersion, cfg.Enrolment[1].AgentVersion)
 }
 
 func TestDefaults(t *testing.T) {
@@ -36,7 +47,8 @@ func TestDefaults(t *testing.T) {
 		"operators": {},
 		"tenants": [{"code": "a1", "name": "A"}],
 		"components": {
-			"wazuh": {"url": "https://w", "credSecretRef": {"namespace": "n", "name": "c"}},
+			"wazuh": [{"tenant": "a1", "url": "https://w", "credSecretRef": {"namespace": "n", "name": "c"}}],
+			"wazuhCentral": {"url": "https://i", "credSecretRef": {"namespace": "n", "name": "i"}},
 			"velociraptor": {"apiClientSecretRef": {"namespace": "n", "name": "v"}}
 		}
 	}`))
@@ -45,8 +57,14 @@ func TestDefaults(t *testing.T) {
 	assert.Equal(t, "admin", cfg.Keycloak.AdminUsername)
 	assert.Equal(t, DefaultMFAFlowAlias, cfg.Keycloak.MFAFlow.Alias)
 	assert.Equal(t, DefaultMFAFlowCopyFrom, cfg.Keycloak.MFAFlow.CopyFrom)
-	assert.Equal(t, DefaultWazuhUsernameKey, cfg.Components.Wazuh.CredSecretRef.UsernameKey)
-	assert.Equal(t, DefaultWazuhAdminRole, cfg.Components.Wazuh.AdminAPIRole)
+	w := cfg.Components.Wazuh[0]
+	assert.Equal(t, DefaultWazuhUsernameKey, w.CredSecretRef.UsernameKey)
+	assert.Equal(t, DefaultWazuhPasswordKey, w.CredSecretRef.PasswordKey)
+	assert.Equal(t, DefaultWazuhAdminRole, w.AdminAPIRole)
+	assert.Equal(t, DefaultWazuhAnalystRole, w.AnalystAPIRole)
+	assert.Equal(t, DefaultWazuhTenantRole, w.TenantAPIRole)
+	assert.Equal(t, DefaultIndexerUserKey, cfg.Components.WazuhCentral.CredSecretRef.UsernameKey)
+	assert.Equal(t, DefaultIndexerPassKey, cfg.Components.WazuhCentral.CredSecretRef.PasswordKey)
 	assert.Equal(t, DefaultVeloAPIClientKey, cfg.Components.Velociraptor.APIClientSecretRef.Key)
 }
 
@@ -66,12 +84,33 @@ func TestValidateErrors(t *testing.T) {
 			{"clientId": "c", "publicClient": true, "serviceAccountsEnabled": true},
 			{"clientId": "c", "serviceAccountClientRoles": {"x": ["y"]}, "protocolMappers": [{"name": ""}]}
 		],
-		"secrets": [{"namespace": "", "name": "", "keys": [{"key": "", "generator": "nope"}]}],
+		"secrets": [
+			{"namespace": "", "name": "", "keys": [{"key": "", "generator": "nope"}]},
+			{"namespace": "n", "name": "oidc", "keys": [{"key": "CLIENT_ID", "value": "c", "generator": "ignored"}]}
+		],
+		"secretCopies": [
+			{"from": {}, "to": {"namespace": "n", "name": "s", "key": "k"}},
+			{"from": {"namespace": "n", "name": "s", "key": "k"}, "to": {"namespace": "n", "name": "s", "key": "k"}},
+			{"from": {"namespace": "m", "name": "s", "key": "k"}, "to": {"namespace": "n", "name": "s", "key": "k"}}
+		],
 		"components": {
 			"iris": {"url": "", "apiKeySecretRef": {}, "serviceAccounts": [{"login": ""}]},
-			"wazuh": {"url": "", "credSecretRef": {}},
+			"wazuh": [
+				{"tenant": "b", "url": "", "credSecretRef": {}},
+				{"tenant": "b", "url": "https://w", "credSecretRef": {"namespace": "n", "name": "c"}},
+				{"tenant": "zz", "url": "https://w", "credSecretRef": {"namespace": "n", "name": "c"}}
+			],
+			"wazuhCentral": {
+				"url": "", "credSecretRef": {}, "dashboardConfigSecret": {"namespace": "n"},
+				"remotes": [{"alias": "Bad.Alias", "seeds": []}, {"alias": "t1", "seeds": [""]}, {"alias": "t1", "seeds": ["h:9300"]}]
+			},
 			"velociraptor": {"serverMonitoring": [{"artifact": ""}]}
-		}
+		},
+		"enrolment": [
+			{"tenant": "nope", "namespace": "", "name": "", "managerHost": "", "registrationPort": 0, "eventsPort": 70000, "authdSecretRef": {}, "agentVersion": "latest"},
+			{"tenant": "b", "namespace": "n", "name": "e", "managerHost": "h", "registrationPort": 1515, "eventsPort": 1514, "authdSecretRef": {"namespace": "n", "name": "a", "key": "k"}},
+			{"tenant": "b", "namespace": "n", "name": "e", "managerHost": "h", "registrationPort": 1515, "eventsPort": 1514, "authdSecretRef": {"namespace": "n", "name": "a", "key": "k"}}
+		]
 	}`))
 	require.Error(t, err)
 	msg := err.Error()
@@ -92,16 +131,37 @@ func TestValidateErrors(t *testing.T) {
 		"secrets[0] needs namespace",
 		`generator "nope"`,
 		"secrets[0].keys[0].key is required",
+		"secretCopies[0].from needs namespace, name and key",
+		"secretCopies[1] copies n/s/k onto itself",
+		"secretCopies[2].to n/s/k is not unique",
 		"components.iris.url",
 		"components.iris.apiKeySecretRef",
 		"serviceAccounts[0].login",
-		"components.wazuh.url",
-		"components.wazuh.credSecretRef",
+		"components.wazuh[0].url is required",
+		"components.wazuh[0].credSecretRef",
+		`components.wazuh[1].tenant "b" already has a manager`,
+		`components.wazuh[2].tenant "zz" is not a tenant code`,
+		"components.wazuhCentral.url is required",
+		"components.wazuhCentral.credSecretRef",
+		"components.wazuhCentral.dashboardConfigSecret needs namespace and name",
+		`components.wazuhCentral.remotes[0].alias "Bad.Alias" must match`,
+		"components.wazuhCentral.remotes[0].seeds must not be empty",
+		"components.wazuhCentral.remotes[1].seeds[0] is empty",
+		`components.wazuhCentral.remotes[2].alias "t1" is not unique`,
+		`enrolment[0].tenant "nope" is not a tenant code`,
+		"enrolment[0] needs namespace and name",
+		"enrolment[0].managerHost is required",
+		"enrolment[0].registrationPort 0 is not in 1-65535",
+		"enrolment[0].eventsPort 70000 is not in 1-65535",
+		"enrolment[0].authdSecretRef needs namespace, name and key",
+		`enrolment[0].agentVersion "latest" must look like`,
+		"enrolment[2]: Secret n/e is not unique",
 		"exactly one of apiClientSecretRef and apiClientFile",
 		"serverMonitoring[0].artifact",
 	} {
 		assert.Contains(t, msg, want)
 	}
+	assert.NotContains(t, msg, "secrets[1]", "a literal value needs no generator")
 }
 
 func TestUnknownFieldRejected(t *testing.T) {
@@ -115,4 +175,16 @@ func TestLoadMissingFile(t *testing.T) {
 	t.Parallel()
 	_, err := Load("testdata/does-not-exist.json")
 	require.Error(t, err)
+}
+
+func TestOldSingleWazuhObjectRejected(t *testing.T) {
+	t.Parallel()
+	_, err := Parse([]byte(`{
+		"domain": "example.com",
+		"keycloak": {"url": "http://kc", "realm": "r", "adminSecretRef": {"namespace": "n", "name": "s", "key": "k"}},
+		"operators": {},
+		"tenants": [{"code": "001", "name": "A"}],
+		"components": {"wazuh": {"url": "https://w", "credSecretRef": {"namespace": "n", "name": "c"}, "createGroups": true}}
+	}`))
+	require.Error(t, err, "components.wazuh is a list now")
 }

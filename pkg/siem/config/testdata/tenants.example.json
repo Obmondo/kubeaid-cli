@@ -118,7 +118,17 @@
     {"namespace": "security-operations", "name": "dfir-iris-oidc", "keys": [{"key": "OIDC_CLIENT_SECRET"}]},
     {"namespace": "security-operations", "name": "misp-oidc", "keys": [{"key": "password"}]},
     {"namespace": "security-operations", "name": "iris-keycloak-sync", "keys": [{"key": "KEYCLOAK_CLIENT_SECRET"}]},
-    {"namespace": "security-operations", "name": "wazuh-dashboard-oidc", "keys": [{"key": "OPENSEARCH_OIDC_CLIENT_SECRET"}, {"key": "OPENSEARCH_COOKIE_PASSWORD"}]}
+    {"namespace": "security-operations", "name": "wazuh-dashboard-oidc", "keys": [{"key": "OPENSEARCH_OIDC_CLIENT_ID", "value": "wazuh-dashboard"}, {"key": "OPENSEARCH_OIDC_CLIENT_SECRET"}, {"key": "OPENSEARCH_COOKIE_PASSWORD"}]}
+  ],
+  "secretCopies": [
+    {
+      "from": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
+      "to": {"namespace": "wazuh-001", "name": "iris-api-key", "key": "IRIS_API_KEY"}
+    },
+    {
+      "from": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
+      "to": {"namespace": "wazuh-002", "name": "iris-api-key", "key": "IRIS_API_KEY"}
+    }
   ],
   "components": {
     "iris": {
@@ -127,13 +137,32 @@
       "initialCustomer": "IrisInitialClient",
       "serviceAccounts": [{"login": "svc_ai", "groups": ["Automation"]}]
     },
-    "wazuh": {
-      "url": "https://wazuh:55000",
-      "credSecretRef": {"namespace": "security-operations", "name": "wazuh-api-cred", "usernameKey": "API_USERNAME", "passwordKey": "API_PASSWORD"},
+    "wazuh": [
+      {
+        "tenant": "001",
+        "url": "https://wazuh.wazuh-001.svc:55000",
+        "credSecretRef": {"namespace": "wazuh-001", "name": "wazuh-api-cred", "usernameKey": "API_USERNAME", "passwordKey": "API_PASSWORD"},
+        "insecureSkipVerify": true,
+        "adminApiRole": "administrator",
+        "analystApiRole": "readonly",
+        "tenantApiRole": "readonly"
+      },
+      {
+        "tenant": "002",
+        "url": "https://wazuh.wazuh-002.svc:55000",
+        "credSecretRef": {"namespace": "wazuh-002", "name": "wazuh-api-cred"},
+        "insecureSkipVerify": true
+      }
+    ],
+    "wazuhCentral": {
+      "url": "https://wazuh-indexer.security-operations.svc:9200",
+      "credSecretRef": {"namespace": "security-operations", "name": "wazuh-indexer-cred", "usernameKey": "INDEXER_USERNAME", "passwordKey": "INDEXER_PASSWORD"},
       "insecureSkipVerify": true,
-      "adminApiRole": "administrator",
-      "analystApiRole": "readonly",
-      "createGroups": true
+      "dashboardConfigSecret": {"namespace": "security-operations", "name": "wazuh-app-config"},
+      "remotes": [
+        {"alias": "t001", "seeds": ["wazuh-indexer-nodes.wazuh-001.svc:9300"]},
+        {"alias": "t002", "seeds": ["wazuh-indexer-nodes.wazuh-002.svc:9300"]}
+      ]
     },
     "velociraptor": {
       "apiClientSecretRef": {"namespace": "security-operations", "name": "velociraptor-api-client", "key": "api_client.yaml"},
@@ -142,5 +171,17 @@
         {"artifact": "Custom.Server.KeycloakSync", "parameters": {"DryRun": "N"}}
       ]
     }
-  }
+  },
+  "enrolment": [
+    {
+      "tenant": "001", "namespace": "wazuh-001", "name": "enrolment-bundle",
+      "managerHost": "agents-001.example.com", "registrationPort": 1515, "eventsPort": 1514,
+      "authdSecretRef": {"namespace": "wazuh-001", "name": "wazuh-authd-pass", "key": "authd.pass"}
+    },
+    {
+      "tenant": "002", "namespace": "wazuh-002", "name": "enrolment-bundle",
+      "managerHost": "agents.example.com", "registrationPort": 21025, "eventsPort": 21024,
+      "authdSecretRef": {"namespace": "wazuh-002", "name": "wazuh-authd-pass", "key": "authd.pass"}
+    }
+  ]
 }
