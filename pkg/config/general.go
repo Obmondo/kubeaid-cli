@@ -353,6 +353,11 @@ type (
 		// ImageTag of the siem-reconciler image. Empty: the chart's.
 		ImageTag string `yaml:"imageTag"`
 
+		// ImagePullSecrets names Secrets (type kubernetes.io/dockerconfigjson,
+		// in the security-operations namespace) for a private registry. The
+		// operator creates and seals them.
+		ImagePullSecrets []string `yaml:"imagePullSecrets"`
+
 		// DryRun prints the plan only. Default true; nil means true.
 		DryRun *bool `yaml:"dryRun"`
 	}

@@ -904,6 +904,7 @@ and the next render follows it.</p>
 | enabled | `bool` |  |  |
 | imageRepository | `string` |  | ImageRepository overrides the image repository, e.g. a private<br>registry mirror. Empty: the chart's (ghcr.io/obmondo/siem-reconciler).<br> |
 | imageTag | `string` |  | ImageTag of the siem-reconciler image. Empty: the chart's.<br> |
+| imagePullSecrets | []`string` |  | ImagePullSecrets names Secrets (type kubernetes.io/dockerconfigjson,<br>in the security-operations namespace) for a private registry. The<br>operator creates and seals them.<br> |
 | dryRun | `bool` |  | DryRun prints the plan only. Default true; nil means true.<br> |
 
 ## SecurityOperationsTenant

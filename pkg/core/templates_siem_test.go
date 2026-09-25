@@ -366,6 +366,13 @@ func TestSIEMCentralValuesReconciler(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"repository": "registry.example.com/soc/siem-reconciler", "tag": "v1.2.3",
 	}, dig(t, values, "reconciler", "image"))
+	assert.NotContains(t, digMap(t, values, "reconciler"), "imagePullSecrets")
+
+	soc.Reconciler.ImagePullSecrets = []string{"registry-pull"}
+	tv.SecOps = buildSecurityOperationsValues()
+	values = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, []any{map[string]any{"name": "registry-pull"}},
+		dig(t, values, "reconciler", "imagePullSecrets"))
 }
 
 func TestSIEMTenantBaseValues(t *testing.T) {

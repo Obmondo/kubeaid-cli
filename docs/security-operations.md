@@ -32,6 +32,7 @@ cluster:
       enabled: false               # default false
       imageRepository: ""          # default: the chart's (ghcr.io/obmondo/siem-reconciler)
       imageTag: ""                 # default: the chart's
+      imagePullSecrets: []         # Secret names for a private registry, sealed by you
       dryRun: true                 # default true
     tenants:
       - code: "001"                # ^[a-z0-9]{1,32}$, unique

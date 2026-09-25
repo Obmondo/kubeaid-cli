@@ -44,6 +44,12 @@ reconciler:
     tag: {{ .SecOps.ReconcilerImageTag }}
     {{- end }}
   {{- end }}
+  {{- with .SecOps.ReconcilerImagePullSecrets }}
+  imagePullSecrets:
+    {{- range . }}
+    - name: {{ . }}
+    {{- end }}
+  {{- end }}
   dryRun: {{ .SecOps.ReconcilerDryRun }}
 
 # Central Wazuh search: indexer + dashboard, no manager.
