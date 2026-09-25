@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,6 +33,7 @@ var flags struct {
 	kubeconfig  string
 	kubeContext string
 	timeout     time.Duration
+	exitZero    bool
 }
 
 // RootCmd reconciles once and exits.
@@ -46,7 +48,9 @@ Wazuh dashboard config, and Velociraptor orgs and server monitoring.
 
 It defaults to --dry-run=true: it prints what it would change and writes nothing.
 It prints one line per object and a final "N changes" line, and exits 1 when any
-object could not be reconciled (drift alone is not an error).`,
+object could not be reconciled (drift alone is not an error). With --exit-zero
+those errors are still printed but the exit code is 0, so an Argo CD Sync hook
+does not block a first install on components that are not up yet.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          run,
@@ -58,6 +62,7 @@ func init() {
 	f.BoolVar(&flags.dryRun, "dry-run", true, "report changes without writing anything")
 	f.StringVar(&flags.only, "only", "", "comma-separated components to run: "+joinComponents())
 	f.DurationVar(&flags.timeout, "timeout", 5*time.Minute, "overall timeout")
+	f.BoolVar(&flags.exitZero, "exit-zero", false, "exit 0 even when objects could not be reconciled (errors are still reported)")
 	RootCmd.PersistentFlags().StringVar(&flags.kubeconfig, "kubeconfig", "", "kubeconfig file (default: in-cluster, then $KUBECONFIG)")
 	RootCmd.PersistentFlags().StringVar(&flags.kubeContext, "context", "", "kubeconfig context")
 
@@ -96,10 +101,22 @@ func run(cmd *cobra.Command, _ []string) error {
 	if err := report.Print(cmd.OutOrStdout(), results, flags.dryRun); err != nil {
 		return err
 	}
-	if s := report.Summarize(results); s.Errors > 0 {
-		return fmt.Errorf("%d objects could not be reconciled", s.Errors)
+	return resultError(cmd.ErrOrStderr(), results, flags.exitZero)
+}
+
+// resultError fails the run when any object errored, unless exitZero
+// is set: then the failure is only logged to w.
+func resultError(w io.Writer, results []report.Result, exitZero bool) error {
+	s := report.Summarize(results)
+	if s.Errors == 0 {
+		return nil
 	}
-	return nil
+	err := fmt.Errorf("%d objects could not be reconciled", s.Errors)
+	if !exitZero {
+		return err
+	}
+	_, werr := fmt.Fprintf(w, "warning: %v (ignored: --exit-zero)\n", err)
+	return werr
 }
 
 // kubeClient uses --kubeconfig/--context when given, the in-cluster

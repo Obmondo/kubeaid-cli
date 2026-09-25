@@ -78,7 +78,14 @@ Client fields and how drift is handled:
   and fails verification the same way.
 
 The last line is `N changes, M errors (...)`. Exit code 0 means no errors (drift
-is allowed); 1 means at least one object failed or the config is invalid.
+is allowed); 1 means at least one object failed or the config is invalid. With
+`--exit-zero` object errors are still printed (plus a warning on stderr) but the
+exit code is 0; an invalid config or flag still exits 1.
+
+`--exit-zero` is meant for the Argo CD Sync hook: on a first install some
+components are not up yet (e.g. a Wazuh manager still starting), and a failing
+hook would block the sync that brings them up. The CronJob keeps the strict
+default, so persistent errors still show as failed Jobs.
 
 ## Configuration
 
@@ -96,6 +103,7 @@ Flags:
 | `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
 | `--kubeconfig`, `--context` | in-cluster | Outside a cluster the default kubeconfig rules apply. |
 | `--timeout` | `5m` | Whole run. |
+| `--exit-zero` | `false` | Exit 0 even when objects could not be reconciled; errors are still reported. |
 
 `siem-reconciler publish-api-client --file <api_client.yaml> [--namespace ns]
 [--name velociraptor-api-client] [--key api_client.yaml]` validates a Velociraptor

@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
 )
 
 // The commands share package-level flag state, so these tests run
@@ -59,4 +61,28 @@ func TestPublishValidatesInput(t *testing.T) {
 
 func TestJoinComponents(t *testing.T) {
 	assert.Equal(t, "secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor", joinComponents())
+}
+
+func TestResultError(t *testing.T) {
+	ok := []report.Result{{Action: report.ActionOK}, {Action: report.ActionCreate}}
+	failed := append(ok, report.Result{Action: report.ActionError}, report.Result{Action: report.ActionError})
+
+	var log bytes.Buffer
+	require.NoError(t, resultError(&log, ok, false))
+	require.NoError(t, resultError(&log, ok, true))
+	assert.Empty(t, log.String())
+
+	err := resultError(&log, failed, false)
+	require.Error(t, err)
+	assert.Equal(t, "2 objects could not be reconciled", err.Error())
+	assert.Empty(t, log.String())
+
+	require.NoError(t, resultError(&log, failed, true))
+	assert.Contains(t, log.String(), "2 objects could not be reconciled (ignored: --exit-zero)")
+}
+
+func TestExitZeroFlag(t *testing.T) {
+	f := RootCmd.Flags().Lookup("exit-zero")
+	require.NotNil(t, f)
+	assert.Equal(t, "false", f.DefValue)
 }
