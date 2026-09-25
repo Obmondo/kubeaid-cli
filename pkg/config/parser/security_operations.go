@@ -120,6 +120,10 @@ func validateSecurityOperationsConfig() error {
 		return fmt.Errorf("keycloak.url must be an http(s) URL (got %q)", cfg.Keycloak.URL)
 	}
 
+	if cfg.Keycloak.HostAliasIP != "" && net.ParseIP(cfg.Keycloak.HostAliasIP) == nil {
+		return fmt.Errorf("keycloak.hostAliasIP must be an IP address (got %q)", cfg.Keycloak.HostAliasIP)
+	}
+
 	if !securityOperationsHostnamePattern.MatchString(cfg.AgentHost) {
 		return fmt.Errorf("agentHost must be a fully qualified domain name (got %q)", cfg.AgentHost)
 	}

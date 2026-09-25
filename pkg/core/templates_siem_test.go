@@ -593,3 +593,39 @@ func TestRenderSecurityOperations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, string(sealed), string(again), "unchanged plaintext is not re-encrypted")
 }
+
+// TestSIEMKeycloakHostAlias pins the Keycloak host in every SOC pod.
+func TestSIEMKeycloakHostAlias(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	config.ParsedGeneralConfig.Cluster.SecurityOperations.Keycloak.HostAliasIP = "10.0.0.10"
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+
+	want := []any{map[string]any{"ip": "10.0.0.10", "hostnames": []any{"keycloak.example.com"}}}
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	for _, keys := range [][]string{
+		{"reconciler", "hostAliases"},
+		{"wazuh", "wazuh", "indexer", "extraSpec", "pod", "hostAliases"},
+		{"wazuh", "wazuh", "dashboard", "extraSpec", "pod", "hostAliases"},
+		{"velociraptor", "velociraptor", "hostAliases"},
+		{"dfir-iris", "hostAliases"},
+		{"misp", "misp", "hostAliases"},
+	} {
+		assert.Equal(t, want, dig(t, central, keys...), "%v", keys)
+	}
+
+	tenant := renderDocs(t, siemTenantValuesTmpl, tv)[0]
+	for _, keys := range [][]string{
+		{"wazuh", "indexer", "extraSpec", "pod", "hostAliases"},
+		{"wazuh", "dashboard", "extraSpec", "pod", "hostAliases"},
+	} {
+		assert.Equal(t, want, dig(t, tenant, keys...), "%v", keys)
+	}
+
+	// Without it nothing is pinned.
+	config.ParsedGeneralConfig.Cluster.SecurityOperations.Keycloak.HostAliasIP = ""
+	tv.SecOps = buildSecurityOperationsValues()
+	central = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.NotContains(t, digMap(t, central, "reconciler"), "hostAliases")
+	assert.NotContains(t, digMap(t, central, "dfir-iris"), "hostAliases")
+}

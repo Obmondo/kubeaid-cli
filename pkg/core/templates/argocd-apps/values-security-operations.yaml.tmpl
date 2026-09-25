@@ -51,11 +51,23 @@ reconciler:
     {{- end }}
   {{- end }}
   dryRun: {{ .SecOps.ReconcilerDryRun }}
+{{- if .SecOps.KeycloakHostAliasIP }}
+  hostAliases:
+    - ip: {{ .SecOps.KeycloakHostAliasIP }}
+      hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
 
 # Central Wazuh search: indexer + dashboard, no manager.
 wazuh:
   wazuh:
     indexer:
+{{- if .SecOps.KeycloakHostAliasIP }}
+      extraSpec:
+        pod:
+          hostAliases:
+            - ip: {{ .SecOps.KeycloakHostAliasIP }}
+              hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
       cred:
         existingSecret: wazuh-indexer-cred
         passwordHash: "{{ .SecOps.CentralIndexerPasswordHash }}"
@@ -95,6 +107,13 @@ wazuh:
                   matchLabels:
                     app.kubernetes.io/name: siem-reconciler
     dashboard:
+{{- if .SecOps.KeycloakHostAliasIP }}
+      extraSpec:
+        pod:
+          hostAliases:
+            - ip: {{ .SecOps.KeycloakHostAliasIP }}
+              hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
       cred:
         existingSecret: wazuh-dashboard-cred
         passwordHash: "{{ .SecOps.CentralDashboardPasswordHash }}"
@@ -176,6 +195,11 @@ wazuh:
 
 velociraptor:
   velociraptor:
+{{- if .SecOps.KeycloakHostAliasIP }}
+    hostAliases:
+      - ip: {{ .SecOps.KeycloakHostAliasIP }}
+        hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
     gui:
       publicUrl: https://{{ .SecOps.VelociraptorHost }}/app/index.html
       ingress:
@@ -208,6 +232,11 @@ velociraptor:
               kubernetes.io/metadata.name: traefik
 
 dfir-iris:
+{{- if .SecOps.KeycloakHostAliasIP }}
+  hostAliases:
+    - ip: {{ .SecOps.KeycloakHostAliasIP }}
+      hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
   ingress:
     enabled: true
     className: {{ .SecOps.IngressClassName }}
@@ -231,6 +260,11 @@ dfir-iris:
 
 misp:
   misp:
+{{- if .SecOps.KeycloakHostAliasIP }}
+    hostAliases:
+      - ip: {{ .SecOps.KeycloakHostAliasIP }}
+        hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
     instanceEnv:
       mispBaseurl: https://{{ .SecOps.MISPHost }}
       ingressHostName: {{ .SecOps.MISPHost }}

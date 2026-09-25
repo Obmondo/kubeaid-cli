@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"path"
 	"strings"
 
@@ -37,6 +38,11 @@ const securityOperationsIRISMinLevel = 10
 type SecurityOperationsValues struct {
 	// ChartRevision is the KubeAid revision the Applications use.
 	ChartRevision string
+
+	// KeycloakHost is the host of the Keycloak URL; KeycloakHostAliasIP, when
+	// set, pins it in every pod (hostAliases).
+	KeycloakHost        string
+	KeycloakHostAliasIP string
 	// ConfigRevision is the kubeaid-config revision of the values files.
 	ConfigRevision string
 
@@ -156,9 +162,11 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		MISPHost:         host("misp"),
 		VelociraptorHost: host("velociraptor"),
 
-		KeycloakURL:    keycloakURL,
-		KeycloakRealm:  cfg.Keycloak.Realm,
-		KeycloakIssuer: keycloakURL + "/realms/" + cfg.Keycloak.Realm,
+		KeycloakURL:         keycloakURL,
+		KeycloakHost:        keycloakHost(keycloakURL),
+		KeycloakHostAliasIP: cfg.Keycloak.HostAliasIP,
+		KeycloakRealm:       cfg.Keycloak.Realm,
+		KeycloakIssuer:      keycloakURL + "/realms/" + cfg.Keycloak.Realm,
 
 		AgentHost:    cfg.AgentHost,
 		AgentAddress: cfg.AgentAddress,
@@ -373,4 +381,13 @@ func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string,
 	sealed, err := createOrUpdateSecurityOperationsSealedSecretFiles(ctx, clusterDir, keep)
 	written = append(written, sealed...)
 	return written, err
+}
+
+// keycloakHost returns the host name of a Keycloak URL, "" when it has none.
+func keycloakHost(keycloakURL string) string {
+	u, err := url.Parse(keycloakURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }

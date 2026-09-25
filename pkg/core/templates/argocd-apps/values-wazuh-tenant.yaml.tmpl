@@ -17,6 +17,13 @@ wazuh:
       name: soc-ca
       type: ClusterIssuer
   indexer:
+{{- if .SecOps.KeycloakHostAliasIP }}
+    extraSpec:
+      pod:
+        hostAliases:
+          - ip: {{ .SecOps.KeycloakHostAliasIP }}
+            hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
     cred:
       existingSecret: wazuh-indexer-cred
     config:
@@ -52,6 +59,13 @@ wazuh:
                 matchLabels:
                   kubernetes.io/metadata.name: traefik
   dashboard:
+{{- if .SecOps.KeycloakHostAliasIP }}
+    extraSpec:
+      pod:
+        hostAliases:
+          - ip: {{ .SecOps.KeycloakHostAliasIP }}
+            hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
     cred:
       existingSecret: wazuh-dashboard-cred
     ingress:

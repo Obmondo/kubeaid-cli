@@ -24,6 +24,7 @@ cluster:
     keycloak:
       url: https://keycloak.example.com/auth  # default https://<cluster.keycloak.dns>/auth
       realm: soc                   # default soc
+      # hostAliasIP: 10.0.0.10     # pin the Keycloak host in every pod (internal-only Keycloak)
     agentHost: agents.example.com  # required: host name the agents dial
     agentAddress: 192.0.2.10       # required: external IP of the per-tenant agent Services
     agentPortBase: 20000           # default 20000

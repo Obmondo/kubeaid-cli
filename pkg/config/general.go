@@ -345,6 +345,11 @@ type (
 
 		// Realm defaults to "soc".
 		Realm string `yaml:"realm"`
+
+		// HostAliasIP pins URL's host name to this IP in every SOC pod, for a
+		// Keycloak that pods cannot reach through DNS, e.g. one served only by
+		// an internal ingress whose Service ClusterIP this is. Empty: DNS.
+		HostAliasIP string `yaml:"hostAliasIP"`
 	}
 
 	// SecurityOperationsReconcilerConfig drives the chart's reconciler block.

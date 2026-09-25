@@ -895,6 +895,7 @@ and the next render follows it.</p>
 |-------|------|---------|-------------|
 | url | `string` |  | URL is Keycloak's root URL including any context path. Default:<br>https://<cluster.keycloak.dns>/auth when cluster.keycloak is set,<br>required otherwise.<br> |
 | realm | `string` |  | Realm defaults to "soc".<br> |
+| hostAliasIP | `string` |  | HostAliasIP pins URL's host name to this IP in every SOC pod, for a<br>Keycloak that pods cannot reach through DNS, e.g. one served only by<br>an internal ingress whose Service ClusterIP this is. Empty: DNS.<br> |
 
 ## SecurityOperationsReconcilerConfig
 

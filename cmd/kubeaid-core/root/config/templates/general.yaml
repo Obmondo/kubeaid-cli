@@ -153,6 +153,10 @@ cluster:
       url:
       # Realm defaults to "soc".
       realm:
+      # HostAliasIP pins URL's host name to this IP in every SOC pod, for a
+      # Keycloak that pods cannot reach through DNS, e.g. one served only by
+      # an internal ingress whose Service ClusterIP this is. Empty: DNS.
+      hostAliasIP:
     # AgentHost is the public host name the Wazuh agents dial. Required.
     agentHost:
     # AgentAddress is the external IP the per-tenant agent Services listen
