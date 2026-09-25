@@ -171,6 +171,15 @@ cluster:
     # certificates. Default: letsencrypt-prod, the issuer kubeaid-cli
     # renders.
     clusterIssuer:
+    # VelociraptorEntryPoint is the Traefik TCP entry point (with a public
+    # hostPort, 8000 by convention) that forwards Velociraptor client
+    # traffic to the frontend by SNI. Empty: no client route.
+    velociraptorEntryPoint:
+    # SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for
+    # the IRIS data volume, so the IRIS app and worker may run on different
+    # nodes. Empty: a ReadWriteOnce volume on the default class, with the
+    # worker kept on the app's node.
+    sharedStorageClass:
     # Reconciler switches the chart's siem-reconciler CronJob.
     reconciler:
       enabled:

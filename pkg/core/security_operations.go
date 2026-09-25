@@ -64,7 +64,14 @@ type SecurityOperationsValues struct {
 	AgentAddress string
 
 	IngressClassName string
-	ClusterIssuer    string
+
+	// VelociraptorEntryPoint, when set, renders the client TCP route.
+	VelociraptorEntryPoint string
+	// SharedStorageClass, when set, makes the IRIS volume ReadWriteMany.
+	SharedStorageClass string
+	// MISPRedisPassword is MISP's Valkey password (see credentialsFromClusterDir).
+	MISPRedisPassword string
+	ClusterIssuer     string
 
 	ReconcilerEnabled          bool
 	ReconcilerImageRepository  string
@@ -125,6 +132,11 @@ type securityOperationsSecretData struct {
 	Password  string
 }
 
+// securityOperationsMISPRedisPassword is MISP's Valkey password for the
+// current render, kept from the previous render of the cluster directory or
+// generated (RenderSecurityOperations). Empty: the chart default.
+var securityOperationsMISPRedisPassword string
+
 // buildSecurityOperationsValues derives the template values of
 // cluster.securityOperations. Nil when the SOC is not enabled.
 func buildSecurityOperationsValues() *SecurityOperationsValues {
@@ -171,8 +183,11 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		AgentHost:    cfg.AgentHost,
 		AgentAddress: cfg.AgentAddress,
 
-		IngressClassName: cfg.IngressClassName,
-		ClusterIssuer:    cfg.ClusterIssuer,
+		IngressClassName:       cfg.IngressClassName,
+		VelociraptorEntryPoint: cfg.VelociraptorEntryPoint,
+		SharedStorageClass:     cfg.SharedStorageClass,
+		MISPRedisPassword:      securityOperationsMISPRedisPassword,
+		ClusterIssuer:          cfg.ClusterIssuer,
 
 		ReconcilerEnabled:          cfg.Reconciler.Enabled,
 		ReconcilerImageRepository:  cfg.Reconciler.ImageRepository,
@@ -365,6 +380,10 @@ func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string,
 		return nil, fmt.Errorf("reading the credential state in %s: %w", clusterDir, err)
 	}
 	config.ParsedSecretsConfig.SecurityOperations = creds
+
+	if securityOperationsMISPRedisPassword, err = mispRedisPasswordFromClusterDir(clusterDir); err != nil {
+		return nil, err
+	}
 
 	templateValues := &TemplateValues{
 		ForksConfig: config.ParsedGeneralConfig.Forks,

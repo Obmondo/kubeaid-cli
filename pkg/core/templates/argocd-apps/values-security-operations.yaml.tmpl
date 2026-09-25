@@ -197,6 +197,18 @@ wazuh:
                     kubernetes.io/metadata.name: traefik
 
 velociraptor:
+{{- with .SecOps.VelociraptorEntryPoint }}
+  # Clients speak mTLS to the frontend and pin its certificate: Traefik forwards
+  # the raw TLS by SNI on this entry point (a public hostPort, 8000).
+  frontendTcpRoute:
+    enabled: true
+    entryPoint: {{ . }}
+    host: {{ $.SecOps.VelociraptorHost }}
+  frontendAllowedFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: traefik
+{{- end }}
   velociraptor:
 {{- if .SecOps.KeycloakHostAliasIP }}
     hostAliases:
@@ -258,6 +270,12 @@ velociraptor:
               port: 8000
 
 dfir-iris:
+{{- with .SecOps.SharedStorageClass }}
+  # ReadWriteMany, so the IRIS app and worker may run on different nodes.
+  persistence:
+    storageClass: {{ . }}
+    accessModes: [ReadWriteMany]
+{{- end }}
 {{- if .SecOps.KeycloakHostAliasIP }}
   hostAliases:
     - ip: {{ .SecOps.KeycloakHostAliasIP }}
@@ -304,6 +322,10 @@ misp:
       oidcDefaultOrg: "1"
       oidcLogoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout?client_id=misp
       oidcScopes: '["openid", "email", "profile"]'
+{{- with .SecOps.MISPRedisPassword }}
+      # Must equal valkey.auth.aclUsers.default.password below.
+      redisPassword: "{{ . }}"
+{{- end }}
     misp:
       ingress:
         enabled: true
@@ -313,6 +335,13 @@ misp:
           cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
     tls:
       useTLS: true
+{{- with .SecOps.MISPRedisPassword }}
+    valkey:
+      auth:
+        aclUsers:
+          default:
+            password: "{{ . }}"
+{{- end }}
   wazuhCdbExport:
     # One target per tenant manager (the export itself stays off until the
     # tenant releases register the lists). The credentials Secrets are copied

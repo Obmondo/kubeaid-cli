@@ -871,6 +871,8 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | agentPortBase | `int` |  | AgentPortBase derives a tenant's agent ports when its code is all<br>digits: registration = base + code*10 + 5, events = base + code*10 + 4.<br> |
 | ingressClassName | `string` |  | IngressClassName of every SOC Ingress. Default: traefik.<br> |
 | clusterIssuer | `string` |  | ClusterIssuer is the cert-manager ClusterIssuer for the Ingress<br>certificates. Default: letsencrypt-prod, the issuer kubeaid-cli<br>renders.<br> |
+| velociraptorEntryPoint | `string` |  | VelociraptorEntryPoint is the Traefik TCP entry point (with a public<br>hostPort, 8000 by convention) that forwards Velociraptor client<br>traffic to the frontend by SNI. Empty: no client route.<br> |
+| sharedStorageClass | `string` |  | SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for<br>the IRIS data volume, so the IRIS app and worker may run on different<br>nodes. Empty: a ReadWriteOnce volume on the default class, with the<br>worker kept on the app's node.<br> |
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
 

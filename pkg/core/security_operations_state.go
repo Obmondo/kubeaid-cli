@@ -17,6 +17,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/randval"
 )
 
 // Rendered files the credential state is read back from, relative to the
@@ -162,3 +163,28 @@ func stringAt(v any, keys ...string) string {
 	s, _ := valueAt(v, keys...).(string)
 	return s
 }
+
+// mispRedisPasswordFromClusterDir keeps MISP's Valkey password from the
+// previous render (misp.misp.env.redisPassword in the central values) and
+// generates one on the first render or when it is still the chart default.
+// Like the Wazuh hashes, the value lives only in the cluster directory; the
+// MISP chart puts it into a ConfigMap either way.
+func mispRedisPasswordFromClusterDir(clusterDir string) (string, error) {
+	raw, err := os.ReadFile(path.Join(clusterDir, securityOperationsCentralValuesFile))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err == nil {
+		var values map[string]any
+		if err := yaml.Unmarshal(raw, &values); err != nil {
+			return "", fmt.Errorf("parsing %s: %w", securityOperationsCentralValuesFile, err)
+		}
+		if pw := stringAt(values, "misp", "misp", "env", "redisPassword"); pw != "" && pw != mispChartDefaultRedisPassword {
+			return pw, nil
+		}
+	}
+	return randval.Password()
+}
+
+// mispChartDefaultRedisPassword is the misp chart's placeholder.
+const mispChartDefaultRedisPassword = "change-me"

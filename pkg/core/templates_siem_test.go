@@ -631,3 +631,56 @@ func TestSIEMKeycloakHostAlias(t *testing.T) {
 	assert.NotContains(t, digMap(t, central, "reconciler"), "hostAliases")
 	assert.NotContains(t, digMap(t, central, "dfir-iris"), "hostAliases")
 }
+
+// TestSIEMOptionalComponents covers the Velociraptor client route, the MISP
+// Valkey password and IRIS shared storage: rendered only when set.
+func TestSIEMOptionalComponents(t *testing.T) {
+	securityOperationsMISPRedisPassword = ""
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.NotContains(t, digMap(t, central, "velociraptor"), "frontendTcpRoute")
+	assert.NotContains(t, digMap(t, central, "dfir-iris"), "persistence")
+	assert.NotContains(t, digMap(t, central, "misp", "misp", "env"), "redisPassword")
+
+	soc := config.ParsedGeneralConfig.Cluster.SecurityOperations
+	soc.VelociraptorEntryPoint = "velociraptor"
+	soc.SharedStorageClass = "shared-fs"
+	securityOperationsMISPRedisPassword = "redis-secret"
+	t.Cleanup(func() { securityOperationsMISPRedisPassword = "" })
+	tv.SecOps = buildSecurityOperationsValues()
+	central = renderDocs(t, siemValuesTmpl, tv)[0]
+
+	assert.Equal(t, map[string]any{"enabled": true, "entryPoint": "velociraptor", "host": "soc-velociraptor.example.com"},
+		dig(t, central, "velociraptor", "frontendTcpRoute"))
+	assert.Len(t, digList(t, central, "velociraptor", "frontendAllowedFrom"), 1)
+	assert.Equal(t, map[string]any{"storageClass": "shared-fs", "accessModes": []any{"ReadWriteMany"}},
+		dig(t, central, "dfir-iris", "persistence"))
+	assert.Equal(t, "redis-secret", dig(t, central, "misp", "misp", "env", "redisPassword"))
+	assert.Equal(t, "redis-secret", dig(t, central, "misp", "misp", "valkey", "auth", "aclUsers", "default", "password"))
+}
+
+// The MISP Valkey password survives renders and replaces the chart default.
+func TestMISPRedisPasswordFromClusterDir(t *testing.T) {
+	dir := t.TempDir()
+	first, err := mispRedisPasswordFromClusterDir(dir)
+	require.NoError(t, err)
+	assert.Len(t, first, 32)
+
+	write := func(pw string) {
+		require.NoError(t, os.MkdirAll(filepath.Join(dir, "argocd-apps"), 0o750))
+		require.NoError(t, os.WriteFile(filepath.Join(dir, securityOperationsCentralValuesFile),
+			[]byte("misp:\n  misp:\n    env:\n      redisPassword: \""+pw+"\"\n"), 0o600))
+	}
+	write("kept-password")
+	kept, err := mispRedisPasswordFromClusterDir(dir)
+	require.NoError(t, err)
+	assert.Equal(t, "kept-password", kept)
+
+	write(mispChartDefaultRedisPassword)
+	fresh, err := mispRedisPasswordFromClusterDir(dir)
+	require.NoError(t, err)
+	assert.NotEqual(t, mispChartDefaultRedisPassword, fresh)
+}

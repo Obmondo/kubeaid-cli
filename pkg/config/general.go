@@ -329,6 +329,17 @@ type (
 		// renders.
 		ClusterIssuer string `yaml:"clusterIssuer"`
 
+		// VelociraptorEntryPoint is the Traefik TCP entry point (with a public
+		// hostPort, 8000 by convention) that forwards Velociraptor client
+		// traffic to the frontend by SNI. Empty: no client route.
+		VelociraptorEntryPoint string `yaml:"velociraptorEntryPoint"`
+
+		// SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for
+		// the IRIS data volume, so the IRIS app and worker may run on different
+		// nodes. Empty: a ReadWriteOnce volume on the default class, with the
+		// worker kept on the app's node.
+		SharedStorageClass string `yaml:"sharedStorageClass"`
+
 		// Reconciler switches the chart's siem-reconciler CronJob.
 		Reconciler SecurityOperationsReconcilerConfig `yaml:"reconciler"`
 
