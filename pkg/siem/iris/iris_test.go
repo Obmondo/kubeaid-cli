@@ -92,6 +92,10 @@ func (f *fakeIRIS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		login, _ := body["user_login"].(string)
+		if pw, _ := body["user_password"].(string); len(pw) < 12 {
+			fail(w, http.StatusInternalServerError, "missing 1 required positional argument: 'password'")
+			return
+		}
 		if sa, _ := body["user_is_service_account"].(bool); !sa {
 			fail(w, http.StatusBadRequest, "expected a service account")
 			return

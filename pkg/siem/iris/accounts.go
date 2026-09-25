@@ -5,6 +5,8 @@ package iris
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"net/http"
 	"net/url"
@@ -33,7 +35,15 @@ func (c *Client) createServiceAccount(ctx context.Context, sa ServiceAccount) (s
 	if email == "" {
 		email = sa.Login + "@service.invalid"
 	}
+	// IRIS builds the user with a password even for a service account, which
+	// only ever logs in with its API key: a random one nobody keeps, with
+	// every character class the default password policy asks for.
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return "", err
+	}
 	body := map[string]any{
+		"user_password":           base64.RawURLEncoding.EncodeToString(secret) + "Aa1!",
 		"user_login":              sa.Login,
 		"user_name":               name,
 		"user_email":              email,
