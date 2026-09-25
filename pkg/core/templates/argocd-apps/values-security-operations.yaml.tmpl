@@ -35,9 +35,14 @@ tenants:
 
 reconciler:
   enabled: {{ .SecOps.ReconcilerEnabled }}
-  {{- if .SecOps.ReconcilerImageTag }}
+  {{- if or .SecOps.ReconcilerImageRepository .SecOps.ReconcilerImageTag }}
   image:
+    {{- if .SecOps.ReconcilerImageRepository }}
+    repository: {{ .SecOps.ReconcilerImageRepository }}
+    {{- end }}
+    {{- if .SecOps.ReconcilerImageTag }}
     tag: {{ .SecOps.ReconcilerImageTag }}
+    {{- end }}
   {{- end }}
   dryRun: {{ .SecOps.ReconcilerDryRun }}
 

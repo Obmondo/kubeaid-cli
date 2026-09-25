@@ -358,6 +358,14 @@ func TestSIEMCentralValuesReconciler(t *testing.T) {
 	}, values["reconciler"])
 	assert.Equal(t, []any{}, values["tenants"])
 	assert.Equal(t, []any{}, dig(t, values, "misp", "wazuhCdbExport", "targets"))
+
+	// A private registry: repository and tag together.
+	soc.Reconciler.ImageRepository = "registry.example.com/soc/siem-reconciler"
+	tv.SecOps = buildSecurityOperationsValues()
+	values = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, map[string]any{
+		"repository": "registry.example.com/soc/siem-reconciler", "tag": "v1.2.3",
+	}, dig(t, values, "reconciler", "image"))
 }
 
 func TestSIEMTenantBaseValues(t *testing.T) {

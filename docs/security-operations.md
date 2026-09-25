@@ -30,6 +30,7 @@ cluster:
     clusterIssuer: letsencrypt-prod  # default: the ClusterIssuer kubeaid-cli renders
     reconciler:
       enabled: false               # default false
+      imageRepository: ""          # default: the chart's (ghcr.io/obmondo/siem-reconciler)
       imageTag: ""                 # default: the chart's
       dryRun: true                 # default true
     tenants:

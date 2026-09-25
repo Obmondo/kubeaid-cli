@@ -58,9 +58,10 @@ type SecurityOperationsValues struct {
 	IngressClassName string
 	ClusterIssuer    string
 
-	ReconcilerEnabled  bool
-	ReconcilerImageTag string
-	ReconcilerDryRun   bool
+	ReconcilerEnabled         bool
+	ReconcilerImageRepository string
+	ReconcilerImageTag        string
+	ReconcilerDryRun          bool
 
 	CentralIndexerDN string
 
@@ -156,9 +157,10 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		IngressClassName: cfg.IngressClassName,
 		ClusterIssuer:    cfg.ClusterIssuer,
 
-		ReconcilerEnabled:  cfg.Reconciler.Enabled,
-		ReconcilerImageTag: cfg.Reconciler.ImageTag,
-		ReconcilerDryRun:   cfg.Reconciler.DryRun == nil || *cfg.Reconciler.DryRun,
+		ReconcilerEnabled:         cfg.Reconciler.Enabled,
+		ReconcilerImageRepository: cfg.Reconciler.ImageRepository,
+		ReconcilerImageTag:        cfg.Reconciler.ImageTag,
+		ReconcilerDryRun:          cfg.Reconciler.DryRun == nil || *cfg.Reconciler.DryRun,
 
 		CentralIndexerDN: securityOperationsCentralIndexerDN,
 

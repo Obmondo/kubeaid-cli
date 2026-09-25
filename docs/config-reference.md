@@ -902,7 +902,8 @@ and the next render follows it.</p>
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | enabled | `bool` |  |  |
-| imageTag | `string` |  | ImageTag of ghcr.io/obmondo/siem-reconciler. Empty: the chart's.<br> |
+| imageRepository | `string` |  | ImageRepository overrides the image repository, e.g. a private<br>registry mirror. Empty: the chart's (ghcr.io/obmondo/siem-reconciler).<br> |
+| imageTag | `string` |  | ImageTag of the siem-reconciler image. Empty: the chart's.<br> |
 | dryRun | `bool` |  | DryRun prints the plan only. Default true; nil means true.<br> |
 
 ## SecurityOperationsTenant

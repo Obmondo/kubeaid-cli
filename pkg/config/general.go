@@ -346,7 +346,11 @@ type (
 	SecurityOperationsReconcilerConfig struct {
 		Enabled bool `yaml:"enabled"`
 
-		// ImageTag of ghcr.io/obmondo/siem-reconciler. Empty: the chart's.
+		// ImageRepository overrides the image repository, e.g. a private
+		// registry mirror. Empty: the chart's (ghcr.io/obmondo/siem-reconciler).
+		ImageRepository string `yaml:"imageRepository"`
+
+		// ImageTag of the siem-reconciler image. Empty: the chart's.
 		ImageTag string `yaml:"imageTag"`
 
 		// DryRun prints the plan only. Default true; nil means true.
