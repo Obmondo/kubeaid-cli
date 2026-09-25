@@ -15,7 +15,9 @@ Components run in this order; `--only` selects a subset.
 
 | Component | Objects | Rule |
 |---|---|---|
-| `secrets` | Secrets listed under `secrets` | Created with random values when missing; missing keys added; existing values never changed. A Secret owned by a SealedSecret is only checked (a missing key is an error, fix the SealedSecret). |
+| `secrets` | Secrets listed under `secrets` | Created with random (or literal `value`) values when missing; missing keys added; existing values never changed. A Secret owned by a SealedSecret is only checked (a missing key is an error, fix the SealedSecret). |
+| | Keys listed under `secretCopies` | Target key created or overwritten when its bytes differ from the source; other target keys kept. A missing source is an error for that copy. |
+| `enrolment` | One agent enrolment bundle Secret per `enrolment` entry | Rendered from the config and the tenant's authd password; created when missing, updated when any key differs. A missing authd Secret is an error for that bundle. |
 | `keycloak` | Realm (created if missing), `bruteForceProtected`, OTP policy, `CONFIGURE_TOTP` as default required action | Only the attributes set in the config are compared. |
 | | Realm roles `operators.adminRole`, `operators.analystRole`, group `operators.analystGroup` | Created if missing. |
 | | Per tenant: realm role and group `<tenantGroupPrefix><code>`, group grants the role | Created if missing; other role mappings kept. |
@@ -24,8 +26,9 @@ Components run in this order; `--only` selects a subset.
 | | Optional per-tenant identity-provider broker | Created/updated; a hardcoded-group mapper puts brokered users in the tenant group. |
 | `iris` | One customer per tenant (name = tenant name) | Created if missing. |
 | | Service accounts listed in `components.iris.serviceAccounts` | Groups and customers (all tenants + the initial customer) added; never removed. The accounts themselves must exist. |
-| `wazuh` | Rules `oidc_<adminRole>` / `oidc_<analystRole>` mapping backend roles to the stock API roles | Created, condition corrected, linked. |
-| | Per tenant: policies `<g>_agents`, `<g>_group`, role `<g>_readonly` (those two + the stock read-only policies), rule `oidc_<g>` (dashes as underscores), agent group `<g>` | Created or corrected; links only added. Tenant RBAC is refused unless `rbac_mode` is `white`. Agent groups are only created with `createGroups: true`. |
+| `wazuh` | Per tenant manager (reported as `wazuh/<code>`): rules `oidc_<adminRole>`, `oidc_<analystRole>` and `oidc_<g>` (dashes as underscores) mapping the backend roles to `adminApiRole`, `analystApiRole` and `tenantApiRole` | Created, condition corrected, linked to the existing API role. The whole manager belongs to the tenant: no per-tenant policies, roles or agent groups. |
+| `wazuhcentral` | Persistent `cluster.remote.<alias>.seeds` on the central indexer | Created or corrected; remotes not in the config are reported as `skip` and left in place. |
+| | `dashboardConfigSecret` (`wazuh.yml`) | Rendered from every manager's URL and API credentials; created or updated when it differs. Not written while any manager's credentials are unreadable. |
 | `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
 | | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
 
@@ -50,7 +53,8 @@ Client fields and how drift is handled:
   copied, never edited), client scopes, and anything not named in the config.
 - Deletion of any kind. Removing a tenant from the config leaves its objects in
   place; clean them up by hand.
-- Wazuh agents, users and stock roles/policies; Velociraptor artifacts other than
+- Wazuh agents, users, roles and policies; the central indexer's remotes not in the
+  config; Velociraptor artifacts other than
   the ones listed under `serverMonitoring`.
 
 ## Dry-run semantics
@@ -84,7 +88,7 @@ Flags:
 |---|---|---|
 | `--config` | `/etc/siem/tenants.json` | Input file. |
 | `--dry-run` | `true` | Report only. `--dry-run=false` applies. |
-| `--only` | all | Comma-separated: `secrets,keycloak,iris,wazuh,velociraptor`. |
+| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
 | `--kubeconfig`, `--context` | in-cluster | Outside a cluster the default kubeconfig rules apply. |
 | `--timeout` | `5m` | Whole run. |
 
@@ -99,16 +103,18 @@ a current client certificate. This subcommand writes; it has no dry-run.
 The Job's ServiceAccount needs:
 
 - `get` on the Secrets named in the config (Keycloak admin, client secrets, IRIS
-  API key, Wazuh API credentials, Velociraptor api_client). Scope it with
-  `resourceNames`; the Keycloak admin Secret lives in the Keycloak namespace, so
-  that needs its own Role + RoleBinding there.
-- `create` on Secrets and `update` on the generated Secrets in the release
-  namespace (only if `secrets` is used). `create` cannot be limited by
-  `resourceNames`.
+  API key, each manager's Wazuh API credentials and authd password, the indexer
+  credentials, Velociraptor api_client, copy sources). Scope it with
+  `resourceNames`; Secrets outside the release namespace (Keycloak, the tenant
+  `wazuh-<code>` namespaces) need a Role + RoleBinding in each namespace.
+- `create` on Secrets and `update` on the Secrets it writes (generated Secrets,
+  copy targets, enrolment bundles, the dashboard config) in every namespace they
+  live in. `create` cannot be limited by `resourceNames`.
 - For `publish-api-client`: `get`, `create`, `update` on the api_client Secret.
 
 API-side permissions: Keycloak master-realm admin; an IRIS API key of a
-server administrator; a Wazuh API user allowed to manage security (`wazuh-wui`);
+server administrator; per manager a Wazuh API user allowed to manage security
+(`wazuh-wui`); an indexer user allowed to update cluster settings;
 a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
 `org_create` and `COLLECT_SERVER` for `add_server_monitoring`).
 
@@ -129,9 +135,9 @@ From a machine that reaches the component APIs (port-forwards where needed):
 
 ```sh
 make build-siem-reconciler
-kubectl -n <wazuh-namespace> port-forward svc/wazuh 55000:55000 &
+kubectl -n wazuh-<code> port-forward svc/wazuh 55000:55000 &
 ./build/siem-reconciler --config tenants.json --context <kube-context> \
-  --only secrets,keycloak,iris,wazuh
+  --only secrets,enrolment,keycloak,iris,wazuh
 ```
 
 Keep the default dry run until the plan reads right, then rerun with

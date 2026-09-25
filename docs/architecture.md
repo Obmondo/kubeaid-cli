@@ -608,7 +608,7 @@ kubeaid-cli/
 │   ├── constants/           # Shared names, env vars, flag names, timeouts
 │   ├── globals/             # Process-wide state (parsed configs, CP instance)
 │   ├── keycloak/            # Idempotent Keycloak admin-API reconciler (bootstrap + SIEM)
-│   ├── siem/                # siem-reconciler: config, secrets, iris, wazuh, velociraptor, reconcile
+│   ├── siem/                # siem-reconciler: config, secrets, enrolment, iris, wazuh, wazuhcentral, velociraptor, reconcile
 │   └── utils/
 │       ├── assert/          # Fail-fast helpers (os.Exit on error)
 │       ├── git/             # Clone, commit, PR
