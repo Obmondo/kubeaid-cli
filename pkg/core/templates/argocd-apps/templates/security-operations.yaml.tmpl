@@ -1,0 +1,117 @@
+# Security operations: the central side (KubeAid security-operations chart) and
+# one Wazuh per tenant (KubeAid wazuh chart, README section 11). Rendered by
+# kubeaid-cli from cluster.securityOperations; the tenant namespaces are created
+# by the security-operations chart, so sync it before the wazuh-<code> Apps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "60"
+  name: security-operations
+  namespace: argocd
+spec:
+  destination:
+    namespace: security-operations
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/security-operations
+      targetRevision: {{ .SecOps.ChartRevision }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-security-operations.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+{{- range .SecOps.Tenants }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ $.KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "61"
+  name: wazuh-{{ .Code }}
+  namespace: argocd
+spec:
+  destination:
+    namespace: {{ .Namespace }}
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ $.KubeaidFork.URL }}
+      path: argocd-helm-charts/wazuh
+      targetRevision: {{ $.SecOps.ChartRevision }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ $.KubeaidConfigFork.Directory }}/argocd-apps/values-wazuh-tenant.yaml
+        # This tenant's part; everything shared is in values-wazuh-tenant.yaml.
+        valuesObject:
+          agentService:
+            enabled: true
+            externalIPs:
+              - {{ $.SecOps.AgentAddress }}
+            registrationPort: {{ .RegistrationPort }}
+            eventsPort: {{ .EventsPort }}
+          wazuh:
+            certificates:
+              subject:
+                # Unique node DN per tenant: CN=wazuh-indexer,O={{ .Organization }},...
+                organization: {{ .Organization }}
+            indexer:
+              replicas: {{ .IndexerReplicas }}
+              cred:
+                passwordHash: "{{ .IndexerPasswordHash }}"
+            dashboard:
+              cred:
+                passwordHash: "{{ .DashboardPasswordHash }}"
+              ingress:
+                host: {{ .DashboardHost }}
+                tls:
+                  - hosts:
+                      - {{ .DashboardHost }}
+                    secretName: wazuh-tls
+              sso:
+                oidc:
+                  roleMappings:
+                    allAccess:
+                      backendRoles:
+                        - {{ $.SecOps.AdminRole }}
+                    readall:
+                      backendRoles:
+                        - {{ $.SecOps.AnalystRole }}
+                        - {{ .Group }}
+                    kibanaUser:
+                      backendRoles:
+                        - {{ $.SecOps.AnalystRole }}
+                        - {{ .Group }}
+            wazuh:
+              # Cluster key of the manager (no workers, never leaves the namespace).
+              key: "{{ .ClusterKey }}"
+              master:
+                # Every alert of this manager goes to the tenant's IRIS customer.
+                extraConf: |
+                  <integration>
+                    <name>custom-iris</name>
+                    <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
+                    <api_key>file:/var/ossec/integrations/.iris_key</api_key>
+                    <level>10</level>
+                    <alert_format>json</alert_format>
+                    <options>{{ .IRISOptions }}</options>
+                  </integration>
+    - repoURL: {{ $.KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+{{- end }}

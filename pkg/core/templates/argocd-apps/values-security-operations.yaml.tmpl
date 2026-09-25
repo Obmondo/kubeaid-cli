@@ -1,0 +1,256 @@
+# Rendered by kubeaid-cli from cluster.securityOperations in general.yaml; edit
+# that and render again (kubeaid-cli siem render) rather than this file. Chart:
+# KubeAid argocd-helm-charts/security-operations (README.md there).
+domain: {{ .SecOps.Domain }}
+hosts:
+  wazuh: {{ .SecOps.WazuhHost }}
+  iris: {{ .SecOps.IRISHost }}
+  misp: {{ .SecOps.MISPHost }}
+  velociraptor: {{ .SecOps.VelociraptorHost }}
+
+keycloak:
+  url: {{ .SecOps.KeycloakURL }}
+  realm: {{ .SecOps.KeycloakRealm }}
+
+operators:
+  adminRole: {{ .SecOps.AdminRole }}
+  analystRole: {{ .SecOps.AnalystRole }}
+
+tenantWazuh:
+  agentHost: {{ .SecOps.AgentHost }}
+  hostPrefix: {{ .SecOps.HostPrefix }}wazuh-
+
+tenants:
+{{- range .SecOps.Tenants }}
+  - code: "{{ .Code }}"
+    name: {{ .NameJSON }}
+    {{- if .RetentionDays }}
+    retentionDays: {{ .RetentionDays }}
+    {{- end }}
+    agentPorts:
+      registration: {{ .RegistrationPort }}
+      events: {{ .EventsPort }}
+{{- else }} []
+{{- end }}
+
+reconciler:
+  enabled: {{ .SecOps.ReconcilerEnabled }}
+  {{- if .SecOps.ReconcilerImageTag }}
+  image:
+    tag: {{ .SecOps.ReconcilerImageTag }}
+  {{- end }}
+  dryRun: {{ .SecOps.ReconcilerDryRun }}
+
+# Central Wazuh search: indexer + dashboard, no manager.
+wazuh:
+  wazuh:
+    indexer:
+      cred:
+        existingSecret: wazuh-indexer-cred
+        passwordHash: "{{ .SecOps.CentralIndexerPasswordHash }}"
+      networkPolicy:
+        # Lists replace the chart defaults: the first entry of each is the
+        # security-operations default, the Keycloak one is added.
+        extraEgresses:
+          # Cross-cluster search to the tenant indexers.
+          - ports:
+              - protocol: TCP
+                port: 9300
+            to:
+              - namespaceSelector:
+                  matchExpressions:
+                    - key: security-operations.kubeaid.io/tenant
+                      operator: Exists
+                podSelector:
+                  matchLabels:
+                    app: wazuh-indexer
+          # OIDC discovery and keys from Keycloak, behind the ingress controller.
+          - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 8443
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: traefik
+        extraIngresses:
+          # The reconciler sets the remote clusters through the REST API.
+          - ports:
+              - protocol: TCP
+                port: 9200
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: siem-reconciler
+    dashboard:
+      cred:
+        existingSecret: wazuh-dashboard-cred
+        passwordHash: "{{ .SecOps.CentralDashboardPasswordHash }}"
+      ingress:
+        enabled: true
+        className: {{ .SecOps.IngressClassName }}
+        host: {{ .SecOps.WazuhHost }}
+        annotations:
+          cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
+        tls:
+          - hosts:
+              - {{ .SecOps.WazuhHost }}
+            secretName: wazuh-tls
+      # Keycloak SSO, client wazuh-dashboard. The reconciler creates the client
+      # and Secret wazuh-dashboard-oidc (client id, secret, cookie password).
+      sso:
+        oidc:
+          enabled: true
+          url: {{ .SecOps.KeycloakIssuer }}/.well-known/openid-configuration
+          logoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout
+          issuer: {{ .SecOps.KeycloakIssuer }}
+          scope: "openid profile email"
+          existingSecret: wazuh-dashboard-oidc
+          config:
+            subjectKey: preferred_username
+            rolesKey: roles
+          roleMappings:
+            allAccess:
+              backendRoles:
+                - {{ .SecOps.AdminRole }}
+            readall:
+              backendRoles:
+                - {{ .SecOps.AnalystRole }}
+            kibanaUser:
+              backendRoles:
+                - {{ .SecOps.AnalystRole }}
+          customizeLoginButton:
+            enabled: true
+            text: "Log in with SSO"
+      # Internal users (admin) keep the login form next to the SSO button;
+      # basic auth goes first without a challenge so service logins never
+      # touch OIDC.
+      basicAuth:
+        enabled: true
+        order: 0
+        challenge: false
+      # The default cookie password is public.
+      additionalEnv:
+        - name: OPENSEARCH_COOKIE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wazuh-dashboard-oidc
+              key: OPENSEARCH_COOKIE_PASSWORD
+      server:
+        extraConf:
+          opensearch_security.cookie.password: ${OPENSEARCH_COOKIE_PASSWORD}
+          opensearch_security.cookie.secure: true
+      networkPolicy:
+        extraEgresses:
+          # The Wazuh app calls every tenant's manager API.
+          - ports:
+              - protocol: TCP
+                port: 55000
+            to:
+              - namespaceSelector:
+                  matchExpressions:
+                    - key: security-operations.kubeaid.io/tenant
+                      operator: Exists
+          # OIDC token exchange with Keycloak, behind the ingress controller.
+          - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 8443
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: traefik
+
+velociraptor:
+  velociraptor:
+    gui:
+      publicUrl: https://{{ .SecOps.VelociraptorHost }}/app/index.html
+      ingress:
+        enabled: true
+        className: {{ .SecOps.IngressClassName }}
+        annotations:
+          cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
+        hosts:
+          - host: {{ .SecOps.VelociraptorHost }}
+            paths:
+              - path: /
+                pathType: Prefix
+        tls:
+          - secretName: velociraptor-tls
+            hosts:
+              - {{ .SecOps.VelociraptorHost }}
+      # Keycloak SSO, client velociraptor (callback /auth/oidc/keycloak/callback).
+      oidc:
+        enabled: true
+        name: keycloak
+        issuer: {{ .SecOps.KeycloakIssuer }}
+        clientId: velociraptor
+        existingSecret: velociraptor-oidc
+        existingSecretKey: oauth_client_secret
+    networkPolicy:
+      # The ingress controller reaches the GUI.
+      guiAllowedFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+
+dfir-iris:
+  ingress:
+    enabled: true
+    className: {{ .SecOps.IngressClassName }}
+    annotations:
+      cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
+    host: {{ .SecOps.IRISHost }}
+    tls:
+      - secretName: iris-tls
+        hosts:
+          - {{ .SecOps.IRISHost }}
+  # Keycloak SSO, client iris (redirect /oidc-authorize). The local form stays
+  # as break-glass for the IRIS administrator.
+  authentication:
+    type: oidc
+    localFallback: true
+    createUserIfNotExist: true
+    oidc:
+      issuerUrl: {{ .SecOps.KeycloakIssuer }}
+      clientId: iris
+      existingSecret: dfir-iris-oidc
+
+misp:
+  misp:
+    instanceEnv:
+      mispBaseurl: https://{{ .SecOps.MISPHost }}
+      ingressHostName: {{ .SecOps.MISPHost }}
+    env:
+      # Keycloak SSO, client misp; client id and secret in Secret
+      # oidc-credentials. Realm roles arrive in the "roles" claim.
+      oidcEnable: true
+      oidcProviderUrl: {{ .SecOps.KeycloakIssuer }}
+      oidcRolesProperty: roles
+      oidcRolesMapping: '{"{{ .SecOps.AdminRole }}": "admin", "{{ .SecOps.AnalystRole }}": "User"}'
+      oidcDefaultOrg: "1"
+      oidcLogoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout?client_id=misp
+      oidcScopes: '["openid", "email", "profile"]'
+    misp:
+      ingress:
+        enabled: true
+        className: {{ .SecOps.IngressClassName }}
+        annotations:
+          kubernetes.io/ingress.class: {{ .SecOps.IngressClassName }}
+          cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
+    tls:
+      useTLS: true
+  wazuhCdbExport:
+    # One target per tenant manager (the export itself stays off until the
+    # tenant releases register the lists). The credentials Secrets are copied
+    # from the tenant namespaces by the reconciler.
+    targets:
+{{- range .SecOps.Tenants }}
+      - name: "{{ .Code }}"
+        url: https://wazuh.{{ .Namespace }}.svc:55000
+        credentialsSecret: wazuh-api-cred-{{ .Code }}
+        verifyTls: false
+{{- else }} []
+{{- end }}

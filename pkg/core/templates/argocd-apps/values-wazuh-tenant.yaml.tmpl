@@ -1,0 +1,194 @@
+# Rendered by kubeaid-cli from cluster.securityOperations in general.yaml. Shared
+# values of every tenant's Wazuh (KubeAid argocd-helm-charts/wazuh, README
+# section 11; mirrors tests/values-tenant.yaml there). The per-tenant part
+# (certificate organization, IRIS customer, replicas, password hashes, host,
+# agent ports, role mappings) is the valuesObject of each wazuh-<code>
+# Application in templates/security-operations.yaml.
+irisIntegration:
+  enabled: true
+wazuh:
+  fullnameOverride: wazuh
+  # Cluster nodes are not a tenant's endpoints.
+  agent:
+    enabled: false
+  certificates:
+    # Shared CA (security-operations socCA), so the indexers trust each other.
+    issuer:
+      name: soc-ca
+      type: ClusterIssuer
+  indexer:
+    cred:
+      existingSecret: wazuh-indexer-cred
+    config:
+      # The central search indexer may connect as a node (cross-cluster search).
+      nodesDn: |
+        _meta:
+          type: "nodes_dn"
+          config_version: 2
+        central_search:
+          nodes_dn:
+            - "{{ .SecOps.CentralIndexerDN }}"
+    networkPolicy:
+      extraIngresses:
+        - ports:
+            - protocol: TCP
+              port: 9300
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: security-operations
+              podSelector:
+                matchLabels:
+                  app: wazuh-indexer
+      extraEgresses:
+        # OIDC discovery and keys from Keycloak, behind the ingress controller.
+        - ports:
+            - protocol: TCP
+              port: 443
+            - protocol: TCP
+              port: 8443
+          to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: traefik
+  dashboard:
+    cred:
+      existingSecret: wazuh-dashboard-cred
+    ingress:
+      enabled: true
+      className: {{ .SecOps.IngressClassName }}
+      annotations:
+        cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
+    # Keycloak SSO, client wazuh-dashboard-<code>. The reconciler creates the
+    # client and Secret wazuh-dashboard-oidc in the tenant namespace (client
+    # id, secret, cookie password). Role mappings are per tenant.
+    sso:
+      oidc:
+        enabled: true
+        url: {{ .SecOps.KeycloakIssuer }}/.well-known/openid-configuration
+        logoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout
+        issuer: {{ .SecOps.KeycloakIssuer }}
+        scope: "openid profile email"
+        existingSecret: wazuh-dashboard-oidc
+        config:
+          subjectKey: preferred_username
+          rolesKey: roles
+        customizeLoginButton:
+          enabled: true
+          text: "Log in with SSO"
+    basicAuth:
+      enabled: true
+      order: 0
+      challenge: false
+    # The default cookie password is public.
+    additionalEnv:
+      - name: OPENSEARCH_COOKIE_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: wazuh-dashboard-oidc
+            key: OPENSEARCH_COOKIE_PASSWORD
+    server:
+      extraConf:
+        opensearch_security.cookie.password: ${OPENSEARCH_COOKIE_PASSWORD}
+        opensearch_security.cookie.secure: true
+    networkPolicy:
+      extraEgresses:
+        # OIDC token exchange with Keycloak, behind the ingress controller.
+        - ports:
+            - protocol: TCP
+              port: 443
+            - protocol: TCP
+              port: 8443
+          to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: traefik
+  wazuh:
+    apiCred:
+      existingSecret: wazuh-api-cred
+    authd:
+      existingSecret: wazuh-authd-pass
+    # Master only: one manager takes a few thousand agents.
+    worker:
+      enabled: false
+    master:
+      service:
+        ports:
+          - name: registration
+            protocol: TCP
+            port: 1515
+            targetPort: 1515
+          - name: api
+            protocol: TCP
+            port: 55000
+            targetPort: 55000
+          - name: agents-events
+            protocol: TCP
+            port: 1514
+            targetPort: 1514
+      additionalVolumes:
+        - name: iris-integration
+          configMap:
+            name: wazuh-iris-integration
+            defaultMode: 0755
+        # IRIS API key (key API_KEY), copied into the tenant namespace.
+        - name: iris-api-key
+          secret:
+            secretName: iris-api-key
+            optional: true
+            defaultMode: 0444
+      additionalVolumeMounts:
+        - name: iris-integration
+          mountPath: /var/ossec/integrations/custom-iris
+          subPath: custom-iris
+          readOnly: true
+        - name: iris-integration
+          mountPath: /var/ossec/integrations/custom-iris.py
+          subPath: custom-iris.py
+          readOnly: true
+        - name: iris-api-key
+          mountPath: /var/ossec/integrations/.iris_key
+          subPath: API_KEY
+          readOnly: true
+      networkPolicy:
+        extraIngresses:
+          # Agents from outside the cluster (agentService).
+          - ports:
+              - protocol: TCP
+                port: 1514
+              - protocol: TCP
+                port: 1515
+            from:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+          # Reconciler and MISP list export in the central namespace.
+          - ports:
+              - protocol: TCP
+                port: 55000
+            from:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: security-operations
+        extraEgresses:
+          # IRIS integration (8000) and MISP (80) in the central namespace.
+          - ports:
+              - protocol: TCP
+                port: 8000
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: security-operations
+                podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: dfir-iris
+                    app.kubernetes.io/component: app
+          - ports:
+              - protocol: TCP
+                port: 80
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: security-operations
+                podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: misp
