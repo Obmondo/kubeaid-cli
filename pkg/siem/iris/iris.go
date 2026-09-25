@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,11 +103,16 @@ type Customer struct {
 	Description string
 }
 
-// ServiceAccount is an existing IRIS login whose groups and customers
-// are managed (added to, never removed from).
+// ServiceAccount is an IRIS login whose groups and customers are managed
+// (added to, never removed from). With Create it is added as an IRIS
+// service account when missing; with Key its API key is kept there.
 type ServiceAccount struct {
 	Login  string
 	Groups []string
+	Create bool
+	Name   string
+	Email  string
+	Key    KeyStore
 }
 
 // Spec is the desired IRIS state.
@@ -179,17 +183,34 @@ func Reconcile(ctx context.Context, c *Client, spec Spec, dryRun bool) []report.
 
 func (c *Client) reconcileServiceAccount(
 	ctx context.Context, sa ServiceAccount, groups, customers map[string]int, wantCustomers []string, dryRun bool,
-) []report.Result {
+) (out []report.Result) {
 	res := func(kind string, a report.Action, detail string) report.Result {
 		return report.Result{Component: Component, Kind: kind, Name: sa.Login, Action: a, Detail: detail}
 	}
-	var lookup map[string]any
-	if err := c.call(ctx, http.MethodGet, "/manage/users/lookup/login/"+url.PathEscape(sa.Login), nil, &lookup); err != nil {
-		var apiErr *APIError
-		if errors.As(err, &apiErr) && (apiErr.Code == http.StatusNotFound || apiErr.Code == http.StatusBadRequest) {
-			return []report.Result{res("service-account", report.ActionSkip, "login not found in IRIS; create it there first")}
-		}
+	var createdKey string
+	lookup, found, err := c.lookupLogin(ctx, sa.Login)
+	switch {
+	case err != nil:
 		return []report.Result{res("service-account", report.ActionError, err.Error())}
+	case !found && !sa.Create:
+		return []report.Result{res("service-account", report.ActionSkip, "login not found in IRIS; create it there first")}
+	case !found && dryRun:
+		out = append(out, res("service-account", report.ActionCreate, "service account"))
+		if sa.Key != nil {
+			out = append(out, res("service-account-key", report.ActionCreate, "would store the new account's key"))
+		}
+		return out
+	case !found:
+		if createdKey, err = c.createServiceAccount(ctx, sa); err != nil {
+			return []report.Result{res("service-account", report.ActionError, err.Error())}
+		}
+		out = append(out, res("service-account", report.ActionCreate, "service account"))
+		if lookup, found, err = c.lookupLogin(ctx, sa.Login); err != nil || !found {
+			if err == nil {
+				err = errors.New("created but not found")
+			}
+			return append(out, res("service-account", report.ActionError, err.Error()))
+		}
 	}
 	uid := pickInt(lookup, "user_id", "id")
 	var user map[string]any
@@ -197,7 +218,10 @@ func (c *Client) reconcileServiceAccount(
 		return []report.Result{res("service-account", report.ActionError, err.Error())}
 	}
 
-	var out []report.Result
+	if sa.Key != nil {
+		defer func() { out = append(out, c.ensureKey(ctx, sa, uid, createdKey, dryRun)) }()
+	}
+
 	curGroups := idSet(user["user_groups"], "group_id", "id")
 	gIDs, gMissing, unknown := resolve(sa.Groups, groups, curGroups)
 	switch {

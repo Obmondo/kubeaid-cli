@@ -245,6 +245,15 @@ type IRIS struct {
 type IRISServiceAccount struct {
 	Login  string   `json:"login"`
 	Groups []string `json:"groups,omitempty"`
+	// Create adds the login as an IRIS service account (no password) when
+	// it is missing; Name and Email default to the login.
+	Create bool   `json:"create,omitempty"`
+	Name   string `json:"name,omitempty"`
+	Email  string `json:"email,omitempty"`
+	// APIKeySecretRef, when set, is where the account's API key is kept for
+	// the job that uses it: a stored key IRIS still accepts is left alone,
+	// otherwise the key is renewed and stored.
+	APIKeySecretRef *SecretRef `json:"apiKeySecretRef,omitempty"`
 }
 
 // Wazuh is one tenant's Wazuh manager API. The whole manager belongs
@@ -584,6 +593,9 @@ func (c *Config) validateComponents(fail func(string, ...any)) {
 		for i, sa := range iris.ServiceAccounts {
 			if sa.Login == "" {
 				fail("components.iris.serviceAccounts[%d].login is required", i)
+			}
+			if sa.APIKeySecretRef != nil {
+				validateRef(fail, fmt.Sprintf("components.iris.serviceAccounts[%d].apiKeySecretRef", i), *sa.APIKeySecretRef)
 			}
 		}
 	}

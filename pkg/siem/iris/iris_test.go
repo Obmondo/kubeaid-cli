@@ -26,6 +26,7 @@ const (
 	testKey     = "test-key"
 	initialCust = "IrisInitialClient"
 	svcLogin    = "svc_ai"
+	userID      = "user_id"
 )
 
 // fakeIRIS implements the handful of IRIS admin endpoints the
@@ -37,6 +38,9 @@ type fakeIRIS struct {
 	users     map[string]*fakeUser
 	nextID    int
 	writes    int
+	// userKeys are the API keys of non-admin users (login -> key).
+	userKeys map[string]string
+	renewals int
 }
 
 type fakeUser struct {
@@ -51,6 +55,7 @@ func newFakeIRIS() *fakeIRIS {
 		groups:    map[string]int{"Administrators": 1, analysts: 2, automation: 3},
 		users:     map[string]*fakeUser{svcLogin: {id: 7, groups: []int{3}, customers: []int{1}}},
 		nextID:    10,
+		userKeys:  map[string]string{svcLogin: "svc-key-1"},
 	}
 }
 
@@ -65,14 +70,49 @@ func fail(w http.ResponseWriter, code int, msg string) {
 }
 
 func (f *fakeIRIS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p := r.URL.Path
+	if p == "/api/ping" {
+		for _, k := range f.userKeys {
+			if r.Header.Get("Authorization") == "Bearer "+k {
+				ok(w, nil)
+				return
+			}
+		}
+	}
 	if r.Header.Get("Authorization") != "Bearer "+testKey {
 		fail(w, http.StatusUnauthorized, "bad key")
 		return
 	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	p := r.URL.Path
 	switch {
+	case p == "/api/ping":
+		ok(w, nil)
+	case p == "/manage/users/add" && r.Method == http.MethodPost:
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		login, _ := body["user_login"].(string)
+		if sa, _ := body["user_is_service_account"].(bool); !sa {
+			fail(w, http.StatusBadRequest, "expected a service account")
+			return
+		}
+		f.nextID++
+		f.users[login] = &fakeUser{id: f.nextID}
+		f.userKeys[login] = login + "-created-key"
+		f.writes++
+		ok(w, map[string]any{userID: f.nextID, "user_api_key": f.userKeys[login]})
+	case strings.HasPrefix(p, "/manage/users/renew-api-key/") && r.Method == http.MethodPost:
+		id, _ := strconv.Atoi(strings.TrimPrefix(p, "/manage/users/renew-api-key/"))
+		for login, u := range f.users {
+			if u.id == id {
+				f.renewals++
+				f.userKeys[login] = login + "-renewed-" + strconv.Itoa(f.renewals)
+				f.writes++
+				ok(w, map[string]any{userID: id, "user_api_key": f.userKeys[login]})
+				return
+			}
+		}
+		fail(w, http.StatusBadRequest, "no user")
 	case p == "/manage/customers/list":
 		list := []map[string]any{}
 		for n, id := range f.customers {
@@ -99,7 +139,7 @@ func (f *fakeIRIS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusBadRequest, "User not found")
 			return
 		}
-		ok(w, map[string]any{"user_id": u.id})
+		ok(w, map[string]any{userID: u.id})
 	case strings.HasPrefix(p, "/manage/users/"):
 		f.handleUser(w, r, strings.Split(strings.TrimPrefix(p, "/manage/users/"), "/"))
 	default:
@@ -127,7 +167,7 @@ func (f *fakeIRIS) handleUser(w http.ResponseWriter, r *http.Request, parts []st
 		for _, c := range u.customers {
 			customers = append(customers, map[string]any{customerID: c})
 		}
-		ok(w, map[string]any{"user_id": u.id, "user_groups": groups, "user_customers": customers})
+		ok(w, map[string]any{userID: u.id, "user_groups": groups, "user_customers": customers})
 		return
 	}
 	var body map[string][]int

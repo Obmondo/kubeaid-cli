@@ -127,7 +127,13 @@ func runIRIS(ctx context.Context, cfg *config.Config, store secrets.Store, dryRu
 	if err != nil {
 		return errorResult(ComponentIRIS, "http", err)
 	}
-	return iris.Reconcile(ctx, &iris.Client{BaseURL: ic.URL, APIKey: key, HTTP: hc}, IRISSpec(cfg), dryRun)
+	spec := IRISSpec(cfg)
+	for i, sa := range ic.ServiceAccounts {
+		if sa.APIKeySecretRef != nil {
+			spec.ServiceAccounts[i].Key = secretKeyStore{store: store, ref: *sa.APIKeySecretRef}
+		}
+	}
+	return iris.Reconcile(ctx, &iris.Client{BaseURL: ic.URL, APIKey: key, HTTP: hc}, spec, dryRun)
 }
 
 // IRISSpec derives the desired IRIS state from the config.
@@ -138,7 +144,9 @@ func IRISSpec(cfg *config.Config) iris.Spec {
 		spec.Customers = append(spec.Customers, iris.Customer{Name: t.Name, Description: "Tenant " + t.Code})
 	}
 	for _, sa := range ic.ServiceAccounts {
-		spec.ServiceAccounts = append(spec.ServiceAccounts, iris.ServiceAccount{Login: sa.Login, Groups: sa.Groups})
+		spec.ServiceAccounts = append(spec.ServiceAccounts, iris.ServiceAccount{
+			Login: sa.Login, Groups: sa.Groups, Create: sa.Create, Name: sa.Name, Email: sa.Email,
+		})
 	}
 	return spec
 }
