@@ -60,6 +60,13 @@ func hydrateSecurityOperationsDefaults() {
 	if cfg.ClusterIssuer == "" {
 		cfg.ClusterIssuer = constants.ClusterIssuerLetsEncrypt
 	}
+	if cfg.AITriage.DryRun == nil {
+		aiDryRun := true
+		cfg.AITriage.DryRun = &aiDryRun
+	}
+	if cfg.AITriage.Model == "" {
+		cfg.AITriage.Model = constants.SecurityOperationsDefaultAIModel
+	}
 	if cfg.Reconciler.DryRun == nil {
 		dryRun := true
 		cfg.Reconciler.DryRun = &dryRun

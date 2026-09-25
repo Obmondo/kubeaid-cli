@@ -343,6 +343,10 @@ type (
 		// Reconciler switches the chart's siem-reconciler CronJob.
 		Reconciler SecurityOperationsReconcilerConfig `yaml:"reconciler"`
 
+		// AITriage switches IRIS alert triage by the in-cluster Ollama model.
+		// The reconciler creates its IRIS account (svc_ai) and key either way.
+		AITriage SecurityOperationsAITriageConfig `yaml:"aiTriage"`
+
 		// Tenants, one entry each. Adding one and rendering again onboards it.
 		Tenants []SecurityOperationsTenant `yaml:"tenants"`
 	}
@@ -381,6 +385,23 @@ type (
 
 		// DryRun prints the plan only. Default true; nil means true.
 		DryRun *bool `yaml:"dryRun"`
+	}
+
+	// SecurityOperationsAITriageConfig drives dfir-iris aiTriage and Ollama.
+	SecurityOperationsAITriageConfig struct {
+		Enabled bool `yaml:"enabled"`
+
+		// DryRun logs each answer without writing it to IRIS. Default true;
+		// nil means true.
+		DryRun *bool `yaml:"dryRun"`
+
+		// Model is the Ollama model name. Empty: the chart's (llama3.1:8b).
+		Model string `yaml:"model"`
+
+		// DownloadModel opens Ollama's HTTPS egress and pulls Model at start.
+		// Set it until the model is on the volume, then set it back to false:
+		// with it off, nothing the model receives can leave the cluster.
+		DownloadModel bool `yaml:"downloadModel"`
 	}
 
 	// SecurityOperationsTenant is one tenant of the SOC.

@@ -78,6 +78,12 @@ type SecurityOperationsValues struct {
 	ReconcilerImageTag         string
 	ReconcilerImagePullSecrets []string
 	ReconcilerDryRun           bool
+
+	AITriageEnabled bool
+	AITriageDryRun  bool
+	AIModel         string
+	// AIDownloadModel opens Ollama's egress and pulls AIModel.
+	AIDownloadModel bool
 	// ReconcilerImage is the reconciler image repository with the chart's
 	// default filled in: the Velociraptor API client publisher runs it too.
 	ReconcilerImage string
@@ -199,6 +205,11 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		ReconcilerDryRun:           cfg.Reconciler.DryRun == nil || *cfg.Reconciler.DryRun,
 		ReconcilerImage:            cfg.Reconciler.ImageRepository,
 
+		AITriageEnabled: cfg.AITriage.Enabled,
+		AITriageDryRun:  cfg.AITriage.DryRun == nil || *cfg.AITriage.DryRun,
+		AIModel:         cfg.AITriage.Model,
+		AIDownloadModel: cfg.AITriage.DownloadModel,
+
 		CentralIndexerDN: securityOperationsCentralIndexerDN,
 
 		CentralIndexerPasswordHash:   creds.Central.IndexerPasswordHash,
@@ -208,6 +219,9 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		AnalystRole: "analyst",
 	}
 
+	if values.AIModel == "" {
+		values.AIModel = constants.SecurityOperationsDefaultAIModel
+	}
 	if values.ReconcilerImage == "" {
 		values.ReconcilerImage = constants.SecurityOperationsDefaultReconcilerImage
 	}

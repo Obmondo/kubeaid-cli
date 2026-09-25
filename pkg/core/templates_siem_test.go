@@ -715,3 +715,27 @@ func TestSIEMIRISKeycloakSync(t *testing.T) {
 	assert.Equal(t, "soc", dig(t, central, "dfir-iris", "keycloakSync", "keycloak", "realm"))
 	assert.Equal(t, "iris-keycloak-sync", dig(t, central, "dfir-iris", "keycloakSync", "existingSecret"))
 }
+
+// AI triage is off and dry-run by default; downloadModel opens Ollama's egress
+// and pulls the model.
+const testAIModel = "qwen2.5:7b"
+
+func TestSIEMAITriage(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, map[string]any{"enabled": false, "dryRun": true, "model": constants.SecurityOperationsDefaultAIModel},
+		dig(t, central, "dfir-iris", "aiTriage"))
+	assert.NotContains(t, central, "ollama")
+
+	dryRun := false
+	soc := config.ParsedGeneralConfig.Cluster.SecurityOperations
+	soc.AITriage = config.SecurityOperationsAITriageConfig{Enabled: true, DryRun: &dryRun, Model: testAIModel, DownloadModel: true}
+	tv.SecOps = buildSecurityOperationsValues()
+	central = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, map[string]any{"enabled": true, "dryRun": false, "model": testAIModel},
+		dig(t, central, "dfir-iris", "aiTriage"))
+	assert.Equal(t, []any{testAIModel}, dig(t, central, "ollama", "ollama", "ollama", "models", "pull"))
+	assert.Equal(t, true, dig(t, central, "ollama", "networkPolicy", "allowModelDownload"))
+}

@@ -329,6 +329,24 @@ dfir-iris:
       realm: {{ .SecOps.KeycloakRealm }}
       clientId: iris-sync
     existingSecret: iris-keycloak-sync
+  # Alert triage by the in-cluster model; the reconciler keeps the svc_ai key
+  # in Secret iris-ai-triage.
+  aiTriage:
+    enabled: {{ .SecOps.AITriageEnabled }}
+    dryRun: {{ .SecOps.AITriageDryRun }}
+    model: {{ .SecOps.AIModel | quote }}
+{{- if .SecOps.AIDownloadModel }}
+
+# Temporary: HTTPS egress so Ollama can pull the model onto its volume. Set
+# securityOperations.aiTriage.downloadModel back to false once it is there.
+ollama:
+  ollama:
+    ollama:
+      models:
+        pull: [{{ .SecOps.AIModel | quote }}]
+  networkPolicy:
+    allowModelDownload: true
+{{- end }}
 
 misp:
   misp:

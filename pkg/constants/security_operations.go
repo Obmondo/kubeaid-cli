@@ -26,6 +26,9 @@ const (
 	// reconciler.image.repository.
 	SecurityOperationsDefaultReconcilerImage = "ghcr.io/obmondo/siem-reconciler"
 
+	// SecurityOperationsDefaultAIModel is the dfir-iris aiTriage default model.
+	SecurityOperationsDefaultAIModel = "llama3.1:8b"
+
 	// Secrets every Wazuh release reads (wazuh chart README section 11).
 	SecretNameWazuhIndexerCred   = "wazuh-indexer-cred"
 	SecretNameWazuhDashboardCred = "wazuh-dashboard-cred"
