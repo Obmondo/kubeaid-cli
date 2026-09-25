@@ -111,6 +111,16 @@ by the reconciler, never generated or copied by it.
   (URL without port, port, API credentials copied from its `credSecretRef`,
   `run_as: true`). The first host id is `1513629884013` (the dashboard image's
   start script expects it), the others `t<code>`.
+  Optional `dashboardURL` (the central OpenSearch Dashboards with the Wazuh app,
+  e.g. `http://wazuh-dashboard:5601`) and `indexPatterns: [{title, timeFieldName
+  (default `timestamp`), default}]`: saved index patterns to ensure on that
+  dashboard, such as `*:wazuh-alerts-*` for cross-cluster search (the Wazuh app
+  never creates it because no local index matches). `indexPatterns` needs
+  `dashboardURL`; titles are unique; at most one pattern has `default: true`. The
+  reconciler signs in with `credSecretRef` (and `caFile`/`insecureSkipVerify`),
+  creates a pattern only when none with that exact title exists (existing ones are
+  never modified), and sets the dashboard's `defaultIndex` to the default pattern
+  only when it is unset or points to a pattern that no longer exists.
 - `velociraptor`: exactly one of `apiClientSecretRef` (key default
   `api_client.yaml`) and `apiClientFile`; `address` overrides the api_client's
   `api_connection_string`; `serverMonitoring: [{artifact, parameters}]` must be

@@ -32,6 +32,9 @@ func TestLoadExample(t *testing.T) {
 	require.NotNil(t, cfg.Components.WazuhCentral)
 	assert.Equal(t, "t002", cfg.Components.WazuhCentral.Remotes[1].Alias)
 	assert.Equal(t, "wazuh-app-config", cfg.Components.WazuhCentral.DashboardConfigSecret.Name)
+	require.Len(t, cfg.Components.WazuhCentral.IndexPatterns, 2)
+	assert.Equal(t, DefaultIndexPatternTimeField, cfg.Components.WazuhCentral.IndexPatterns[0].TimeFieldName)
+	assert.True(t, cfg.Components.WazuhCentral.IndexPatterns[0].Default)
 	require.Len(t, cfg.SecretCopies, 2)
 	assert.Equal(t, "wazuh-002", cfg.SecretCopies[1].To.Namespace)
 	require.Len(t, cfg.Enrolment, 2)
@@ -102,6 +105,7 @@ func TestValidateErrors(t *testing.T) {
 			],
 			"wazuhCentral": {
 				"url": "", "credSecretRef": {}, "dashboardConfigSecret": {"namespace": "n"},
+				"indexPatterns": [{"title": ""}, {"title": "a", "default": true}, {"title": "a", "default": true}],
 				"remotes": [{"alias": "Bad.Alias", "seeds": []}, {"alias": "t1", "seeds": [""]}, {"alias": "t1", "seeds": ["h:9300"]}]
 			},
 			"velociraptor": {"serverMonitoring": [{"artifact": ""}]}
@@ -144,6 +148,10 @@ func TestValidateErrors(t *testing.T) {
 		"components.wazuhCentral.url is required",
 		"components.wazuhCentral.credSecretRef",
 		"components.wazuhCentral.dashboardConfigSecret needs namespace and name",
+		"components.wazuhCentral.indexPatterns needs dashboardURL",
+		"components.wazuhCentral.indexPatterns[0].title is required",
+		`components.wazuhCentral.indexPatterns[2].title "a" is not unique`,
+		"at most one pattern can be default, 2 are",
 		`components.wazuhCentral.remotes[0].alias "Bad.Alias" must match`,
 		"components.wazuhCentral.remotes[0].seeds must not be empty",
 		"components.wazuhCentral.remotes[1].seeds[0] is empty",

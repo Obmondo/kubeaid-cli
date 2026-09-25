@@ -277,7 +277,28 @@ type WazuhCentral struct {
 	// writes the Wazuh dashboard app's wazuh.yml to, listing every
 	// manager under components.wazuh with its API credentials.
 	DashboardConfigSecret *ObjectRef `json:"dashboardConfigSecret,omitempty"`
+	// DashboardURL is the central OpenSearch Dashboards (with the Wazuh
+	// app) base URL, e.g. http://wazuh-dashboard:5601. The reconciler
+	// signs in with CredSecretRef.
+	DashboardURL string `json:"dashboardURL,omitempty"`
+	// IndexPatterns are saved index patterns to ensure on the dashboard,
+	// e.g. "*:wazuh-alerts-*" for cross-cluster search, which the Wazuh
+	// app never creates because no local index matches it.
+	IndexPatterns []IndexPattern `json:"indexPatterns,omitempty"`
 }
+
+// IndexPattern is one saved index pattern on the central dashboard.
+type IndexPattern struct {
+	Title string `json:"title"`
+	// TimeFieldName defaults to DefaultIndexPatternTimeField.
+	TimeFieldName string `json:"timeFieldName,omitempty"`
+	// Default makes it the dashboard's defaultIndex when none is set or
+	// the current one no longer exists. At most one pattern is default.
+	Default bool `json:"default,omitempty"`
+}
+
+// DefaultIndexPatternTimeField is the Wazuh alerts time field.
+const DefaultIndexPatternTimeField = "timestamp"
 
 // ObjectRef names a namespaced object.
 type ObjectRef struct {
@@ -412,6 +433,10 @@ func (c *Config) applyComponentDefaults() {
 	if wc := c.Components.WazuhCentral; wc != nil {
 		wc.CredSecretRef.UsernameKey = orDefault(wc.CredSecretRef.UsernameKey, DefaultIndexerUserKey)
 		wc.CredSecretRef.PasswordKey = orDefault(wc.CredSecretRef.PasswordKey, DefaultIndexerPassKey)
+		for i := range wc.IndexPatterns {
+			p := &wc.IndexPatterns[i]
+			p.TimeFieldName = orDefault(p.TimeFieldName, DefaultIndexPatternTimeField)
+		}
 	}
 	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil {
 		v.APIClientSecretRef.Key = orDefault(v.APIClientSecretRef.Key, DefaultVeloAPIClientKey)
@@ -597,6 +622,10 @@ func (c *Config) validateWazuh(fail func(string, ...any)) {
 			fail("%s.credSecretRef needs namespace and name", where)
 		}
 	}
+	c.validateWazuhCentral(fail)
+}
+
+func (c *Config) validateWazuhCentral(fail func(string, ...any)) {
 	wc := c.Components.WazuhCentral
 	if wc == nil {
 		return
@@ -610,6 +639,7 @@ func (c *Config) validateWazuh(fail func(string, ...any)) {
 	if d := wc.DashboardConfigSecret; d != nil && (d.Namespace == "" || d.Name == "") {
 		fail("components.wazuhCentral.dashboardConfigSecret needs namespace and name")
 	}
+	validateIndexPatterns(fail, wc)
 	aliases := map[string]bool{}
 	for i, r := range wc.Remotes {
 		where := fmt.Sprintf("components.wazuhCentral.remotes[%d]", i)
@@ -628,6 +658,31 @@ func (c *Config) validateWazuh(fail func(string, ...any)) {
 				fail("%s.seeds[%d] is empty", where, j)
 			}
 		}
+	}
+}
+
+// validateIndexPatterns checks the central dashboard index patterns.
+func validateIndexPatterns(fail func(string, ...any), wc *WazuhCentral) {
+	if len(wc.IndexPatterns) > 0 && wc.DashboardURL == "" {
+		fail("components.wazuhCentral.indexPatterns needs dashboardURL")
+	}
+	titles := map[string]bool{}
+	defaults := 0
+	for i, p := range wc.IndexPatterns {
+		where := fmt.Sprintf("components.wazuhCentral.indexPatterns[%d]", i)
+		switch {
+		case strings.TrimSpace(p.Title) == "":
+			fail("%s.title is required", where)
+		case titles[p.Title]:
+			fail("%s.title %q is not unique", where, p.Title)
+		}
+		titles[p.Title] = true
+		if p.Default {
+			defaults++
+		}
+	}
+	if defaults > 1 {
+		fail("components.wazuhCentral.indexPatterns: at most one pattern can be default, %d are", defaults)
 	}
 }
 

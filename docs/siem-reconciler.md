@@ -31,6 +31,8 @@ Components run in this order; `--only` selects a subset.
 | `wazuh` | Per tenant manager (reported as `wazuh/<code>`): rules `oidc_<adminRole>`, `oidc_<analystRole>` and `oidc_<g>` (dashes as underscores) mapping the backend roles to `adminApiRole`, `analystApiRole` and `tenantApiRole` | Created, condition corrected, linked to the existing API role. The whole manager belongs to the tenant: no per-tenant policies, roles or agent groups. |
 | `wazuhcentral` | Persistent `cluster.remote.<alias>.seeds` on the central indexer | Created or corrected; remotes not in the config are reported as `skip` and left in place. |
 | | `dashboardConfigSecret` (`wazuh.yml`) | Rendered from every manager's URL and API credentials; created or updated when it differs. Not written while any manager's credentials are unreadable. |
+| | `indexPatterns` on the central dashboard (`dashboardURL`), e.g. `*:wazuh-alerts-*` for cross-cluster search | Created (server-chosen id) when no saved index pattern has that exact title; existing patterns are never modified. Reported as kind `index-pattern`. |
+| | The dashboard's `defaultIndex` (kind `default-index`) | Set to the pattern marked `default` only when unset or pointing to a pattern that no longer exists; a valid existing default is left alone. |
 | `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
 | | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
 
@@ -56,7 +58,8 @@ Client fields and how drift is handled:
 - Deletion of any kind. Removing a tenant from the config leaves its objects in
   place; clean them up by hand.
 - Wazuh agents, users, roles and policies; the central indexer's remotes not in the
-  config; Velociraptor artifacts other than
+  config; dashboard saved objects other than missing listed index patterns (and
+  `defaultIndex` when it is unset or dangling); Velociraptor artifacts other than
   the ones listed under `serverMonitoring`.
 
 ## Dry-run semantics
@@ -116,7 +119,9 @@ The Job's ServiceAccount needs:
 
 API-side permissions: Keycloak master-realm admin; an IRIS API key of a
 server administrator; per manager a Wazuh API user allowed to manage security
-(`wazuh-wui`); an indexer user allowed to update cluster settings;
+(`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
+`indexPatterns`, to write saved objects and advanced settings in the dashboard's
+global tenant);
 a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
 `org_create` and `COLLECT_SERVER` for `add_server_monitoring`).
 

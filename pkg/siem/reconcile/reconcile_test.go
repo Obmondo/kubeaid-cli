@@ -18,6 +18,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/wazuhcentral"
 )
 
 const exampleConfig = "../config/testdata/tenants.example.json"
@@ -67,6 +68,9 @@ func TestSpecsFromExample(t *testing.T) {
 	cs := WazuhCentralSpec(cfg)
 	require.Len(t, cs.Remotes, 2)
 	assert.Equal(t, "t001", cs.Remotes[0].Alias)
+	ips := IndexPatterns(cfg)
+	require.Len(t, ips, 2)
+	assert.Equal(t, wazuhcentral.IndexPattern{Title: "*:wazuh-alerts-*", TimeFieldName: "timestamp", Default: true}, ips[0])
 
 	vs := VelociraptorSpec(cfg)
 	assert.Equal(t, []string{"Tenant A", "Tenant B"}, vs.Orgs)

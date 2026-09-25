@@ -29,6 +29,8 @@ type Client struct {
 	Username string
 	Password string
 	HTTP     *http.Client
+	// headers are sent on every request (the dashboard's osd-xsrf).
+	headers map[string]string
 }
 
 // APIError is a failed OpenSearch call.
@@ -58,6 +60,9 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	}
 	req.SetBasicAuth(c.Username, c.Password)
 	req.Header.Set("Content-Type", "application/json")
+	for k, v := range c.headers {
+		req.Header.Set(k, v)
+	}
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return fmt.Errorf("opensearch %s %s: %w", method, path, err)

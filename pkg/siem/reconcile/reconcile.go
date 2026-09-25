@@ -178,9 +178,11 @@ func runWazuhCentral(ctx context.Context, cfg *config.Config, kube kubernetes.In
 	if d := wc.DashboardConfigSecret; d != nil {
 		results = append(results, wazuhcentral.EnsureDashboardConfig(ctx, kube, *d, cfg.Components.Wazuh, dryRun)...)
 	}
-	if len(wc.Remotes) == 0 {
+	if len(wc.Remotes) == 0 && len(wc.IndexPatterns) == 0 {
 		return results
 	}
+	// The indexer and the dashboard share the basic-auth credentials and
+	// the TLS settings.
 	user, pass, err := readCreds(ctx, store, wc.CredSecretRef)
 	if err != nil {
 		return append(results, errorResult(ComponentWazuhCentral, "credentials", err)...)
@@ -189,8 +191,24 @@ func runWazuhCentral(ctx context.Context, cfg *config.Config, kube kubernetes.In
 	if err != nil {
 		return append(results, errorResult(ComponentWazuhCentral, "http", err)...)
 	}
-	client := &wazuhcentral.Client{BaseURL: wc.URL, Username: user, Password: pass, HTTP: hc}
-	return append(results, wazuhcentral.Reconcile(ctx, client, WazuhCentralSpec(cfg), dryRun)...)
+	if len(wc.Remotes) > 0 {
+		client := &wazuhcentral.Client{BaseURL: wc.URL, Username: user, Password: pass, HTTP: hc}
+		results = append(results, wazuhcentral.Reconcile(ctx, client, WazuhCentralSpec(cfg), dryRun)...)
+	}
+	if len(wc.IndexPatterns) > 0 {
+		dash := wazuhcentral.NewDashboardClient(wc.DashboardURL, user, pass, hc)
+		results = append(results, wazuhcentral.ReconcileIndexPatterns(ctx, dash, IndexPatterns(cfg), dryRun)...)
+	}
+	return results
+}
+
+// IndexPatterns derives the desired central dashboard index patterns.
+func IndexPatterns(cfg *config.Config) []wazuhcentral.IndexPattern {
+	var out []wazuhcentral.IndexPattern
+	for _, p := range cfg.Components.WazuhCentral.IndexPatterns {
+		out = append(out, wazuhcentral.IndexPattern{Title: p.Title, TimeFieldName: p.TimeFieldName, Default: p.Default})
+	}
+	return out
 }
 
 // WazuhCentralSpec derives the desired cross-cluster search remotes.

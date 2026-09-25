@@ -159,6 +159,11 @@
       "credSecretRef": {"namespace": "security-operations", "name": "wazuh-indexer-cred", "usernameKey": "INDEXER_USERNAME", "passwordKey": "INDEXER_PASSWORD"},
       "insecureSkipVerify": true,
       "dashboardConfigSecret": {"namespace": "security-operations", "name": "wazuh-app-config"},
+      "dashboardURL": "http://wazuh-dashboard.security-operations.svc:5601",
+      "indexPatterns": [
+        {"title": "*:wazuh-alerts-*", "default": true},
+        {"title": "*:wazuh-archives-*", "timeFieldName": "timestamp"}
+      ],
       "remotes": [
         {"alias": "t001", "seeds": ["wazuh-indexer-nodes.wazuh-001.svc:9300"]},
         {"alias": "t002", "seeds": ["wazuh-indexer-nodes.wazuh-002.svc:9300"]}
