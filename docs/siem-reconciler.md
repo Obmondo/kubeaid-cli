@@ -8,6 +8,8 @@ unchanged system prints only `ok` lines and `0 changes`.
 
 The chart runs it as an ArgoCD PostSync Job and as a CronJob. It can also be run
 from a workstation against a cluster (see [Running it by hand](#running-it-by-hand)).
+kubeaid-cli renders the chart's values from `cluster.securityOperations`, see
+[security-operations.md](security-operations.md).
 
 ## What it manages
 
