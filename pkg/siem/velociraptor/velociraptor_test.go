@@ -128,7 +128,7 @@ func (f *fakeServer) handle(t *testing.T) grpc.StreamHandler {
 			}
 			rows = []map[string]any{{"State": map[string]any{"artifacts": f.artifacts, "specs": specs}}}
 		case vqlAddMonitoring:
-			name := env["Artifact"]
+			name := env["ArtifactName"]
 			if !f.knownArtis[name] {
 				rows = []map[string]any{{"Result": nil}}
 				log = "add_server_monitoring: artifact " + name + " not found"
@@ -336,4 +336,13 @@ func TestUnmarshalResponseRejectsGarbage(t *testing.T) {
 	_, err = rawCodec{}.Marshal("not a frame")
 	require.Error(t, err)
 	require.Error(t, rawCodec{}.Unmarshal(nil, "not a frame"))
+}
+
+// A VQL environment variable named Artifact is shadowed by the built-in
+// Artifact namespace; add_server_monitoring then reports "artifact &{...}
+// not found" (seen against a 0.77.1 server).
+func TestAddMonitoringDoesNotUseArtifactVariable(t *testing.T) {
+	t.Parallel()
+	assert.NotContains(t, vqlAddMonitoring, "artifact=Artifact,")
+	assert.Contains(t, vqlAddMonitoring, "artifact=ArtifactName")
 }

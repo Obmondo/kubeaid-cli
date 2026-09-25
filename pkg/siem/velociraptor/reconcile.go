@@ -17,12 +17,14 @@ import (
 const Component = "velociraptor"
 
 // VQL used by the reconciler. Inputs come in as environment
-// variables (OrgName, Artifact, Params).
+// variables (OrgName, ArtifactName, Params). Not "Artifact": in VQL that
+// name is the built-in namespace for calling artifacts and shadows an
+// environment variable, so add_server_monitoring would get that object.
 const (
 	vqlListOrgs      = "SELECT OrgId, Name FROM orgs()"
 	vqlCreateOrg     = "SELECT org_create(name=OrgName) AS Org FROM scope()"
 	vqlGetMonitoring = "SELECT get_server_monitoring() AS State FROM scope()"
-	vqlAddMonitoring = "SELECT add_server_monitoring(artifact=Artifact, parameters=parse_json(data=Params)) AS Result FROM scope()"
+	vqlAddMonitoring = "SELECT add_server_monitoring(artifact=ArtifactName, parameters=parse_json(data=Params)) AS Result FROM scope()"
 )
 
 // Querier runs VQL; *Client implements it.
@@ -114,7 +116,7 @@ func Reconcile(ctx context.Context, q Querier, spec Spec, dryRun bool) []report.
 			add("server-monitoring", want.Artifact, report.ActionError, err.Error())
 			continue
 		}
-		a, detail := runWrite(ctx, q, vqlAddMonitoring, map[string]string{"Artifact": want.Artifact, "Params": string(raw)}, "Result")
+		a, detail := runWrite(ctx, q, vqlAddMonitoring, map[string]string{"ArtifactName": want.Artifact, "Params": string(raw)}, "Result")
 		if a != report.ActionError && present {
 			a, detail = report.ActionUpdate, "parameters "+strings.Join(drift, ",")
 		}
