@@ -301,6 +301,18 @@ dfir-iris:
       issuerUrl: {{ .SecOps.KeycloakIssuer }}
       clientId: iris
       existingSecret: dfir-iris-oidc
+  # Keycloak -> IRIS access: IRIS ignores roles in the OIDC token, so this job
+  # gives each SSO user the IRIS groups and customers of its realm roles and
+  # tenant groups (mapping from the umbrella's dfir-iris-tenants ConfigMap).
+  # Secret iris-keycloak-sync: the iris-sync client secret and the IRIS API key.
+  keycloakSync:
+    enabled: true
+    dryRun: false
+    keycloak:
+      url: {{ .SecOps.KeycloakURL }}
+      realm: {{ .SecOps.KeycloakRealm }}
+      clientId: iris-sync
+    existingSecret: iris-keycloak-sync
 
 misp:
   misp:

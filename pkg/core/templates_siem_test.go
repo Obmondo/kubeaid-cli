@@ -684,3 +684,16 @@ func TestMISPRedisPasswordFromClusterDir(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEqual(t, mispChartDefaultRedisPassword, fresh)
 }
+
+// The IRIS Keycloak sync is on, against the realm and the iris-sync client.
+func TestSIEMIRISKeycloakSync(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, true, dig(t, central, "dfir-iris", "keycloakSync", "enabled"))
+	assert.Equal(t, "iris-sync", dig(t, central, "dfir-iris", "keycloakSync", "keycloak", "clientId"))
+	assert.Equal(t, "soc", dig(t, central, "dfir-iris", "keycloakSync", "keycloak", "realm"))
+	assert.Equal(t, "iris-keycloak-sync", dig(t, central, "dfir-iris", "keycloakSync", "existingSecret"))
+}
+
