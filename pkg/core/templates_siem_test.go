@@ -400,6 +400,7 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 	assert.Equal(t, "ClusterIssuer", dig(t, w, "certificates", "issuer", "type"))
 	assert.Equal(t, []any{"CN=wazuh-indexer,O=central,L=California,C=US"},
 		dig(t, w, "indexer", "config", "extraNodesDn"))
+	assert.Equal(t, true, dig(t, w, "autoreload", "enabled"))
 	assert.Equal(t, "wazuh-indexer-cred", dig(t, w, "indexer", "cred", "existingSecret"))
 	assert.Equal(t, "wazuh-dashboard-cred", dig(t, w, "dashboard", "cred", "existingSecret"))
 	assert.Equal(t, "wazuh-api-cred", dig(t, w, "wazuh", "apiCred", "existingSecret"))

@@ -60,6 +60,9 @@ reconciler:
 # Central Wazuh search: indexer + dashboard, no manager.
 wazuh:
   wazuh:
+    # Config checksums on the pods, so a config change restarts them.
+    autoreload:
+      enabled: true
     indexer:
 {{- if .SecOps.KeycloakHostAliasIP }}
       extraSpec:

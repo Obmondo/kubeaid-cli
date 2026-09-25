@@ -8,6 +8,9 @@ irisIntegration:
   enabled: true
 wazuh:
   fullnameOverride: wazuh
+  # Config checksums on the pods, so a config change (e.g. extraNodesDn) restarts them.
+  autoreload:
+    enabled: true
   # Cluster nodes are not a tenant's endpoints.
   agent:
     enabled: false
