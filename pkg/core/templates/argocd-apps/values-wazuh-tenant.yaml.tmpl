@@ -159,9 +159,11 @@ wazuh:
           mountPath: /var/ossec/integrations/custom-iris.py
           subPath: custom-iris.py
           readOnly: true
+        # A directory mount, not subPath: a subPath of a Secret that does not
+        # exist yet becomes an empty directory for the pod's lifetime, while a
+        # directory mount picks the key up when the reconciler copies it.
         - name: iris-api-key
-          mountPath: /var/ossec/integrations/.iris_key
-          subPath: API_KEY
+          mountPath: /var/ossec/integrations/iris
           readOnly: true
       networkPolicy:
         extraIngresses:

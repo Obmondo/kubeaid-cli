@@ -102,7 +102,7 @@ spec:
                   <integration>
                     <name>custom-iris</name>
                     <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
-                    <api_key>file:/var/ossec/integrations/.iris_key</api_key>
+                    <api_key>file:/var/ossec/integrations/iris/API_KEY</api_key>
                     <level>10</level>
                     <alert_format>json</alert_format>
                     <options>{{ .IRISOptions }}</options>
