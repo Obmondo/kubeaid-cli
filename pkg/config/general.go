@@ -180,6 +180,12 @@ type (
 		// on a workload cluster is rejected.
 		Keycloak *KeycloakConfig `yaml:"keycloak"`
 
+		// SecurityOperations sets up a multi-tenant SOC: the KubeAid
+		// security-operations umbrella chart (central side) and one wazuh
+		// chart release per tenant, with generated and sealed Wazuh
+		// credentials. Omit the block to leave it off.
+		SecurityOperations *SecurityOperationsConfig `yaml:"securityOperations"`
+
 		// NetBird declares the NetBird Management instance this VPN
 		// cluster hosts. Only meaningful when cluster.type=vpn AND
 		// cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client
@@ -273,6 +279,104 @@ type (
 		//   keycloak.foo.co.uk     → "foo"
 		// Set this explicitly to override the derivation.
 		Realm string `yaml:"realm"`
+	}
+
+	// SecurityOperationsConfig declares a multi-tenant SOC. kubeaid-cli renders
+	// the Argo CD Applications and values for the KubeAid security-operations
+	// chart and one wazuh release per tenant, and seals each Wazuh's
+	// credentials (secrets.yaml securityOperations, generated when blank).
+	// Defaults and cross-field checks live in parser/security_operations.go.
+	SecurityOperationsConfig struct {
+		Enabled bool `yaml:"enabled"`
+
+		// ChartRevision is the KubeAid git revision (branch, tag) the
+		// security-operations and wazuh-<code> Applications take their charts
+		// from. Empty: the KubeAid fork version (forks.kubeaid.version).
+		ChartRevision string `yaml:"chartRevision"`
+
+		// Domain is the base domain of every SOC host name. Required.
+		Domain string `yaml:"domain"`
+
+		// HostPrefix is put in front of every host name: central hosts are
+		// <hostPrefix><component>.<domain> (wazuh, iris, misp, velociraptor),
+		// tenant dashboards <hostPrefix>wazuh-<code>.<domain>.
+		HostPrefix string `yaml:"hostPrefix"`
+
+		// Keycloak is the realm every component logs in through.
+		Keycloak SecurityOperationsKeycloakConfig `yaml:"keycloak"`
+
+		// AgentHost is the public host name the Wazuh agents dial. Required.
+		AgentHost string `yaml:"agentHost"`
+
+		// AgentAddress is the external IP the per-tenant agent Services listen
+		// on (Service externalIPs). Required.
+		AgentAddress string `yaml:"agentAddress"`
+
+		// AgentPortBase derives a tenant's agent ports when its code is all
+		// digits: registration = base + code*10 + 5, events = base + code*10 + 4.
+		AgentPortBase int `yaml:"agentPortBase"`
+
+		// IngressClassName of every SOC Ingress. Default: traefik.
+		IngressClassName string `yaml:"ingressClassName"`
+
+		// ClusterIssuer is the cert-manager ClusterIssuer for the Ingress
+		// certificates. Default: letsencrypt-prod, the issuer kubeaid-cli
+		// renders.
+		ClusterIssuer string `yaml:"clusterIssuer"`
+
+		// Reconciler switches the chart's siem-reconciler CronJob.
+		Reconciler SecurityOperationsReconcilerConfig `yaml:"reconciler"`
+
+		// Tenants, one entry each. Adding one and rendering again onboards it.
+		Tenants []SecurityOperationsTenant `yaml:"tenants"`
+	}
+
+	// SecurityOperationsKeycloakConfig is the Keycloak realm of the SOC.
+	SecurityOperationsKeycloakConfig struct {
+		// URL is Keycloak's root URL including any context path. Default:
+		// https://<cluster.keycloak.dns>/auth when cluster.keycloak is set,
+		// required otherwise.
+		URL string `yaml:"url"`
+
+		// Realm defaults to "soc".
+		Realm string `yaml:"realm"`
+	}
+
+	// SecurityOperationsReconcilerConfig drives the chart's reconciler block.
+	SecurityOperationsReconcilerConfig struct {
+		Enabled bool `yaml:"enabled"`
+
+		// ImageTag of ghcr.io/obmondo/siem-reconciler. Empty: the chart's.
+		ImageTag string `yaml:"imageTag"`
+
+		// DryRun prints the plan only. Default true; nil means true.
+		DryRun *bool `yaml:"dryRun"`
+	}
+
+	// SecurityOperationsTenant is one tenant of the SOC.
+	SecurityOperationsTenant struct {
+		// Code matches ^[a-z0-9]{1,32}$ and is unique. Namespace wazuh-<code>,
+		// Keycloak group tenant-<code>, dashboard host, search alias.
+		Code string `yaml:"code"`
+
+		// Name is the unique display name (IRIS customer, Velociraptor org).
+		Name string `yaml:"name"`
+
+		// RetentionDays of the tenant's alerts. Empty: the chart default.
+		RetentionDays int `yaml:"retentionDays"`
+
+		// IndexerReplicas of the tenant's Wazuh indexer. Default 1.
+		IndexerReplicas int `yaml:"indexerReplicas"`
+
+		// AgentPorts are the tenant's public agent ports. Derived from
+		// agentPortBase when the code is all digits, required otherwise.
+		AgentPorts *SecurityOperationsAgentPorts `yaml:"agentPorts"`
+	}
+
+	// SecurityOperationsAgentPorts is a tenant's public agent port pair.
+	SecurityOperationsAgentPorts struct {
+		Registration int `yaml:"registration"`
+		Events       int `yaml:"events"`
 	}
 
 	// NetBirdConfig describes this cluster's relationship to the NetBird

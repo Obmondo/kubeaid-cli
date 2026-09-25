@@ -125,6 +125,53 @@ cluster:
     #   keycloak.foo.co.uk     → "foo"
     # Set this explicitly to override the derivation.
     realm:
+  # SecurityOperations sets up a multi-tenant SOC: the KubeAid
+  # security-operations umbrella chart (central side) and one wazuh
+  # chart release per tenant, with generated and sealed Wazuh
+  # credentials. Omit the block to leave it off.
+  securityOperations:
+    enabled:
+    # ChartRevision is the KubeAid git revision (branch, tag) the
+    # security-operations and wazuh-<code> Applications take their charts
+    # from. Empty: the KubeAid fork version (forks.kubeaid.version).
+    chartRevision:
+    # Domain is the base domain of every SOC host name. Required.
+    domain:
+    # HostPrefix is put in front of every host name: central hosts are
+    # <hostPrefix><component>.<domain> (wazuh, iris, misp, velociraptor),
+    # tenant dashboards <hostPrefix>wazuh-<code>.<domain>.
+    hostPrefix:
+    # Keycloak is the realm every component logs in through.
+    keycloak:
+      # URL is Keycloak's root URL including any context path. Default:
+      # https://<cluster.keycloak.dns>/auth when cluster.keycloak is set,
+      # required otherwise.
+      url:
+      # Realm defaults to "soc".
+      realm:
+    # AgentHost is the public host name the Wazuh agents dial. Required.
+    agentHost:
+    # AgentAddress is the external IP the per-tenant agent Services listen
+    # on (Service externalIPs). Required.
+    agentAddress:
+    # AgentPortBase derives a tenant's agent ports when its code is all
+    # digits: registration = base + code*10 + 5, events = base + code*10 + 4.
+    agentPortBase:
+    # IngressClassName of every SOC Ingress. Default: traefik.
+    ingressClassName:
+    # ClusterIssuer is the cert-manager ClusterIssuer for the Ingress
+    # certificates. Default: letsencrypt-prod, the issuer kubeaid-cli
+    # renders.
+    clusterIssuer:
+    # Reconciler switches the chart's siem-reconciler CronJob.
+    reconciler:
+      enabled:
+      # ImageTag of ghcr.io/obmondo/siem-reconciler. Empty: the chart's.
+      imageTag:
+      # DryRun prints the plan only. Default true; nil means true.
+      dryRun:
+    # Tenants, one entry each. Adding one and rendering again onboards it.
+    tenants:
   # NetBird declares the NetBird Management instance this VPN
   # cluster hosts. Only meaningful when cluster.type=vpn AND
   # cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client

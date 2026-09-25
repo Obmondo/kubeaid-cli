@@ -67,6 +67,13 @@
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
 - [SecurityConfig](#securityconfig)
+- [SecurityOperationsAgentPorts](#securityoperationsagentports)
+- [SecurityOperationsConfig](#securityoperationsconfig)
+- [SecurityOperationsCredentials](#securityoperationscredentials)
+- [SecurityOperationsKeycloakConfig](#securityoperationskeycloakconfig)
+- [SecurityOperationsReconcilerConfig](#securityoperationsreconcilerconfig)
+- [SecurityOperationsTenant](#securityoperationstenant)
+- [SecurityOperationsWazuhCredentials](#securityoperationswazuhcredentials)
 - [UserConfig](#userconfig)
 - [VG0Config](#vg0config)
 - [VSwitchConfig](#vswitchconfig)
@@ -362,6 +369,7 @@ REFER : https://docs.kubermatic.com/kubeone/v1.13/references/kubeone-cluster-v1b
 | lockdown | `bool` |  | Lockdown pre-answers the end-of-bootstrap Host Firewall (CCNP)<br>step. nil = ask interactively (legacy behavior); true = apply<br>without prompting (CI-safe); false = skip the step.<br> |
 | security | [`SecurityConfig`](#securityconfig) |  | Security selects the optional security ArgoCD Apps. Omitting the<br>block leaves every one of them off, so existing clusters keep<br>their current app set across an upgrade.<br> |
 | keycloak | [`KeycloakConfig`](#keycloakconfig) |  | Keycloak declares the Keycloak instance a VPN cluster hosts as<br>NetBird's SSO IdP. Required on cluster.type=vpn (mode=managed →<br>kubeaid-cli installs it; mode=external → operator runs it<br>elsewhere). Not supported on workload clusters — access there is<br>via the NetBird mesh (cluster.netbird.dns), so a keycloak block<br>on a workload cluster is rejected.<br> |
+| securityOperations | [`SecurityOperationsConfig`](#securityoperationsconfig) |  | SecurityOperations sets up a multi-tenant SOC: the KubeAid<br>security-operations umbrella chart (central side) and one wazuh<br>chart release per tenant, with generated and sealed Wazuh<br>credentials. Omit the block to leave it off.<br> |
 | netbird | [`NetBirdConfig`](#netbirdconfig) |  | NetBird declares the NetBird Management instance this VPN<br>cluster hosts. Only meaningful when cluster.type=vpn AND<br>cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client<br>is created in the same Keycloak realm; its public DNS is<br>used for the redirect URI and audience claim.<br> |
 | additionalUsers | [][`UserConfig`](#userconfig) |  | Other than the root user, addtional users that you would like to be created in each node.<br>NOTE : Currently, we can't register additional SSH key-pairs against the root user.<br> |
 | argoCD | [`ArgoCDConfig`](#argocdconfig) |  | ArgoCD specific details.<br> |
@@ -820,6 +828,7 @@ KeycloakCredentials.</p>
 | keycloak | [`KeycloakCredentials`](#keycloakcredentials) |  |  |
 | netbird | [`NetBirdCredentials`](#netbirdcredentials) |  |  |
 | acme | [`ACMECredentials`](#acmecredentials) |  |  |
+| securityOperations | [`SecurityOperationsCredentials`](#securityoperationscredentials) |  |  |
 
 ## SecurityConfig
 
@@ -831,6 +840,97 @@ until its config opts in.</p>
 |-------|------|---------|-------------|
 | vulnerabilityScanning | `bool` |  | VulnerabilityScanning deploys trivy-operator together with<br>version-checker. They are one switch because the chart's<br>ImageOutdatedAndVulnerable alert joins both metrics —<br>trivy-operator alone yields an alert that cannot fire.<br> |
 | runtimeDetection | `bool` |  | RuntimeDetection deploys tetragon. Observability-only until<br>TracingPolicy resources are applied. Needs a BTF-enabled<br>kernel (>= 5.4) on every node.<br> |
+
+## SecurityOperationsAgentPorts
+
+<p>SecurityOperationsAgentPorts is a tenant's public agent port pair.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| registration | `int` |  |  |
+| events | `int` |  |  |
+
+## SecurityOperationsConfig
+
+<p>SecurityOperationsConfig declares a multi-tenant SOC. kubeaid-cli renders
+the Argo CD Applications and values for the KubeAid security-operations
+chart and one wazuh release per tenant, and seals each Wazuh's
+credentials (secrets.yaml securityOperations, generated when blank).
+Defaults and cross-field checks live in parser/security_operations.go.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| chartRevision | `string` |  | ChartRevision is the KubeAid git revision (branch, tag) the<br>security-operations and wazuh-<code> Applications take their charts<br>from. Empty: the KubeAid fork version (forks.kubeaid.version).<br> |
+| domain | `string` |  | Domain is the base domain of every SOC host name. Required.<br> |
+| hostPrefix | `string` |  | HostPrefix is put in front of every host name: central hosts are<br><hostPrefix><component>.<domain> (wazuh, iris, misp, velociraptor),<br>tenant dashboards <hostPrefix>wazuh-<code>.<domain>.<br> |
+| keycloak | [`SecurityOperationsKeycloakConfig`](#securityoperationskeycloakconfig) |  | Keycloak is the realm every component logs in through.<br> |
+| agentHost | `string` |  | AgentHost is the public host name the Wazuh agents dial. Required.<br> |
+| agentAddress | `string` |  | AgentAddress is the external IP the per-tenant agent Services listen<br>on (Service externalIPs). Required.<br> |
+| agentPortBase | `int` |  | AgentPortBase derives a tenant's agent ports when its code is all<br>digits: registration = base + code*10 + 5, events = base + code*10 + 4.<br> |
+| ingressClassName | `string` |  | IngressClassName of every SOC Ingress. Default: traefik.<br> |
+| clusterIssuer | `string` |  | ClusterIssuer is the cert-manager ClusterIssuer for the Ingress<br>certificates. Default: letsencrypt-prod, the issuer kubeaid-cli<br>renders.<br> |
+| reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
+| tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
+
+## SecurityOperationsCredentials
+
+<p>SecurityOperationsCredentials holds the Wazuh logins of the SOC set up
+by cluster.securityOperations. Every field is generated by
+FillMissingSecrets when blank; the bcrypt hashes are regenerated when
+they no longer match their password, so a password can be changed here
+and the next render follows it.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| central | [`SecurityOperationsWazuhCredentials`](#securityoperationswazuhcredentials) |  | Central is the central Wazuh search (indexer + dashboard).<br> |
+| tenants | `map[string]SecurityOperationsWazuhCredentials` |  | Tenants maps a tenant code to that tenant's Wazuh logins.<br> |
+
+## SecurityOperationsKeycloakConfig
+
+<p>SecurityOperationsKeycloakConfig is the Keycloak realm of the SOC.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| url | `string` |  | URL is Keycloak's root URL including any context path. Default:<br>https://<cluster.keycloak.dns>/auth when cluster.keycloak is set,<br>required otherwise.<br> |
+| realm | `string` |  | Realm defaults to "soc".<br> |
+
+## SecurityOperationsReconcilerConfig
+
+<p>SecurityOperationsReconcilerConfig drives the chart's reconciler block.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| imageTag | `string` |  | ImageTag of ghcr.io/obmondo/siem-reconciler. Empty: the chart's.<br> |
+| dryRun | `bool` |  | DryRun prints the plan only. Default true; nil means true.<br> |
+
+## SecurityOperationsTenant
+
+<p>SecurityOperationsTenant is one tenant of the SOC.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| code | `string` |  | Code matches ^[a-z0-9]{1,32}$ and is unique. Namespace wazuh-<code>,<br>Keycloak group tenant-<code>, dashboard host, search alias.<br> |
+| name | `string` |  | Name is the unique display name (IRIS customer, Velociraptor org).<br> |
+| retentionDays | `int` |  | RetentionDays of the tenant's alerts. Empty: the chart default.<br> |
+| indexerReplicas | `int` |  | IndexerReplicas of the tenant's Wazuh indexer. Default 1.<br> |
+| agentPorts | [`SecurityOperationsAgentPorts`](#securityoperationsagentports) |  | AgentPorts are the tenant's public agent ports. Derived from<br>agentPortBase when the code is all digits, required otherwise.<br> |
+
+## SecurityOperationsWazuhCredentials
+
+<p>SecurityOperationsWazuhCredentials are the logins of one Wazuh release.
+The API and authd passwords are only used by the tenant releases.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| indexerPassword | `string` |  |  |
+| indexerPasswordHash | `string` |  |  |
+| dashboardPassword | `string` |  |  |
+| dashboardPasswordHash | `string` |  |  |
+| apiPassword | `string` |  |  |
+| authdPassword | `string` |  |  |
+| clusterKey | `string` |  |  |
 
 ## UserConfig
 

@@ -212,3 +212,11 @@ func VulnerabilityScanningEnabled() bool {
 func RuntimeDetectionEnabled() bool {
 	return ParsedGeneralConfig.Cluster.Security.RuntimeDetection
 }
+
+// SecurityOperationsEnabled reports whether to render the security-operations
+// Applications, values and sealed Wazuh credentials: a
+// cluster.securityOperations block with enabled: true. Nil-safe.
+func SecurityOperationsEnabled() bool {
+	cfg := ParsedGeneralConfig.Cluster.SecurityOperations
+	return cfg != nil && cfg.Enabled
+}
