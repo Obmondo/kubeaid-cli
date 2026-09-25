@@ -230,6 +230,29 @@ velociraptor:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: traefik
+      # OIDC: Cilium does not match pods by CIDR, so the chart's ipBlock rule does
+      # not reach Keycloak behind the ingress controller; allow its pods instead.
+      oidcEgressCIDRs: []
+      # Replaces the chart's list, so the IRIS rule is repeated here.
+      extraEgress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: traefik
+          ports:
+            - protocol: TCP
+              port: 443
+            - protocol: TCP
+              port: 8443
+        # Server artifacts poll the IRIS API.
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: dfir-iris
+                  app.kubernetes.io/component: app
+          ports:
+            - protocol: TCP
+              port: 8000
 
 dfir-iris:
 {{- if .SecOps.KeycloakHostAliasIP }}
