@@ -7,6 +7,13 @@ LDFLAGS := -s -w \
 	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Commit=$(COMMIT) \
 	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
 
+SIEM_LDFLAGS := -s -w \
+	-X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Version=$(VERSION) \
+	-X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Commit=$(COMMIT) \
+	-X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Date=$(BUILD_DATE)
+
+SIEM_IMAGE ?= ghcr.io/obmondo/siem-reconciler:$(VERSION)
+
 MANAGEMENT_CLUSTER_NAME := kubeaid-bootstrapper
 
 default: help ## Run help by default
@@ -103,6 +110,17 @@ build-storagectl: ## Build kubeaid-storagectl binary
 # CONFIGS_DIR matches the contributor flow in docs/DEVELOPMENT.md; outputs
 # land in the configs directory the run was pointed at.
 CONFIGS_DIR ?= ./outputs/configs/local
+
+.PHONY: build-siem-reconciler
+build-siem-reconciler: ## Build siem-reconciler binary
+	@CGO_ENABLED=0 go build -ldflags="$(SIEM_LDFLAGS)" -o ./build/siem-reconciler ./cmd/siem-reconciler
+
+.PHONY: docker-siem-reconciler
+docker-siem-reconciler: ## Build the siem-reconciler image locally for this machine's arch (not pushed)
+	$(eval ARCH := $(shell go env GOARCH))
+	@CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -ldflags="$(SIEM_LDFLAGS)" \
+		-o ./build/siem-reconciler-image/linux/$(ARCH)/siem-reconciler ./cmd/siem-reconciler
+	@docker build --platform linux/$(ARCH) -f ./cmd/siem-reconciler/Dockerfile -t $(SIEM_IMAGE) ./build/siem-reconciler-image
 
 .PHONY: management-cluster-delete
 management-cluster-delete: ## Delete the management k3d cluster (set CONFIGS_DIR=<path> if not the DEVELOPMENT.md default)

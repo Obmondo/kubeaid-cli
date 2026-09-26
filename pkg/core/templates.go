@@ -221,6 +221,10 @@ type TemplateValues struct {
 	// Computed at render time so the cilium values template can gate the
 	// hostNetworkPolicy block without dereferencing the *bool inline.
 	HetznerBareMetalFirewallEnabled bool
+
+	// SecOps is cluster.securityOperations, derived for the
+	// security-operations templates. Nil when the SOC is not enabled.
+	SecOps *SecurityOperationsValues
 }
 
 // operatorStoragectlVersionOverride returns the operator-set value of
@@ -317,6 +321,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		),
 
 		HetznerBareMetalFirewallEnabled: hetznerBareMetalFirewallEnabled(),
+
+		SecOps: buildSecurityOperationsValues(),
 	}
 
 	// Populate Hetzner bare-metal host public IPs via Robot API for the
@@ -731,6 +737,15 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	if config.ManagedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedNonSecretTemplateNames...,
+		)
+	}
+
+	// Security operations: the security-operations Application, one wazuh
+	// Application per tenant (same file) and their values. The sealed Wazuh
+	// credentials are per namespace, see createOrUpdateSealedSecretFiles.
+	if config.SecurityOperationsEnabled() {
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.SecurityOperationsNonSecretTemplateNames...,
 		)
 	}
 

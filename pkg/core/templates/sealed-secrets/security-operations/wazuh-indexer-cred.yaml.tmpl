@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+  labels:
+    kubeaid.io/managed-by: kubeaid
+stringData:
+  INDEXER_USERNAME: admin
+  INDEXER_PASSWORD: "{{ .Password }}"

@@ -101,6 +101,12 @@ func validateConfigFields(
 			return nil
 		},
 		func() error {
+			if err := validateSecurityOperationsConfig(); err != nil {
+				return fmt.Errorf("validating cluster.securityOperations: %w", err)
+			}
+			return nil
+		},
+		func() error {
 			return validateKubeAidForkVersion(ctx, generalConfig.Forks.KubeaidFork, cloudProviderName)
 		},
 		func() error { return validateAdditionalUsers(generalConfig.Cluster.AdditionalUsers) },
