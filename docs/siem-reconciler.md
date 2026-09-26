@@ -19,7 +19,7 @@ Components run in this order; `--only` selects a subset.
 |---|---|---|
 | `secrets` | Secrets listed under `secrets` | Created with random (or literal `value`) values when missing; missing keys added; existing values never changed. A Secret owned by a SealedSecret is only checked (a missing key is an error, fix the SealedSecret). |
 | | Keys listed under `secretCopies` | Target key created or overwritten when its bytes differ from the source; other target keys kept. A missing source is an error for that copy. |
-| `enrolment` | One agent enrolment bundle Secret per `enrolment` entry | Rendered from the config and the tenant's authd password; created when missing, updated when any key differs. A missing authd Secret is an error for that bundle. |
+| `enrolment` | One agent enrolment bundle Secret per `enrolment` entry | Rendered from the config and the tenant's authd password; created when missing, updated when any key differs. A missing authd Secret is an error for that bundle. Keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`, `install-linux.sh`, `install-macos.sh`, `install-windows.ps1`; the `velociraptor` step adds two more (below). |
 | `keycloak` | Realm (created if missing), `bruteForceProtected`, OTP policy, `CONFIGURE_TOTP` as default required action | Only the attributes set in the config are compared. |
 | | Realm roles `operators.adminRole`, `operators.analystRole`, group `operators.analystGroup` | Created if missing. |
 | | Per tenant: realm role and group `<tenantGroupPrefix><code>`, group grants the role | Created if missing; other role mappings kept. |
@@ -34,6 +34,7 @@ Components run in this order; `--only` selects a subset.
 | | `indexPatterns` on the central dashboard (`dashboardURL`), e.g. `*:wazuh-alerts-*` for cross-cluster search | Created (server-chosen id) when no saved index pattern has that exact title; existing patterns are never modified. Reported as kind `index-pattern`. |
 | | The dashboard's `defaultIndex` (kind `default-index`) | Set to the pattern marked `default` only when unset or pointing to a pattern that no longer exists; a valid existing default is left alone. |
 | `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
+| | Keys `velociraptor-client.config.yaml` and `install-velociraptor.txt` in each enrolment bundle (reported as kind `bundle`) | The tenant org's client config as the server renders it (`orgs()` column `_client_config`, the same YAML as `velociraptor config client --org <id>`: server URLs, CA, the org nonce) and a short install hint for the matching release binary. Read after the orgs step, so a new org's config lands in the same run; a dry run reports a not-yet-created org as `create`. Created or updated when either key differs; other bundle keys kept. Needs the `enrolment` entry and `components.velociraptor`. |
 | | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
 
 Client fields and how drift is handled:
@@ -131,7 +132,8 @@ server administrator; per manager a Wazuh API user allowed to manage security
 `indexPatterns`, to write saved objects and advanced settings in the dashboard's
 global tenant);
 a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
-`org_create` and `COLLECT_SERVER` for `add_server_monitoring`).
+`org_create` and for `orgs()` to list every org with its client config, and
+`COLLECT_SERVER` for `add_server_monitoring`).
 
 ## Velociraptor gRPC without generated code
 
@@ -139,8 +141,8 @@ Velociraptor is AGPL-3.0 licensed, so this repository does not vendor its
 `.proto` files or generated stubs. `pkg/siem/velociraptor` calls the
 `proto.API/Query` streaming RPC with a raw gRPC codec and encodes the handful of
 `VQLCollectorArgs` / `VQLResponse` fields it needs with `protowire`; the field
-numbers are listed in `wire.go`. Everything else (orgs, monitoring table) is done
-in VQL (`orgs()`, `org_create()`, `get_server_monitoring()`,
+numbers are listed in `wire.go`. Everything else (orgs, org client configs, monitoring table) is
+done in VQL (`orgs()`, `org_create()`, `get_server_monitoring()`,
 `add_server_monitoring()`), with inputs passed as VQL environment variables rather
 than spliced into the query text. No `protoc` step is needed.
 

@@ -147,4 +147,6 @@ and `install-macos.sh` (pkg). The scripts install the Wazuh agent `agentVersion`
 from packages.wazuh.com and set
 `WAZUH_MANAGER`, `WAZUH_MANAGER_PORT`, `WAZUH_REGISTRATION_SERVER`,
 `WAZUH_REGISTRATION_PORT` and `WAZUH_REGISTRATION_PASSWORD`; agent groups are not
-used.
+used. With `components.velociraptor` set, the velociraptor step also writes
+`velociraptor-client.config.yaml` (the client config of the org named like the
+tenant) and `install-velociraptor.txt` (install hint) into the bundle.

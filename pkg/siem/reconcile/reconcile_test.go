@@ -18,6 +18,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/secrets"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/wazuhcentral"
 )
 
@@ -238,4 +239,33 @@ func TestRunIRISAndKeycloakLoginFailure(t *testing.T) {
 	assert.Equal(t, report.ActionError, got["keycloak/setup/login"])
 	assert.Equal(t, report.ActionCreate, got["iris/customer/Tenant A"])
 	assert.Equal(t, report.ActionSkip, got["iris/service-account/svc_ai"])
+}
+
+// orgQuerier answers the org client config listing.
+type orgQuerier struct{ rows []map[string]any }
+
+func (q orgQuerier) Query(context.Context, string, map[string]string) ([]map[string]any, []string, error) {
+	return q.rows, nil, nil
+}
+
+func TestVelociraptorBundlesMapTenantCodeToOrg(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cfg := loadExample(t)
+	kube := fake.NewClientset()
+	store := secrets.Store{Kube: kube}
+	q := orgQuerier{rows: []map[string]any{
+		{"OrgId": "root", "Name": "<root>", "ClientConfig": "Client:\n  nonce: root\n"},
+		{"OrgId": "OA", "Name": "Tenant A", "ClientConfig": "Client:\n  nonce: a\n"},
+	}}
+
+	got := map[string]report.Result{}
+	for _, r := range velociraptorBundles(ctx, cfg, store, q, false) {
+		got[r.Name] = r
+	}
+	assert.Equal(t, report.ActionCreate, got["wazuh-001/enrolment-bundle"].Action)
+	assert.Equal(t, report.ActionError, got["wazuh-002/enrolment-bundle"].Action, "org of tenant 002 does not exist")
+	sec, err := kube.CoreV1().Secrets("wazuh-001").Get(ctx, "enrolment-bundle", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "Client:\n  nonce: a\n", string(sec.Data["velociraptor-client.config.yaml"]))
 }

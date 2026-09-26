@@ -30,6 +30,9 @@ import (
 
 const (
 	tenantA       = "Tenant A"
+	tenantB       = "Tenant B"
+	nameCol       = "Name"
+	orgIDCol      = "OrgId"
 	dryRunParam   = "DryRun"
 	irisCollector = "Custom.Server.IrisCollector"
 	keycloakSync  = "Custom.Server.KeycloakSync"
@@ -108,9 +111,17 @@ func (f *fakeServer) handle(t *testing.T) grpc.StreamHandler {
 		log := "Starting query execution."
 		switch vql {
 		case vqlListOrgs:
-			list := []map[string]any{{"OrgId": "root", "Name": "<root>"}}
+			list := []map[string]any{{orgIDCol: "root", nameCol: "<root>"}}
 			for i, o := range f.orgs {
-				list = append(list, map[string]any{"OrgId": "O" + string(rune('A'+i)), "Name": o})
+				list = append(list, map[string]any{orgIDCol: "O" + string(rune('A'+i)), nameCol: o})
+			}
+			rows = list
+		case vqlOrgClientConfigs:
+			// The root org has no nonce here, so orgs() leaves its
+			// _client_config unset.
+			list := []map[string]any{{orgIDCol: "root", nameCol: "<root>"}}
+			for i, o := range f.orgs {
+				list = append(list, map[string]any{orgIDCol: "O" + string(rune('A'+i)), nameCol: o, "ClientConfig": "Client:\n  nonce: " + o + "\n"})
 			}
 			rows = list
 		case vqlCreateOrg:
@@ -244,7 +255,7 @@ func splitLines(s string) []string {
 
 func spec() Spec {
 	return Spec{
-		Orgs: []string{tenantA, "Tenant B"},
+		Orgs: []string{tenantA, tenantB},
 		Monitoring: []MonitoredArtifact{
 			{Artifact: irisCollector},
 			{Artifact: keycloakSync, Parameters: map[string]string{dryRunParam: "N"}},
@@ -286,7 +297,7 @@ func TestReconcileOverMTLS(t *testing.T) {
 	for _, r := range Reconcile(ctx, c, spec(), false) {
 		assert.NotEqual(t, report.ActionError, r.Action, "%s %s: %s", r.Kind, r.Name, r.Detail)
 	}
-	assert.Equal(t, []string{tenantA, "Tenant B"}, f.orgs)
+	assert.Equal(t, []string{tenantA, tenantB}, f.orgs)
 	assert.Equal(t, map[string]string{dryRunParam: "N", "PollSeconds": "300"}, f.specs[keycloakSync],
 		"unmanaged parameters are kept")
 	assert.Contains(t, f.artifacts, "Server.Monitor.Health", "other artifacts are never removed")
@@ -345,4 +356,16 @@ func TestAddMonitoringDoesNotUseArtifactVariable(t *testing.T) {
 	t.Parallel()
 	assert.NotContains(t, vqlAddMonitoring, "artifact=Artifact,")
 	assert.Contains(t, vqlAddMonitoring, "artifact=ArtifactName")
+}
+
+func TestOrgClientConfigs(t *testing.T) {
+	t.Parallel()
+	f := &fakeServer{orgs: []string{tenantA, tenantB, tenantB}}
+	got, err := OrgClientConfigs(context.Background(), dial(t, f))
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{
+		tenantA: {"Client:\n  nonce: Tenant A\n"},
+		tenantB: {"Client:\n  nonce: Tenant B\n", "Client:\n  nonce: Tenant B\n"},
+	}, got, "orgs without a client config are left out; duplicates are kept for the caller")
+	assert.Contains(t, vqlOrgClientConfigs, "_client_config AS ClientConfig", "hidden column must be selected explicitly")
 }

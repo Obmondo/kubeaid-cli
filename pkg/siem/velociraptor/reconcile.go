@@ -233,3 +233,30 @@ func lastLogs(logs []string) string {
 	}
 	return strings.Join(logs, " | ")
 }
+
+// vqlOrgClientConfigs lists every org with its client config. orgs()
+// renders the config (version plus the org's Client section, with the
+// org nonce) into the hidden _client_config column; it is the same
+// YAML `velociraptor config client --org <id>` prints.
+const vqlOrgClientConfigs = "SELECT OrgId, Name, _client_config AS ClientConfig FROM orgs()"
+
+// OrgClientConfigs returns org name -> client config YAMLs of the orgs
+// with that name (more than one means the name is ambiguous). Orgs
+// without a client config are left out.
+func OrgClientConfigs(ctx context.Context, q Querier) (map[string][]string, error) {
+	rows, logs, err := q.Query(ctx, vqlOrgClientConfigs, nil)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, fmt.Errorf("listing org client configs: %s", lastLogs(logs))
+	}
+	out := map[string][]string{}
+	for _, r := range rows {
+		if c := str(r["ClientConfig"]); c != "" {
+			name := str(r["Name"])
+			out[name] = append(out[name], c)
+		}
+	}
+	return out, nil
+}

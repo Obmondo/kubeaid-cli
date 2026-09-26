@@ -266,7 +266,31 @@ func runVelociraptor(ctx context.Context, cfg *config.Config, store secrets.Stor
 		return errorResult(ComponentVelociraptor, "connect", err)
 	}
 	defer func() { _ = client.Close() }()
-	return velociraptor.Reconcile(ctx, client, VelociraptorSpec(cfg), dryRun)
+	results := velociraptor.Reconcile(ctx, client, VelociraptorSpec(cfg), dryRun)
+	return append(results, velociraptorBundles(ctx, cfg, store, client, dryRun)...)
+}
+
+// velociraptorBundles adds each tenant org's client config to the
+// tenant's enrolment bundle. It runs after the orgs are reconciled so
+// a new org's config is available in the same run.
+func velociraptorBundles(ctx context.Context, cfg *config.Config, store secrets.Store, q velociraptor.Querier, dryRun bool) []report.Result {
+	if len(cfg.Enrolment) == 0 {
+		return nil
+	}
+	configs, err := velociraptor.OrgClientConfigs(ctx, q)
+	if err != nil {
+		return errorResult(ComponentVelociraptor, "client-configs", err)
+	}
+	orgs := make(map[string]string, len(cfg.Tenants))
+	for _, t := range cfg.Tenants {
+		orgs[t.Code] = t.Name
+	}
+	bundles := make([]enrolment.VelociraptorBundle, 0, len(cfg.Enrolment))
+	for _, b := range cfg.Enrolment {
+		org := orgs[b.Tenant]
+		bundles = append(bundles, enrolment.VelociraptorBundle{Bundle: b, Org: org, ClientConfigs: configs[org]})
+	}
+	return enrolment.EnsureVelociraptor(ctx, store.Kube, bundles, dryRun)
 }
 
 // VelociraptorSpec derives the desired Velociraptor state.

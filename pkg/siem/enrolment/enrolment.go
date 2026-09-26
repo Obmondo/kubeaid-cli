@@ -24,6 +24,9 @@ import (
 // Component is the report component name.
 const Component = "enrolment"
 
+// KindBundle is the report kind of a bundle Secret.
+const KindBundle = "bundle"
+
 // Bundle Secret keys.
 const (
 	KeyManagerHost      = "manager_host"
@@ -43,7 +46,7 @@ func Ensure(ctx context.Context, kube kubernetes.Interface, bundles []config.Enr
 	store := secrets.Store{Kube: kube}
 	results := make([]report.Result, 0, len(bundles))
 	for _, b := range bundles {
-		res := report.Result{Component: Component, Kind: "bundle", Name: b.Namespace + "/" + b.Name}
+		res := report.Result{Component: Component, Kind: KindBundle, Name: b.Namespace + "/" + b.Name}
 		pass, err := store.ReadRaw(ctx, b.AuthdSecretRef)
 		if err != nil {
 			res.Action, res.Detail = report.ActionError, "authd password: "+err.Error()

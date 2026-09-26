@@ -21,11 +21,13 @@ const (
 	ns        = "wazuh-001"
 	authdName = "wazuh-authd-pass"
 	authdKey  = "authd.pass"
+
+	bundleName = "enrolment-bundle"
 )
 
 func bundle(tenant, namespace string) config.EnrolmentBundle {
 	return config.EnrolmentBundle{
-		Tenant: tenant, Namespace: namespace, Name: "enrolment-bundle",
+		Tenant: tenant, Namespace: namespace, Name: bundleName,
 		ManagerHost: "agents.example.com", RegistrationPort: 21015, EventsPort: 21014,
 		AuthdSecretRef: config.SecretRef{Namespace: namespace, Name: authdName, Key: authdKey},
 		AgentVersion:   config.DefaultWazuhAgentVersion,
@@ -88,7 +90,7 @@ func TestEnsure(t *testing.T) {
 
 	res = Ensure(ctx, kube, bundles, false)
 	assert.Equal(t, report.ActionCreate, res[1].Action)
-	sec, err := kube.CoreV1().Secrets(ns).Get(ctx, "enrolment-bundle", metav1.GetOptions{})
+	sec, err := kube.CoreV1().Secrets(ns).Get(ctx, bundleName, metav1.GetOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, "pw-1", string(sec.Data[KeyAuthdPass]))
 	assert.Len(t, sec.Data, 7)
@@ -104,7 +106,7 @@ func TestEnsure(t *testing.T) {
 	res = Ensure(ctx, kube, bundles[1:], false)
 	assert.Equal(t, report.ActionUpdate, res[0].Action)
 	assert.Equal(t, "keys authd.pass,install-linux.sh,install-macos.sh,install-windows.ps1", res[0].Detail)
-	sec, err = kube.CoreV1().Secrets(ns).Get(ctx, "enrolment-bundle", metav1.GetOptions{})
+	sec, err = kube.CoreV1().Secrets(ns).Get(ctx, bundleName, metav1.GetOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, "pw-2", string(sec.Data[KeyAuthdPass]))
 }
