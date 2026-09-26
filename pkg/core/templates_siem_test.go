@@ -258,6 +258,18 @@ func TestSIEMApplications(t *testing.T) {
 			"<options>{\"min_level\":10,\"customer_name\":\"Tenant \\\"B\\\" \\u0026 \\u003cCo\\u003e\"}</options>",
 			"no raw XML markup characters in ossec.conf")
 	})
+
+	t.Run("managers register the MISP lists and drop the stock IoC pack", func(t *testing.T) {
+		source := asMap(t, digList(t, apps["wazuh-001"], "spec", "sources")[0])
+		conf := digString(t, source, "helm", "valuesObject", "wazuh", "wazuh", "master", "extraConf")
+		for _, l := range []string{"misp-malware-hashes", "misp-malicious-ip", "misp-malicious-domains"} {
+			assert.Contains(t, conf, "<list>etc/lists/"+l+"</list>")
+		}
+		assert.Contains(t, conf, "<rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>")
+		// A rule_exclude rebuilds the ruleset from this block alone.
+		assert.Contains(t, conf, "<rule_dir>etc/rules</rule_dir>")
+		assert.Contains(t, conf, "<decoder_dir>etc/decoders</decoder_dir>")
+	})
 }
 
 func TestSIEMChartRevision(t *testing.T) {
@@ -323,8 +335,8 @@ func TestSIEMCentralValues(t *testing.T) {
 			"credentialsSecret": "wazuh-api-cred-002", "verifyTls": false,
 		},
 	}, dig(t, values, "misp", "wazuhCdbExport", "targets"))
-	assert.NotContains(t, dig(t, values, "misp", "wazuhCdbExport"), "enabled",
-		"the export stays at the chart default (off)")
+	assert.Equal(t, true, dig(t, values, "misp", "wazuhCdbExport", "enabled"),
+		"the tenant managers register the lists, so the export runs")
 
 	central := digMap(t, values, "wazuh", "wazuh")
 	assert.Equal(t, "wazuh-indexer-cred", dig(t, central, "indexer", "cred", "existingSecret"))
@@ -425,6 +437,10 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 	assert.Equal(t, "wazuh-api-cred", dig(t, w, "wazuh", "apiCred", "existingSecret"))
 	assert.Equal(t, "wazuh-authd-pass", dig(t, w, "wazuh", "authd", "existingSecret"))
 	assert.Equal(t, false, dig(t, w, "wazuh", "worker", "enabled"))
+	rules := digString(t, w, "wazuh", "localRules")
+	assert.Equal(t, 20, strings.Count(rules, "<rule id="), "IoC rules 99901-99920")
+	assert.Contains(t, rules, `<rule id="99901" level="14">`)
+	assert.NotContains(t, rules, "etc/lists/malicious-ioc/", "every rule reads the MISP lists")
 	assert.Equal(t, "wazuh-dashboard-oidc", dig(t, w, "dashboard", "sso", "oidc", "existingSecret"))
 	assert.Equal(t, siemIssuer, dig(t, w, "dashboard", "sso", "oidc", "issuer"))
 

@@ -389,9 +389,11 @@ misp:
             password: "{{ . }}"
 {{- end }}
   wazuhCdbExport:
-    # One target per tenant manager (the export itself stays off until the
-    # tenant releases register the lists). The credentials Secrets are copied
-    # from the tenant namespaces by the reconciler.
+    # Every 15 minutes MISP's indicators become three CDB lists on every tenant
+    # manager, which registers them and re-points Wazuh's IoC rules 99901-99920
+    # at them (values-wazuh-tenant.yaml, security-operations.yaml). The
+    # credentials Secrets are copied from the tenant namespaces by the reconciler.
+    enabled: true
     targets:
 {{- range .SecOps.Tenants }}
       - name: "{{ .Code }}"

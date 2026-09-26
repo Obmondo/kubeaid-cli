@@ -107,6 +107,27 @@ spec:
                     <alert_format>json</alert_format>
                     <options>{{ .IRISOptions }}</options>
                   </integration>
+                  <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
+                       flat CDB lists through the API (it cannot write into the
+                       malicious-ioc/ subdirectory the stock IoC pack uses). A second
+                       <ruleset> is additive, but a rule_exclude makes analysisd rebuild
+                       the ruleset from this block alone, so it repeats the chart's own
+                       entries. Until the first export, analysisd warns that the lists
+                       are missing and skips rules 99901-99920. -->
+                  <ruleset>
+                    <list>etc/lists/misp-malware-hashes</list>
+                    <list>etc/lists/misp-malicious-ip</list>
+                    <list>etc/lists/misp-malicious-domains</list>
+                    <decoder_dir>ruleset/decoders</decoder_dir>
+                    <rule_dir>ruleset/rules</rule_dir>
+                    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+                    <rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>
+                    <list>etc/lists/audit-keys</list>
+                    <list>etc/lists/amazon/aws-sources</list>
+                    <list>etc/lists/amazon/aws-eventnames</list>
+                    <decoder_dir>etc/decoders</decoder_dir>
+                    <rule_dir>etc/rules</rule_dir>
+                  </ruleset>
     - repoURL: {{ $.KubeaidConfigFork.URL }}
       targetRevision: {{ $.SecOps.ConfigRevision }}
       ref: values
