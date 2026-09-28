@@ -274,6 +274,9 @@ type Components struct {
 	WazuhCentral *WazuhCentral `json:"wazuhCentral,omitempty"`
 	Velociraptor *Velociraptor `json:"velociraptor,omitempty"`
 	MISP         *MISP         `json:"misp,omitempty"`
+	// Content rolls the detection content package out to the managers
+	// in Wazuh and, with velociraptor set, the artifacts.
+	Content *Content `json:"content,omitempty"`
 }
 
 // MISP is the MISP REST API, reached with a site admin's auth key.
@@ -298,6 +301,33 @@ type MISPUser struct {
 	// MISP accepts for this user is left alone, otherwise a new key is
 	// generated and stored.
 	APIKeySecretRef SecretRef `json:"apiKeySecretRef"`
+	// Content rolls the detection content package out to the managers
+	// in Wazuh and, with velociraptor set, the artifacts.
+	Content *Content `json:"content,omitempty"`
+}
+
+// DefaultContentStatePrefix names the Secrets that keep the last good
+// content per target (<prefix>wazuh-<code>, <prefix>velociraptor).
+const DefaultContentStatePrefix = "kubesoc-content-"
+
+// Content is the kubesoc-content package rollout.
+type Content struct {
+	// Dir is the package: the kubesoc-content ConfigMap mount, or a
+	// checkout of KubeAid argocd-helm-charts/kubesoc-content.
+	Dir string `json:"dir"`
+	// ArtifactDirs are more directories of Velociraptor artifact files
+	// (*.yaml), e.g. the security-operations velociraptor-artifacts
+	// ConfigMap mount.
+	ArtifactDirs []string `json:"artifactDirs,omitempty"`
+	// Velociraptor uploads the artifacts with artifact_set; it needs
+	// components.velociraptor.
+	Velociraptor bool `json:"velociraptor,omitempty"`
+	// StateNamespace holds the state Secrets <StatePrefix><target>.
+	StateNamespace string `json:"stateNamespace"`
+	StatePrefix    string `json:"statePrefix,omitempty"`
+	// Canary is the tenant whose manager is rolled out first; the others
+	// follow only when it succeeds. Empty: the first manager.
+	Canary string `json:"canary,omitempty"`
 }
 
 // IRIS is DFIR-IRIS.
@@ -591,6 +621,9 @@ func (c *Config) applyComponentDefaults() {
 			p.TimeFieldName = orDefault(p.TimeFieldName, DefaultIndexPatternTimeField)
 		}
 	}
+	if ct := c.Components.Content; ct != nil {
+		ct.StatePrefix = orDefault(ct.StatePrefix, DefaultContentStatePrefix)
+	}
 	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil {
 		v.APIClientSecretRef.Key = orDefault(v.APIClientSecretRef.Key, DefaultVeloAPIClientKey)
 	}
@@ -771,6 +804,7 @@ func (c *Config) validateComponents(fail func(string, ...any)) {
 	}
 	c.validateWazuh(fail)
 	c.validateMISP(fail)
+	c.validateContent(fail)
 	if v := c.Components.Velociraptor; v != nil {
 		if (v.APIClientSecretRef == nil) == (v.APIClientFile == "") {
 			fail("components.velociraptor needs exactly one of apiClientSecretRef and apiClientFile")
@@ -815,6 +849,31 @@ func (c *Config) validateWazuh(fail func(string, ...any)) {
 	}
 	c.validateWazuhCentral(fail)
 	c.validateRetention(fail)
+}
+
+func (c *Config) validateContent(fail func(string, ...any)) {
+	ct := c.Components.Content
+	if ct == nil {
+		return
+	}
+	if ct.Dir == "" {
+		fail("components.content.dir is required")
+	}
+	if ct.StateNamespace == "" {
+		fail("components.content.stateNamespace is required")
+	}
+	if ct.Velociraptor && c.Components.Velociraptor == nil {
+		fail("components.content.velociraptor needs components.velociraptor")
+	}
+	if ct.Canary == "" {
+		return
+	}
+	for _, w := range c.Components.Wazuh {
+		if w.Tenant == ct.Canary {
+			return
+		}
+	}
+	fail("components.content.canary %q is not the tenant of a components.wazuh manager", ct.Canary)
 }
 
 func (c *Config) validateWazuhCentral(fail func(string, ...any)) {

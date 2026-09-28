@@ -83,6 +83,12 @@ type SecurityOperationsValues struct {
 	ReconcilerImagePullSecrets []string
 	ReconcilerDryRun           bool
 
+	// ContentEnabled switches the kubesoc-content package; ContentCanary is its
+	// first tenant; ContentLists are the CDB lists every tenant registers.
+	ContentEnabled bool
+	ContentCanary  string
+	ContentLists   []string
+
 	AITriageEnabled bool
 	AITriageDryRun  bool
 	AIModel         string
@@ -221,6 +227,10 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		ReconcilerImagePullSecrets: cfg.Reconciler.ImagePullSecrets,
 		ReconcilerDryRun:           cfg.Reconciler.DryRun == nil || *cfg.Reconciler.DryRun,
 		ReconcilerImage:            cfg.Reconciler.ImageRepository,
+
+		ContentEnabled: cfg.Content.Enabled,
+		ContentCanary:  cfg.Content.Canary,
+		ContentLists:   append(append([]string(nil), constants.SecurityOperationsMISPLists...), cfg.Content.ExtraLists...),
 
 		AITriageEnabled: cfg.AITriage.Enabled,
 		AITriageDryRun:  cfg.AITriage.DryRun == nil || *cfg.AITriage.DryRun,

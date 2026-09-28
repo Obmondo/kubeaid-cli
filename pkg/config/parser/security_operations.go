@@ -97,6 +97,34 @@ func hydrateSecurityOperationsDefaults() {
 	}
 }
 
+// securityOperationsListPattern is a CDB list path the Wazuh API can write
+// (flat names under etc/lists).
+var securityOperationsListPattern = regexp.MustCompile(`^etc/lists/[-\w]+$`)
+
+// validateSecurityOperationsContent checks content: the canary is a tenant and
+// the extra lists are paths the manager API can fill.
+func validateSecurityOperationsContent(cfg *config.SecurityOperationsConfig) error {
+	c := cfg.Content
+	if !c.Enabled {
+		return nil
+	}
+	if c.Canary != "" {
+		found := false
+		for _, t := range cfg.Tenants {
+			found = found || t.Code == c.Canary
+		}
+		if !found {
+			return fmt.Errorf("content.canary %q is not a tenant code", c.Canary)
+		}
+	}
+	for _, l := range c.ExtraLists {
+		if !securityOperationsListPattern.MatchString(l) {
+			return fmt.Errorf("content.extraLists: %q must look like etc/lists/<name>", l)
+		}
+	}
+	return nil
+}
+
 // derivedAgentPorts returns base + code*10 + 5 (registration) and
 // base + code*10 + 4 (events) for an all-digit code; false otherwise, or when
 // the code is too large to be a number.
@@ -155,6 +183,9 @@ func validateSecurityOperationsConfig() error {
 
 	if cfg.Sync.Prune && !cfg.Sync.Automated {
 		return errors.New("sync.prune needs sync.automated: pruning is part of automated sync")
+	}
+	if err := validateSecurityOperationsContent(cfg); err != nil {
+		return err
 	}
 
 	return validateSecurityOperationsTenants(cfg.Tenants)

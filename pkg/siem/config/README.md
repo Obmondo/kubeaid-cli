@@ -24,6 +24,7 @@ Kubernetes Secret.
 | `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`, `misp`; an absent component is skipped. |
 | `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`; an absent component is skipped. |
 | `retention` | object | no | ISM retention policies, see below. Absent: the `retention` component does nothing. |
+| `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`, `content`; an absent component is skipped. |
 | `enrolment` | list | no | Per-tenant agent enrolment bundle Secrets, see below. |
 
 ## `keycloak`
@@ -141,6 +142,14 @@ by the reconciler, never generated or copied by it.
   `api_client.yaml`) and `apiClientFile`; `address` overrides the api_client's
   `api_connection_string`; `serverMonitoring: [{artifact, parameters}]` must be
   running (only listed parameters compared; other artifacts are never removed).
+- `content`: the kubesoc-content package rollout. `dir` (required) is the package
+  (the `kubesoc-content` ConfigMap mount, whose `__` in file names stands for `/`,
+  or a checkout of the chart directory); `artifactDirs` are more directories of
+  Velociraptor artifact `*.yaml`; `velociraptor: true` sets the artifacts too (needs
+  `components.velociraptor`); `stateNamespace` (required) and `statePrefix` (default
+  `kubesoc-content-`) name the Secrets keeping the last good content per target;
+  `canary` is the tenant rolled out first (default the first manager; must have a
+  `components.wazuh` entry).
 
 - `misp`: `url`, `apiKeySecretRef` (auth key of a MISP site admin), `caFile`,
   `insecureSkipVerify`, `users: [{email, role (default "Read Only"), org (default:

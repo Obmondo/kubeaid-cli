@@ -132,6 +132,7 @@ spec:
                     <alert_format>json</alert_format>
                     <options>{{ .IRISOptions }}</options>
                   </integration>
+{{- if not $.SecOps.ContentEnabled }}
                   <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
                        flat CDB lists through the API (it cannot write into the
                        malicious-ioc/ subdirectory the stock IoC pack uses). A second
@@ -153,6 +154,7 @@ spec:
                     <decoder_dir>etc/decoders</decoder_dir>
                     <rule_dir>etc/rules</rule_dir>
                   </ruleset>
+{{- end }}
     - repoURL: {{ $.KubeaidConfigFork.URL }}
       targetRevision: {{ $.SecOps.ConfigRevision }}
       ref: values

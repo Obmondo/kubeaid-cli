@@ -70,6 +70,7 @@
 - [SecurityOperationsAITriageConfig](#securityoperationsaitriageconfig)
 - [SecurityOperationsAgentPorts](#securityoperationsagentports)
 - [SecurityOperationsConfig](#securityoperationsconfig)
+- [SecurityOperationsContentConfig](#securityoperationscontentconfig)
 - [SecurityOperationsCredentials](#securityoperationscredentials)
 - [SecurityOperationsKeycloakConfig](#securityoperationskeycloakconfig)
 - [SecurityOperationsReconcilerConfig](#securityoperationsreconcilerconfig)
@@ -889,8 +890,24 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
 | aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
 | dashboardBreakGlass | `bool` |  | DashboardBreakGlass offers the username/password form next to the<br>SSO button on the central and every tenant Wazuh dashboard, for the<br>internal admin user. Default false: the dashboards log in through<br>Keycloak only.<br> |
+| content | [`SecurityOperationsContentConfig`](#securityoperationscontentconfig) |  | Content switches detection content as code (the KubeAid<br>kubesoc-content chart, rolled out by the reconciler).<br> |
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
 | sync | [`SecurityOperationsSyncConfig`](#securityoperationssyncconfig) |  | Sync is how Argo CD syncs the SOC Applications. Default: by hand.<br> |
+
+## SecurityOperationsContentConfig
+
+<p>SecurityOperationsContentConfig drives the kubesoc-content package. When
+enabled, the tenant Wazuh rules come from the package (the reconciler
+uploads them) instead of wazuh.localRules, the tenants' <ruleset> is
+extended through wazuh.ruleset rather than a second block in extraConf,
+and the reconciler sets the Velociraptor artifacts (customArtifacts off).
+Needs a KubeAid chartRevision that has the kubesoc-content chart.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| canary | `string` |  | Canary is the tenant code whose manager gets new content first; the<br>others follow only when it succeeds. Empty: the first tenant.<br> |
+| extraLists | []`string` |  | ExtraLists are more CDB lists (etc/lists/<name>) to register in every<br>tenant's <ruleset>, for static lists the package ships. The MISP-fed<br>lists are always registered. Registering a list restarts the managers.<br> |
 
 ## SecurityOperationsCredentials
 

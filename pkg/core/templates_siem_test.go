@@ -824,3 +824,33 @@ func TestSIEMAITriage(t *testing.T) {
 	assert.Equal(t, []any{testAIModel}, dig(t, central, "ollama", "ollama", "ollama", "models", "pull"))
 	assert.Equal(t, true, dig(t, central, "ollama", "networkPolicy", "allowModelDownload"))
 }
+
+func TestSIEMContent(t *testing.T) {
+	tv := withSIEMConfig(t, siemTenant(1, "Tenant A"), siemTenant(2, "Tenant B"))
+	soc := config.ParsedGeneralConfig.Cluster.SecurityOperations
+	soc.Content = config.SecurityOperationsContentConfig{Enabled: true, Canary: "002", ExtraLists: []string{"etc/lists/kubesoc-bad-agents"}}
+	tv.SecOps = buildSecurityOperationsValues()
+
+	tenant := digMap(t, renderDocs(t, siemTenantValuesTmpl, tv)[0], "wazuh", "wazuh")
+	assert.NotContains(t, tenant, "localRules", "the rules come from the content package")
+	assert.Equal(t, []any{
+		"etc/lists/misp-malware-hashes", "etc/lists/misp-malicious-ip", "etc/lists/misp-malicious-domains",
+		"etc/lists/kubesoc-bad-agents",
+	}, dig(t, tenant, "ruleset", "extraLists"))
+	assert.Equal(t, []any{"0999-malicious-ioc-rules.xml"}, dig(t, tenant, "ruleset", "extraRuleExcludes"))
+
+	apps := siemApps(t, tv)
+	source := asMap(t, digList(t, apps["wazuh-001"], "spec", "sources")[0])
+	conf := digString(t, source, "helm", "valuesObject", "wazuh", "wazuh", "master", "extraConf")
+	assert.Contains(t, conf, "<name>custom-iris</name>")
+	assert.NotContains(t, conf, "<ruleset>", "no hand-copied ruleset")
+
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, map[string]any{"enabled": true, "canary": "002"}, dig(t, central, "kubesoc-content"))
+	assert.Equal(t, false, dig(t, central, "velociraptor", "velociraptor", "customArtifacts", "enabled"))
+
+	soc.Content = config.SecurityOperationsContentConfig{}
+	tv.SecOps = buildSecurityOperationsValues()
+	central = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.NotContains(t, central, "kubesoc-content", "off renders as before")
+}

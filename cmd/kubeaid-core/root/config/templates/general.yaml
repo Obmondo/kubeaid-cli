@@ -212,6 +212,17 @@ cluster:
     # internal admin user. Default false: the dashboards log in through
     # Keycloak only.
     dashboardBreakGlass:
+    # Content switches detection content as code (the KubeAid
+    # kubesoc-content chart, rolled out by the reconciler).
+    content:
+      enabled:
+      # Canary is the tenant code whose manager gets new content first; the
+      # others follow only when it succeeds. Empty: the first tenant.
+      canary:
+      # ExtraLists are more CDB lists (etc/lists/<name>) to register in every
+      # tenant's <ruleset>, for static lists the package ships. The MISP-fed
+      # lists are always registered. Registering a list restarts the managers.
+      extraLists:
     # Tenants, one entry each. Adding one and rendering again onboards it.
     tenants:
     # Sync is how Argo CD syncs the SOC Applications. Default: by hand.

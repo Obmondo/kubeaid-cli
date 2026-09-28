@@ -73,3 +73,12 @@ const (
 	TemplateNameWazuhClusterKey = "sealed-secrets/security-operations/wazuh-manager-cluster-key.yaml.tmpl"
 	TemplateNameMISPRedis       = "sealed-secrets/security-operations/misp-redis.yaml.tmpl"
 )
+
+// SecurityOperationsMISPLists are the CDB lists the misp chart's wazuhCdbExport
+// writes to every tenant manager; the kubesoc-content IoC rules (99901-99920)
+// look them up, so every tenant's <ruleset> registers them.
+var SecurityOperationsMISPLists = []string{
+	"etc/lists/misp-malware-hashes",
+	"etc/lists/misp-malicious-ip",
+	"etc/lists/misp-malicious-domains",
+}
