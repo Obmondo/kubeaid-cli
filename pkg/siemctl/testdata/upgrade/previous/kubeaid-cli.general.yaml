@@ -1,0 +1,35 @@
+# The general config of the upgrade baseline: the release the upgrade test
+# renders from (see upgrade_test.go). Example names only.
+forkURLs:
+  kubeaid:
+    url: https://github.com/example/KubeAid
+    version: 1.0.0
+  kubeaidConfig:
+    url: https://git.example.com/example/kubeaid-config.git
+    directory: kubesoc
+cluster:
+  name: kubesoc
+  securityOperations:
+    enabled: true
+    chartRevision: v1.0.0
+    domain: example.com
+    hostPrefix: soc-
+    keycloak:
+      url: https://keycloak.example.com/auth
+    agentHost: agents.example.com
+    agentAddress: 192.0.2.10
+    reconciler:
+      enabled: true
+      imageTag: v1.0.0
+      dryRun: false
+    tenants:
+      - code: "001"
+        name: Tenant A
+      - code: "002"
+        name: Tenant B
+        retentionDays: 90
+      - code: demo
+        name: Demo tenant
+        agentPorts:
+          registration: 21515
+          events: 21514

@@ -1,0 +1,17 @@
+# kubeaid-sha256: 34d1988581f9b6302a9be9a395999717914c8ea99c1410544a038211d36ccc4e
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: wazuh-api-cred
+  namespace: wazuh-demo
+spec:
+  encryptedData:
+    API_PASSWORD: AQBOSbq41YJYdnLbFJkX71XITWsxCkc8zFD8cEHb5sKUS/E6qo0PrpwtIKk0VTpSsV4R646JqjjFjVsu+euEvPtLc7UvUa2nmkfXvSAkRPdr0pWJqlf9WFbZvRCTFldiFWwg+yyx03GPW+e6buJD0vuEqJkBV9fPTjLs8Ar89DemUF/XmXja1r9K4PqME7VvPDmynYREh5wGtBTuxAJYPDLMDhu+cWPBofVpKaFUeygrleHyo1Y0xv5w+IjcY9rfSA5FpiWFFYYH3+xcH0u3tZxL8yqFDI6caQWj270cgW4K8Mf1rretj2PNyg0/i5LpGNqYKynCzZkeU/O/TJbdqy9icLT53BKWN6dKNDQ+rRLpEv/JIYSYEeuF1ml8ewlhdjWF344TAw+P22CaTYF7OY12
+    API_USERNAME: AQB9tyZE8psX//GstWbRhQfTCmG1rDhnNve1YfedoHUbi2om4RtBwTef4U6CVsAR2xXYoy5XuieC6ZEb3Crpayxv+A2KzpfslxIb6xm1meH4EICFO07f492Ce8u1zNZYwc4AlNMlqOPox9n+Sbsww+Zg5kiO951sYDO8TCfrpJVdXhcPcbEKayWANwe9ZqYJKUafWd3PPFPsFAP4DVCXzQAeL8YZRJ8kxeyvVixxX2zmJA7rRsMd/SqH6n57J6YPyaZXrYS8Z5cD5RFjuao9rPDUCXo5btLtWe/14Ia2dczLqnytDA3FviRtt5t4mr7tskA+ZcSKt4WDT5ZrOgGcjAcNfBld9h4KhXIRUUhQ/JYnQLSgNI4+72B9hA==
+  template:
+    metadata:
+      labels:
+        kubeaid.io/managed-by: kubeaid
+      name: wazuh-api-cred
+      namespace: wazuh-demo

@@ -1,0 +1,16 @@
+# kubeaid-sha256: 481ce028ee31aa4115ff4c088af4f83f49b74c2ba1c23f6d54ec0e4c47db4d98
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: wazuh-authd-pass
+  namespace: wazuh-001
+spec:
+  encryptedData:
+    authd.pass: AQAADQDsBl5LfjoEhzk5nHCOqCtTudAvJBfMf7NG5wA0ZNYqIj00+uE1Vo00SblUFnSOi++3E2vdu9yLksmlSQ84xkidUJdOy8lTUgi+wKKYeu5XXoDCV64RsdspR5/od0hyC/crdCOd3VT7hLxivRLUnt1GbN6CsAjAWbW2czJWxu5O+XdIG8fgf7sU2Pr09VSDzER1iTn2gbf1NG+cFwt5gMPmoFIpqoHiZSHRZtgIb7OIWqbm4aoNvmpSh/kJVZT6TVAgrIKKh/+hHqbCjR2cJ7kJmD4FZVm0YUFuqdTZgIpFHjePqTy22likMw8/YT0Xe592DH08pvswLtQjw7uzU3Qt2PMit6hdMMfN8QEPVQkCwkL3bC/UQjWP/MITDmQAKqexFXVuzeu+v3TdiLnM
+  template:
+    metadata:
+      labels:
+        kubeaid.io/managed-by: kubeaid
+      name: wazuh-authd-pass
+      namespace: wazuh-001
