@@ -23,11 +23,9 @@ import (
 // The backup CR kinds a SOC backup is made of. They are driven generically
 // (unstructured), so the stack needs no Go types of the operators.
 //
-// TODO(kubesoc-06): the backup task defines the exact Velero Schedule,
-// CNPG ScheduledBackup, MariaDB Backup and OpenSearch snapshot objects. This
-// code clones whatever scheduled objects it finds (dropping the schedule), so
-// it follows their names; only the OpenSearch snapshot trigger label below is
-// an assumption until that lands.
+// Nothing is looked up by name: the scheduled objects the security-operations
+// chart renders are found by their kind and namespace and cloned with the
+// schedule dropped, so renaming one in the chart needs no change here.
 // The API groups and versions of the backup CRs.
 const (
 	groupVelero     = "velero.io"
@@ -59,7 +57,9 @@ var (
 const BackupSetLabel = "kubesoc.io/backup-set"
 
 // SnapshotCronJobLabel marks a CronJob that takes an OpenSearch snapshot;
-// `siem backup` runs it once. TODO(kubesoc-06): align with the snapshot job.
+// `siem backup` runs it once. The chart puts it on one CronJob per indexer
+// namespace, and a run is idempotent (register repository, update the policy,
+// snapshot, prune), so triggering it out of schedule is safe.
 const SnapshotCronJobLabel = "kubesoc.io/backup=opensearch-snapshot"
 
 // BackupOptions are the inputs of PlanBackup.
@@ -310,10 +310,13 @@ func PlanRestore(ctx context.Context, opts RestoreOptions) (*Plan, error) {
 		planMariaDBRestores(ctx, opts, plan, ns, name, selector)
 		notePostgreSQLRestores(ctx, opts, plan, ns, selector)
 	}
-	// TODO(kubesoc-06): restore OpenSearch snapshots (_snapshot/<repo>/<name>/_restore)
-	// once the snapshot repository and naming are defined.
+	// A restore of the indices is not automated: it closes or deletes the
+	// live indices first, which is a decision for the operator, not a plan
+	// that runs. The repository and prefix are the chart's
+	// backup.opensearch.{repository,snapshotPrefix} (both "kubesoc").
 	plan.Notes = append(plan.Notes,
-		"OpenSearch indices: restore the tenant's snapshot through the indexer's _snapshot API (not automated yet)")
+		"OpenSearch indices: restore the tenant's snapshot through the indexer's _snapshot API"+
+			" (POST _snapshot/<repository>/<snapshot>/_restore, after closing the live indices); not automated")
 	return plan, nil
 }
 

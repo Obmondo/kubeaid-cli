@@ -154,10 +154,9 @@ type rawSource struct {
 // wrote, so a change to the render's ordering is followed without a change
 // here.
 //
-// TODO(kubesoc-07): once the GitOps branch lands, take the order from
-// core.SecurityOperationsApplicationsInSyncOrder() (and its securityOperations.sync
-// config) instead, and keep this as the fallback for a directory rendered by an
-// older release.
+// The labels, not core.SecurityOperationsApplicationsInSyncOrder(), are the
+// source: they describe the directory in hand, so a directory rendered by
+// another release still syncs in the order that release meant.
 func SyncOrder(apps []Application) []string {
 	sorted := append([]Application(nil), apps...)
 	sort.SliceStable(sorted, func(i, j int) bool {

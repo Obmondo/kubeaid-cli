@@ -94,9 +94,10 @@ func runApply(cmd *cobra.Command, verb, message string) error {
 
 	// The render is always called through core, so its behaviour (output
 	// locations, rotation refusal) flows into apply, upgrade and tenant.
-	// TODO(kubesoc-07): pass the rotation option through
-	// core.RenderSecurityOperationsWithOptions and add a --rotate flag here.
-	written, err := core.RenderSecurityOperations(ctx, clusterDir)
+	// Without --rotate it keeps every credential; core refuses a render that
+	// would rotate one by accident.
+	written, err := core.RenderSecurityOperationsWithOptions(ctx, clusterDir,
+		core.SecurityOperationsRenderOptions{Rotate: rotate})
 	printWritten(out, clusterDir, written, core.SecurityOperationsLegacySealedSecretFiles(clusterDir))
 	if err != nil {
 		return err
@@ -309,6 +310,10 @@ func addApplyFlags(cmd *cobra.Command) {
 	f.BoolVar(&applyFlags.sync, "sync", false, "Sync the Applications in order through Argo CD and wait until they are Healthy")
 	f.DurationVar(&applyFlags.timeout, "timeout", 20*time.Minute, "How long to wait for each Application to become Healthy")
 	f.StringVar(&applyFlags.message, "message", "", "Commit message")
+	f.StringSliceVar(&rotate, flagNameRotate, nil,
+		"Generate new credentials for these existing releases (security-operations, wazuh-<code>);"+
+			" without a value (--"+flagNameRotate+"): every release")
+	f.Lookup(flagNameRotate).NoOptDefVal = core.SecurityOperationsRotateAll
 	addPreflightFlags(cmd)
 	addYesFlag(cmd, "syncing")
 	addDryRunFlag(cmd, "Print the diff of the render and change nothing")
