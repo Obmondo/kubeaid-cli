@@ -328,11 +328,11 @@ func TestSIEMCentralValues(t *testing.T) {
 	assert.Equal(t, []any{
 		map[string]any{
 			"name": "001", "url": "https://wazuh.wazuh-001.svc:55000",
-			"credentialsSecret": "wazuh-api-cred-001", "verifyTls": false,
+			"credentialsSecret": "wazuh-api-cred-001",
 		},
 		map[string]any{
 			"name": "002", "url": "https://wazuh.wazuh-002.svc:55000",
-			"credentialsSecret": "wazuh-api-cred-002", "verifyTls": false,
+			"credentialsSecret": "wazuh-api-cred-002",
 		},
 	}, dig(t, values, "misp", "wazuhCdbExport", "targets"))
 	assert.Equal(t, true, dig(t, values, "misp", "wazuhCdbExport", "enabled"),
@@ -451,13 +451,19 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 	}
 	assert.Equal(t, []string{"registration", "api", "agents-events"}, names)
 
-	ingresses := digList(t, w, "wazuh", "master", "networkPolicy", "extraIngresses")
-	agents := asMap(t, ingresses[0])
-	assert.Equal(t, "0.0.0.0/0", dig(t, asMap(t, asList(t, agents["from"])[0]), "ipBlock", "cidr"))
-	assert.Len(t, agents["ports"], 2)
+	// The SOC flows come from the chart's networkPolicies; the subchart's
+	// any-source dashboard rule and HTTPS-to-anywhere manager rule are off.
+	assert.Equal(t, true, dig(t, values, "networkPolicies", "enabled"))
+	assert.Equal(t, []any{}, dig(t, w, "dashboard", "networkPolicy", "ingressFrom"))
+	assert.Equal(t, false, dig(t, w, "wazuh", "master", "networkPolicy", "ctiEgress"))
+	assert.NotContains(t, digMap(t, w, "wazuh", "master", "networkPolicy"), "extraIngresses",
+		"no 0.0.0.0/0 or namespace-wide rule in the values")
+	assert.NotContains(t, digMap(t, w, "indexer"), "networkPolicy")
 
-	indexerIngress := asMap(t, digList(t, w, "indexer", "networkPolicy", "extraIngresses")[0])
-	assert.Equal(t, 9300, asMap(t, asList(t, indexerIngress["ports"])[0])["port"])
+	// TLS: a soc-ca certificate for the API and authd, naming the agent host.
+	assert.Equal(t, true, dig(t, w, "wazuh", "managerTls", "enabled"))
+	assert.Equal(t, []any{"agents.example.com"}, dig(t, w, "wazuh", "managerTls", "extraDnsNames"))
+	assert.Equal(t, "full", dig(t, w, "dashboard", "opensearchVerificationMode"))
 }
 
 // TestSIEMThirdTenantAddsOnlyItsOwn: adding tenant 003 leaves every rendered

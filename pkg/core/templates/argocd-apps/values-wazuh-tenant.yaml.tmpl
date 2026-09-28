@@ -6,6 +6,12 @@
 # Application in templates/security-operations.yaml.
 irisIntegration:
   enabled: true
+# Default deny in the tenant namespace and the SOC flows (wazuh chart
+# templates/networkpolicies.yaml): manager API from the central reconciler, MISP
+# export and dashboard only; agents on 1514/1515; indexer 9300 from the central
+# indexer; dashboard from the ingress controller; Keycloak for OIDC; the CTI feed.
+networkPolicies:
+  enabled: true
 wazuh:
   fullnameOverride: wazuh
   # Config checksums on the pods, so a config change (e.g. extraNodesDn) restarts them.
@@ -34,30 +40,9 @@ wazuh:
       # The static nodes_dn list: nodes_dn.yml is not read by default.
       extraNodesDn:
         - "{{ .SecOps.CentralIndexerDN }}"
-    networkPolicy:
-      extraIngresses:
-        - ports:
-            - protocol: TCP
-              port: 9300
-          from:
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: security-operations
-              podSelector:
-                matchLabels:
-                  app: wazuh-indexer
-      extraEgresses:
-        # OIDC discovery and keys from Keycloak, behind the ingress controller.
-        - ports:
-            - protocol: TCP
-              port: 443
-            - protocol: TCP
-              port: 8443
-          to:
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: traefik
   dashboard:
+    # Verify the indexer's certificate (soc-ca, named wazuh-indexer).
+    opensearchVerificationMode: full
 {{- if .SecOps.KeycloakHostAliasIP }}
     extraSpec:
       pod:
@@ -105,17 +90,8 @@ wazuh:
         opensearch_security.cookie.password: ${OPENSEARCH_COOKIE_PASSWORD}
         opensearch_security.cookie.secure: true
     networkPolicy:
-      extraEgresses:
-        # OIDC token exchange with Keycloak, behind the ingress controller.
-        - ports:
-            - protocol: TCP
-              port: 443
-            - protocol: TCP
-              port: 8443
-          to:
-            - namespaceSelector:
-                matchLabels:
-                  kubernetes.io/metadata.name: traefik
+      # Not open to any source: networkPolicies admits the ingress controller.
+      ingressFrom: []
   wazuh:
     # MISP indicators: Wazuh 4.14's own IoC rule pack
     # (ruleset/rules/0999-malicious-ioc-rules.xml, rules 99901-99920) re-pointed at
@@ -321,6 +297,15 @@ wazuh:
       existingSecret: wazuh-api-cred
     authd:
       existingSecret: wazuh-authd-pass
+    # API (55000) and authd (1515) certificate from the soc-ca instead of the image's
+    # self-signed ones: the reconciler and the MISP export verify the API, and agents
+    # verify authd with the CA from the enrolment bundle, by the host they dial.
+    managerTls:
+      enabled: true
+{{- if .SecOps.AgentHost }}
+      extraDnsNames:
+        - {{ .SecOps.AgentHost }}
+{{- end }}
     # Master only: one manager takes a few thousand agents.
     worker:
       enabled: false
@@ -366,44 +351,5 @@ wazuh:
           mountPath: /var/ossec/integrations/iris
           readOnly: true
       networkPolicy:
-        extraIngresses:
-          # Agents from outside the cluster (agentService).
-          - ports:
-              - protocol: TCP
-                port: 1514
-              - protocol: TCP
-                port: 1515
-            from:
-              - ipBlock:
-                  cidr: 0.0.0.0/0
-          # Reconciler and MISP list export in the central namespace.
-          - ports:
-              - protocol: TCP
-                port: 55000
-            from:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: security-operations
-        extraEgresses:
-          # IRIS integration (8000) and MISP (80) in the central namespace.
-          - ports:
-              - protocol: TCP
-                port: 8000
-            to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: security-operations
-                podSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: dfir-iris
-                    app.kubernetes.io/component: app
-          - ports:
-              - protocol: TCP
-                port: 80
-            to:
-              - namespaceSelector:
-                  matchLabels:
-                    kubernetes.io/metadata.name: security-operations
-                podSelector:
-                  matchLabels:
-                    app.kubernetes.io/name: misp
+        # HTTPS to the internet only (networkPolicies.cti), not to any address.
+        ctiEgress: false
