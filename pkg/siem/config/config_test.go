@@ -40,6 +40,9 @@ func TestLoadExample(t *testing.T) {
 	require.Len(t, cfg.Enrolment, 2)
 	assert.Equal(t, 21025, cfg.Enrolment[1].RegistrationPort)
 	assert.Equal(t, DefaultWazuhAgentVersion, cfg.Enrolment[1].AgentVersion)
+	assert.Nil(t, cfg.Enrolment[0].CASecretRef)
+	require.NotNil(t, cfg.Enrolment[1].CASecretRef)
+	assert.Equal(t, "wazuh-manager-tls", cfg.Enrolment[1].CASecretRef.Name)
 }
 
 func TestDefaults(t *testing.T) {
@@ -111,7 +114,7 @@ func TestValidateErrors(t *testing.T) {
 			"velociraptor": {"serverMonitoring": [{"artifact": ""}]}
 		},
 		"enrolment": [
-			{"tenant": "nope", "namespace": "", "name": "", "managerHost": "", "registrationPort": 0, "eventsPort": 70000, "authdSecretRef": {}, "agentVersion": "latest"},
+			{"tenant": "nope", "namespace": "", "name": "", "managerHost": "", "registrationPort": 0, "eventsPort": 70000, "authdSecretRef": {}, "agentVersion": "latest", "caSecretRef": {"name": "x"}},
 			{"tenant": "b", "namespace": "n", "name": "e", "managerHost": "h", "registrationPort": 1515, "eventsPort": 1514, "authdSecretRef": {"namespace": "n", "name": "a", "key": "k"}},
 			{"tenant": "b", "namespace": "n", "name": "e", "managerHost": "h", "registrationPort": 1515, "eventsPort": 1514, "authdSecretRef": {"namespace": "n", "name": "a", "key": "k"}}
 		]
@@ -163,6 +166,7 @@ func TestValidateErrors(t *testing.T) {
 		"enrolment[0].eventsPort 70000 is not in 1-65535",
 		"enrolment[0].authdSecretRef needs namespace, name and key",
 		`enrolment[0].agentVersion "latest" must look like`,
+		"enrolment[0].caSecretRef needs namespace, name and key",
 		"enrolment[2]: Secret n/e is not unique",
 		"exactly one of apiClientSecretRef and apiClientFile",
 		"serverMonitoring[0].artifact",

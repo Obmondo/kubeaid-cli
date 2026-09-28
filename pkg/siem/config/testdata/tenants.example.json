@@ -202,7 +202,8 @@
     {
       "tenant": "002", "namespace": "wazuh-002", "name": "enrolment-bundle",
       "managerHost": "agents.example.com", "registrationPort": 21025, "eventsPort": 21024,
-      "authdSecretRef": {"namespace": "wazuh-002", "name": "wazuh-authd-pass", "key": "authd.pass"}
+      "authdSecretRef": {"namespace": "wazuh-002", "name": "wazuh-authd-pass", "key": "authd.pass"},
+      "caSecretRef": {"namespace": "wazuh-002", "name": "wazuh-manager-tls", "key": "ca.crt"}
     }
   ]
 }

@@ -419,6 +419,11 @@ type EnrolmentBundle struct {
 	// scripts fetch, e.g. "4.14.8-1". It must not be newer than the
 	// manager.
 	AgentVersion string `json:"agentVersion,omitempty"`
+	// CASecretRef, when set, is the CA that issued the manager's authd
+	// certificate (e.g. ca.crt of its cert-manager Secret). It goes into
+	// the bundle and the install scripts make the agent verify the
+	// manager with it. A missing Secret leaves the CA out.
+	CASecretRef *SecretRef `json:"caSecretRef,omitempty"`
 }
 
 // WazuhCredsRef points at a Wazuh API or indexer user's Secret.
@@ -833,6 +838,9 @@ func (c *Config) validateEnrolment(fail func(string, ...any)) {
 			fail("%s.eventsPort %d is not in 1-%d", where, e.EventsPort, maxPort)
 		}
 		validateRef(fail, where+".authdSecretRef", e.AuthdSecretRef)
+		if e.CASecretRef != nil {
+			validateRef(fail, where+".caSecretRef", *e.CASecretRef)
+		}
 		if !agentPattern.MatchString(e.AgentVersion) {
 			fail("%s.agentVersion %q must look like 4.14.8-1", where, e.AgentVersion)
 		}
