@@ -307,16 +307,20 @@ dfir-iris:
       - secretName: iris-tls
         hosts:
           - {{ .SecOps.IRISHost }}
-  # Keycloak SSO, client iris (redirect /oidc-authorize). The local form stays
-  # as break-glass for the IRIS administrator.
+  # Keycloak SSO, client iris (redirect /oidc-authorize). No local password form:
+  # set localFallback: true in the cluster's own values only for a planned
+  # break-glass login as the IRIS administrator. SSO users are matched on their
+  # Keycloak user id (sub), so an IdP user named like a local login cannot sign
+  # in as it; keycloakSync creates and renames users to that id.
   authentication:
     type: oidc
-    localFallback: true
+    localFallback: false
     createUserIfNotExist: true
     oidc:
       issuerUrl: {{ .SecOps.KeycloakIssuer }}
       clientId: iris
       existingSecret: dfir-iris-oidc
+      mappingUsername: sub
   # Keycloak -> IRIS access: IRIS ignores roles in the OIDC token, so this job
   # gives each SSO user the IRIS groups and customers of its realm roles and
   # tenant groups (mapping from the umbrella's dfir-iris-tenants ConfigMap).

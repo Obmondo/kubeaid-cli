@@ -359,6 +359,10 @@ func TestSIEMCentralValues(t *testing.T) {
 
 	assert.Equal(t, "soc-iris.example.com", dig(t, values, "dfir-iris", "ingress", "host"))
 	assert.Equal(t, siemIssuer, dig(t, values, "dfir-iris", "authentication", "oidc", "issuerUrl"))
+	assert.Equal(t, false, dig(t, values, "dfir-iris", "authentication", "localFallback"),
+		"no local IRIS login next to SSO unless a cluster opts in")
+	assert.Equal(t, "sub", dig(t, values, "dfir-iris", "authentication", "oidc", "mappingUsername"),
+		"SSO users matched on the Keycloak id, never on a local login name")
 	assert.Equal(t, "soc-misp.example.com", dig(t, values, "misp", "misp", "instanceEnv", "ingressHostName"))
 	assert.Equal(t, true, dig(t, values, "misp", "misp", "misp", "ingress", "enabled"))
 	assert.Equal(t, "https://soc-velociraptor.example.com/app/index.html",
