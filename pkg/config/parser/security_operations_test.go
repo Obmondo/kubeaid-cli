@@ -74,6 +74,9 @@ func TestHydrateSecurityOperationsDefaults(t *testing.T) {
 		assert.Equal(t, constants.ClusterIssuerLetsEncrypt, cfg.ClusterIssuer)
 		require.NotNil(t, cfg.Reconciler.DryRun)
 		assert.True(t, *cfg.Reconciler.DryRun, "the reconciler starts as a dry run")
+		assert.Equal(t, "mistral:7b", cfg.AITriage.Model, "the default model is Apache-2.0 Mistral 7B")
+		require.NotNil(t, cfg.AITriage.DryRun)
+		assert.True(t, *cfg.AITriage.DryRun, "AI triage starts as a dry run")
 
 		assert.Equal(t, 1, cfg.Tenants[0].IndexerReplicas)
 		assert.Equal(t, 3, cfg.Tenants[1].IndexerReplicas)
@@ -91,6 +94,7 @@ func TestHydrateSecurityOperationsDefaults(t *testing.T) {
 			Keycloak:      config.SecurityOperationsKeycloakConfig{URL: "https://sso.example.com", Realm: "sec"},
 			AgentPortBase: 30000,
 			Reconciler:    config.SecurityOperationsReconcilerConfig{DryRun: &dryRun},
+			AITriage:      config.SecurityOperationsAITriageConfig{Model: "mistral-small3.1"},
 			Tenants: []config.SecurityOperationsTenant{
 				{Code: "002", AgentPorts: &config.SecurityOperationsAgentPorts{Registration: 1515, Events: 1514}},
 				{Code: "003"},
@@ -103,6 +107,7 @@ func TestHydrateSecurityOperationsDefaults(t *testing.T) {
 		assert.Equal(t, "https://sso.example.com", cfg.Keycloak.URL)
 		assert.Equal(t, "sec", cfg.Keycloak.Realm)
 		assert.False(t, *cfg.Reconciler.DryRun)
+		assert.Equal(t, "mistral-small3.1", cfg.AITriage.Model)
 		assert.Equal(t, 1515, cfg.Tenants[0].AgentPorts.Registration)
 		assert.Equal(t, 30035, cfg.Tenants[1].AgentPorts.Registration)
 		assert.Equal(t, 30034, cfg.Tenants[1].AgentPorts.Events)

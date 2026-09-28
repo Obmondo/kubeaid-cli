@@ -26,8 +26,10 @@ const (
 	// reconciler.image.repository.
 	SecurityOperationsDefaultReconcilerImage = "ghcr.io/obmondo/siem-reconciler"
 
-	// SecurityOperationsDefaultAIModel is the dfir-iris aiTriage default model.
-	SecurityOperationsDefaultAIModel = "llama3.1:8b"
+	// SecurityOperationsDefaultAIModel is the dfir-iris aiTriage default model:
+	// Mistral 7B (Apache-2.0), about 5 GB RAM at 4-bit on CPU. On a GPU node
+	// mistral-small3.1 (24B, Apache-2.0) gives better summaries and queries.
+	SecurityOperationsDefaultAIModel = "mistral:7b"
 
 	// Secrets every Wazuh release reads (wazuh chart README section 11).
 	SecretNameWazuhIndexerCred   = "wazuh-indexer-cred"
