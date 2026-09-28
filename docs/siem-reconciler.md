@@ -170,20 +170,24 @@ The Job's ServiceAccount needs:
 - For `publish-api-client`: `get`, `create`, `update` on the api_client Secret.
 
 API-side permissions: Keycloak master-realm admin, or the realm-management roles
-of the `clientCredentials` client (below); an IRIS API key of a
-server administrator; a MISP site admin auth key (for `components.misp`); per manager a Wazuh API user allowed to manage security
-(`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
-API-side permissions: Keycloak master-realm admin; an IRIS API key of a
-server administrator; per manager a Wazuh API user allowed to manage security
-(`wazuh-wui`) and, for the metrics, to read `agent:read` and `manager:read`;
-an indexer user allowed to update cluster settings (and, with
-`indexPatterns`, to write saved objects and advanced settings in the dashboard's
-global tenant); per tenant indexer the admin user (`wazuh-indexer-cred`), which
-needs the ISM plugin and cluster-monitor permissions for the retention policies
-and the health probes;
-a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
-`org_create` and for `orgs()` to list every org with its client config, and
-`COLLECT_SERVER` for `add_server_monitoring`).
+of the `clientCredentials` client (below); an IRIS API key of a server
+administrator; a MISP site admin auth key (for `components.misp`); per manager a
+Wazuh API user allowed to manage security (`wazuh-wui`) and, for the metrics, to
+read `agent:read` and `manager:read`; an indexer user allowed to update cluster
+settings (and, with `indexPatterns`, to write saved objects and advanced settings
+in the dashboard's global tenant); per tenant indexer the admin user
+(`wazuh-indexer-cred`), which needs the ISM plugin and cluster-monitor
+permissions for the retention policies and the health probes;
+a Velociraptor api_client with six permissions, which the `velociraptor` chart
+grants with `apiClient.policy` instead of the `administrator` role:
+`any_query` (every call), `read_results` (`get_server_monitoring`), `org_admin`
+(`org_create`, and `orgs()` listing every org with its client config),
+`collect_server` (`add_server_monitoring`) and `artifact_writer` plus
+`server_artifact_writer` (`artifact_set`, for the content package). Each was
+confirmed on a 0.77.1 server by dropping it and re-running these calls.
+Velociraptor logs a refusal without naming the missing permission, so the
+reconciler adds it to the report itself (`refusal` in
+`pkg/siem/velociraptor/reconcile.go`).
 
 ## Keycloak identity
 

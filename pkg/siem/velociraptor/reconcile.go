@@ -125,6 +125,52 @@ func Reconcile(ctx context.Context, q Querier, spec Spec, dryRun bool) []report.
 	return results
 }
 
+// Permissions the API client needs, per VQL call. The client is minted
+// with a policy rather than the administrator role (velociraptor chart,
+// apiClient.policy), so a trimmed policy is the likeliest reason a call
+// is refused - and Velociraptor only logs "permission denied" without
+// naming what is missing. Verified on 0.77.1 by dropping one permission
+// at a time.
+const (
+	// PermAnyQuery is needed for every call; without it the server
+	// refuses the query itself rather than returning a null result.
+	PermAnyQuery = "any_query"
+	// PermReadResults covers get_server_monitoring().
+	PermReadResults = "read_results"
+	// PermOrgAdmin covers orgs(), org_create() and the hidden
+	// _client_config column.
+	PermOrgAdmin = "org_admin"
+	// PermCollectServer covers add_server_monitoring().
+	PermCollectServer = "collect_server"
+)
+
+// permissionFor names the permission a refused VQL call needs, for the
+// hint in the report. Empty when the call needs nothing beyond
+// PermAnyQuery.
+func permissionFor(vql string) string {
+	switch vql {
+	case vqlCreateOrg, vqlListOrgs, vqlOrgClientConfigs:
+		return PermOrgAdmin
+	case vqlAddMonitoring:
+		return PermCollectServer
+	case vqlGetMonitoring:
+		return PermReadResults
+	default:
+		return ""
+	}
+}
+
+// refusal explains a call the server answered with a null result: the
+// server's own log lines, plus the permission the API client needs for
+// it, because a least-privilege policy is the common cause.
+func refusal(vql string, logs []string) string {
+	detail := "server refused: " + lastLogs(logs)
+	if p := permissionFor(vql); p != "" {
+		detail += fmt.Sprintf(" (the API client needs the %s and %s permissions for this call)", PermAnyQuery, p)
+	}
+	return detail
+}
+
 // runWrite runs a VQL function call whose result column is null on
 // failure (Velociraptor functions log the reason instead of failing).
 func runWrite(ctx context.Context, q Querier, vql string, env map[string]string, column string) (report.Action, string) {
@@ -133,7 +179,7 @@ func runWrite(ctx context.Context, q Querier, vql string, env map[string]string,
 		return report.ActionError, err.Error()
 	}
 	if len(rows) == 0 || rows[0][column] == nil {
-		return report.ActionError, "server refused: " + lastLogs(logs)
+		return report.ActionError, refusal(vql, logs)
 	}
 	return report.ActionCreate, ""
 }
@@ -146,7 +192,7 @@ func monitoringState(ctx context.Context, q Querier) (map[string]map[string]stri
 		return nil, err
 	}
 	if len(rows) == 0 || rows[0]["State"] == nil {
-		return nil, fmt.Errorf("reading server monitoring state: %s", lastLogs(logs))
+		return nil, fmt.Errorf("reading server monitoring state: %s", refusal(vqlGetMonitoring, logs))
 	}
 	state, ok := rows[0]["State"].(map[string]any)
 	if !ok {
@@ -249,7 +295,7 @@ func OrgClientConfigs(ctx context.Context, q Querier) (map[string][]string, erro
 		return nil, err
 	}
 	if len(rows) == 0 {
-		return nil, fmt.Errorf("listing org client configs: %s", lastLogs(logs))
+		return nil, fmt.Errorf("listing org client configs: %s", refusal(vqlOrgClientConfigs, logs))
 	}
 	out := map[string][]string{}
 	for _, r := range rows {
