@@ -33,6 +33,8 @@ Components run in this order; `--only` selects a subset.
 | | `dashboardConfigSecret` (`wazuh.yml`) | Rendered from every manager's URL and API credentials; created or updated when it differs. Not written while any manager's credentials are unreadable. |
 | | `indexPatterns` on the central dashboard (`dashboardURL`), e.g. `*:wazuh-alerts-*` for cross-cluster search | Created (server-chosen id) when no saved index pattern has that exact title; existing patterns are never modified. Reported as kind `index-pattern`. |
 | | The dashboard's `defaultIndex` (kind `default-index`) | Set to the pattern marked `default` only when unset or pointing to a pattern that no longer exists; a valid existing default is left alone. |
+| `retention` | Per indexer (reported as `retention/<code>` and `retention/central`): the ISM policy `retention.policyId` | Created or updated when its spec changed: hot until the tenant's `retentionDays` (`retention.centralDays` centrally), then delete; `warmAfterDays` inserts a read-only warm state. The policy's `ism_template` attaches it to new indices. |
+| | Existing indices matching `retention.indexPatterns` | Indices with no policy are put under it; indices already under it but on an older policy version are moved to the current one (`change_policy`). Indices under another policy are counted in the `ok` line and left alone. Needs `components.wazuh[].indexer` (and `components.wazuhCentral` for the central one). |
 | `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
 | | Keys `velociraptor-client.config.yaml` and `install-velociraptor.txt` in each enrolment bundle (reported as kind `bundle`) | The tenant org's client config as the server renders it (`orgs()` column `_client_config`, the same YAML as `velociraptor config client --org <id>`: server URLs, CA, the org nonce) and a short install hint for the matching release binary. Read after the orgs step, so a new org's config lands in the same run; a dry run reports a not-yet-created org as `create`. Created or updated when either key differs; other bundle keys kept. Needs the `enrolment` entry and `components.velociraptor`. |
 | | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
@@ -101,10 +103,42 @@ Flags:
 |---|---|---|
 | `--config` | `/etc/siem/tenants.json` | Input file. |
 | `--dry-run` | `true` | Report only. `--dry-run=false` applies. |
-| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
+| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,retention,velociraptor`. `wazuh` selects every manager, `retention` every indexer; `secrets` includes `secretCopies`. |
 | `--kubeconfig`, `--context` | in-cluster | Outside a cluster the default kubeconfig rules apply. |
 | `--timeout` | `5m` | Whole run. |
 | `--exit-zero` | `false` | Exit 0 even when objects could not be reconciled; errors are still reported. |
+| `--interval` | `0` | Non-zero keeps the process running: reconcile every interval, then probe the health, and serve the metrics. |
+| `--metrics-addr` | `:9090` | With `--interval`: listen address of `/metrics`, `/status` and `/healthz`. |
+| `--probe` | `true` | With `--interval`: probe the platform health after each run. |
+
+## Metrics and health
+
+With `--interval` the reconciler stays up (the chart's `reconciler.mode:
+deployment`) and serves three endpoints on `--metrics-addr`, on a container port
+named `metrics` so a NetworkPolicy can admit Prometheus:
+
+- `/metrics` Prometheus exposition, everything prefixed `kubesoc_`.
+- `/status` JSON: last run (objects, changes, errors per component, duration,
+  dry-run), last successful run, the health snapshot and an overall `healthy`
+  flag. Meant for tooling such as a `siem status` command.
+- `/healthz` liveness, always 200 while the process runs.
+
+| Metric | Labels | |
+|---|---|---|
+| `kubesoc_reconciler_objects` | `component`, `action` | Objects of the last run per action (`ok`, `changed`, `skip`, `error`); series of components no longer reported are dropped each run. |
+| `kubesoc_reconciler_runs_total` | `result` | Runs by result (`success` = no object errored). |
+| `kubesoc_reconciler_last_run_timestamp_seconds`, `..._last_success_timestamp_seconds`, `..._run_duration_seconds`, `kubesoc_reconciler_dry_run` | | Last run, last error-free run, its duration, and whether the reconciler only reports. |
+| `kubesoc_indexer_up`, `kubesoc_indexer_cluster_status`, `kubesoc_indexer_disk_used_percent`, `kubesoc_indexer_disk_{used,total}_bytes` | `indexer` (tenant code or `central`), `status` | From `GET /_cluster/health` and `GET /_cat/allocation`; the percentage is the fullest data node, the figure the flood-stage watermark applies to. |
+| `kubesoc_wazuh_manager_up`, `kubesoc_wazuh_agents` | `tenant`, `status` | From `GET /agents/summary/status`: `active`, `disconnected`, `never_connected`, `pending`, `total`. |
+| `kubesoc_wazuh_analysisd_events_dropped`, `kubesoc_wazuh_analysisd_queue_usage_max` | `tenant` | From `GET /manager/daemons/stats?daemons_list=wazuh-analysisd`: the `dropped_breakdown` leaves plus `eps.events_dropped` (a counter since the daemon started), and the fullest queue's `usage`. Absent when the manager does not serve the endpoint. |
+| `kubesoc_component_up` | `component` | Keycloak (OIDC discovery of the realm), IRIS (`GET /api/ping`) and the Velociraptor API (TCP connect to `components.velociraptor.address`). |
+| `kubesoc_health_last_probe_timestamp_seconds` | | Time of the last probe. |
+
+The probes only read, and use the same Secrets the reconcile run does: each
+tenant's indexer admin credentials (`INDEXER_USERNAME`/`INDEXER_PASSWORD` in
+`wazuh-indexer-cred`) and its Wazuh API user. A probe that fails is recorded as
+`up 0` with the reason in `/status`, never as a process error. Alerts on these
+metrics ship with the `security-operations` chart (`monitoring.prometheusRule`).
 
 `siem-reconciler publish-api-client --file <api_client.yaml> [--namespace ns]
 [--name velociraptor-api-client] [--key api_client.yaml]` validates a Velociraptor
@@ -128,9 +162,12 @@ The Job's ServiceAccount needs:
 
 API-side permissions: Keycloak master-realm admin; an IRIS API key of a
 server administrator; per manager a Wazuh API user allowed to manage security
-(`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
+(`wazuh-wui`) and, for the metrics, to read `agent:read` and `manager:read`;
+an indexer user allowed to update cluster settings (and, with
 `indexPatterns`, to write saved objects and advanced settings in the dashboard's
-global tenant);
+global tenant); per tenant indexer the admin user (`wazuh-indexer-cred`), which
+needs the ISM plugin and cluster-monitor permissions for the retention policies
+and the health probes;
 a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
 `org_create` and for `orgs()` to list every org with its client config, and
 `COLLECT_SERVER` for `add_server_monitoring`).

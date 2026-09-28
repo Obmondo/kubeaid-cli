@@ -34,6 +34,9 @@ var flags struct {
 	kubeContext string
 	timeout     time.Duration
 	exitZero    bool
+	interval    time.Duration
+	metricsAddr string
+	probe       bool
 }
 
 // RootCmd reconciles once and exits.
@@ -50,7 +53,13 @@ It defaults to --dry-run=true: it prints what it would change and writes nothing
 It prints one line per object and a final "N changes" line, and exits 1 when any
 object could not be reconciled (drift alone is not an error). With --exit-zero
 those errors are still printed but the exit code is 0, so an Argo CD Sync hook
-does not block a first install on components that are not up yet.`,
+does not block a first install on components that are not up yet.
+
+With --interval it keeps running: it reconciles every interval, probes the
+platform health (indexers, managers, Keycloak, IRIS, Velociraptor) after each
+run, and serves Prometheus metrics, a JSON status summary and a liveness check
+on --metrics-addr (/metrics, /status, /healthz). Errors are then reported in the
+metrics and never end the process.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          run,
@@ -63,6 +72,9 @@ func init() {
 	f.StringVar(&flags.only, "only", "", "comma-separated components to run: "+joinComponents())
 	f.DurationVar(&flags.timeout, "timeout", 5*time.Minute, "overall timeout")
 	f.BoolVar(&flags.exitZero, "exit-zero", false, "exit 0 even when objects could not be reconciled (errors are still reported)")
+	f.DurationVar(&flags.interval, "interval", 0, "keep running and reconcile every interval (0: run once and exit)")
+	f.StringVar(&flags.metricsAddr, "metrics-addr", ":9090", "listen address of /metrics, /status and /healthz (with --interval)")
+	f.BoolVar(&flags.probe, "probe", true, "probe the platform health after each run (with --interval)")
 	RootCmd.PersistentFlags().StringVar(&flags.kubeconfig, "kubeconfig", "", "kubeconfig file (default: in-cluster, then $KUBECONFIG)")
 	RootCmd.PersistentFlags().StringVar(&flags.kubeContext, "context", "", "kubeconfig context")
 
@@ -93,6 +105,9 @@ func run(cmd *cobra.Command, _ []string) error {
 	kube, err := kubeClient()
 	if err != nil {
 		return err
+	}
+	if flags.interval > 0 {
+		return serve(cmd, reconcile.Options{Config: cfg, Kube: kube, DryRun: flags.dryRun, Only: only})
 	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), flags.timeout)
 	defer cancel()
