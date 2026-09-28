@@ -46,6 +46,18 @@ wazuh:
               podSelector:
                 matchLabels:
                   app: wazuh-indexer
+        # The SIEM reconciler keeps the retention (ISM) policy here and reads
+        # the cluster health and disk usage for the platform metrics.
+        - ports:
+            - protocol: TCP
+              port: 9200
+          from:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: security-operations
+              podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: siem-reconciler
       extraEgresses:
         # OIDC discovery and keys from Keycloak, behind the ingress controller.
         - ports:

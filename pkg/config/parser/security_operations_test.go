@@ -242,3 +242,38 @@ func TestValidateSecurityOperationsConfig(t *testing.T) {
 		})
 	}
 }
+
+func sizingSOC() *config.SecurityOperationsConfig {
+	return validSOC(
+		config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA},
+		config.SecurityOperationsTenant{Code: "002", Name: testSOCTenantB, ExpectedGBPerDay: 2, IndexerStorageSize: "80Gi"},
+	)
+}
+
+func TestSecurityOperationsIndexerSizingFields(t *testing.T) {
+	// Defaults: expectedGBPerDay is filled in, the override stays as given.
+	cfg := sizingSOC()
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	require.NoError(t, validateSecurityOperationsConfig())
+	assert.InDelta(t, constants.SecurityOperationsDefaultGBPerDay, cfg.Tenants[0].ExpectedGBPerDay, 0.001)
+	assert.InDelta(t, 2.0, cfg.Tenants[1].ExpectedGBPerDay, 0.001)
+	assert.Equal(t, "80Gi", cfg.Tenants[1].IndexerStorageSize)
+
+	// A malformed override is rejected.
+	cfg = sizingSOC()
+	cfg.Tenants[0].IndexerStorageSize = "80G"
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	err := validateSecurityOperationsConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `indexerStorageSize "80G" must look like 80Gi`)
+
+	cfg = sizingSOC()
+	cfg.Tenants[0].ExpectedGBPerDay = -1
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	err = validateSecurityOperationsConfig()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "expectedGBPerDay must not be negative")
+}

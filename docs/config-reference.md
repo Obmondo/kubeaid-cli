@@ -67,6 +67,7 @@
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
 - [SecurityConfig](#securityconfig)
+- [SecurityOperationsAITriageConfig](#securityoperationsaitriageconfig)
 - [SecurityOperationsAgentPorts](#securityoperationsagentports)
 - [SecurityOperationsConfig](#securityoperationsconfig)
 - [SecurityOperationsCredentials](#securityoperationscredentials)
@@ -841,6 +842,17 @@ until its config opts in.</p>
 | vulnerabilityScanning | `bool` |  | VulnerabilityScanning deploys trivy-operator together with<br>version-checker. They are one switch because the chart's<br>ImageOutdatedAndVulnerable alert joins both metrics —<br>trivy-operator alone yields an alert that cannot fire.<br> |
 | runtimeDetection | `bool` |  | RuntimeDetection deploys tetragon. Observability-only until<br>TracingPolicy resources are applied. Needs a BTF-enabled<br>kernel (>= 5.4) on every node.<br> |
 
+## SecurityOperationsAITriageConfig
+
+<p>SecurityOperationsAITriageConfig drives dfir-iris aiTriage and Ollama.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| dryRun | `bool` |  | DryRun logs each answer without writing it to IRIS. Default true;<br>nil means true.<br> |
+| model | `string` |  | Model is the Ollama model name. Empty: the chart's (llama3.1:8b).<br> |
+| downloadModel | `bool` |  | DownloadModel opens Ollama's HTTPS egress and pulls Model at start.<br>Set it until the model is on the volume, then set it back to false:<br>with it off, nothing the model receives can leave the cluster.<br> |
+
 ## SecurityOperationsAgentPorts
 
 <p>SecurityOperationsAgentPorts is a tenant's public agent port pair.</p>
@@ -874,6 +886,7 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | velociraptorEntryPoint | `string` |  | VelociraptorEntryPoint is the Traefik TCP entry point (with a public<br>hostPort, 8000 by convention) that forwards Velociraptor client<br>traffic to the frontend by SNI. Empty: no client route.<br> |
 | sharedStorageClass | `string` |  | SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for<br>the IRIS data volume, so the IRIS app and worker may run on different<br>nodes. Empty: a ReadWriteOnce volume on the default class, with the<br>worker kept on the app's node.<br> |
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
+| aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
 
 ## SecurityOperationsCredentials
@@ -921,6 +934,8 @@ and the next render follows it.</p>
 | name | `string` |  | Name is the unique display name (IRIS customer, Velociraptor org).<br> |
 | retentionDays | `int` |  | RetentionDays of the tenant's alerts. Empty: the chart default.<br> |
 | indexerReplicas | `int` |  | IndexerReplicas of the tenant's Wazuh indexer. Default 1.<br> |
+| expectedGBPerDay | `float64` |  | ExpectedGBPerDay of events landing in the tenant's indexer,<br>to derive the indexer volume size (per replica):<br>retentionDays x expectedGBPerDay x 1.5 headroom, at least 10Gi.<br>Each replica holds a full copy (replica shards), so the<br>per-volume size does not divide by indexerReplicas; replicas<br>multiply the total cluster storage instead. Default 0.5.<br> |
+| indexerStorageSize | `string` |  | IndexerStorageSize overrides the derived indexer volume size,<br>e.g. "80Gi". A StatefulSet volume never shrinks: lowering this<br>(or retentionDays) leaves existing PVCs at their size, and<br>growing one needs a PVC patch plus a StatefulSet re-create<br>(security-operations chart README, "Retention").<br> |
 | agentPorts | [`SecurityOperationsAgentPorts`](#securityoperationsagentports) |  | AgentPorts are the tenant's public agent ports. Derived from<br>agentPortBase when the code is all digits, required otherwise.<br> |
 
 ## SecurityOperationsWazuhCredentials

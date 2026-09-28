@@ -232,6 +232,9 @@ func TestSIEMApplications(t *testing.T) {
 
 		assert.Equal(t, "tenant-"+code, dig(t, values, "wazuh", "certificates", "subject", "organization"))
 		assert.Equal(t, 1, dig(t, values, "wazuh", "indexer", "replicas"))
+		// 365 days (the chart default) x 0.5 GB/day x 1.5 headroom, rounded up.
+		assert.Equal(t, "274Gi", dig(t, values, "wazuh", "indexer", "storageSize"),
+			"the indexer volume follows the retention, not a fixed 5Gi")
 		assert.Equal(t, "$2a$12$indexer."+code, dig(t, values, "wazuh", "indexer", "cred", "passwordHash"))
 		assert.Equal(t, "$2a$12$dashboard."+code, dig(t, values, "wazuh", "dashboard", "cred", "passwordHash"))
 		assert.Equal(t, "key-"+code, dig(t, values, "wazuh", "wazuh", "key"))
@@ -456,8 +459,13 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 	assert.Equal(t, "0.0.0.0/0", dig(t, asMap(t, asList(t, agents["from"])[0]), "ipBlock", "cidr"))
 	assert.Len(t, agents["ports"], 2)
 
-	indexerIngress := asMap(t, digList(t, w, "indexer", "networkPolicy", "extraIngresses")[0])
-	assert.Equal(t, 9300, asMap(t, asList(t, indexerIngress["ports"])[0])["port"])
+	indexerIngresses := digList(t, w, "indexer", "networkPolicy", "extraIngresses")
+	assert.Equal(t, 9300, asMap(t, asList(t, asMap(t, indexerIngresses[0])["ports"])[0])["port"])
+	reconciler := asMap(t, indexerIngresses[1])
+	assert.Equal(t, 9200, asMap(t, asList(t, reconciler["ports"])[0])["port"],
+		"the reconciler keeps the retention policy and reads the indexer health")
+	assert.Equal(t, "siem-reconciler",
+		dig(t, asMap(t, asList(t, reconciler["from"])[0]), "podSelector", "matchLabels", "app.kubernetes.io/name"))
 }
 
 // TestSIEMThirdTenantAddsOnlyItsOwn: adding tenant 003 leaves every rendered

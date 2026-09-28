@@ -419,6 +419,21 @@ type (
 		// IndexerReplicas of the tenant's Wazuh indexer. Default 1.
 		IndexerReplicas int `yaml:"indexerReplicas"`
 
+		// ExpectedGBPerDay of events landing in the tenant's indexer,
+		// to derive the indexer volume size (per replica):
+		// retentionDays x expectedGBPerDay x 1.5 headroom, at least 10Gi.
+		// Each replica holds a full copy (replica shards), so the
+		// per-volume size does not divide by indexerReplicas; replicas
+		// multiply the total cluster storage instead. Default 0.5.
+		ExpectedGBPerDay float64 `yaml:"expectedGBPerDay"`
+
+		// IndexerStorageSize overrides the derived indexer volume size,
+		// e.g. "80Gi". A StatefulSet volume never shrinks: lowering this
+		// (or retentionDays) leaves existing PVCs at their size, and
+		// growing one needs a PVC patch plus a StatefulSet re-create
+		// (security-operations chart README, "Retention").
+		IndexerStorageSize string `yaml:"indexerStorageSize"`
+
 		// AgentPorts are the tenant's public agent ports. Derived from
 		// agentPortBase when the code is all digits, required otherwise.
 		AgentPorts *SecurityOperationsAgentPorts `yaml:"agentPorts"`

@@ -29,6 +29,14 @@ const (
 	// SecurityOperationsDefaultAIModel is the dfir-iris aiTriage default model.
 	SecurityOperationsDefaultAIModel = "llama3.1:8b"
 
+	// Tenant indexer volume sizing (see SecurityOperationsTenant):
+	// retentionDays (chart defaultRetentionDays when unset) x
+	// expectedGBPerDay x headroom, floored at the minimum.
+	SecurityOperationsDefaultRetentionDays = 365
+	SecurityOperationsDefaultGBPerDay      = 0.5
+	SecurityOperationsIndexerHeadroom      = 1.5
+	SecurityOperationsIndexerMinStorageGi  = 10
+
 	// Secrets every Wazuh release reads (wazuh chart README section 11).
 	SecretNameWazuhIndexerCred   = "wazuh-indexer-cred"
 	SecretNameWazuhDashboardCred = "wazuh-dashboard-cred"

@@ -43,6 +43,8 @@ cluster:
         name: Tenant B
         retentionDays: 90          # optional, chart default otherwise
         indexerReplicas: 1         # default 1
+        expectedGBPerDay: 2        # default 0.5; sizes the indexer volume
+        indexerStorageSize: ""     # optional explicit override, e.g. 300Gi
       - code: globex
         name: Tenant C
         agentPorts: {registration: 21005, events: 21004}  # required for a non-numeric code
@@ -50,6 +52,25 @@ cluster:
 
 Host names: central `wazuh`, `iris`, `misp` and `velociraptor` are
 `<hostPrefix><component>.<domain>`; a tenant's dashboard is `<hostPrefix>wazuh-<code>.<domain>`.
+
+Indexer volume: each tenant's indexer volume is sized
+`retentionDays x expectedGBPerDay x 1.5` (headroom for merges and translog),
+rounded up to whole Gi and never below 10Gi; `retentionDays` falls back to the
+chart's 365 and `expectedGBPerDay` to 0.5. `indexerStorageSize` overrides it.
+Every replica holds a full copy, so the derived size is per volume and
+`indexerReplicas` multiplies the cluster total. Retention itself is enforced by
+the reconciler's ISM policies (`docs/siem-reconciler.md`); this only sizes the
+disk it needs.
+
+A rendered size reaches a running tenant only through a new PVC: a StatefulSet's
+volume template cannot be patched, and a PVC never shrinks. Lowering the size (or
+the retention) is therefore safe but has no effect on existing volumes; raising it
+needs, per tenant, `kubectl -n wazuh-<code> patch pvc wazuh-indexer-wazuh-indexer-0
+-p '{"spec":{"resources":{"requests":{"storage":"<size>"}}}}'` on every replica
+(the StorageClass must allow expansion), then
+`kubectl -n wazuh-<code> delete statefulset wazuh-indexer --cascade=orphan` and a
+sync of the tenant Application, which re-creates the StatefulSet around the
+running pods.
 
 Agent ports: for an all-digit code, registration is `agentPortBase + code*10 + 5` and events
 `agentPortBase + code*10 + 4` (tenant `001`: 20015 and 20014). Every tenant gets a Service
