@@ -72,6 +72,11 @@ func hydrateSecurityOperationsDefaults() {
 		cfg.Reconciler.DryRun = &dryRun
 	}
 
+	if cfg.Sync.ServerSideApply == nil {
+		serverSideApply := cfg.Sync.Automated
+		cfg.Sync.ServerSideApply = &serverSideApply
+	}
+
 	for i := range cfg.Tenants {
 		tenant := &cfg.Tenants[i]
 		if tenant.IndexerReplicas == 0 {
@@ -139,6 +144,10 @@ func validateSecurityOperationsConfig() error {
 	}
 	if cfg.AgentPortBase < 1 || cfg.AgentPortBase > maxPort {
 		return fmt.Errorf("agentPortBase must be between 1 and %d (got %d)", maxPort, cfg.AgentPortBase)
+	}
+
+	if cfg.Sync.Prune && !cfg.Sync.Automated {
+		return errors.New("sync.prune needs sync.automated: pruning is part of automated sync")
 	}
 
 	return validateSecurityOperationsTenants(cfg.Tenants)

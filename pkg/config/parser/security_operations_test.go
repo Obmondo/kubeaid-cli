@@ -74,6 +74,9 @@ func TestHydrateSecurityOperationsDefaults(t *testing.T) {
 		assert.Equal(t, constants.ClusterIssuerLetsEncrypt, cfg.ClusterIssuer)
 		require.NotNil(t, cfg.Reconciler.DryRun)
 		assert.True(t, *cfg.Reconciler.DryRun, "the reconciler starts as a dry run")
+		assert.False(t, cfg.Sync.Automated, "the SOC Applications sync by hand by default")
+		require.NotNil(t, cfg.Sync.ServerSideApply)
+		assert.False(t, *cfg.Sync.ServerSideApply, "ServerSideApply follows automated")
 
 		assert.Equal(t, 1, cfg.Tenants[0].IndexerReplicas)
 		assert.Equal(t, 3, cfg.Tenants[1].IndexerReplicas)
@@ -213,6 +216,17 @@ func TestValidateSecurityOperationsConfig(t *testing.T) {
 				cfg.Tenants[1].AgentPorts = &config.SecurityOperationsAgentPorts{Registration: 70000, Events: 30000}
 			},
 			wantErr: "outside 1-65535",
+		},
+		{
+			name:    "sync.prune needs sync.automated",
+			mutate:  func(cfg *config.SecurityOperationsConfig) { cfg.Sync.Prune = true },
+			wantErr: "sync.prune needs sync.automated",
+		},
+		{
+			name: "automated sync with prune",
+			mutate: func(cfg *config.SecurityOperationsConfig) {
+				cfg.Sync = config.SecurityOperationsSyncConfig{Automated: true, Prune: true}
+			},
 		},
 		{
 			name: "derived port past 65535",
