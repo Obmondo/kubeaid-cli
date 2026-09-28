@@ -97,7 +97,7 @@ func runApply(cmd *cobra.Command, verb, message string) error {
 	// TODO(kubesoc-07): pass the rotation option through
 	// core.RenderSecurityOperationsWithOptions and add a --rotate flag here.
 	written, err := core.RenderSecurityOperations(ctx, clusterDir)
-	printWritten(out, clusterDir, written)
+	printWritten(out, clusterDir, written, core.SecurityOperationsLegacySealedSecretFiles(clusterDir))
 	if err != nil {
 		return err
 	}

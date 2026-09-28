@@ -52,7 +52,9 @@ func HelmReleasesFromApps(apps []Application, kubeaidDir, clusterDir string) ([]
 	for _, app := range apps {
 		rel := HelmRelease{Name: app.Name, Namespace: app.Namespace}
 		for _, s := range app.Sources {
-			if s.Path == "" {
+			// A directory source is the Application's own sealed Secrets, not
+			// a chart; QuickstartScript applies those with kubectl.
+			if s.Path == "" || s.Directory {
 				continue
 			}
 			rel.Chart = s.Path

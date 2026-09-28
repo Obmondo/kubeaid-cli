@@ -191,7 +191,7 @@ func editTenantsAndRender(cmd *cobra.Command, edit func(*config.SecurityOperatio
 		return err
 	}
 	written, err := core.RenderSecurityOperations(cmd.Context(), clusterDir)
-	printWritten(out, clusterDir, written)
+	printWritten(out, clusterDir, written, core.SecurityOperationsLegacySealedSecretFiles(clusterDir))
 	return err
 }
 

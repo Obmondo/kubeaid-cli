@@ -30,6 +30,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/config/parser"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
@@ -91,6 +92,14 @@ func TestUpgradeRender(t *testing.T) {
 		}
 	}
 	for id, value := range before.credentials {
+		if ns, ok := sealedInstead(id); ok {
+			// The credential left the rendered values for a sealed Secret in
+			// this release; the render must not keep a plaintext copy, and the
+			// Secret must be there to carry it.
+			assert.Empty(t, after.credentials[id], "credential %s is still in the values", id)
+			assert.Contains(t, after.sealed, ns, "credential %s moved into no sealed Secret", id)
+			continue
+		}
 		assert.True(t, value == after.credentials[id], "credential %s changed", id)
 	}
 	for app := range before.apps {
@@ -207,6 +216,23 @@ func scanRendered(t *testing.T, dir string) rendered {
 	})
 	require.NoError(t, err)
 	return r
+}
+
+// sealedInstead reports the sealed Secret (namespace/name) that now holds a
+// credential the previous release rendered in plain text, so that the upgrade
+// keeps it without a rotation. Add a line here with such a move, never to
+// silence a credential that simply changed.
+func sealedInstead(id string) (string, bool) {
+	switch {
+	case strings.HasPrefix(id, kindApplication+"/wazuh-") &&
+		strings.HasSuffix(id, ".helm.valuesObject.wazuh.wazuh.key"):
+		// The Wazuh manager cluster key: wazuh-<code>/wazuh-manager-cluster-key.
+		app := strings.TrimPrefix(strings.SplitN(id, ".", 2)[0], kindApplication+"/")
+		return app + "/wazuh-manager-cluster-key", true
+	case id == "values-security-operations.yaml.misp.misp.env.redisPassword":
+		return constants.NamespaceSecurityOperations + "/" + constants.SecretNameMISPRedis, true
+	}
+	return "", false
 }
 
 func collectCredentials(v any, path string, out map[string]string) {

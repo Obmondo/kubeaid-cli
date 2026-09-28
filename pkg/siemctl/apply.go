@@ -58,6 +58,9 @@ type ApplicationSource struct {
 	Ref            string
 	ValueFiles     []string
 	ValuesObject   map[string]any
+	// Directory is set on a plain directory source (the sealed Secrets the
+	// Application owns), which carries a path but no chart.
+	Directory bool
 }
 
 // ReadApplications parses every Argo CD Application in the given files
@@ -117,6 +120,7 @@ func ReadApplications(clusterDir string, files []string) ([]Application, error) 
 					Ref:            s.Ref,
 					ValueFiles:     s.Helm.ValueFiles,
 					ValuesObject:   s.Helm.ValuesObject,
+					Directory:      s.Directory != nil,
 				})
 			}
 			apps = append(apps, app)
@@ -134,6 +138,9 @@ type rawSource struct {
 		ValueFiles   []string       `yaml:"valueFiles"`
 		ValuesObject map[string]any `yaml:"valuesObject"`
 	} `yaml:"helm"`
+	Directory *struct {
+		Recurse bool `yaml:"recurse"`
+	} `yaml:"directory"`
 }
 
 // SyncOrder returns the Applications to sync after a render, in order: the

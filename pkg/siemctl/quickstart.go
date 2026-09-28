@@ -15,6 +15,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/core"
 )
 
 // Quickstart defaults: one demo tenant on a single machine.
@@ -140,7 +141,7 @@ func QuickstartScript(releases []HelmRelease, order []string, clusterDir, kubeai
 
 	central := constants.NamespaceSecurityOperations
 	_, _ = fmt.Fprintf(&b, "kubectl get namespace %s >/dev/null 2>&1 || kubectl create namespace %s\n", central, central)
-	_, _ = fmt.Fprintf(&b, "kubectl apply -f %s\n\n", shq(filepath.Join(clusterDir, "sealed-secrets", central)))
+	_, _ = fmt.Fprintf(&b, "kubectl apply -f %s\n\n", shq(filepath.Join(clusterDir, core.SecurityOperationsSealedSecretsDir, central)))
 
 	installed := map[string]bool{}
 	install := func(rel HelmRelease, wait bool) error {
@@ -185,7 +186,7 @@ func QuickstartScript(releases []HelmRelease, order []string, clusterDir, kubeai
 	}
 	sort.Strings(tenants)
 	for _, ns := range tenants {
-		_, _ = fmt.Fprintf(&b, "kubectl apply -f %s\n", shq(filepath.Join(clusterDir, "sealed-secrets", ns)))
+		_, _ = fmt.Fprintf(&b, "kubectl apply -f %s\n", shq(filepath.Join(clusterDir, core.SecurityOperationsSealedSecretsDir, ns)))
 	}
 	for _, name := range order {
 		rel, ok := byName[name]
