@@ -1,0 +1,17 @@
+# kubeaid-sha256: 0967b2dd4ed57984b13b699e3a64b5db27c918b61da0b6bbfecdc66452e63e5d
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: wazuh-dashboard-cred
+  namespace: wazuh-001
+spec:
+  encryptedData:
+    DASHBOARD_PASSWORD: AQAAoAOfWvP0E0I82EMsh4phhBXjpLH5UHqWnpjbG0aikFFP4/N+7wJWMiagiDrqSZFZzbR6HD7v/693d6Io0kpkCs8MYG/Pk4GsulL8X8Uea3tjGAa7ePf31g4sMu7ZJdOrUtX9KDjAitCZ0/8B1L25644+DH2myWGFxadfZKIpqrL2RUSxvZDRFJnMk2ESMul0clpNUOyUE/X5kHDNmpwqkMMcdjXwUL/3Rpi6TSTOKCZQZMDAHwutYmmkrKmoa2fiG3hrRBaPzTItpCZ+AnvQlP06ljxYoFDpsGhrNWDT8sStyvWTa3hMsxYDNzJBVyCfU5jUhU1GTNDKNr/ir7gcazuH0Q74tqucGSFtOoejGpWZP2nI4FvmAWZ3xtOaHnCOLBTQjILj8RGRRGZUJjQI
+    DASHBOARD_USERNAME: AQA3gi5rB3YBmwaU9Mpp3ZYAn8DyifXR5he/YqXUaNscg/vKNNt2q6uOZ2LTCo1fTk3GeN/osnsb97q1E40GNz5zVcrCoDd1Ky9Xpg2dGGqT+b5wus94of3zxXqUsYcoMXHeOWIFtZTPXKi06loBSLpVEgXuXCvQnnZlHdZ2VYum2+7hDIsrgJ3TE+2/xe8Fsko7s90udl460IgRwA15iF33qQkL9QGkVlOqKrcs6OKkEY2Sr8wnp1wS5NRjmjwaoKKh9De9iNq8KZ2fui+y9U99hH32Mduv01KAFexy9TWlJyyGauWWr97YdKWZnIu+4GFdayACv5lBruagmyWH1FOKs+5QOSNC2ErT2jbIL5SCpxsIfu0DFUDjDDb4ug==
+  template:
+    metadata:
+      labels:
+        kubeaid.io/managed-by: kubeaid
+      name: wazuh-dashboard-cred
+      namespace: wazuh-001

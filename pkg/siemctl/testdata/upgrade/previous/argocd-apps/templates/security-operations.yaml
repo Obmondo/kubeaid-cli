@@ -1,0 +1,344 @@
+# Security operations: the central side (KubeAid security-operations chart) and
+# one Wazuh per tenant (KubeAid wazuh chart, README section 11). Rendered by
+# kubeaid-cli from cluster.securityOperations; the tenant namespaces are created
+# by the security-operations chart, so sync it before the wazuh-<code> Apps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: 1.0.0
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "60"
+  name: security-operations
+  namespace: argocd
+spec:
+  destination:
+    namespace: security-operations
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: https://github.com/example/KubeAid
+      path: argocd-helm-charts/security-operations
+      targetRevision: v1.0.0
+      helm:
+        valueFiles:
+          - $values/k8s/kubesoc/argocd-apps/values-security-operations.yaml
+    - repoURL: https://git.example.com/example/kubeaid-config.git
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: 1.0.0
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "61"
+  name: wazuh-001
+  namespace: argocd
+spec:
+  destination:
+    namespace: wazuh-001
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: https://github.com/example/KubeAid
+      path: argocd-helm-charts/wazuh
+      targetRevision: v1.0.0
+      helm:
+        valueFiles:
+          - $values/k8s/kubesoc/argocd-apps/values-wazuh-tenant.yaml
+        # This tenant's part; everything shared is in values-wazuh-tenant.yaml.
+        valuesObject:
+          agentService:
+            enabled: true
+            externalIPs:
+              - 192.0.2.10
+            registrationPort: 20015
+            eventsPort: 20014
+          wazuh:
+            certificates:
+              subject:
+                # Unique node DN per tenant: CN=wazuh-indexer,O=tenant-001,...
+                organization: tenant-001
+            indexer:
+              replicas: 1
+              cred:
+                passwordHash: "$2a$12$6zOeVPwQBw4BxmDW5ea/aunD6oCtZP92MmXcUu7yrdV6SOsmC5huu"
+            dashboard:
+              cred:
+                passwordHash: "$2a$12$JLKqOBY.kDg7A/IM2yvFa./A35ntaP35k/kCmmm0iNbNBADyUMAs2"
+              ingress:
+                host: soc-wazuh-001.example.com
+                tls:
+                  - hosts:
+                      - soc-wazuh-001.example.com
+                    secretName: wazuh-tls
+              sso:
+                oidc:
+                  roleMappings:
+                    allAccess:
+                      backendRoles:
+                        - administrator
+                    readall:
+                      backendRoles:
+                        - analyst
+                        - tenant-001
+                    kibanaUser:
+                      backendRoles:
+                        - analyst
+                        - tenant-001
+            wazuh:
+              # Cluster key of the manager (no workers, never leaves the namespace).
+              key: "GM9RGp1r45t0B8aJ88vN1fBOu0bXkn3e"
+              master:
+                # Every alert of this manager goes to the tenant's IRIS customer.
+                extraConf: |
+                  <integration>
+                    <name>custom-iris</name>
+                    <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
+                    <api_key>file:/var/ossec/integrations/iris/API_KEY</api_key>
+                    <level>10</level>
+                    <alert_format>json</alert_format>
+                    <options>{"min_level":10,"customer_name":"Tenant A"}</options>
+                  </integration>
+                  <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
+                       flat CDB lists through the API (it cannot write into the
+                       malicious-ioc/ subdirectory the stock IoC pack uses). A second
+                       <ruleset> is additive, but a rule_exclude makes analysisd rebuild
+                       the ruleset from this block alone, so it repeats the chart's own
+                       entries. Until the first export, analysisd warns that the lists
+                       are missing and skips rules 99901-99920. -->
+                  <ruleset>
+                    <list>etc/lists/misp-malware-hashes</list>
+                    <list>etc/lists/misp-malicious-ip</list>
+                    <list>etc/lists/misp-malicious-domains</list>
+                    <decoder_dir>ruleset/decoders</decoder_dir>
+                    <rule_dir>ruleset/rules</rule_dir>
+                    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+                    <rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>
+                    <list>etc/lists/audit-keys</list>
+                    <list>etc/lists/amazon/aws-sources</list>
+                    <list>etc/lists/amazon/aws-eventnames</list>
+                    <decoder_dir>etc/decoders</decoder_dir>
+                    <rule_dir>etc/rules</rule_dir>
+                  </ruleset>
+    - repoURL: https://git.example.com/example/kubeaid-config.git
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: 1.0.0
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "61"
+  name: wazuh-002
+  namespace: argocd
+spec:
+  destination:
+    namespace: wazuh-002
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: https://github.com/example/KubeAid
+      path: argocd-helm-charts/wazuh
+      targetRevision: v1.0.0
+      helm:
+        valueFiles:
+          - $values/k8s/kubesoc/argocd-apps/values-wazuh-tenant.yaml
+        # This tenant's part; everything shared is in values-wazuh-tenant.yaml.
+        valuesObject:
+          agentService:
+            enabled: true
+            externalIPs:
+              - 192.0.2.10
+            registrationPort: 20025
+            eventsPort: 20024
+          wazuh:
+            certificates:
+              subject:
+                # Unique node DN per tenant: CN=wazuh-indexer,O=tenant-002,...
+                organization: tenant-002
+            indexer:
+              replicas: 1
+              cred:
+                passwordHash: "$2a$12$563JipgwVAINlZvttPCYtOz/v7ohKQSKR2sBFfqznTjOIWEZFTMRO"
+            dashboard:
+              cred:
+                passwordHash: "$2a$12$9vK5AoAm4ER8L1iX0rkMNe8Wm2w5ZzB8n7Fld5ogLr.m5a8VoJF0e"
+              ingress:
+                host: soc-wazuh-002.example.com
+                tls:
+                  - hosts:
+                      - soc-wazuh-002.example.com
+                    secretName: wazuh-tls
+              sso:
+                oidc:
+                  roleMappings:
+                    allAccess:
+                      backendRoles:
+                        - administrator
+                    readall:
+                      backendRoles:
+                        - analyst
+                        - tenant-002
+                    kibanaUser:
+                      backendRoles:
+                        - analyst
+                        - tenant-002
+            wazuh:
+              # Cluster key of the manager (no workers, never leaves the namespace).
+              key: "1fd7pe0Y54E5wEyvva6jh4XYlxatbSyN"
+              master:
+                # Every alert of this manager goes to the tenant's IRIS customer.
+                extraConf: |
+                  <integration>
+                    <name>custom-iris</name>
+                    <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
+                    <api_key>file:/var/ossec/integrations/iris/API_KEY</api_key>
+                    <level>10</level>
+                    <alert_format>json</alert_format>
+                    <options>{"min_level":10,"customer_name":"Tenant B"}</options>
+                  </integration>
+                  <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
+                       flat CDB lists through the API (it cannot write into the
+                       malicious-ioc/ subdirectory the stock IoC pack uses). A second
+                       <ruleset> is additive, but a rule_exclude makes analysisd rebuild
+                       the ruleset from this block alone, so it repeats the chart's own
+                       entries. Until the first export, analysisd warns that the lists
+                       are missing and skips rules 99901-99920. -->
+                  <ruleset>
+                    <list>etc/lists/misp-malware-hashes</list>
+                    <list>etc/lists/misp-malicious-ip</list>
+                    <list>etc/lists/misp-malicious-domains</list>
+                    <decoder_dir>ruleset/decoders</decoder_dir>
+                    <rule_dir>ruleset/rules</rule_dir>
+                    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+                    <rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>
+                    <list>etc/lists/audit-keys</list>
+                    <list>etc/lists/amazon/aws-sources</list>
+                    <list>etc/lists/amazon/aws-eventnames</list>
+                    <decoder_dir>etc/decoders</decoder_dir>
+                    <rule_dir>etc/rules</rule_dir>
+                  </ruleset>
+    - repoURL: https://git.example.com/example/kubeaid-config.git
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: 1.0.0
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "61"
+  name: wazuh-demo
+  namespace: argocd
+spec:
+  destination:
+    namespace: wazuh-demo
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: https://github.com/example/KubeAid
+      path: argocd-helm-charts/wazuh
+      targetRevision: v1.0.0
+      helm:
+        valueFiles:
+          - $values/k8s/kubesoc/argocd-apps/values-wazuh-tenant.yaml
+        # This tenant's part; everything shared is in values-wazuh-tenant.yaml.
+        valuesObject:
+          agentService:
+            enabled: true
+            externalIPs:
+              - 192.0.2.10
+            registrationPort: 21515
+            eventsPort: 21514
+          wazuh:
+            certificates:
+              subject:
+                # Unique node DN per tenant: CN=wazuh-indexer,O=tenant-demo,...
+                organization: tenant-demo
+            indexer:
+              replicas: 1
+              cred:
+                passwordHash: "$2a$12$/aDBfPESAXazVJHjJpRN2eihQ0h3OheKy48zTR7L2PUY1IuUYbUUS"
+            dashboard:
+              cred:
+                passwordHash: "$2a$12$4eEVGTrTy0lbmUD7KcBRCeOsDlOqhOGH1uIjQn6MtFrB9Ur6539Vu"
+              ingress:
+                host: soc-wazuh-demo.example.com
+                tls:
+                  - hosts:
+                      - soc-wazuh-demo.example.com
+                    secretName: wazuh-tls
+              sso:
+                oidc:
+                  roleMappings:
+                    allAccess:
+                      backendRoles:
+                        - administrator
+                    readall:
+                      backendRoles:
+                        - analyst
+                        - tenant-demo
+                    kibanaUser:
+                      backendRoles:
+                        - analyst
+                        - tenant-demo
+            wazuh:
+              # Cluster key of the manager (no workers, never leaves the namespace).
+              key: "5FPsXQWGAHDFgldcNXzuI9QGpVm0W0wM"
+              master:
+                # Every alert of this manager goes to the tenant's IRIS customer.
+                extraConf: |
+                  <integration>
+                    <name>custom-iris</name>
+                    <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
+                    <api_key>file:/var/ossec/integrations/iris/API_KEY</api_key>
+                    <level>10</level>
+                    <alert_format>json</alert_format>
+                    <options>{"min_level":10,"customer_name":"Demo tenant"}</options>
+                  </integration>
+                  <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
+                       flat CDB lists through the API (it cannot write into the
+                       malicious-ioc/ subdirectory the stock IoC pack uses). A second
+                       <ruleset> is additive, but a rule_exclude makes analysisd rebuild
+                       the ruleset from this block alone, so it repeats the chart's own
+                       entries. Until the first export, analysisd warns that the lists
+                       are missing and skips rules 99901-99920. -->
+                  <ruleset>
+                    <list>etc/lists/misp-malware-hashes</list>
+                    <list>etc/lists/misp-malicious-ip</list>
+                    <list>etc/lists/misp-malicious-domains</list>
+                    <decoder_dir>ruleset/decoders</decoder_dir>
+                    <rule_dir>ruleset/rules</rule_dir>
+                    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+                    <rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>
+                    <list>etc/lists/audit-keys</list>
+                    <list>etc/lists/amazon/aws-sources</list>
+                    <list>etc/lists/amazon/aws-eventnames</list>
+                    <decoder_dir>etc/decoders</decoder_dir>
+                    <rule_dir>etc/rules</rule_dir>
+                  </ruleset>
+    - repoURL: https://git.example.com/example/kubeaid-config.git
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true

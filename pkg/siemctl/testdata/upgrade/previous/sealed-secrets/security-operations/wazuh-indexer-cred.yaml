@@ -1,0 +1,17 @@
+# kubeaid-sha256: 65c97d601bc1b9851b351ba3277537330ef7a614efc707c50d1cf8769d4ba0f5
+---
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: wazuh-indexer-cred
+  namespace: security-operations
+spec:
+  encryptedData:
+    INDEXER_PASSWORD: AQBmA/ijN69EYoTqhue55r+uKuZ24QdeBHOl6Whej9Wz5hW7SeXn4EPqtuUxt/ftxh25zzBJmYWq3rM3p/hFYYgNWhxYqSoN3sipUTOSyqeKpR5bNV0lC3Ko9cGuRcPe2VDIhphqmWQ5+dm8gYBoyHCnps7o/Rs4/EjHtLY8c5LVy3Q2lSqZyKW+oHj2SQxJA6eHsW+e8OqV3BHarPFFvDcWIeKnRYIyWAxG/zAcAsV4nj+28iRw5RnJaL9pi8rlXh4tq0w6P/35Pn+w/V5e5UO9Kf4d6tuVqYXtAj3m2W8YbUXC47q3ljzA7uKswzpsDm06t9657j/lNmk2em2ARRj95R3iUX4WNeK+hVAaK6uLuuayRM06kXnvDPM+zEfHxiRrZCo+GppKDL7WCVjiR8C1
+    INDEXER_USERNAME: AQCbc0uGsGJWoDWTtofCKYETWSFRhiecIpDE4834QkMHrN8CUuILba3IgW5Slxnu/MHOJRR9jsLvvjo6ah1m0ZFO3rGpgY6wogWCmSVUQutNpEPZlCQsO1+Z8GauJknodvj/ooowPhQMrhN1+HNg+UHHpT5p8viv3//qrcTQdx7EqExD3ntPddXnchvVsaaOEyNMJWa5R3PPf6Gjv8dr4oykO0HPDMon148hD6JCaqcW+3yhjjcOUx6zyiLk8mwxeZMCXpOy5FK84OMosQxh5MEyN8ayE7WHjDK50R2dasOFMLtTY2dxTC64MbZCRN/sTTBZrrucMMFZBCLxqkbSBrjw2TGoiVPC6qckQ3ZCdA2b5m4FA9PS
+  template:
+    metadata:
+      labels:
+        kubeaid.io/managed-by: kubeaid
+      name: wazuh-indexer-cred
+      namespace: security-operations

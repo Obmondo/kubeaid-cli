@@ -1,0 +1,325 @@
+# Rendered by kubeaid-cli from cluster.securityOperations in general.yaml; edit
+# that and render again (kubeaid-cli siem render) rather than this file. Chart:
+# KubeAid argocd-helm-charts/security-operations (README.md there).
+domain: example.com
+hosts:
+  wazuh: soc-wazuh.example.com
+  iris: soc-iris.example.com
+  misp: soc-misp.example.com
+  velociraptor: soc-velociraptor.example.com
+
+keycloak:
+  url: https://keycloak.example.com/auth
+  realm: soc
+
+operators:
+  adminRole: administrator
+  analystRole: analyst
+
+tenantWazuh:
+  agentHost: agents.example.com
+  hostPrefix: soc-wazuh-
+
+tenants:
+  - code: "001"
+    name: "Tenant A"
+    agentPorts:
+      registration: 20015
+      events: 20014
+  - code: "002"
+    name: "Tenant B"
+    retentionDays: 90
+    agentPorts:
+      registration: 20025
+      events: 20024
+  - code: "demo"
+    name: "Demo tenant"
+    agentPorts:
+      registration: 21515
+      events: 21514
+
+reconciler:
+  enabled: true
+  image:
+    tag: v1.0.0
+  dryRun: false
+
+# Central Wazuh search: indexer + dashboard, no manager.
+wazuh:
+  wazuh:
+    # Config checksums on the pods, so a config change restarts them.
+    autoreload:
+      enabled: true
+    indexer:
+      cred:
+        existingSecret: wazuh-indexer-cred
+        passwordHash: "$2a$12$YPiXPTCFRajGK4aV5GynROhDuXOezEXXM29iIab3mqgfE/eax5dwS"
+      networkPolicy:
+        # Lists replace the chart defaults: the first entry of each is the
+        # security-operations default, the Keycloak one is added.
+        extraEgresses:
+          # Cross-cluster search to the tenant indexers.
+          - ports:
+              - protocol: TCP
+                port: 9300
+            to:
+              - namespaceSelector:
+                  matchExpressions:
+                    - key: security-operations.kubeaid.io/tenant
+                      operator: Exists
+                podSelector:
+                  matchLabels:
+                    app: wazuh-indexer
+          # OIDC discovery and keys from Keycloak, behind the ingress controller.
+          - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 8443
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: traefik
+        extraIngresses:
+          # The reconciler sets the remote clusters through the REST API.
+          - ports:
+              - protocol: TCP
+                port: 9200
+            from:
+              - podSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: siem-reconciler
+    dashboard:
+      cred:
+        existingSecret: wazuh-dashboard-cred
+        passwordHash: "$2a$12$5XyFicCQoug9vNq3RnnXCuy6JhbfTc4MPr0Jw.r2N.Vxo1bilFTV."
+      ingress:
+        enabled: true
+        className: traefik
+        host: soc-wazuh.example.com
+        annotations:
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+        tls:
+          - hosts:
+              - soc-wazuh.example.com
+            secretName: wazuh-tls
+      # Keycloak SSO, client wazuh-dashboard. The reconciler creates the client
+      # and Secret wazuh-dashboard-oidc (client id, secret, cookie password).
+      sso:
+        oidc:
+          enabled: true
+          url: https://keycloak.example.com/auth/realms/soc/.well-known/openid-configuration
+          logoutUrl: https://keycloak.example.com/auth/realms/soc/protocol/openid-connect/logout
+          issuer: https://keycloak.example.com/auth/realms/soc
+          scope: "openid profile email"
+          existingSecret: wazuh-dashboard-oidc
+          config:
+            subjectKey: preferred_username
+            rolesKey: roles
+          roleMappings:
+            allAccess:
+              backendRoles:
+                - administrator
+            readall:
+              backendRoles:
+                - analyst
+            kibanaUser:
+              backendRoles:
+                - analyst
+          customizeLoginButton:
+            enabled: true
+            text: "Log in with SSO"
+      # Internal users (admin) keep the login form next to the SSO button;
+      # basic auth goes first without a challenge so service logins never
+      # touch OIDC.
+      basicAuth:
+        enabled: true
+        order: 0
+        challenge: false
+      # The default cookie password is public.
+      additionalEnv:
+        - name: OPENSEARCH_COOKIE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: wazuh-dashboard-oidc
+              key: OPENSEARCH_COOKIE_PASSWORD
+      server:
+        extraConf:
+          opensearch_security.cookie.password: ${OPENSEARCH_COOKIE_PASSWORD}
+          opensearch_security.cookie.secure: true
+      networkPolicy:
+        extraEgresses:
+          # The Wazuh app calls every tenant's manager API.
+          - ports:
+              - protocol: TCP
+                port: 55000
+            to:
+              - namespaceSelector:
+                  matchExpressions:
+                    - key: security-operations.kubeaid.io/tenant
+                      operator: Exists
+          # OIDC token exchange with Keycloak, behind the ingress controller.
+          - ports:
+              - protocol: TCP
+                port: 443
+              - protocol: TCP
+                port: 8443
+            to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: traefik
+
+velociraptor:
+  velociraptor:
+    # Mints the reconciler's Velociraptor API client before the server starts and
+    # stores it in Secret velociraptor-api-client; the publisher init container
+    # runs the reconciler image (the chart checks that both match).
+    apiClient:
+      enabled: true
+      publisherImage:
+        repository: ghcr.io/obmondo/siem-reconciler
+        tag: v1.0.0
+    gui:
+      publicUrl: https://soc-velociraptor.example.com/app/index.html
+      ingress:
+        enabled: true
+        className: traefik
+        annotations:
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+        hosts:
+          - host: soc-velociraptor.example.com
+            paths:
+              - path: /
+                pathType: Prefix
+        tls:
+          - secretName: velociraptor-tls
+            hosts:
+              - soc-velociraptor.example.com
+      # Keycloak SSO, client velociraptor (callback /auth/oidc/keycloak/callback).
+      oidc:
+        enabled: true
+        name: keycloak
+        issuer: https://keycloak.example.com/auth/realms/soc
+        clientId: velociraptor
+        existingSecret: velociraptor-oidc
+        existingSecretKey: oauth_client_secret
+    networkPolicy:
+      # The ingress controller reaches the GUI.
+      guiAllowedFrom:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      # OIDC: Cilium does not match pods by CIDR, so the chart's ipBlock rule does
+      # not reach Keycloak behind the ingress controller; allow its pods instead.
+      oidcEgressCIDRs: []
+      # Replaces the chart's list, so the IRIS rule is repeated here.
+      extraEgress:
+        - to:
+            - namespaceSelector:
+                matchLabels:
+                  kubernetes.io/metadata.name: traefik
+          ports:
+            - protocol: TCP
+              port: 443
+            - protocol: TCP
+              port: 8443
+        # Server artifacts poll the IRIS API.
+        - to:
+            - podSelector:
+                matchLabels:
+                  app.kubernetes.io/name: dfir-iris
+                  app.kubernetes.io/component: app
+          ports:
+            - protocol: TCP
+              port: 8000
+
+dfir-iris:
+  ingress:
+    enabled: true
+    className: traefik
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    host: soc-iris.example.com
+    tls:
+      - secretName: iris-tls
+        hosts:
+          - soc-iris.example.com
+  # Keycloak SSO, client iris (redirect /oidc-authorize). The local form stays
+  # as break-glass for the IRIS administrator.
+  authentication:
+    type: oidc
+    localFallback: true
+    createUserIfNotExist: true
+    oidc:
+      issuerUrl: https://keycloak.example.com/auth/realms/soc
+      clientId: iris
+      existingSecret: dfir-iris-oidc
+  # Keycloak -> IRIS access: IRIS ignores roles in the OIDC token, so this job
+  # gives each SSO user the IRIS groups and customers of its realm roles and
+  # tenant groups (mapping from the umbrella's dfir-iris-tenants ConfigMap).
+  # Secret iris-keycloak-sync: the iris-sync client secret and the IRIS API key.
+  keycloakSync:
+    enabled: true
+    dryRun: false
+    keycloak:
+      url: https://keycloak.example.com/auth
+      realm: soc
+      clientId: iris-sync
+    existingSecret: iris-keycloak-sync
+  # Alert triage by the in-cluster model; the reconciler keeps the svc_ai key
+  # in Secret iris-ai-triage.
+  aiTriage:
+    enabled: false
+    dryRun: true
+    model: "llama3.1:8b"
+
+misp:
+  misp:
+    instanceEnv:
+      mispBaseurl: https://soc-misp.example.com
+      ingressHostName: soc-misp.example.com
+    env:
+      # Keycloak SSO, client misp; client id and secret in Secret
+      # oidc-credentials. Realm roles arrive in the "roles" claim.
+      oidcEnable: true
+      oidcProviderUrl: https://keycloak.example.com/auth/realms/soc
+      oidcRolesProperty: roles
+      oidcRolesMapping: '{"administrator": "admin", "analyst": "User"}'
+      oidcDefaultOrg: "1"
+      oidcLogoutUrl: https://keycloak.example.com/auth/realms/soc/protocol/openid-connect/logout?client_id=misp
+      oidcScopes: '["openid", "email", "profile"]'
+      # Must equal valkey.auth.aclUsers.default.password below.
+      redisPassword: "eYyDwIhmuqJT6dZPS5KXjeAIvMcHP3SE"
+    misp:
+      ingress:
+        enabled: true
+        className: traefik
+        annotations:
+          kubernetes.io/ingress.class: traefik
+          cert-manager.io/cluster-issuer: letsencrypt-prod
+    tls:
+      useTLS: true
+    valkey:
+      auth:
+        aclUsers:
+          default:
+            password: "eYyDwIhmuqJT6dZPS5KXjeAIvMcHP3SE"
+  wazuhCdbExport:
+    # Every 15 minutes MISP's indicators become three CDB lists on every tenant
+    # manager, which registers them and re-points Wazuh's IoC rules 99901-99920
+    # at them (values-wazuh-tenant.yaml, security-operations.yaml). The
+    # credentials Secrets are copied from the tenant namespaces by the reconciler.
+    enabled: true
+    targets:
+      - name: "001"
+        url: https://wazuh.wazuh-001.svc:55000
+        credentialsSecret: wazuh-api-cred-001
+        verifyTls: false
+      - name: "002"
+        url: https://wazuh.wazuh-002.svc:55000
+        credentialsSecret: wazuh-api-cred-002
+        verifyTls: false
+      - name: "demo"
+        url: https://wazuh.wazuh-demo.svc:55000
+        credentialsSecret: wazuh-api-cred-demo
+        verifyTls: false
