@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package reconcile runs the SIEM reconciler components in order
-// (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral,
+// (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral, retention,
 // velociraptor) and collects their per-object results. A failing
 // component (or Wazuh manager) is reported and the run continues with
 // the next one.
@@ -20,6 +20,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/enrolment"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/httpx"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/indexer"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/iris"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/secrets"
@@ -37,13 +38,14 @@ const (
 	ComponentIRIS         = iris.Component
 	ComponentWazuh        = wazuh.Component
 	ComponentWazuhCentral = wazuhcentral.Component
+	ComponentRetention    = indexer.Component
 	ComponentVelociraptor = velociraptor.Component
 )
 
 // Components lists every component in run order.
 var Components = []string{
 	ComponentSecrets, ComponentEnrolment, ComponentKeycloak, ComponentIRIS,
-	ComponentWazuh, ComponentWazuhCentral, ComponentVelociraptor,
+	ComponentWazuh, ComponentWazuhCentral, ComponentRetention, ComponentVelociraptor,
 }
 
 // Options configure a run.
@@ -106,6 +108,9 @@ func Run(ctx context.Context, opts Options) []report.Result {
 	}
 	if selected(ComponentWazuhCentral) && cfg.Components.WazuhCentral != nil {
 		results = append(results, runWazuhCentral(ctx, cfg, opts.Kube, store, opts.DryRun)...)
+	}
+	if selected(ComponentRetention) && cfg.Retention != nil {
+		results = append(results, runRetention(ctx, cfg, store, opts.DryRun)...)
 	}
 	if selected(ComponentVelociraptor) && cfg.Components.Velociraptor != nil {
 		results = append(results, runVelociraptor(ctx, cfg, store, opts.DryRun)...)

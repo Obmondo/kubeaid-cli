@@ -130,6 +130,11 @@
       "to": {"namespace": "wazuh-002", "name": "iris-api-key", "key": "IRIS_API_KEY"}
     }
   ],
+  "retention": {
+    "policyId": "kubesoc-retention",
+    "warmAfterDays": 30,
+    "centralDays": 90
+  },
   "components": {
     "iris": {
       "url": "http://dfir-iris-app:8000",
@@ -145,13 +150,23 @@
         "insecureSkipVerify": true,
         "adminApiRole": "administrator",
         "analystApiRole": "readonly",
-        "tenantApiRole": "readonly"
+        "tenantApiRole": "readonly",
+        "indexer": {
+          "url": "https://wazuh-indexer.wazuh-001.svc:9200",
+          "credSecretRef": {"namespace": "wazuh-001", "name": "wazuh-indexer-cred", "usernameKey": "INDEXER_USERNAME", "passwordKey": "INDEXER_PASSWORD"},
+          "insecureSkipVerify": true
+        }
       },
       {
         "tenant": "002",
         "url": "https://wazuh.wazuh-002.svc:55000",
         "credSecretRef": {"namespace": "wazuh-002", "name": "wazuh-api-cred"},
-        "insecureSkipVerify": true
+        "insecureSkipVerify": true,
+        "indexer": {
+          "url": "https://wazuh-indexer.wazuh-002.svc:9200",
+          "credSecretRef": {"namespace": "wazuh-002", "name": "wazuh-indexer-cred"},
+          "insecureSkipVerify": true
+        }
       }
     ],
     "wazuhCentral": {
