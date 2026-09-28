@@ -74,7 +74,7 @@ func (r *Reconciler) do(ctx context.Context, method, path string, in, out any) e
 	if err != nil {
 		return err
 	}
-	if resp.StatusCode == http.StatusUnauthorized && r.adminPassword != "" {
+	if resp.StatusCode == http.StatusUnauthorized && r.canRelogin() {
 		_ = resp.Body.Close()
 		if err := r.login(ctx); err != nil {
 			return err
