@@ -352,22 +352,26 @@ func TestAWS_PromptFlow(t *testing.T) {
 	c.expectString("Enable high availability")
 	c.acceptDefault()
 
-	// Security apps form: accept both defaults.
-	c.expectString("Enable risk exposure monitoring?")
-	c.acceptDefault()
-
-	c.expectString("Enable runtime detection?")
-	c.acceptDefault()
-
-	// After the credentials form returns, AMI lookup runs. If it fails
-	// (no network in CI), manual AMI inputs are shown — one for the
-	// control plane (arm64) and one for the worker node-group (amd64).
-	nextPrompt := c.expectAnyString("AMI ID for the control plane", "ArgoCD deploy key")
+	// Still inside the credentials step: AMI lookup runs here. If it fails
+	// (no network in CI), manual AMI inputs are shown — one for the control
+	// plane (arm64) and one for the worker node-group (amd64).
+	nextPrompt := c.expectAnyString(
+		"AMI ID for the control plane",
+		"Enable risk exposure monitoring?",
+	)
 	if nextPrompt == "AMI ID for the control plane" {
 		c.sendLine("ami-0e2etestmanualcp1")
 		c.expectString("AMI ID for the worker node-group")
 		c.sendLine("ami-0e2etestmanualnd1")
+
+		c.expectString("Enable risk exposure monitoring?")
 	}
+
+	// Security apps form: accept both defaults.
+	c.acceptDefault()
+
+	c.expectString("Enable runtime detection?")
+	c.acceptDefault()
 
 	// Step 4 — Git/SSH.
 	c.expectString("ArgoCD deploy key")
