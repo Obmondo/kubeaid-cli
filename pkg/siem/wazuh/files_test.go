@@ -17,6 +17,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	keyAffected = "affected_items"
+	keyData     = "data"
+	keyFailed   = "failed_items"
+	keyMessage  = "message"
+	keyTitle    = "title"
+	pathAuth    = "/security/user/authenticate"
+)
+
 // fakeFiles serves the ruleset file, validation, reload and group
 // endpoints the way Wazuh 4.14 answers them (checked against a
 // wazuh/wazuh-manager:4.14.3 container).
@@ -35,9 +44,9 @@ type fakeFiles struct {
 func (f *fakeFiles) notFound(w http.ResponseWriter, code int) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"data":    map[string]any{"affected_items": []any{}, "failed_items": []any{map[string]any{"error": map[string]any{"code": code, "message": "not found"}}}},
-		errKey:    1,
-		"message": "none",
+		keyData:    map[string]any{keyAffected: []any{}, keyFailed: []any{map[string]any{"error": map[string]any{"code": code, keyMessage: "not found"}}}},
+		errKey:     1,
+		keyMessage: "none",
 	})
 }
 
@@ -45,7 +54,7 @@ func (f *fakeFiles) notFound(w http.ResponseWriter, code int) {
 func (f *fakeFiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if r.URL.Path == "/security/user/authenticate" {
+	if r.URL.Path == pathAuth {
 		_, _ = w.Write([]byte("jwt"))
 		return
 	}
@@ -72,8 +81,8 @@ func (f *fakeFiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			f.lastUploadCT = r.Header.Get("Content-Type")
 			if strings.Contains(string(body), "<bogus") {
 				_ = json.NewEncoder(w).Encode(map[string]any{
-					"data": map[string]any{"affected_items": []any{}, "failed_items": []any{map[string]any{"error": map[string]any{"code": 1113, "message": "XML syntax error"}}}},
-					errKey: 1, "message": "Could not upload rule",
+					keyData: map[string]any{keyAffected: []any{}, keyFailed: []any{map[string]any{"error": map[string]any{"code": 1113, keyMessage: "XML syntax error"}}}},
+					errKey:  1, keyMessage: "Could not upload rule",
 				})
 				return
 			}
@@ -95,30 +104,30 @@ func (f *fakeFiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.validationBad {
 			status = "KO"
 		}
-		affected(w, []map[string]string{{"name": "master", "status": status}})
+		affected(w, []map[string]string{{keyName: "master", "status": status}})
 	case p == "/cluster/analysisd/reload":
 		if f.clusterless {
 			w.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(w).Encode(map[string]any{"title": "Bad Request", "detail": "Cluster is not running, it might be disabled", errKey: 3013})
+			_ = json.NewEncoder(w).Encode(map[string]any{keyTitle: "Bad Request", "detail": "Cluster is not running, it might be disabled", errKey: 3013})
 			return
 		}
-		affected(w, []map[string]string{{"name": "master", "msg": f.reloadMsg}})
+		affected(w, []map[string]string{{keyName: "master", "msg": f.reloadMsg}})
 	case p == "/manager/analysisd/reload":
-		affected(w, []map[string]string{{"name": "manager", "msg": f.reloadMsg}})
+		affected(w, []map[string]string{{keyName: "manager", "msg": f.reloadMsg}})
 	case p == "/manager/configuration":
 		affected(w, []map[string]any{{"ruleset": map[string]any{"list": f.registered}}})
 	case p == "/groups" && r.Method == http.MethodPost:
 		var body map[string]string
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.groups[body["group_id"]] = ""
-		_ = json.NewEncoder(w).Encode(map[string]any{"message": "created", errKey: 0})
+		_ = json.NewEncoder(w).Encode(map[string]any{keyMessage: "created", errKey: 0})
 	case strings.HasSuffix(p, "/files/agent.conf"):
 		g := strings.TrimSuffix(strings.TrimPrefix(p, "/groups/"), "/files/agent.conf")
 		v, ok := f.groups[g]
 		if !ok {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]any{"title": "Resource Not Found", errKey: 1710})
+			_ = json.NewEncoder(w).Encode(map[string]any{keyTitle: "Resource Not Found", errKey: 1710})
 			return
 		}
 		w.Header().Set("Content-Type", "application/xml; charset=utf-8")
@@ -128,7 +137,7 @@ func (f *fakeFiles) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		f.lastUploadCT = r.Header.Get("Content-Type")
 		f.groups[g] = "  " + strings.ReplaceAll(string(body), "\n", "\n  ")
-		_ = json.NewEncoder(w).Encode(map[string]any{"message": "updated", errKey: 0})
+		_ = json.NewEncoder(w).Encode(map[string]any{keyMessage: "updated", errKey: 0})
 	default:
 		w.WriteHeader(http.StatusNotFound)
 	}

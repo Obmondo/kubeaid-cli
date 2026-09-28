@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package reconcile runs the SIEM reconciler components in order
-// (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral,
+// (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral, content,
 // velociraptor) and collects their per-object results. A failing
 // component (or Wazuh manager) is reported and the run continues with
 // the next one.
@@ -18,6 +18,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/content"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/enrolment"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/httpx"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/iris"
@@ -37,13 +38,14 @@ const (
 	ComponentIRIS         = iris.Component
 	ComponentWazuh        = wazuh.Component
 	ComponentWazuhCentral = wazuhcentral.Component
+	ComponentContent      = content.Component
 	ComponentVelociraptor = velociraptor.Component
 )
 
 // Components lists every component in run order.
 var Components = []string{
 	ComponentSecrets, ComponentEnrolment, ComponentKeycloak, ComponentIRIS,
-	ComponentWazuh, ComponentWazuhCentral, ComponentVelociraptor,
+	ComponentWazuh, ComponentWazuhCentral, ComponentContent, ComponentVelociraptor,
 }
 
 // Options configure a run.
@@ -106,6 +108,11 @@ func Run(ctx context.Context, opts Options) []report.Result {
 	}
 	if selected(ComponentWazuhCentral) && cfg.Components.WazuhCentral != nil {
 		results = append(results, runWazuhCentral(ctx, cfg, opts.Kube, store, opts.DryRun)...)
+	}
+	// Before velociraptor: the server monitoring table names artifacts
+	// the content component sets.
+	if selected(ComponentContent) && cfg.Components.Content != nil {
+		results = append(results, runContent(ctx, cfg, store, opts.DryRun)...)
 	}
 	if selected(ComponentVelociraptor) && cfg.Components.Velociraptor != nil {
 		results = append(results, runVelociraptor(ctx, cfg, store, opts.DryRun)...)
@@ -241,29 +248,42 @@ func readCreds(ctx context.Context, store secrets.Store, ref config.WazuhCredsRe
 	return user, pass, nil
 }
 
-func runVelociraptor(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {
+// kindAPIClient is the setup kind of an unreadable Velociraptor api_client.
+const kindAPIClient = "api-client"
+
+// dialVelociraptor connects with the configured api_client. The
+// returned kind names what failed (kindAPIClient, "connect").
+func dialVelociraptor(ctx context.Context, cfg *config.Config, store secrets.Store) (*velociraptor.Client, string, error) {
 	vc := cfg.Components.Velociraptor
 	var raw []byte
 	if vc.APIClientFile != "" {
 		b, err := os.ReadFile(vc.APIClientFile)
 		if err != nil {
-			return errorResult(ComponentVelociraptor, "api-client", err)
+			return nil, kindAPIClient, err
 		}
 		raw = b
 	} else {
 		v, err := store.Read(ctx, *vc.APIClientSecretRef)
 		if err != nil {
-			return errorResult(ComponentVelociraptor, "api-client", err)
+			return nil, kindAPIClient, err
 		}
 		raw = []byte(v)
 	}
 	apiCfg, err := velociraptor.ParseAPIClient(raw)
 	if err != nil {
-		return errorResult(ComponentVelociraptor, "api-client", err)
+		return nil, kindAPIClient, err
 	}
 	client, err := velociraptor.Dial(apiCfg, vc.Address)
 	if err != nil {
-		return errorResult(ComponentVelociraptor, "connect", err)
+		return nil, "connect", err
+	}
+	return client, "", nil
+}
+
+func runVelociraptor(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {
+	client, kind, err := dialVelociraptor(ctx, cfg, store)
+	if err != nil {
+		return errorResult(ComponentVelociraptor, kind, err)
 	}
 	defer func() { _ = client.Close() }()
 	results := velociraptor.Reconcile(ctx, client, VelociraptorSpec(cfg), dryRun)
