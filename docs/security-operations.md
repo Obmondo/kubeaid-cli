@@ -91,17 +91,17 @@ Relative to the cluster directory (`k8s/<cluster>` in the kubeaid-config reposit
 tenants:
 
 ```
-argocd-apps/templates/security-operations.yaml   # Apps security-operations (sync-order 60),
+argocd-apps/templates/security-operations.yaml   # Apps security-operations (sync wave 60),
                                                  # wazuh-001 and wazuh-002 (61)
 argocd-apps/values-security-operations.yaml      # central values
 argocd-apps/values-wazuh-tenant.yaml             # values shared by every tenant release
-sealed-secrets/security-operations/wazuh-indexer-cred.yaml
-sealed-secrets/security-operations/wazuh-dashboard-cred.yaml
-sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
-sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml
-sealed-secrets/wazuh-001/wazuh-api-cred.yaml
-sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
-sealed-secrets/wazuh-002/...                     # the same four
+security-operations/sealed-secrets/security-operations/wazuh-indexer-cred.yaml
+security-operations/sealed-secrets/security-operations/wazuh-dashboard-cred.yaml
+security-operations/sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
+security-operations/sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml
+security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml
+security-operations/sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
+security-operations/sealed-secrets/wazuh-002/...  # the same four
 ```
 
 Each `wazuh-<code>` Application reads `values-wazuh-tenant.yaml` and carries the tenant's own
@@ -113,7 +113,7 @@ values; nothing of the existing tenants changes.
 
 `cluster bootstrap` renders these files with the rest of the cluster's files and syncs
 `security-operations` as an ordered step (after keycloakx and netbird), so the tenant
-namespaces exist before the `secrets` and `wazuh-<code>` Apps sync.
+namespaces exist before the `wazuh-<code>` Apps sync.
 
 ## kubeaid-cli siem render
 
@@ -131,11 +131,25 @@ listed above and prints them. It needs no `secrets.yaml`, no cloud credentials a
 operation: review the diff, commit and push yourself.
 
 The Wazuh passwords exist only inside the sealed Secrets; the rendered values hold their
-bcrypt hashes. A release (the central search, or one tenant) whose sealed files and hashes
-are already in `--cluster-dir` is left exactly as it is. A new tenant, or one whose sealed
-files are missing, gets fresh passwords; delete a tenant's sealed files to rotate them (its
-pods then need a restart). The plaintext of a running release can be read back from the
-cluster (`kubectl get secret`) if it is ever needed.
+bcrypt hashes. A release (the central search `security-operations`, or one tenant
+`wazuh-<code>`) whose sealed files and hashes are already in `--cluster-dir` is left exactly
+as it is. A new tenant (nothing rendered for it yet) gets fresh passwords.
+
+Nothing is rotated silently: when a release exists (its Application, the central values or any
+of its sealed files is there) but a sealed file, a password hash or the cluster key is missing,
+the render stops and lists what is missing, and writes nothing. Restore the files from git, or
+rotate on purpose:
+
+```sh
+kubeaid-cli siem render --cluster-dir ... --rotate=wazuh-001      # one tenant
+kubeaid-cli siem render --cluster-dir ... --rotate=security-operations,wazuh-002
+kubeaid-cli siem render --cluster-dir ... --rotate                # every release
+```
+
+(Use `--rotate=<release>`, with `=`: a bare `--rotate` means every release.) Rotated passwords
+reach the running Wazuh once the new SealedSecrets are synced and its pods restart. The
+plaintext of a running release can be read back from the cluster (`kubectl get secret`) if it
+is ever needed.
 
 - `--cluster-dir` (required): a local checkout of `k8s/<cluster>`.
 - `--general-config`: another file holding `forkURLs` and `cluster.securityOperations`.
@@ -143,15 +157,77 @@ cluster (`kubectl get secret`) if it is ever needed.
   Without it the certificate is fetched from the controller (`sealed-secrets` namespace)
   through the cluster `$KUBECONFIG` points at, which needs read access to the service proxy.
   A sealed file keeps its ciphertext while its plaintext and the certificate are unchanged.
+- `--rotate[=<release>,...]`: generate new credentials for existing releases (see above).
+- `--remove-legacy-sealed-secrets`: step 2 of the migration below.
 
 ### How the sealed Secrets reach the cluster
 
-The `secrets` Application syncs `k8s/<cluster>/sealed-secrets/` recursively with prune and
-self-heal; each SealedSecret carries its own namespace. The tenant namespaces `wazuh-<code>`
-are created by the `security-operations` chart (not by `secrets`), so on an existing cluster
-sync in this order after pushing: `root` (creates the new Applications), `security-operations`,
-`secrets` (a first `secrets` sync before the namespaces exist fails for the new
-SealedSecrets; sync it again), then the `wazuh-<code>` Applications.
+Each SOC Application owns the sealed Secrets of its namespace: besides the chart and the
+`$values` ref it has a third source, `k8s/<cluster>/security-operations/sealed-secrets/<namespace>`
+(directory, recursive). The shared `secrets` Application (`k8s/<cluster>/sealed-secrets/`, prune
+and self-heal) never sees them, so a bad change there cannot prune the SOC's credentials. Any
+other SealedSecret of a SOC namespace dropped into that directory (hand-sealed OIDC or API key
+Secrets, for example) is synced by the same Application.
+
+Every SealedSecret kubeaid-cli renders there carries two annotations on the SealedSecret object
+(not on the Secret it creates):
+
+- `argocd.argoproj.io/sync-options: Prune=false`: no Application ever deletes it, whatever its
+  prune setting, including after a tenant is removed from `general.yaml`.
+- `argocd.argoproj.io/sync-wave: "-1"`: applied before the workloads that read it.
+
+Since the `wazuh-<code>` Applications create their namespace (`CreateNamespace=true`), their
+SealedSecrets no longer fail when they sync before `security-operations`; the sync order is
+still `root`, `security-operations`, then the `wazuh-<code>` Applications.
+
+### Migrating a cluster rendered before (Secrets under sealed-secrets/)
+
+Older versions rendered these files to `k8s/<cluster>/sealed-secrets/<namespace>/`. Moving
+them must never leave a moment in which no Application wants the objects while the `secrets`
+app prunes. `siem render` does it in two commits:
+
+1. Run `siem render` (no other flag). For each SOC Secret still in `sealed-secrets/` and not yet
+   in its owned directory it copies the file byte for byte (same ciphertext, no re-sealing, no
+   rotation) to `security-operations/sealed-secrets/<namespace>/`, adds the two annotations to
+   both copies, and renders the Applications with the new source. It lists the legacy files it
+   left in place. Commit and push, then:
+   1. let `secrets` sync (it is automated): the live SealedSecrets now carry `Prune=false`;
+   2. sync `root` (the Applications gain their third source);
+   3. sync `security-operations`, then each `wazuh-<code>`: they adopt the existing
+      SealedSecrets (same content, nothing is deleted or re-created, the Secrets and the
+      running pods are untouched). Until step 2 both apps apply the same objects; Argo CD shows
+      a shared-resource warning and the tracking label may flip between them. That is harmless,
+      because both copies are identical.
+2. Run `siem render --remove-legacy-sealed-secrets`. It deletes the legacy copies (only those
+   whose owned copy exists; hand-sealed files and their directories stay). Commit and push,
+   then sync the SOC Applications once more. The `secrets` app no longer wants the objects and,
+   because of `Prune=false`, never deletes them; after the SOC sync they belong to the SOC
+   Applications only.
+
+Rotating (`--rotate`) during the migration rewrites both copies, so the two apps never apply
+different ciphertexts. Hand-sealed SOC Secrets can be moved the same way: add
+`argocd.argoproj.io/sync-options: Prune=false` to the SealedSecret in `sealed-secrets/`, let
+`secrets` sync, copy it into the owned directory, sync the SOC App, then delete the old file.
+
+### Sync policy
+
+`cluster.securityOperations.sync` sets the Applications' `syncPolicy`:
+
+```yaml
+sync:
+  automated: false        # true: automated sync with selfHeal
+  prune: false            # needs automated; lets automated sync delete what left git
+  serverSideApply: null   # default: the value of automated; adds ServerSideApply=true
+```
+
+With the defaults the Applications keep syncing by hand, as before. Whatever `prune` says,
+the SealedSecrets above are never pruned, and neither are the tenant namespaces (the
+`security-operations` chart marks them `Prune=false,Delete=false`; namespaces created through
+`CreateNamespace=true` are never deleted by Argo CD). The Applications carry
+`argocd.argoproj.io/sync-wave` 60 (`security-operations`) and 61 (`wazuh-<code>`) under the root
+Application. Argo CD waits for the health of a wave's Applications only when the Application
+health check is enabled in `argocd-cm` (`resource.customizations.health.argoproj.io_Application`);
+without it the waves only order the applies.
 
 ## What stays manual
 

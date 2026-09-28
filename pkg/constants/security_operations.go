@@ -45,7 +45,8 @@ var SecurityOperationsNonSecretTemplateNames = []string{
 }
 
 // Secret templates of the Wazuh credentials, rendered once per namespace into
-// sealed-secrets/<namespace>/<secret name>.yaml (see core.securityOperationsSecretFiles).
+// security-operations/sealed-secrets/<namespace>/<secret name>.yaml (see
+// core.securityOperationsSecretFiles).
 const (
 	TemplateNameWazuhIndexerCred   = "sealed-secrets/security-operations/wazuh-indexer-cred.yaml.tmpl"
 	TemplateNameWazuhDashboardCred = "sealed-secrets/security-operations/wazuh-dashboard-cred.yaml.tmpl"

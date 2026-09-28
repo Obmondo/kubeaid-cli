@@ -23,7 +23,7 @@ func renderedState(t *testing.T, dir string) (map[string]string, config.Security
 	t.Helper()
 
 	sealed := map[string]string{}
-	require.NoError(t, filepath.WalkDir(filepath.Join(dir, "sealed-secrets"),
+	require.NoError(t, filepath.WalkDir(filepath.Join(dir, SecurityOperationsSealedSecretsDir),
 		func(p string, d os.DirEntry, err error) error {
 			if err != nil || d.IsDir() {
 				return err
@@ -33,9 +33,9 @@ func renderedState(t *testing.T, dir string) (map[string]string, config.Security
 			sealed[rel] = string(raw)
 			return err
 		}))
-	central, tenants, err := readRenderedCredentialState(dir)
+	state, err := readRenderedCredentialState(dir)
 	require.NoError(t, err)
-	return sealed, central, tenants
+	return sealed, state.central, state.tenants
 }
 
 // TestRenderSecurityOperationsKeepsStateInTheClusterDir renders without any
@@ -82,18 +82,35 @@ func TestRenderSecurityOperationsKeepsStateInTheClusterDir(t *testing.T) {
 	assert.Equal(t, tenants1["001"], tenants3["001"])
 	assert.Equal(t, tenants1["002"], tenants3["002"])
 	assert.NotEmpty(t, tenants3["003"].IndexerPasswordHash)
-	assert.Contains(t, sealed3, "sealed-secrets/wazuh-003/wazuh-authd-pass.yaml")
+	assert.Contains(t, sealed3, "security-operations/sealed-secrets/wazuh-003/wazuh-authd-pass.yaml")
 
-	// Tenant 002 lost a sealed file: only 002 gets new credentials.
-	require.NoError(t, os.Remove(filepath.Join(dir, "sealed-secrets/wazuh-002/wazuh-api-cred.yaml")))
+	// Tenant 002 lost a sealed file: the render refuses to rotate it silently
+	// and names what is missing; nothing is written.
+	lost := "security-operations/sealed-secrets/wazuh-002/wazuh-api-cred.yaml"
+	require.NoError(t, os.Remove(filepath.Join(dir, lost)))
 	_, err = RenderSecurityOperations(ctx, dir)
+	var incomplete *IncompleteSecurityOperationsStateError
+	require.ErrorAs(t, err, &incomplete)
+	require.Len(t, incomplete.Releases, 1)
+	assert.Contains(t, incomplete.Releases[0], "wazuh-002:")
+	assert.Contains(t, incomplete.Releases[0], lost)
+	assert.Contains(t, err.Error(), "--rotate=<release>")
+	sealedLost, _, tenantsLost := renderedState(t, dir)
+	assert.Equal(t, tenants3, tenantsLost, "a refused render writes nothing")
+	assert.NotContains(t, sealedLost, lost)
+
+	// Rotating 002 on purpose: only 002 gets new credentials.
+	_, err = RenderSecurityOperationsWithOptions(ctx, dir, SecurityOperationsRenderOptions{Rotate: []string{"wazuh-002"}})
 	require.NoError(t, err)
 	sealed4, central4, tenants4 := renderedState(t, dir)
 	assert.Equal(t, central1, central4)
 	assert.Equal(t, tenants3["001"], tenants4["001"])
 	assert.Equal(t, tenants3["003"], tenants4["003"])
 	assert.NotEqual(t, tenants3["002"].IndexerPasswordHash, tenants4["002"].IndexerPasswordHash)
-	assert.Contains(t, sealed4, "sealed-secrets/wazuh-002/wazuh-api-cred.yaml")
-	assert.Equal(t, sealed3["sealed-secrets/wazuh-001/wazuh-api-cred.yaml"],
-		sealed4["sealed-secrets/wazuh-001/wazuh-api-cred.yaml"])
+	assert.NotEqual(t, tenants3["002"].ClusterKey, tenants4["002"].ClusterKey)
+	assert.Contains(t, sealed4, lost)
+	assert.NotEqual(t, sealed3["security-operations/sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml"],
+		sealed4["security-operations/sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml"], "all of 002 is sealed anew")
+	assert.Equal(t, sealed3["security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml"],
+		sealed4["security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml"])
 }

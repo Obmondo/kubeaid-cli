@@ -204,6 +204,12 @@ func TestSIEMApplications(t *testing.T) {
 		[]any{"$values/k8s/demo/argocd-apps/values-security-operations.yaml"},
 		dig(t, centralSource, "helm", "valueFiles"))
 	assert.Contains(t, dig(t, central, "spec", "syncPolicy", "syncOptions"), "CreateNamespace=true")
+	assert.Equal(t, "60", dig(t, central, "metadata", "annotations", "argocd.argoproj.io/sync-wave"),
+		"central before the tenants")
+	centralSecrets := asMap(t, digList(t, central, "spec", "sources")[2])
+	assert.Equal(t, "k8s/demo/security-operations/sealed-secrets/security-operations", centralSecrets["path"])
+	assert.NotContains(t, digMap(t, central, "spec", "syncPolicy"), "automated", "manual sync by default")
+	assert.NotContains(t, dig(t, central, "spec", "syncPolicy", "syncOptions"), "ServerSideApply=true")
 
 	for i, code := range []string{"001", "002"} {
 		app := apps["wazuh-"+code]
@@ -215,7 +221,13 @@ func TestSIEMApplications(t *testing.T) {
 		assert.Contains(t, dig(t, app, "spec", "syncPolicy", "syncOptions"), "CreateNamespace=true")
 
 		sources := digList(t, app, "spec", "sources")
-		require.Len(t, sources, 2)
+		require.Len(t, sources, 3)
+		secrets := asMap(t, sources[2])
+		assert.Equal(t, "k8s/demo/security-operations/sealed-secrets/wazuh-"+code, secrets["path"],
+			"the tenant App owns its sealed Secrets")
+		assert.Equal(t, map[string]any{"recurse": true}, secrets["directory"])
+		assert.Equal(t, "61", dig(t, app, "metadata", "annotations", "argocd.argoproj.io/sync-wave"))
+		assert.NotContains(t, digMap(t, app, "spec", "syncPolicy"), "automated", "manual sync by default")
 		source := asMap(t, sources[0])
 		assert.Equal(t, "argocd-helm-charts/wazuh", source["path"])
 		assert.Equal(t,
@@ -294,6 +306,8 @@ func TestSIEMChartRevision(t *testing.T) {
 		values := asMap(t, digList(t, app, "spec", "sources")[1])
 		assert.Equal(t, "feature-branch", values["targetRevision"], name)
 		assert.Equal(t, "values", values["ref"], name)
+		secrets := asMap(t, digList(t, app, "spec", "sources")[2])
+		assert.Equal(t, "feature-branch", secrets["targetRevision"], name)
 	}
 }
 
@@ -522,16 +536,16 @@ func TestSIEMSecretFiles(t *testing.T) {
 		paths = append(paths, f.RelativePath)
 	}
 	assert.Equal(t, []string{
-		"sealed-secrets/security-operations/wazuh-indexer-cred.yaml",
-		"sealed-secrets/security-operations/wazuh-dashboard-cred.yaml",
-		"sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml",
-		"sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml",
-		"sealed-secrets/wazuh-001/wazuh-api-cred.yaml",
-		"sealed-secrets/wazuh-001/wazuh-authd-pass.yaml",
-		"sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml",
-		"sealed-secrets/wazuh-002/wazuh-dashboard-cred.yaml",
-		"sealed-secrets/wazuh-002/wazuh-api-cred.yaml",
-		"sealed-secrets/wazuh-002/wazuh-authd-pass.yaml",
+		"security-operations/sealed-secrets/security-operations/wazuh-indexer-cred.yaml",
+		"security-operations/sealed-secrets/security-operations/wazuh-dashboard-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-001/wazuh-authd-pass.yaml",
+		"security-operations/sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-002/wazuh-dashboard-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-002/wazuh-api-cred.yaml",
+		"security-operations/sealed-secrets/wazuh-002/wazuh-authd-pass.yaml",
 	}, paths)
 
 	wantKeys := map[string]map[string]any{
@@ -618,7 +632,7 @@ func TestRenderSecurityOperations(t *testing.T) {
 	}))
 	assert.ElementsMatch(t, written, onDisk, "nothing but the SIEM files is written")
 
-	sealedPath := filepath.Join(dir, "sealed-secrets/wazuh-002/wazuh-api-cred.yaml")
+	sealedPath := filepath.Join(dir, "security-operations/sealed-secrets/wazuh-002/wazuh-api-cred.yaml")
 	sealed, err := os.ReadFile(sealedPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(sealed), "kind: SealedSecret")
