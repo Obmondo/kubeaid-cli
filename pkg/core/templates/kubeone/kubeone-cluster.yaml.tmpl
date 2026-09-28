@@ -37,6 +37,20 @@ controlPlane:
       {{- end }}
   {{- end }}
 
+# kube-scheduler and kube-controller-manager default to --bind-address=127.0.0.1,
+# which leaves their /metrics reachable only from the node itself - Prometheus
+# runs in a Pod, so both targets are permanently down (KubeSchedulerInstance-
+# Unreachable / KubeControllerManagerInstanceUnreachable, which is what
+# kube-prometheus alerts on). The ports stay authenticated; only the bind
+# address changes.
+controlPlaneComponents:
+  controllerManager:
+    flags:
+      bind-address: 0.0.0.0
+  scheduler:
+    flags:
+      bind-address: 0.0.0.0
+
 clusterNetwork:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
