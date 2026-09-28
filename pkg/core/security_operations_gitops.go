@@ -33,9 +33,10 @@ const (
 	// the extra source of the Application of that namespace.
 	SecurityOperationsSealedSecretsDir = "security-operations/sealed-secrets"
 
-	// securityOperationsLegacySealedSecretsDir is the shared `secrets` app's
-	// directory the SOC rendered into before.
-	securityOperationsLegacySealedSecretsDir = "sealed-secrets"
+	// SecurityOperationsLegacySealedSecretsDir is the shared `secrets` app's
+	// directory the SOC rendered into before. A cluster that has not run
+	// `--remove-legacy-sealed-secrets` yet still has its Secrets in there too.
+	SecurityOperationsLegacySealedSecretsDir = "sealed-secrets"
 )
 
 // securityOperationsSealedSecretAnnotations go on every SOC SealedSecret
@@ -61,7 +62,7 @@ func securityOperationsSealedSecretPath(namespace, name string) string {
 // securityOperationsLegacySealedSecretPath is where the sealed Secret was
 // rendered before the SOC Applications owned their Secrets.
 func securityOperationsLegacySealedSecretPath(namespace, name string) string {
-	return path.Join(securityOperationsLegacySealedSecretsDir, namespace, name+".yaml")
+	return path.Join(SecurityOperationsLegacySealedSecretsDir, namespace, name+".yaml")
 }
 
 // annotateSealedSecret adds securityOperationsSealedSecretAnnotations to the
@@ -242,7 +243,7 @@ func RemoveSecurityOperationsLegacySealedSecrets(clusterDir string) ([]string, e
 
 		// Drop the namespace directory once nothing else is in it; other
 		// hand-sealed Secrets of that namespace keep it.
-		dir := path.Join(clusterDir, securityOperationsLegacySealedSecretsDir, ns)
+		dir := path.Join(clusterDir, SecurityOperationsLegacySealedSecretsDir, ns)
 		if entries, err := os.ReadDir(dir); err == nil && len(entries) == 0 {
 			_ = os.Remove(dir)
 		}

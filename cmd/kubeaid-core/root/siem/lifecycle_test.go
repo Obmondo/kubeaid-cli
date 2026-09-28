@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/core"
 	"github.com/Obmondo/kubeaid-cli/pkg/siemctl"
 )
 
@@ -104,7 +105,7 @@ func TestInitTenantAndDryRunApply(t *testing.T) {
 
 	out, err = run(t, "tenant", "add", "002", "--name", "Tenant B", "--cluster-dir", dir, "--sealed-secrets-cert", cert)
 	require.NoError(t, err, out)
-	assert.FileExists(t, filepath.Join(dir, "sealed-secrets", "wazuh-002", "wazuh-authd-pass.yaml"))
+	assert.FileExists(t, filepath.Join(dir, core.SecurityOperationsSealedSecretsDir, "wazuh-002", "wazuh-authd-pass.yaml"))
 	assert.FileExists(t, filepath.Join(dir, "argocd-apps", "templates", "security-operations.yaml"))
 
 	// A dry-run apply: the render is up to date, so no diff.
@@ -116,14 +117,14 @@ func TestInitTenantAndDryRunApply(t *testing.T) {
 	out, err = run(t, "tenant", "add", "003", "--name", "Tenant C", "--cluster-dir", dir, "--sealed-secrets-cert", cert, "--dry-run")
 	require.NoError(t, err, out)
 	assert.Contains(t, out, "wazuh-003")
-	assert.NoDirExists(t, filepath.Join(dir, "sealed-secrets", "wazuh-003"))
+	assert.NoDirExists(t, filepath.Join(dir, core.SecurityOperationsSealedSecretsDir, "wazuh-003"))
 
 	// Removal needs --confirm.
 	_, err = run(t, "tenant", "remove", "002", "--cluster-dir", dir)
 	assert.ErrorContains(t, err, "--confirm")
 	out, err = run(t, "tenant", "remove", "002", "--cluster-dir", dir, "--confirm", "--sealed-secrets-cert", cert)
 	require.NoError(t, err, out)
-	assert.NoDirExists(t, filepath.Join(dir, "sealed-secrets", "wazuh-002"))
+	assert.NoDirExists(t, filepath.Join(dir, core.SecurityOperationsSealedSecretsDir, "wazuh-002"))
 	apps, err := os.ReadFile(filepath.Join(dir, "argocd-apps", "templates", "security-operations.yaml"))
 	require.NoError(t, err)
 	assert.NotContains(t, string(apps), "wazuh-002")

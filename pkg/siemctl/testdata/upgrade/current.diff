@@ -606,7 +606,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/security-operations/misp-redis.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: 659e2b21ba26dc3daa278e9cbd4d79a39130a02e77fbfd86c887b5d0e00a4bfc
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -618,7 +618,7 @@ new file mode 100644
 +  namespace: security-operations
 +spec:
 +  encryptedData:
-+    password: AQCoXABRHq5MaZv6nzxmLqXpV6CZVD7v/fedbnYCVzp0X0xxlxNv0Hnfp3koBguLjOD896Y+jdwkQQdWTt+6hIhdVezkC53bgk9BBVLpcgnuyvQcG9bO2cX6V8ugS2/aK9WStFVLRLporXF9b/Gh5TIwwpA73f6YAfc4SLdDbk4ZY7arlhhfuCFLeRGc3GQXPaPkUFjr/E/qlPCIJ7rZUtPX9+gYJKZCjpZogBsSR84EwnF9EiZDzJfjf/YScxkOJOLJj0gvWLnG7u9RQLruZObXs+NFyCEY8Sj263LJ4ukqjgZNriiQOGNABLW7zoVCiTvJrcrdyIXg9+UARBKuGZxcG6PVsfV7MWPXAfdyIsnPLQ0acE8v/3+FcgfupUu67hBwZmN6n+8OOZ4ro+dhpeo5
++    password: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -630,7 +630,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/security-operations/wazuh-dashboard-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: ff091ddfe9cde752256202cf28b98fcb3c6f8ebfb8ab78692079b9c129fa5589
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -642,8 +642,8 @@ new file mode 100644
 +  namespace: security-operations
 +spec:
 +  encryptedData:
-+    DASHBOARD_PASSWORD: AQAdNiFvon3f1ohx3rc+Fc0Dg6CrOrevAXDZh9l72i6GISjNZwfP561FO+4kjQyCNwgsEis0uVkSFuPPlWIN0ug2K+qTdMS7rf8f3N0B8pfrB3Of85wWSR9KqEM0ePQQSI+SAQRFvadeFKjKzuHbwhs4WjIIehjlRnWLih5E4Fy0PxO2z5gyoCOaSn9YMQkvyTSuMUHFeH7Sd1o+JutnFX/iWpJi2hluwzvIX28mohWts3vqwmdKqNvR37PeMuRgxtd+gmc292SJpCnZ4cLhfX7k+6gOCkvfAlhL3fIeRP0+NF2EaUSq1chCdxsMGClWR5hjUNBxvnfRfYAoO7pmWPFReKzkb7/kZXI0D7H+ugIHSP1HF9KE3llTpipNu+EOX6xdLC/o9+aZU6NkP8iVn56Q
-+    DASHBOARD_USERNAME: AQAGE4SSASBtsdzIBKwHKbU1J8w/Klgr7JCP/7ezBgI+1YvRvsLrD67YpGi1Ayu05uv1JEr0m6cUb0WVmBG7lS+3m3E6A8jU/gVTvICG1F9Gtg6EGCev4JLBdLw0hcm85dtE05TPppp1197d/u2E740ktT/kOqJ5jGbcfIRT0XejNmF/oYCaNwHwWxYvcBqrhvWl5Zr3vbR6zFp8Q4axtavSnRrAezdF//j7vgKtzuBzOzbsj0qhXADugU1+F1IfaoTmguwDOTYNTY06tVE59Kv7x/1HUi+x3X9AypVqQKrieC8Gq7/FAIScz0bo8F2KvN8uC6kp/Z3Es2hQD6CVQh+qs1Pw400RClznzdWRA/28J15pxnD+CDyo5qcm6A==
++    DASHBOARD_PASSWORD: <sealed>
++    DASHBOARD_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -655,7 +655,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/security-operations/wazuh-indexer-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 65c97d601bc1b9851b351ba3277537330ef7a614efc707c50d1cf8769d4ba0f5
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -667,8 +667,8 @@ new file mode 100644
 +  namespace: security-operations
 +spec:
 +  encryptedData:
-+    INDEXER_PASSWORD: AQBmA/ijN69EYoTqhue55r+uKuZ24QdeBHOl6Whej9Wz5hW7SeXn4EPqtuUxt/ftxh25zzBJmYWq3rM3p/hFYYgNWhxYqSoN3sipUTOSyqeKpR5bNV0lC3Ko9cGuRcPe2VDIhphqmWQ5+dm8gYBoyHCnps7o/Rs4/EjHtLY8c5LVy3Q2lSqZyKW+oHj2SQxJA6eHsW+e8OqV3BHarPFFvDcWIeKnRYIyWAxG/zAcAsV4nj+28iRw5RnJaL9pi8rlXh4tq0w6P/35Pn+w/V5e5UO9Kf4d6tuVqYXtAj3m2W8YbUXC47q3ljzA7uKswzpsDm06t9657j/lNmk2em2ARRj95R3iUX4WNeK+hVAaK6uLuuayRM06kXnvDPM+zEfHxiRrZCo+GppKDL7WCVjiR8C1
-+    INDEXER_USERNAME: AQCbc0uGsGJWoDWTtofCKYETWSFRhiecIpDE4834QkMHrN8CUuILba3IgW5Slxnu/MHOJRR9jsLvvjo6ah1m0ZFO3rGpgY6wogWCmSVUQutNpEPZlCQsO1+Z8GauJknodvj/ooowPhQMrhN1+HNg+UHHpT5p8viv3//qrcTQdx7EqExD3ntPddXnchvVsaaOEyNMJWa5R3PPf6Gjv8dr4oykO0HPDMon148hD6JCaqcW+3yhjjcOUx6zyiLk8mwxeZMCXpOy5FK84OMosQxh5MEyN8ayE7WHjDK50R2dasOFMLtTY2dxTC64MbZCRN/sTTBZrrucMMFZBCLxqkbSBrjw2TGoiVPC6qckQ3ZCdA2b5m4FA9PS
++    INDEXER_PASSWORD: <sealed>
++    INDEXER_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -680,7 +680,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 6951dc7c9ed9815a3401f08a6c91db9b7074936acbdd03719ba2771f1dccca3b
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -692,8 +692,8 @@ new file mode 100644
 +  namespace: wazuh-001
 +spec:
 +  encryptedData:
-+    API_PASSWORD: AQCJgsWkF2iMKxDqVBBO9y+bJixSOEQ+6JoyJLRVh3J2I1NJMlxjh/3OWK/Q+8b5b15wI+l2AAk4Ct9JAjxNH48qLLY9DIDqTbXzaQyBn1aTgr5hT1BcSMqHRE1B1OiOtMAroYAMZDsMAK/FEY0bOBh3n53ufRkARgkY387xQ5ksJKOuKRJJcg7v46tAg/2jdhfqKyFb05Yr1tL63B7B7SuLfbTZC9zes7omisjqywoP/ELn8mC7ZgmM8X5Z69HRks4ifqhC3qu6AWXD1cNC9ROsji5lNWmNoPddOn+pcXosSKfxLwNV/67HfqX96WVb4l5EfrJ2+VjqSnrSFLm3WsI2WKPgaFhzCmSHmBP8LDc99MtxwIsQgZUovV7z3KCBCbbm1o6z6xDU8tvP/N4CVVSl
-+    API_USERNAME: AQBHolBLbrt6jomdl7wGjJLmwV+OJaS85EOZmVcRewV/UBVTllbXb+vczvvFlKCxrFc0RprHXHPk0vLGFd3DLYgSIxMs0zUkbmpzk01pm/Z1CbAjAYSQt9KdFAtfwOJ+89zTCKHwyyzUSPTAm4U0Lqf0BUuDD9/ZmxTKg2BkB4N0ePbsQ/0F+LTy3w6RuzKpAdDeCmbNvh5HqZoqyGl9kxQ6DArqpsoireq/Ykac/s71yueKNLMsgdhqlSW1d4n30/lV64TqKm7UTxtIi8iYV2mj0r2gY/jU5hH6yB0m+a6MsnqU3Szh91Y2H9Ybaa2Uebu5jxhIn4/a2oo3XEDkCFU6zOyIQ3+beurPgNADm1HzZDvkmlsaEjyW9Q==
++    API_PASSWORD: <sealed>
++    API_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -705,7 +705,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: 481ce028ee31aa4115ff4c088af4f83f49b74c2ba1c23f6d54ec0e4c47db4d98
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -717,7 +717,7 @@ new file mode 100644
 +  namespace: wazuh-001
 +spec:
 +  encryptedData:
-+    authd.pass: AQAADQDsBl5LfjoEhzk5nHCOqCtTudAvJBfMf7NG5wA0ZNYqIj00+uE1Vo00SblUFnSOi++3E2vdu9yLksmlSQ84xkidUJdOy8lTUgi+wKKYeu5XXoDCV64RsdspR5/od0hyC/crdCOd3VT7hLxivRLUnt1GbN6CsAjAWbW2czJWxu5O+XdIG8fgf7sU2Pr09VSDzER1iTn2gbf1NG+cFwt5gMPmoFIpqoHiZSHRZtgIb7OIWqbm4aoNvmpSh/kJVZT6TVAgrIKKh/+hHqbCjR2cJ7kJmD4FZVm0YUFuqdTZgIpFHjePqTy22likMw8/YT0Xe592DH08pvswLtQjw7uzU3Qt2PMit6hdMMfN8QEPVQkCwkL3bC/UQjWP/MITDmQAKqexFXVuzeu+v3TdiLnM
++    authd.pass: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -729,7 +729,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 0967b2dd4ed57984b13b699e3a64b5db27c918b61da0b6bbfecdc66452e63e5d
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -741,8 +741,8 @@ new file mode 100644
 +  namespace: wazuh-001
 +spec:
 +  encryptedData:
-+    DASHBOARD_PASSWORD: AQAAoAOfWvP0E0I82EMsh4phhBXjpLH5UHqWnpjbG0aikFFP4/N+7wJWMiagiDrqSZFZzbR6HD7v/693d6Io0kpkCs8MYG/Pk4GsulL8X8Uea3tjGAa7ePf31g4sMu7ZJdOrUtX9KDjAitCZ0/8B1L25644+DH2myWGFxadfZKIpqrL2RUSxvZDRFJnMk2ESMul0clpNUOyUE/X5kHDNmpwqkMMcdjXwUL/3Rpi6TSTOKCZQZMDAHwutYmmkrKmoa2fiG3hrRBaPzTItpCZ+AnvQlP06ljxYoFDpsGhrNWDT8sStyvWTa3hMsxYDNzJBVyCfU5jUhU1GTNDKNr/ir7gcazuH0Q74tqucGSFtOoejGpWZP2nI4FvmAWZ3xtOaHnCOLBTQjILj8RGRRGZUJjQI
-+    DASHBOARD_USERNAME: AQA3gi5rB3YBmwaU9Mpp3ZYAn8DyifXR5he/YqXUaNscg/vKNNt2q6uOZ2LTCo1fTk3GeN/osnsb97q1E40GNz5zVcrCoDd1Ky9Xpg2dGGqT+b5wus94of3zxXqUsYcoMXHeOWIFtZTPXKi06loBSLpVEgXuXCvQnnZlHdZ2VYum2+7hDIsrgJ3TE+2/xe8Fsko7s90udl460IgRwA15iF33qQkL9QGkVlOqKrcs6OKkEY2Sr8wnp1wS5NRjmjwaoKKh9De9iNq8KZ2fui+y9U99hH32Mduv01KAFexy9TWlJyyGauWWr97YdKWZnIu+4GFdayACv5lBruagmyWH1FOKs+5QOSNC2ErT2jbIL5SCpxsIfu0DFUDjDDb4ug==
++    DASHBOARD_PASSWORD: <sealed>
++    DASHBOARD_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -754,7 +754,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 811ad3fbe751adbcc23d046f1189e2f8a6a9bf60905d6306493a26e4ee646e67
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -766,8 +766,8 @@ new file mode 100644
 +  namespace: wazuh-001
 +spec:
 +  encryptedData:
-+    INDEXER_PASSWORD: AQBndDM/XQN9SywMkEsvkvasAOzhNaY2vnEBjno6m3ZoPy0Ge3RlBV421a0y8cUfsTmSx3d1+fzcFjb55U53ytBlgNJb2nOZRWyIsi4baLdn8lAhgCBHJZFoMWIh9lJhP1xuzP1RqKYjIu75h+inl7GvMjPK463Oh1xbWupuc4JfgqkK5Mn80w4S71dqVSwcLGNOqe5F7FCSxRmP0DIs7c3CKCChhFiuiSvgxiuIuSHCzpWyfNjjpaiDT+bhFRE3MQ2guF0M//F73FL3lyU0oMZxQGMIBqLj9TOLWCY8C/y7RkFj8Q2qqY+H+K/WNWqnXAQvLKqE/RsYorWrpFWL/vBbXlm/fw3W16HtEU3Wy944AEukogOg+ketyjYsCER4H4WOMdCQ5tt3Zc8BkTw51/P7
-+    INDEXER_USERNAME: AQARnfuwT1PUY7+d3b/76WNb+kR0zu3O+iSl9AQNce5OrKvqEyN8FU3wcORuRhvDF7FsdPG02sEuKNgWssTA9MdXiidGYwAFfZZEt+8vpxhYUNxvFKu1AURmtEo9bJjksRxqK7wlCH2YTRa5dnI46W0p7jV3nuOl7EmJmiADVumL/9KKjFMswiy4ench2lpxO70qdvwV1mBAN5hMaw+caU+UPOaLwFfbmbF3fP5GObWtUJjJspKVQrobzkNvIEFrSG8Wt1EmE0p9yqw43A2i4OEAjJfNVmrd3fTBu5rPMOL3mEfeHopUpC3QGKnKpBWJBSnzzWxaNNqB+Ze/LLawEEfGY20puDGU8ovU/arNnmTsmby1haLo
++    INDEXER_PASSWORD: <sealed>
++    INDEXER_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -779,7 +779,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: 283721f185a524caa5fe488dc7f274f44a340ea92ab5edefb9884d531e84716c
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -791,7 +791,7 @@ new file mode 100644
 +  namespace: wazuh-001
 +spec:
 +  encryptedData:
-+    key: AQBDqFZKIUFYr1p03LgGKrHd1mg5kCEz7Xlts13z83xF10c/ZcqvOilk471NnaROXqaIe/eiWfXfMMVBNHugWc7llk7Dz7E6JWIleezauFCV3BhS/CiG/15qPoPfZ4NyKoMxyjMSd6SMzp40A0i3smrRn9DzYtY85MPLgwJUQEhlOnwiaQ2PdRT8HDMYUZKCOBmhR9qfGNM1z+ImkI5ySRxToAbEcTGEbDFXjGol6I2McoKpktwv+huzXXobKuWwEOF5EEiTFI4pa1PEin0ApwnMW9YcjuToXM36VPemc7brzhsdhvZVjwF3XD4LLsADAp+2MvUfcZtk0CNfTExTMApIcQTatR8FedlE2SNqkP8DskImQg+w90vdShGuCi47wlb3jXAxrcdeyAdLjljAS0rq
++    key: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -803,7 +803,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-002/wazuh-api-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: ec90354fa9f018d758d8fee837e2482d82437431434551a98d3e3959a107bc7a
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -815,8 +815,8 @@ new file mode 100644
 +  namespace: wazuh-002
 +spec:
 +  encryptedData:
-+    API_PASSWORD: AQCZc3ZTEMs2+F3UpM6Nekgqz2loOuYaqkQ7mB4m8/zdAi7/XlKvQBk1tF44mWEuQGXIdlJt8YGmmp74UC0bdcmL3jzTr+nm4wGdm6/774nBp2/kw5UYeZWse8ZiKG5Z5UUb1f5+ncVeLSp0/SH3bLTLfILxxEddOxRhFbt2xtWpqpD1zTCQcqD43QCYu19ldNO94VD/YojQb+XQTWN+CIZorPIKefrfXnUr03kWvtBGZkb/7xkNOWnMDZ5eoxoQ0dxMxPC8PZNXSLj0kp4K8Xn432rNznAIjAs2YDgj7SjyCSO1xeufThh1ldHrPbt9QIGr/oxkt9UD4G+Pv8KOusW+0bUlxcLYNWb1eG10JduywhI3dO//2oPw27dpQGm9OlaC6oXDN/p7HCb8i3HfrmTB
-+    API_USERNAME: AQB2cZebnMJ1EU5KJVHHosfJFASH0IY+7cqR5aSSZYIRLoHvF+OJ+ovNSApWC4/4OvEtf149YtKFt15VIAtYHphwyMtmIB2zY1OvcsDPo85cw19XibdNR0uj+PFuRDzFHmpDTQH29FP7pf5qY2IDENSDir7Hk7CIpUS6HTCoyNoWX+zgLZ0HWRot4kUIAKZsizjR6yO6Pwxgi/+CS94RqVSIqpy6A9DoGC36x/97VVZAfu+IHZ4fd5Z8WkRwu7xBeCpZUhoC4Yw3ACUFyVpNLwpHQdqowC5vL576k7QrHreNhp491w8/6x52hQTB0eLdEXBF1i3cba68oaHxkny03VU4T7b5J8opVSx+2KTj0tIX2Y6Vuqj+8xsTUw==
++    API_PASSWORD: <sealed>
++    API_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -828,7 +828,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-002/wazuh-authd-pass.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: c3b1e293a69cc68fdcf69e5233601e5fa356a8caadbc842a1bd9bfb04e6d5672
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -840,7 +840,7 @@ new file mode 100644
 +  namespace: wazuh-002
 +spec:
 +  encryptedData:
-+    authd.pass: AQAlvJBUChbK7n/CTvWu4DvMrYYsnstG3YrYc3OisfSLAT5TVlZEvUT317wBcH9OXC4lDde20lq0m44b9QsYL+V2FRBCQd7YYysx5+8ixdTkdp90VTMWSJEmQKuMT1X8LVHkn0RWnRDclVQGFtO0uOwzsvCeHqwMic2YEt04CvuGQ8HI7GmYiTpBlhmJ72pkQR2ps4ZlD0uZUBmB5tKe6vSfHFzXATgg+kWIzTE3Iezq+Ttf2r5+is/LJFdJkAX6gdYD/Dx3ySVVgxsUU3NcUv6nKDdPBNfKcp1/yChwl9ldmizFAvntMl9Wf4TPmtIwMrlSRQlwO885nZhvCBlbHEBxo/MNac7XZCfl0NL4aubmWuLneGx0P6djxI63OMs2Z2aaUrj5Aeoi+FOrIYbCuOyL
++    authd.pass: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -852,7 +852,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-002/wazuh-dashboard-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 016333789f6d8a784ff9a7422132b8f660d359230e493bd2c4dafad114f28a1e
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -864,8 +864,8 @@ new file mode 100644
 +  namespace: wazuh-002
 +spec:
 +  encryptedData:
-+    DASHBOARD_PASSWORD: AQBjfDoqbEhArlCjytPQzdaLB6w18+U4BPkjNaTuGN9NgRh9zu0zKX6PQOyiJI6hUip6v5Sib0eXaVbmw0X3baFnwICtrYmV+b8COrgMaGnj2ExTYkUcyL+M2b/HWXKmOUDf+0ShWXnuhWAgZMBN/x00YPXSpV0PeO+wpx8SWyqN0eHBwXBKH5KSsfL2bUf8ziXFcwH56JbWysevQ+fmvQz6VXx0k/FuFWb+cR71X2v+aS+KQDP1/oCmfS0skYJ4LyYFMrcxByLAi1pdrVXW+9ch79OqWwUy0eldF40CsilNOdr4Cqo37yZM2uD6i3wjB13LbPW8p1mX4Npqs02qiRySlYM+2Ibr2UPq6bNay+W2cEGLiTVntIJHmTfgI7FRLRex3w9ETJrDxYWwhZzidKLt
-+    DASHBOARD_USERNAME: AQCGMQvtDg/5bHVprbgF+aVe3UPpwzRq5YW2narIDbmZlrDFnl1d7rjp9foUlj7tuz1qMPA6Zjh1P3njQxXMexL1Mux01FDHOqf63yPgxUVx7jb4BTSdeNfa6kst8yEj6LzbrX2gXps/5YLzskRAKkbkLvz2vUb8+lfhmqMKepPc5bgRUq5Kdbe+ZLdvr0cgywAfkpNhbQLt8AO7s3FkIJtRZ7JG0sEX4lzd4l6fXEm9hityiGStvnRkBXvyusxzTGL+Ene+HtmZpfka1PJesexKqtJC3OabXsKurb3FqQx5xpfkc7eLfTIl9MCw/Shshknxc+gXgW1ZQSyKc35LKpgRHYeHiyDxJ98si41iuSXhdIeQconqMhpKwI2JnA==
++    DASHBOARD_PASSWORD: <sealed>
++    DASHBOARD_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -877,7 +877,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: cab55b3608cc609fcd1538c905466cdec924916b22686c131a0683598787ed30
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -889,8 +889,8 @@ new file mode 100644
 +  namespace: wazuh-002
 +spec:
 +  encryptedData:
-+    INDEXER_PASSWORD: AQCbf82ksp6qa6dpdSkUSFqtaHTCyiviu7u+wG5qrVkyQfOhhMGe4EqTrL+/SkqjKpEG/L3qCOrNxYo/d1wDjXZC38CNDlo9ScLRzfOZnodOS9NT6e8m3CQ78/wNfMN4ptKslSyj+oCdLsLA0UmiwFfym93u89TlvsyBNJtkagsDFsPrIHjwCgAqCzsTpCGjMMHpYl0qYugJAr1n6490m2cTg1i75mr9cSnDJvz5/b4X560w+4NVpJCXlZMglGqbMWjIeLDIiMolZ6EEZSF0J9K3/G0xSluuxq12IFcCOxAWjbB1CYWgidep5BU71JeNT1O5rE7SdSc8pfcYUXgKp4EEGCzC1g89W7rOSy2LAe4S8q8rMflhQA07L9ZXZCavAoUoRYYhZlIrcxQZH1Xu1Kux
-+    INDEXER_USERNAME: AQBkOCX7+rDtvHMP2surfvRGlt5TrpETzCkNgzFaVDqRc3spokoYtN/e+hylU2uhlUevnrZ0RyShMi8e1uCZ38HSukfgF4vyoIK1bj+ySe+58N9uxmOCRmQTPVpv0kuzR0LwtpdyHqLFY/szdbVV4Q5z77ALJ2cE2x02fZHXhnql40QzGFdO42gvl9HWTWhx7HAs5i1OvJEzVDIDk3Bc5Tys8ZaNy/vVxEYxqNz3abzHMJHcYxRxGBM7KUQX9cqQ1fur6Mn9cn7AYaiYUxxJxDAbZwXYxd7GKDNENH7/qKXG2OYy2tpt5SQnUgz0Srewz8WDMYFWZ9uRf8nTKt0No2BbWCb4jCRJhUhjNkBv2UwGNPmCQQHV
++    INDEXER_PASSWORD: <sealed>
++    INDEXER_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -902,7 +902,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-002/wazuh-manager-cluster-key.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: 0ea9e8e80021bffdd8118328af4604288d6dab98b2ae6b7d60f5843185d590c1
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -914,7 +914,7 @@ new file mode 100644
 +  namespace: wazuh-002
 +spec:
 +  encryptedData:
-+    key: AQAMHMfuXZk9/G2+/FSFxZ37CA71cG3cX5Kfucq0Kl39QzQU68vXcf2JDNE7eMhjZCKrmB27Frn6YClCod7NwfHzgjCFtKOD2T9GsEcJSrl57Ev0dhsU2h4YRgmEaKllE1Cu4QDHSTyyEn4h1Qt6bnwYCHk+oIm8ijRrUf/5XhpGfhsahQ6r9AOfFydxXrKEH0ukAn2pQcPzt/y1Ga3lGQtThQhEikBki6erfHAS3YeZPweT/gEdMg/yult+1pF35OvHWtwGHc9A08/4sf9l8v0x2u7UCkorEcpVxHdBxeMWS25+ZKKEvtJ61042TYLJYAYgerat9EuWYIS0jQV1u9/Sl4458QF3fGntFX8MD3Hnfk4/NBsbkyXuuPjPQqeYe187RwiaZ5UO4NsCjHkvTM+z
++    key: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -926,7 +926,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-demo/wazuh-api-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 34d1988581f9b6302a9be9a395999717914c8ea99c1410544a038211d36ccc4e
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -938,8 +938,8 @@ new file mode 100644
 +  namespace: wazuh-demo
 +spec:
 +  encryptedData:
-+    API_PASSWORD: AQBOSbq41YJYdnLbFJkX71XITWsxCkc8zFD8cEHb5sKUS/E6qo0PrpwtIKk0VTpSsV4R646JqjjFjVsu+euEvPtLc7UvUa2nmkfXvSAkRPdr0pWJqlf9WFbZvRCTFldiFWwg+yyx03GPW+e6buJD0vuEqJkBV9fPTjLs8Ar89DemUF/XmXja1r9K4PqME7VvPDmynYREh5wGtBTuxAJYPDLMDhu+cWPBofVpKaFUeygrleHyo1Y0xv5w+IjcY9rfSA5FpiWFFYYH3+xcH0u3tZxL8yqFDI6caQWj270cgW4K8Mf1rretj2PNyg0/i5LpGNqYKynCzZkeU/O/TJbdqy9icLT53BKWN6dKNDQ+rRLpEv/JIYSYEeuF1ml8ewlhdjWF344TAw+P22CaTYF7OY12
-+    API_USERNAME: AQB9tyZE8psX//GstWbRhQfTCmG1rDhnNve1YfedoHUbi2om4RtBwTef4U6CVsAR2xXYoy5XuieC6ZEb3Crpayxv+A2KzpfslxIb6xm1meH4EICFO07f492Ce8u1zNZYwc4AlNMlqOPox9n+Sbsww+Zg5kiO951sYDO8TCfrpJVdXhcPcbEKayWANwe9ZqYJKUafWd3PPFPsFAP4DVCXzQAeL8YZRJ8kxeyvVixxX2zmJA7rRsMd/SqH6n57J6YPyaZXrYS8Z5cD5RFjuao9rPDUCXo5btLtWe/14Ia2dczLqnytDA3FviRtt5t4mr7tskA+ZcSKt4WDT5ZrOgGcjAcNfBld9h4KhXIRUUhQ/JYnQLSgNI4+72B9hA==
++    API_PASSWORD: <sealed>
++    API_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -951,7 +951,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-demo/wazuh-authd-pass.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: e8dabbbb8cf318fd2b7425e3e2b9b8c270e0d1cf43874c5efc0a901b081cf4bb
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -963,7 +963,7 @@ new file mode 100644
 +  namespace: wazuh-demo
 +spec:
 +  encryptedData:
-+    authd.pass: AQA5ODnSYq5nrmjF1DZfpPFENI41Qlp088KV+E30MMC/NelMxhubJim2luv1EJtXcn4erkJ+PQLUCoDYXJIwamE1S9R5PIGqSdSlnr2FdLGZ8Nmjnpc9IdgdG6QrUZZ7Wp0k5tc6tXkc56l/C/Bjrxmw8d2uHLvcqcSKyLpFZ8aN7reqag7qFMUe2tifu/HWBvYje5E33wGAvCd6rA9x647PvMYm9THPe1/QFh3zhMYpviLLv6ysimn7alNFY8RRmuSgcgtvMuza9+qMUOEpiVNMu7DUZDj0cym0rY0E9aF4G8poEmtlQXi4j2WOkYtADEWvFfAcfCLygacpzGOJ0JgCKSaaixwGSu8B9XUTTbWrRZZXdcSntfaNobpOUDULN5Pkt13HoXaNhbPC6OJfxdxS
++    authd.pass: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -975,7 +975,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-demo/wazuh-dashboard-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: 43e37937a2f0eb2306d88a83d38983e7e865f7a9ebea413eac23431306f7ccfa
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -987,8 +987,8 @@ new file mode 100644
 +  namespace: wazuh-demo
 +spec:
 +  encryptedData:
-+    DASHBOARD_PASSWORD: AQChNZHmFMpIw0xCAdXRO3FZ6vFhwepJc/T5C2E5g/X5b35DykRjvCgFzwXT9Iwlhr+GakCC6ZQJ+c8z2v57yPxacEbwBCwpT4/ARR8EzSxHqJacyVLU+9hC5hPGEFdWqGcq9FTXvPotoZx0zAIkCtKb85rI+5z9F70jeUO4Wtjl/e6znbd/uaqedbx8sn1xp53lq8zdyEBLSDZ+1NkLzdqjhOCk2BFYo5wdCAq1Hbh4ZprjWpLF/s7lCgIFlExkAkNJvwbVsT//nfSGF1+V0Tjqf3LBLxr4ADn5LwbEWDk60Bef+cSCxc8I4rZAl2za3qtO7Xrg1pGx48zq/50joxeMhv3+oiCkrgtBAQ2GzlaY1M0U0vlA/o6C++Qjg4UaUsYotuWQPIWKlaC/0GgQC2GT
-+    DASHBOARD_USERNAME: AQCEMWh1XwmtuS7+TIslUsL7D8otQFNbfnY8dxs97o0F+VNrIH9tvxfHiC48E0fh3ID/EvshL4+3HlGk7v22IaBP1j62CPCNKsvOUrhNC0fiu5S7jZYOYyOcxKmqcGQs5A3M6h0zlHC+X713yqRafTiBNj78W981h/QiX/vzD8Lc+FNxizo3hgL8dW/J2BkswIIrJ+ImVZhhWSchIDlIbtO12oGZyB0HG062ec2F509D8XQ/4VKYvrr5WUjahIBIPuJRbBP9X/7KgKZ0lmi6jo05FO6JG4EgrYH9GMZ4l7CC8zRJ03XLRRhyLrv9rAianz3FtrRwS4d+TmEIniPsIgQXCXYkRZAYu1tK3TKhbKjwZlvV1JRhC0gwJVlPFw==
++    DASHBOARD_PASSWORD: <sealed>
++    DASHBOARD_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -1000,7 +1000,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-demo/wazuh-indexer-cred.yaml
 @@ -0,0 +1,20 @@
-+# kubeaid-sha256: f8491fbc78c9cc1df2a51af59a7836f9118622c1edf0d2ef88f76cb9fba86e8c
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -1012,8 +1012,8 @@ new file mode 100644
 +  namespace: wazuh-demo
 +spec:
 +  encryptedData:
-+    INDEXER_PASSWORD: AQAdKOJhgeWTh+F4Nud/Qt86ofe6x4unXRFbLGsne92X055SGqvJ0L2Ffy91FL+9h16hk3ADvKiLLWXxseTEOnnTNR29aCc3nen0Qmag1TqIuvynGhhGc5/+2LPuLjnwIQ8QkLPNWMSjNLnLpavLVVWsuCpwhIE7K0v9w5DhSacRW20+LjP2HWxEvTXaKiCauPzkMScdT3Os6ptDtRwzhs7fjDgqNxwZ8E290VdV/O5binaQ9uYBZlkdaaN/odKuFc7sJPMCvx1V9rlQ2VHQlbCQDltFXIGqyWHccqqEPBCM8UjePpXiJ1/asBxWTJpEUiRVGaXzTCE4lxJ1h+p4EIimt9Gg8jm0Dmdcurt7Do1pax3tI44VbKmpkf7x6lRljwnUuGovgBo86yn1Qoq/1PbT
-+    INDEXER_USERNAME: AQBIwrvry33VyCfvA03kzxwQ6k1/gyIlXbmqlufkYPDJhTbuGIeo0LDeSVOW8wzClcsCbjGUXLPJ5Sn+hQ/Dx6COTAlOiY2SE3J9/NZStkW+q2GA5rtBl+GERuba6DS6u4icSPodAtiV3TTGA443+h/qJdVAmTmOLxNyZviedbEmVF5PTspgGj3Jxen9FLorTzRHfrTB/cfqmb1tyfXKor0o/Vz+eWhE3f2wHSvESaCU7NRCtpT9/eg0If0d2P4FIlODcLar1D+my1FZ92MyNmCCAr53AgYyiefNofMdQxllZSr51j9vd5KwZLmnlMZegLE0vssgkAIVsoTvlGB1sO/kgB0qY0Fql5AILoY0Vd2TFZgkAvsZ
++    INDEXER_PASSWORD: <sealed>
++    INDEXER_USERNAME: <sealed>
 +  template:
 +    metadata:
 +      labels:
@@ -1025,7 +1025,7 @@ new file mode 100644
 --- /dev/null
 +++ b/security-operations/sealed-secrets/wazuh-demo/wazuh-manager-cluster-key.yaml
 @@ -0,0 +1,19 @@
-+# kubeaid-sha256: c371cd3a35353cc8efe1d0972b9bf4c9b92afae8fd9564166d9bbafdf73a67a7
++# kubeaid-sha256: <sha256>
 +---
 +apiVersion: bitnami.com/v1alpha1
 +kind: SealedSecret
@@ -1037,7 +1037,7 @@ new file mode 100644
 +  namespace: wazuh-demo
 +spec:
 +  encryptedData:
-+    key: AQCcoW0fKlUD2wP9MnLeJ6mfT7peu7zFsVlXPPm4gM4y124hXEGLwaA/BPEUrzfGz8q+91p1KVVEqLUjC5DLb/lGCw3beYGBuIq1+TW/aiQ0SocCoQ2f8YnEkd3ctUYip4Otp3/E0q3n2Zj1P/EoQbd3vvHze/LfKbySEQeGzxVFsPcLOu61VeLRpzGdVFCX/gv4i+ToqIZez69apxebYKYDldZgT3lUdYxXjv4S7VKlEf8kpC5qeDtsO8RfiRumT4DXYFi4KdoTiKRQYgmLegDapexNL956hYU1fdSOf0KlqrPZXNXo/rmRJdFmfU7lyDNQflo7BG59lz9a4Cq0nejoE6uFVGEvyG8O9zQNPWxGGpmj3wLho3i8oxNE0ZTArESt8QYOLyqjBL5FHSXhGDHa
++    key: <sealed>
 +  template:
 +    metadata:
 +      labels:

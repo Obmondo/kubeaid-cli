@@ -77,7 +77,7 @@ var TenantRemoveCmd = &cobra.Command{
 	Use:   "remove <code>",
 	Short: "Remove a tenant (needs --confirm)",
 	Long: `Removes the tenant from the general config, deletes its sealed Secrets
-(sealed-secrets/wazuh-<code>/) and renders, so its wazuh-<code> Application is
+(security-operations/sealed-secrets/wazuh-<code>/) and renders, so its wazuh-<code> Application is
 gone from the rendered files. 'kubeaid-cli siem apply' then commits and syncs.
 
   --export            first takes a Velero Backup of the tenant namespace
@@ -132,11 +132,21 @@ has no removal flags yet, so remove them in IRIS and Velociraptor by hand.`,
 		}); err != nil {
 			return err
 		}
-		sealedDir := filepath.Join(clusterDir, "sealed-secrets", ns)
-		if flagDryRun {
-			_, _ = fmt.Fprintf(out, "Would delete %s\n", sealedDir)
-		} else if err := os.RemoveAll(sealedDir); err != nil {
-			return err
+		// Both directories: a cluster that has not run
+		// --remove-legacy-sealed-secrets still has the tenant's Secrets in the
+		// shared secrets app's directory as well.
+		for _, root := range []string{core.SecurityOperationsSealedSecretsDir, core.SecurityOperationsLegacySealedSecretsDir} {
+			sealedDir := filepath.Join(clusterDir, root, ns)
+			if _, err := os.Stat(sealedDir); err != nil {
+				continue
+			}
+			if flagDryRun {
+				_, _ = fmt.Fprintf(out, "Would delete %s\n", sealedDir)
+				continue
+			}
+			if err := os.RemoveAll(sealedDir); err != nil {
+				return err
+			}
 		}
 
 		if tenantFlags.deleteNamespace {

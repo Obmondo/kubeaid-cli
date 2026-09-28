@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -258,7 +259,22 @@ func stripIndexLines(diff string) string {
 		if strings.HasPrefix(l, "index ") {
 			continue
 		}
-		kept = append(kept, l)
+		kept = append(kept, maskCiphertext(l))
 	}
 	return strings.Join(kept, "\n")
+}
+
+// ciphertextLine is one encryptedData entry of a SealedSecret.
+var (
+	ciphertextLine = regexp.MustCompile(`^([-+ ]\s+[A-Za-z0-9._-]+: )A[A-Za-z0-9+/=]{64,}$`)
+	checksumLine   = regexp.MustCompile(`^([-+ ]# kubeaid-sha256: )[0-9a-f]{64}$`)
+)
+
+// maskCiphertext replaces a sealed value with a placeholder. Sealing is
+// randomised, so a Secret this release adds would give a different golden file
+// on every run; that a Secret the previous release sealed keeps its ciphertext
+// is checked against before.sealed, not here.
+func maskCiphertext(line string) string {
+	line = ciphertextLine.ReplaceAllString(line, "${1}<sealed>")
+	return checksumLine.ReplaceAllString(line, "${1}<sha256>")
 }
