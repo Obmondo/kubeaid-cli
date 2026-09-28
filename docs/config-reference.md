@@ -69,6 +69,7 @@
 - [SecurityConfig](#securityconfig)
 - [SecurityOperationsAITriageConfig](#securityoperationsaitriageconfig)
 - [SecurityOperationsAgentPorts](#securityoperationsagentports)
+- [SecurityOperationsBackupConfig](#securityoperationsbackupconfig)
 - [SecurityOperationsConfig](#securityoperationsconfig)
 - [SecurityOperationsContentConfig](#securityoperationscontentconfig)
 - [SecurityOperationsCredentials](#securityoperationscredentials)
@@ -864,6 +865,28 @@ until its config opts in.</p>
 | registration | `int` |  |  |
 | events | `int` |  |  |
 
+## SecurityOperationsBackupConfig
+
+<p>SecurityOperationsBackupConfig is the one place an operator turns the
+SOC backups on. Everything is off by default and the object store is a
+placeholder, because no bucket exists yet.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  | Enabled renders the Velero Schedules and the OpenSearch snapshot<br>CronJobs, and switches the two databases' own backups on.<br> |
+| bucket | `string` |  | Bucket every backend writes to. Required with Enabled.<br> |
+| endpoint | `string` |  | Endpoint of the object store, e.g. https://s3.example.com. Empty:<br>AWS S3 itself.<br> |
+| region | `string` |  | Region of the bucket. Default: us-east-1.<br> |
+| basePath | `string` |  | BasePath is the prefix inside the bucket; each backend adds its<br>own path under it. Default: kubesoc.<br> |
+| credentialsSecret | `string` |  | CredentialsSecret holds the access key id and the secret access<br>key. It must exist in the Velero namespace, the security-operations<br>namespace and every tenant namespace (seal it yourself). Default:<br>kubesoc-backup-s3.<br> |
+| pathStyleAccess | `bool` |  | PathStyleAccess addresses the bucket as <endpoint>/<bucket>, which<br>MinIO and Ceph RGW need and AWS S3 does not. Default true; nil<br>means true.<br> |
+| veleroNamespace | `string` |  | VeleroNamespace is where Velero runs, and so where the Schedules<br>are created. Default: velero.<br> |
+| snapshotRepositoryType | `string` |  | SnapshotRepositoryType is the OpenSearch snapshot repository: "fs"<br>(the default) is a ReadWriteMany volume mounted on every indexer<br>node, "s3" needs an indexer image with the repository-s3 plugin,<br>which the stock one does not ship. Empty: fs.<br> |
+| snapshotStorageClass | `string` |  | SnapshotStorageClass is the ReadWriteMany class of the snapshot<br>volume with SnapshotRepositoryType fs. Empty: sharedStorageClass,<br>then the cluster default.<br> |
+| snapshotVolumeSize | `string` |  | SnapshotVolumeSize of that volume, per Wazuh release. Default: 50Gi.<br> |
+| retentionDays | `int` |  | RetentionDays of the OpenSearch snapshots. Default: 30.<br> |
+| verifyRestore | `bool` |  | VerifyRestore runs the monthly Job that recovers the newest IRIS<br>database backup into a scratch cluster and queries it. Off by<br>default: it creates and deletes a CloudNativePG Cluster.<br> |
+
 ## SecurityOperationsConfig
 
 <p>SecurityOperationsConfig declares a multi-tenant SOC. kubeaid-cli renders
@@ -891,6 +914,9 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
 | dashboardBreakGlass | `bool` |  | DashboardBreakGlass offers the username/password form next to the<br>SSO button on the central and every tenant Wazuh dashboard, for the<br>internal admin user. Default false: the dashboards log in through<br>Keycloak only.<br> |
 | content | [`SecurityOperationsContentConfig`](#securityoperationscontentconfig) |  | Content switches detection content as code (the KubeAid<br>kubesoc-content chart, rolled out by the reconciler).<br> |
+| profile | `string` |  | Profile sizes the stack. "single" is one of everything with no<br>PodDisruptionBudget, for an evaluation or a single-node lab;<br>"standard" (the default) is what every release rendered before<br>profiles existed; "ha" puts no single pod between the analysts<br>and their data: three indexer nodes with a shard copy each, a<br>Wazuh worker behind the agent Service, two of each IRIS<br>Deployment, three database instances and budgets everywhere.<br>Empty: standard, which renders nothing extra.<br> |
+| topologyKey | `string` |  | TopologyKey is the node label the profile spreads replicas over.<br>Empty: kubernetes.io/hostname. topology.kubernetes.io/zone<br>spreads across availability zones, which needs as many zones as<br>the profile has replicas.<br> |
+| backup | [`SecurityOperationsBackupConfig`](#securityoperationsbackupconfig) |  | Backup switches the backups of the SOC's own state on. One block<br>here fans out to the Velero Schedules and OpenSearch snapshots in<br>the security-operations chart, the CloudNativePG object store of<br>the IRIS database and the MISP database's MariaDB Backup.<br> |
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
 | sync | [`SecurityOperationsSyncConfig`](#securityoperationssyncconfig) |  | Sync is how Argo CD syncs the SOC Applications. Default: by hand.<br> |
 
@@ -930,7 +956,8 @@ and the next render follows it.</p>
 |-------|------|---------|-------------|
 | url | `string` |  | URL is Keycloak's root URL including any context path. Default:<br>https://<cluster.keycloak.dns>/auth when cluster.keycloak is set,<br>required otherwise.<br> |
 | realm | `string` |  | Realm defaults to "soc".<br> |
-| hostAliasIP | `string` |  | HostAliasIP pins URL's host name to this IP in every SOC pod, for a<br>Keycloak that pods cannot reach through DNS, e.g. one served only by<br>an internal ingress whose Service ClusterIP this is. Empty: DNS.<br> |
+| internalURL | `string` |  | InternalURL is the same Keycloak as the pods in this cluster reach<br>it, e.g. http://keycloakx-http.keycloakx.svc/auth. Every<br>back-channel call uses it (the reconciler's admin API, the<br>Velociraptor Keycloak sync, the Wazuh dashboard's and indexer's<br>OIDC discovery) while URL stays the issuer in every token, which<br>still matches because Keycloak's own frontend URL decides what goes<br>into the discovery document. Empty: URL is used for both.<br><br>Velociraptor, IRIS and MISP fetch discovery from the issuer itself<br>and refuse a mismatch, so URL must also resolve inside the cluster:<br>add a CoreDNS rewrite to the ingress Service (KubeAid's coredns<br>chart, `rewrites`) rather than pinning an address.<br> |
+| hostAliasIP | `string` |  | HostAliasIP pins URL's host name to this IP in every SOC pod.<br><br>Deprecated: a Service ClusterIP changes when the Service is<br>recreated, and SSO then breaks in every component at once until<br>someone renders again. Use InternalURL and a CoreDNS rewrite.<br> |
 
 ## SecurityOperationsReconcilerConfig
 

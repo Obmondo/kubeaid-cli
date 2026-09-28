@@ -26,12 +26,42 @@ wazuh:
       name: soc-ca
       type: ClusterIssuer
   indexer:
-{{- if .SecOps.KeycloakHostAliasIP }}
+{{- if or .SecOps.KeycloakHostAliasIP .SecOps.Profile.HA }}
     extraSpec:
       pod:
+{{- if .SecOps.KeycloakHostAliasIP }}
         hostAliases:
           - ip: {{ .SecOps.KeycloakHostAliasIP }}
             hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+        # Three indexer nodes are only resilience when they are not on one
+        # node (or in one zone, with topologyKey set to the zone label).
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: {{ .SecOps.Profile.TopologyKey }}
+            whenUnsatisfiable: DoNotSchedule
+            labelSelector:
+              matchLabels:
+                app: wazuh-indexer
+{{- end }}
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+    pdb:
+      enabled: true
+      # A quorum, so a drain cannot take the cluster below two data nodes.
+      minAvailable: {{ .SecOps.Profile.IndexerMinAvailable }}
+{{- end }}
+{{- if and .SecOps.Backup.Enabled .SecOps.Backup.SnapshotFS }}
+    # The OpenSearch snapshot repository: one volume every indexer node mounts,
+    # which is also what sets path.repo (without it the indexer refuses the
+    # repository). The security-operations chart's snapshot CronJob registers it.
+    snapshot:
+      enabled: true
+      fs:
+        path: {{ .SecOps.Backup.SnapshotVolumePath }}
+        storageSize: {{ .SecOps.Backup.SnapshotVolumeSize }}
+        storageClass: {{ .SecOps.Backup.SnapshotStorageClass }}
 {{- end }}
     cred:
       existingSecret: wazuh-indexer-cred
@@ -40,15 +70,45 @@ wazuh:
       # The static nodes_dn list: nodes_dn.yml is not read by default.
       extraNodesDn:
         - "{{ .SecOps.CentralIndexerDN }}"
+{{- if .SecOps.Profile.HA }}
+      # Shard allocation awareness: a shard and its copy never land on the same
+      # node.attr.zone. The attribute is the pod's node, which with the spread
+      # above is one per failure domain.
+      extraOpensearch:
+        cluster.routing.allocation.awareness.attributes: zone
+        node.attr.zone: ${NODE_ZONE}
+    additionalEnv:
+      - name: NODE_ZONE
+        valueFrom:
+          fieldRef:
+            fieldPath: spec.nodeName
+{{- end }}
   dashboard:
     # Verify the indexer's certificate (soc-ca, named wazuh-indexer).
     opensearchVerificationMode: full
-{{- if .SecOps.KeycloakHostAliasIP }}
+{{- if .SecOps.Profile.HA }}
+    replicas: {{ .SecOps.Profile.DashboardReplicas }}
+    pdb:
+      enabled: true
+      minAvailable: 1
+{{- end }}
+{{- if or .SecOps.KeycloakHostAliasIP .SecOps.Profile.HA }}
     extraSpec:
       pod:
+{{- if .SecOps.KeycloakHostAliasIP }}
         hostAliases:
           - ip: {{ .SecOps.KeycloakHostAliasIP }}
             hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+        topologySpreadConstraints:
+          - maxSkew: 1
+            topologyKey: {{ .SecOps.Profile.TopologyKey }}
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app: wazuh-dashboard
+{{- end }}
 {{- end }}
     cred:
       existingSecret: wazuh-dashboard-cred
@@ -63,7 +123,9 @@ wazuh:
     sso:
       oidc:
         enabled: true
-        url: {{ .SecOps.KeycloakIssuer }}/.well-known/openid-configuration
+        # Discovery is a back-channel call: the pods may fetch it from the
+        # Keycloak Service, while the issuer below stays the browser-facing one.
+        url: {{ .SecOps.KeycloakDiscoveryURL }}
         logoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout
         issuer: {{ .SecOps.KeycloakIssuer }}
         scope: "openid profile email"
@@ -326,10 +388,33 @@ wazuh:
       extraDnsNames:
         - {{ .SecOps.AgentHost }}
 {{- end }}
+{{- if .SecOps.Profile.ManagerWorkers }}
+    # Workers take the agents' events while the master keeps enrolment, the API
+    # and the rule set, so a master restart is not an outage for the agents.
+    worker:
+      enabled: true
+      replicas: {{ .SecOps.Profile.ManagerWorkers }}
+      podAntiAffinity: hard
+      podAntiAffinityTopologyKey: {{ .SecOps.Profile.TopologyKey }}
+      pdb:
+        enabled: true
+        minAvailable: 1
+{{- else }}
     # Master only: one manager takes a few thousand agents.
     worker:
       enabled: false
+{{- end }}
     master:
+{{- if .SecOps.Profile.HA }}
+      # The master is a single pod: agents cannot enrol and the rule set cannot
+      # be distributed without it. minAvailable 1 on one replica refuses
+      # voluntary eviction outright, which is the point - draining that node is
+      # then a decision someone makes (kubectl drain --disable-eviction), not
+      # something that happens during unattended maintenance.
+      pdb:
+        enabled: true
+        minAvailable: 1
+{{- end }}
       service:
         ports:
           - name: registration

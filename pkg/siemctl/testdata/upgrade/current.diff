@@ -161,7 +161,23 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
 diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-security-operations.yaml
 --- a/argocd-apps/values-security-operations.yaml
 +++ b/argocd-apps/values-security-operations.yaml
-@@ -129,11 +129,13 @@ wazuh:
+@@ -9,6 +9,7 @@ hosts:
+   velociraptor: soc-velociraptor.example.com
+ 
+ keycloak:
++  # The browser-facing URL: it is the issuer in every token.
+   url: https://keycloak.example.com/auth
+   realm: soc
+ 
+@@ -108,6 +109,7 @@ wazuh:
+       sso:
+         oidc:
+           enabled: true
++          # Discovery is a back-channel call; the issuer below stays public.
+           url: https://keycloak.example.com/auth/realms/soc/.well-known/openid-configuration
+           logoutUrl: https://keycloak.example.com/auth/realms/soc/protocol/openid-connect/logout
+           issuer: https://keycloak.example.com/auth/realms/soc
+@@ -129,11 +131,13 @@ wazuh:
            customizeLoginButton:
              enabled: true
              text: "Log in with SSO"
@@ -178,7 +194,7 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
          order: 0
          challenge: false
        # The default cookie password is public.
-@@ -244,16 +246,20 @@ dfir-iris:
+@@ -244,16 +248,20 @@ dfir-iris:
        - secretName: iris-tls
          hosts:
            - soc-iris.example.com
@@ -202,7 +218,7 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
    # Keycloak -> IRIS access: IRIS ignores roles in the OIDC token, so this job
    # gives each SSO user the IRIS groups and customers of its realm roles and
    # tenant groups (mapping from the umbrella's dfir-iris-tenants ConfigMap).
-@@ -271,7 +277,7 @@ dfir-iris:
+@@ -271,7 +279,7 @@ dfir-iris:
    aiTriage:
      enabled: false
      dryRun: true
@@ -211,7 +227,7 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
  
  misp:
    misp:
-@@ -288,8 +294,12 @@ misp:
+@@ -288,8 +296,12 @@ misp:
        oidcDefaultOrg: "1"
        oidcLogoutUrl: https://keycloak.example.com/auth/realms/soc/protocol/openid-connect/logout?client_id=misp
        oidcScopes: '["openid", "email", "profile"]'
@@ -226,7 +242,7 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
      misp:
        ingress:
          enabled: true
-@@ -301,25 +311,27 @@ misp:
+@@ -301,25 +313,27 @@ misp:
        useTLS: true
      valkey:
        auth:
@@ -307,7 +323,16 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
      cred:
        existingSecret: wazuh-dashboard-cred
      ingress:
-@@ -75,8 +60,11 @@ wazuh:
+@@ -64,6 +49,8 @@ wazuh:
+     sso:
+       oidc:
+         enabled: true
++        # Discovery is a back-channel call: the pods may fetch it from the
++        # Keycloak Service, while the issuer below stays the browser-facing one.
+         url: https://keycloak.example.com/auth/realms/soc/.well-known/openid-configuration
+         logoutUrl: https://keycloak.example.com/auth/realms/soc/protocol/openid-connect/logout
+         issuer: https://keycloak.example.com/auth/realms/soc
+@@ -75,8 +62,11 @@ wazuh:
          customizeLoginButton:
            enabled: true
            text: "Log in with SSO"
@@ -319,7 +344,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
        order: 0
        challenge: false
      # The default cookie password is public.
-@@ -91,17 +79,8 @@ wazuh:
+@@ -91,17 +81,8 @@ wazuh:
          opensearch_security.cookie.password: ${OPENSEARCH_COOKIE_PASSWORD}
          opensearch_security.cookie.secure: true
      networkPolicy:
@@ -339,7 +364,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
    wazuh:
      # MISP indicators: Wazuh 4.14's own IoC rule pack
      # (ruleset/rules/0999-malicious-ioc-rules.xml, rules 99901-99920) re-pointed at
-@@ -302,11 +281,21 @@ wazuh:
+@@ -302,11 +283,21 @@ wazuh:
            </rule>
  
          </group>
@@ -362,7 +387,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
      # Master only: one manager takes a few thousand agents.
      worker:
        enabled: false
-@@ -330,7 +319,8 @@ wazuh:
+@@ -330,7 +321,8 @@ wazuh:
            configMap:
              name: wazuh-iris-integration
              defaultMode: 0755
@@ -372,7 +397,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
          - name: iris-api-key
            secret:
              secretName: iris-api-key
-@@ -352,44 +342,5 @@ wazuh:
+@@ -352,44 +344,5 @@ wazuh:
            mountPath: /var/ossec/integrations/iris
            readOnly: true
        networkPolicy:

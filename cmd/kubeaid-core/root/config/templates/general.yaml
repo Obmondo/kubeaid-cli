@@ -153,9 +153,24 @@ cluster:
       url:
       # Realm defaults to "soc".
       realm:
-      # HostAliasIP pins URL's host name to this IP in every SOC pod, for a
-      # Keycloak that pods cannot reach through DNS, e.g. one served only by
-      # an internal ingress whose Service ClusterIP this is. Empty: DNS.
+      # InternalURL is the same Keycloak as the pods in this cluster reach
+      # it, e.g. http://keycloakx-http.keycloakx.svc/auth. Every
+      # back-channel call uses it (the reconciler's admin API, the
+      # Velociraptor Keycloak sync, the Wazuh dashboard's and indexer's
+      # OIDC discovery) while URL stays the issuer in every token, which
+      # still matches because Keycloak's own frontend URL decides what goes
+      # into the discovery document. Empty: URL is used for both.
+      # 
+      # Velociraptor, IRIS and MISP fetch discovery from the issuer itself
+      # and refuse a mismatch, so URL must also resolve inside the cluster:
+      # add a CoreDNS rewrite to the ingress Service (KubeAid's coredns
+      # chart, `rewrites`) rather than pinning an address.
+      internalURL:
+      # HostAliasIP pins URL's host name to this IP in every SOC pod.
+      # 
+      # Deprecated: a Service ClusterIP changes when the Service is
+      # recreated, and SSO then breaks in every component at once until
+      # someone renders again. Use InternalURL and a CoreDNS rewrite.
       hostAliasIP:
     # AgentHost is the public host name the Wazuh agents dial. Required.
     agentHost:
@@ -224,6 +239,67 @@ cluster:
       # tenant's <ruleset>, for static lists the package ships. The MISP-fed
       # lists are always registered. Registering a list restarts the managers.
       extraLists:
+    # Profile sizes the stack. "single" is one of everything with no
+    # PodDisruptionBudget, for an evaluation or a single-node lab;
+    # "standard" (the default) is what every release rendered before
+    # profiles existed; "ha" puts no single pod between the analysts
+    # and their data: three indexer nodes with a shard copy each, a
+    # Wazuh worker behind the agent Service, two of each IRIS
+    # Deployment, three database instances and budgets everywhere.
+    # Empty: standard, which renders nothing extra.
+    profile:
+    # TopologyKey is the node label the profile spreads replicas over.
+    # Empty: kubernetes.io/hostname. topology.kubernetes.io/zone
+    # spreads across availability zones, which needs as many zones as
+    # the profile has replicas.
+    topologyKey:
+    # Backup switches the backups of the SOC's own state on. One block
+    # here fans out to the Velero Schedules and OpenSearch snapshots in
+    # the security-operations chart, the CloudNativePG object store of
+    # the IRIS database and the MISP database's MariaDB Backup.
+    backup:
+      # Enabled renders the Velero Schedules and the OpenSearch snapshot
+      # CronJobs, and switches the two databases' own backups on.
+      enabled:
+      # Bucket every backend writes to. Required with Enabled.
+      bucket:
+      # Endpoint of the object store, e.g. https://s3.example.com. Empty:
+      # AWS S3 itself.
+      endpoint:
+      # Region of the bucket. Default: us-east-1.
+      region:
+      # BasePath is the prefix inside the bucket; each backend adds its
+      # own path under it. Default: kubesoc.
+      basePath:
+      # CredentialsSecret holds the access key id and the secret access
+      # key. It must exist in the Velero namespace, the security-operations
+      # namespace and every tenant namespace (seal it yourself). Default:
+      # kubesoc-backup-s3.
+      credentialsSecret:
+      # PathStyleAccess addresses the bucket as <endpoint>/<bucket>, which
+      # MinIO and Ceph RGW need and AWS S3 does not. Default true; nil
+      # means true.
+      pathStyleAccess:
+      # VeleroNamespace is where Velero runs, and so where the Schedules
+      # are created. Default: velero.
+      veleroNamespace:
+      # SnapshotRepositoryType is the OpenSearch snapshot repository: "fs"
+      # (the default) is a ReadWriteMany volume mounted on every indexer
+      # node, "s3" needs an indexer image with the repository-s3 plugin,
+      # which the stock one does not ship. Empty: fs.
+      snapshotRepositoryType:
+      # SnapshotStorageClass is the ReadWriteMany class of the snapshot
+      # volume with SnapshotRepositoryType fs. Empty: sharedStorageClass,
+      # then the cluster default.
+      snapshotStorageClass:
+      # SnapshotVolumeSize of that volume, per Wazuh release. Default: 50Gi.
+      snapshotVolumeSize:
+      # RetentionDays of the OpenSearch snapshots. Default: 30.
+      retentionDays:
+      # VerifyRestore runs the monthly Job that recovers the newest IRIS
+      # database backup into a scratch cluster and queries it. Off by
+      # default: it creates and deletes a CloudNativePG Cluster.
+      verifyRestore:
     # Tenants, one entry each. Adding one and rendering again onboards it.
     tenants:
     # Sync is how Argo CD syncs the SOC Applications. Default: by hand.

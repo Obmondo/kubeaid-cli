@@ -22,6 +22,46 @@ const (
 	SecurityOperationsDefaultIngressClass  = "traefik"
 	SecurityOperationsDefaultAgentPortBase = 20000
 
+	// Deployment profiles (cluster.securityOperations.profile). Standard is
+	// what every release rendered before profiles existed, so it adds
+	// nothing; single and ha are the two deliberate departures from it.
+	SecurityOperationsProfileSingle   = "single"
+	SecurityOperationsProfileStandard = "standard"
+	SecurityOperationsProfileHA       = "ha"
+
+	// SecurityOperationsDefaultTopologyKey is the failure domain a profile
+	// spreads replicas over.
+	SecurityOperationsDefaultTopologyKey = "kubernetes.io/hostname"
+
+	// Indexer nodes per tenant in each profile, and the shard copies of the
+	// alert indices that go with them (a copy needs a node to live on).
+	SecurityOperationsHAIndexerNodes        = 3
+	SecurityOperationsHAIndexerMinAvailable = 2
+	SecurityOperationsHAIndexShardReplicas  = 1
+
+	// Instances of the databases and the broker in the ha profile.
+	SecurityOperationsHADatabaseInstances = 3
+
+	// SecurityOperationsBackupDefault* are the object store placeholders: we
+	// have no bucket yet, so they only have to be obviously fillable.
+	SecurityOperationsBackupDefaultRegion            = "us-east-1"
+	SecurityOperationsBackupDefaultBasePath          = "kubesoc"
+	SecurityOperationsBackupDefaultCredentialsSecret = "kubesoc-backup-s3"
+	SecurityOperationsBackupDefaultVeleroNamespace   = "velero"
+	SecurityOperationsBackupDefaultRetentionDays     = 30
+	SecurityOperationsBackupDefaultSnapshotSize      = "50Gi"
+
+	// SecurityOperationsSnapshotRepository* are the OpenSearch snapshot
+	// repository types. The stock wazuh-indexer image ships no repository-s3
+	// plugin, so fs (a ReadWriteMany volume) is the default.
+	SecurityOperationsSnapshotRepositoryFS = "fs"
+	SecurityOperationsSnapshotRepositoryS3 = "s3"
+
+	// SecurityOperationsSnapshotVolumePath is where every indexer node mounts
+	// the shared snapshot volume (the wazuh chart's indexer.snapshot.fs.path,
+	// which is also its path.repo).
+	SecurityOperationsSnapshotVolumePath = "/mnt/snapshots"
+
 	// SecurityOperationsDefaultReconcilerImage is the umbrella chart's
 	// reconciler.image.repository.
 	SecurityOperationsDefaultReconcilerImage = "ghcr.io/obmondo/siem-reconciler"

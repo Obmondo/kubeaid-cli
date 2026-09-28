@@ -28,6 +28,14 @@ import (
 // tenant indexer admits it in indexer.config.nodesDn (cross-cluster search).
 const securityOperationsCentralIndexerDN = "CN=wazuh-indexer,O=central,L=California,C=US"
 
+// Wazuh manager roles the per-tenant agent Service may front.
+const (
+	securityOperationsNodeTypeMaster = "master"
+	securityOperationsNodeTypeWorker = "worker"
+	// schemeHTTP is the only object store scheme without TLS.
+	schemeHTTP = "http"
+)
+
 // securityOperationsIRISMinLevel is the lowest Wazuh rule level forwarded to
 // IRIS by the custom-iris integration (wazuh chart README section 10).
 const securityOperationsIRISMinLevel = 10
@@ -42,9 +50,15 @@ type SecurityOperationsValues struct {
 	ChartRevision string
 
 	// KeycloakHost is the host of the Keycloak URL; KeycloakHostAliasIP, when
-	// set, pins it in every pod (hostAliases).
+	// set, pins it in every pod (hostAliases, deprecated).
 	KeycloakHost        string
 	KeycloakHostAliasIP string
+	// KeycloakInternalURL, when set, is the URL every back-channel call uses
+	// while KeycloakURL stays the issuer.
+	KeycloakInternalURL string
+	// KeycloakDiscoveryURL is the OIDC discovery endpoint as the pods fetch
+	// it: the internal URL where there is one, else the public one.
+	KeycloakDiscoveryURL string
 	// ConfigRevision is the kubeaid-config revision of the values files.
 	ConfigRevision string
 
@@ -100,6 +114,11 @@ type SecurityOperationsValues struct {
 
 	CentralIndexerDN string
 
+	// Profile is the resolved deployment profile; Backup the resolved backup
+	// block. Both are never nil.
+	Profile *SecurityOperationsProfileValues
+	Backup  *SecurityOperationsBackupValues
+
 	CentralIndexerPasswordHash   string
 	CentralDashboardPasswordHash string
 
@@ -117,6 +136,76 @@ type SecurityOperationsValues struct {
 	SyncAutomated       bool
 	SyncPrune           bool
 	SyncServerSideApply bool
+}
+
+// SecurityOperationsProfileValues is cluster.securityOperations.profile
+// resolved into the numbers the templates render. Standard, the default, is
+// what every release rendered before profiles existed: HA and Single are
+// false, so the templates emit nothing and the charts' own defaults stand.
+type SecurityOperationsProfileValues struct {
+	Name        string
+	TopologyKey string
+
+	// Single is the one-of-everything profile: no PodDisruptionBudget, so a
+	// single-node cluster can still be drained, and no required anti-affinity.
+	Single bool
+	// HA renders the resilient shape.
+	HA bool
+
+	// IndexerNodes is what a tenant that named no indexerReplicas gets, and
+	// IndexerMinAvailable the budget that goes with it.
+	IndexerNodes        int
+	IndexerMinAvailable int
+	// IndexShardReplicas is the OpenSearch number_of_replicas of the alert
+	// indices; a copy needs another node to live on.
+	IndexShardReplicas int
+
+	// ManagerWorkers behind the agent Service. 0 keeps the master-only shape,
+	// where the agent Service selects the master itself.
+	ManagerWorkers int
+	// AgentServiceNodeType is the manager role the agent Service fronts.
+	AgentServiceNodeType string
+
+	// Replicas of the components that scale horizontally.
+	DashboardReplicas  int
+	IRISAppReplicas    int
+	IRISWorkerReplicas int
+	// DatabaseInstances is the CloudNativePG, MariaDB and RabbitMQ instance count.
+	DatabaseInstances int
+}
+
+// SecurityOperationsBackupValues is cluster.securityOperations.backup with the
+// placeholders resolved. Enabled false renders nothing.
+type SecurityOperationsBackupValues struct {
+	Enabled           bool
+	Bucket            string
+	Endpoint          string
+	Region            string
+	BasePath          string
+	CredentialsSecret string
+	PathStyleAccess   bool
+	VeleroNamespace   string
+	RetentionDays     int
+	VerifyRestore     bool
+
+	// SnapshotRepositoryType is "fs" or "s3"; SnapshotFS is true for "fs",
+	// which also needs the shared volume on every Wazuh release.
+	SnapshotRepositoryType string
+	SnapshotFS             bool
+	SnapshotVolumePath     string
+	SnapshotVolumeSize     string
+	SnapshotStorageClass   string
+
+	// MariaDBEndpoint is the object store as mariadb-operator wants it: host
+	// and port without a scheme. MariaDBTLS is false for a plain-HTTP one.
+	MariaDBEndpoint string
+	MariaDBTLS      bool
+	// MariaDBMaxRetention is RetentionDays as the Go duration mariadb-operator
+	// takes (it has no day unit).
+	MariaDBMaxRetention string
+
+	// PostgresDestination is the barman destinationPath of the IRIS database.
+	PostgresDestination string
 }
 
 // SecurityOperationsTenantValues is one tenant, fully derived.
@@ -194,6 +283,17 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 
 	keycloakURL := strings.TrimSuffix(cfg.Keycloak.URL, "/")
 
+	// The back channel, where there is one. The issuer stays public: Keycloak
+	// puts its own frontend URL in the discovery document whatever address it
+	// was fetched from, so the tokens still verify.
+	keycloakInternalURL := strings.TrimSuffix(cfg.Keycloak.InternalURL, "/")
+	discoveryBase := keycloakURL
+	if keycloakInternalURL != "" {
+		discoveryBase = keycloakInternalURL
+	}
+	discoveryURL := discoveryBase + "/realms/" + cfg.Keycloak.Realm +
+		"/.well-known/openid-configuration"
+
 	values := &SecurityOperationsValues{
 		ChartRevision:  chartRevision,
 		ConfigRevision: configRevision,
@@ -206,11 +306,14 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		MISPHost:         host("misp"),
 		VelociraptorHost: host("velociraptor"),
 
-		KeycloakURL:         keycloakURL,
-		KeycloakHost:        keycloakHost(keycloakURL),
-		KeycloakHostAliasIP: cfg.Keycloak.HostAliasIP,
-		KeycloakRealm:       cfg.Keycloak.Realm,
-		KeycloakIssuer:      keycloakURL + "/realms/" + cfg.Keycloak.Realm,
+		KeycloakURL:  keycloakURL,
+		KeycloakHost: keycloakHost(keycloakURL),
+		//nolint:staticcheck // the deprecated fallback is still rendered on purpose
+		KeycloakHostAliasIP:  cfg.Keycloak.HostAliasIP,
+		KeycloakInternalURL:  keycloakInternalURL,
+		KeycloakDiscoveryURL: discoveryURL,
+		KeycloakRealm:        cfg.Keycloak.Realm,
+		KeycloakIssuer:       keycloakURL + "/realms/" + cfg.Keycloak.Realm,
 
 		AgentHost:    cfg.AgentHost,
 		AgentAddress: cfg.AgentAddress,
@@ -238,6 +341,9 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		AIDownloadModel: cfg.AITriage.DownloadModel,
 
 		CentralIndexerDN: securityOperationsCentralIndexerDN,
+
+		Profile: securityOperationsProfile(cfg),
+		Backup:  securityOperationsBackup(cfg),
 
 		CentralIndexerPasswordHash:   creds.Central.IndexerPasswordHash,
 		CentralDashboardPasswordHash: creds.Central.DashboardPasswordHash,
@@ -318,6 +424,102 @@ func securityOperationsIndexerStorageSize(tenant config.SecurityOperationsTenant
 		gi = constants.SecurityOperationsIndexerMinStorageGi
 	}
 	return fmt.Sprintf("%dGi", gi)
+}
+
+// securityOperationsProfile resolves cluster.securityOperations.profile. The
+// standard profile is deliberately empty: a cluster that renders today must
+// keep rendering the same, so only single and ha depart from the charts' own
+// defaults.
+func securityOperationsProfile(cfg *config.SecurityOperationsConfig) *SecurityOperationsProfileValues {
+	profile := &SecurityOperationsProfileValues{
+		Name:                 cfg.Profile,
+		TopologyKey:          cfg.TopologyKey,
+		IndexerNodes:         1,
+		IndexShardReplicas:   0,
+		AgentServiceNodeType: securityOperationsNodeTypeMaster,
+		DashboardReplicas:    1,
+		IRISAppReplicas:      1,
+		IRISWorkerReplicas:   1,
+		DatabaseInstances:    1,
+	}
+
+	switch cfg.Profile {
+	case constants.SecurityOperationsProfileSingle:
+		profile.Single = true
+
+	case constants.SecurityOperationsProfileHA:
+		profile.HA = true
+		profile.IndexerNodes = constants.SecurityOperationsHAIndexerNodes
+		profile.IndexerMinAvailable = constants.SecurityOperationsHAIndexerMinAvailable
+		profile.IndexShardReplicas = constants.SecurityOperationsHAIndexShardReplicas
+		// One worker takes the agents' events while the master keeps
+		// enrolment and the API, so a master restart is not an outage for
+		// the agents. The agent Service then fronts the workers, which
+		// forward enrolment to the master.
+		profile.ManagerWorkers = 2
+		profile.AgentServiceNodeType = securityOperationsNodeTypeWorker
+		profile.DashboardReplicas = 2
+		profile.IRISAppReplicas = 2
+		profile.IRISWorkerReplicas = 2
+		profile.DatabaseInstances = constants.SecurityOperationsHADatabaseInstances
+	}
+
+	return profile
+}
+
+// securityOperationsBackup resolves cluster.securityOperations.backup into the
+// per-backend shapes the four charts want.
+func securityOperationsBackup(cfg *config.SecurityOperationsConfig) *SecurityOperationsBackupValues {
+	backup := cfg.Backup
+
+	values := &SecurityOperationsBackupValues{
+		Enabled:           backup.Enabled,
+		Bucket:            backup.Bucket,
+		Endpoint:          backup.Endpoint,
+		Region:            backup.Region,
+		BasePath:          backup.BasePath,
+		CredentialsSecret: backup.CredentialsSecret,
+		PathStyleAccess:   backup.PathStyleAccess == nil || *backup.PathStyleAccess,
+		VeleroNamespace:   backup.VeleroNamespace,
+		RetentionDays:     backup.RetentionDays,
+		VerifyRestore:     backup.VerifyRestore,
+
+		SnapshotRepositoryType: backup.SnapshotRepositoryType,
+		SnapshotFS:             backup.SnapshotRepositoryType != constants.SecurityOperationsSnapshotRepositoryS3,
+		SnapshotVolumePath:     constants.SecurityOperationsSnapshotVolumePath,
+		SnapshotVolumeSize:     backup.SnapshotVolumeSize,
+		SnapshotStorageClass:   backup.SnapshotStorageClass,
+
+		// mariadb-operator takes a host and port, not a URL, and switches TLS
+		// with a flag of its own.
+		MariaDBEndpoint:     objectStoreHostPort(backup.Endpoint),
+		MariaDBTLS:          !strings.HasPrefix(backup.Endpoint, schemeHTTP+"://"),
+		MariaDBMaxRetention: fmt.Sprintf("%dh", backup.RetentionDays*hoursPerDay),
+
+		PostgresDestination: fmt.Sprintf("s3://%s/%s/iris-pgsql", backup.Bucket, backup.BasePath),
+	}
+
+	return values
+}
+
+// objectStoreHostPort turns an object store URL into the host[:port] form
+// mariadb-operator wants, filling in the default port of the scheme. An empty
+// endpoint means AWS S3.
+func objectStoreHostPort(endpoint string) string {
+	if endpoint == "" {
+		return "s3.amazonaws.com"
+	}
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return endpoint
+	}
+	if u.Port() != "" {
+		return u.Host
+	}
+	if u.Scheme == schemeHTTP {
+		return u.Hostname() + ":80"
+	}
+	return u.Hostname() + ":443"
 }
 
 // securityOperationsCredentials returns secrets.yaml's securityOperations

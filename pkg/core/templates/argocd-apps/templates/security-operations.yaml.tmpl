@@ -83,6 +83,11 @@ spec:
               - {{ $.SecOps.AgentAddress }}
             registrationPort: {{ .RegistrationPort }}
             eventsPort: {{ .EventsPort }}
+{{- if $.SecOps.Profile.ManagerWorkers }}
+            # With workers the agents dial them, and enrolment is forwarded to
+            # the master, so a master restart does not stop event collection.
+            nodeType: {{ $.SecOps.Profile.AgentServiceNodeType }}
+{{- end }}
           wazuh:
             certificates:
               subject:
