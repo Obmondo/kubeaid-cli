@@ -244,6 +244,9 @@ func TestSIEMApplications(t *testing.T) {
 
 		assert.Equal(t, "tenant-"+code, dig(t, values, "wazuh", "certificates", "subject", "organization"))
 		assert.Equal(t, 1, dig(t, values, "wazuh", "indexer", "replicas"))
+		// 365 days (the chart default) x 0.5 GB/day x 1.5 headroom, rounded up.
+		assert.Equal(t, "274Gi", dig(t, values, "wazuh", "indexer", "storageSize"),
+			"the indexer volume follows the retention, not a fixed 5Gi")
 		assert.Equal(t, "$2a$12$indexer."+code, dig(t, values, "wazuh", "indexer", "cred", "passwordHash"))
 		assert.Equal(t, "$2a$12$dashboard."+code, dig(t, values, "wazuh", "dashboard", "cred", "passwordHash"))
 		assert.NotContains(t, digMap(t, values, "wazuh", "wazuh"), "key",

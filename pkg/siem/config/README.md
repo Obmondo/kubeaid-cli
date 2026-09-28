@@ -22,6 +22,8 @@ Kubernetes Secret.
 | `secrets` | list | no | Secrets created with random values when missing. |
 | `secretCopies` | list | no | Single Secret keys copied into other Secrets, see below. |
 | `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`, `misp`; an absent component is skipped. |
+| `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`; an absent component is skipped. |
+| `retention` | object | no | ISM retention policies, see below. Absent: the `retention` component does nothing. |
 | `enrolment` | list | no | Per-tenant agent enrolment bundle Secrets, see below. |
 
 ## `keycloak`
@@ -45,7 +47,7 @@ Kubernetes Secret.
 |---|---|---|
 | `code` | string, req., unique | `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, e.g. `"001"`. |
 | `name` | string, req., unique | Display name; also the IRIS customer and Velociraptor org name. |
-| `retentionDays` | int | Index retention, used by the chart (not by the reconciler). |
+| `retentionDays` | int | Days the tenant's indices are kept. With `retention` and `components.wazuh[].indexer` the reconciler enforces it as an ISM policy; 0 leaves the indices unmanaged. At most 3650. |
 | `idp` | object | Optional broker: `alias` (default `<group>-idp`), `displayName` (default `name`), `providerId` (default `oidc`), `enabled` (default true), `trustEmail`, `config` (map of Keycloak IdP config keys; only listed keys are compared), `clientSecretRef` (used on create only). A hardcoded-group mapper puts every brokered user in the tenant group. |
 
 Per tenant the reconciler ensures: Keycloak group + realm role `<group>` with the
@@ -105,6 +107,11 @@ by the reconciler, never generated or copied by it.
   name, usernameKey (API_USERNAME), passwordKey (API_PASSWORD)}`, `caFile`,
   `insecureSkipVerify` (default false), `adminApiRole` (default `administrator`),
   `analystApiRole` (default `readonly`), `tenantApiRole` (default `readonly`). The
+  Optional `indexer: {url, credSecretRef: {namespace, name, usernameKey
+  (INDEXER_USERNAME), passwordKey (INDEXER_PASSWORD)}, caFile,
+  insecureSkipVerify}`: the tenant's own OpenSearch REST endpoint, which the
+  `retention` component and the health probes use (admin credentials; the
+  indexer's NetworkPolicy must admit the reconciler on 9200). The
   reconciler maps `operators.adminRole` to `adminApiRole`, `operators.analystRole`
   to `analystApiRole` and the tenant group to `tenantApiRole`, each through a rule
   `oidc_<role>` on the backend role. The API roles must exist.
@@ -144,6 +151,24 @@ by the reconciler, never generated or copied by it.
   user* (`/users/view/me`), otherwise a new key is generated
   (`/users/resetauthkey`, with or without advanced auth keys) and stored. The key
   Secret must not be the admin key's.
+## `retention`
+
+`{policyId, indexPatterns, warmAfterDays, centralDays, centralIndexPatterns}`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `policyId` | string | ISM policy name on every indexer, default `kubesoc-retention`, matching `^[a-z0-9][a-z0-9_-]*$`. |
+| `indexPatterns` | list | Tenant indices the policy manages; default `wazuh-alerts-*`, `wazuh-archives-*`, `wazuh-monitoring-*`, `wazuh-statistics-*`. Each matches `^[a-z0-9][a-z0-9._*-]*$` and must name more than `*`. |
+| `warmAfterDays` | int | Read-only warm state after this many days; ignored when 0 or not below the retention. A hook for a later warm tier, it moves no data. |
+| `centralDays` | int | Retention on `components.wazuhCentral` (0: no policy there). At most 3650. |
+| `centralIndexPatterns` | list | Indices the central policy manages; default `wazuh-monitoring-*`, `wazuh-statistics-*` (the central indexer holds no events). |
+
+Per tenant the policy deletes indices older than that tenant's `retentionDays`;
+a tenant without `retentionDays`, or without `components.wazuh[].indexer`, is
+skipped and reported. The policy is written with `if_seq_no`/`if_primary_term`,
+its spec fingerprint lives in its description (so an OpenSearch-added field is
+not mistaken for drift), and existing indices are attached with `_ism/add` and
+moved with `_ism/change_policy`. Indices under another policy are never touched.
 
 ## `enrolment[]`
 

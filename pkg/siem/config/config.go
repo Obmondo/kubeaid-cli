@@ -59,7 +59,38 @@ type Config struct {
 	Components   Components   `json:"components"`
 	// Enrolment lists the per-tenant agent enrolment bundle Secrets.
 	Enrolment []EnrolmentBundle `json:"enrolment,omitempty"`
+	// Retention, when set, makes the reconciler keep an ISM policy on
+	// every indexer listed under components.wazuh[].indexer (tenant
+	// retentionDays) and on the central indexer (centralDays).
+	Retention *Retention `json:"retention,omitempty"`
 }
+
+// Retention configures the index lifecycle (ISM) policies.
+type Retention struct {
+	// PolicyID names the ISM policy on every indexer.
+	PolicyID string `json:"policyId,omitempty"`
+	// IndexPatterns are the tenant indices the policy manages.
+	IndexPatterns []string `json:"indexPatterns,omitempty"`
+	// WarmAfterDays, when set and below the retention, moves indices to
+	// a read-only warm state first. 0: hot until deleted.
+	WarmAfterDays int `json:"warmAfterDays,omitempty"`
+	// CentralDays is the retention on the central indexer (0: no
+	// policy there); CentralIndexPatterns the indices it manages there
+	// (the Wazuh app's own monitoring and statistics indices; the
+	// central indexer holds no events).
+	CentralDays          int      `json:"centralDays,omitempty"`
+	CentralIndexPatterns []string `json:"centralIndexPatterns,omitempty"`
+}
+
+// Retention defaults.
+const DefaultRetentionPolicyID = "kubesoc-retention"
+
+// DefaultRetentionIndexPatterns are the Wazuh indices of a tenant indexer.
+var DefaultRetentionIndexPatterns = []string{"wazuh-alerts-*", "wazuh-archives-*", "wazuh-monitoring-*", "wazuh-statistics-*"}
+
+// DefaultCentralRetentionIndexPatterns are the indices the central
+// dashboard's Wazuh app writes to the central indexer.
+var DefaultCentralRetentionIndexPatterns = []string{"wazuh-monitoring-*", "wazuh-statistics-*"}
 
 // SecretRef points at one key of a Kubernetes Secret.
 type SecretRef struct {
@@ -138,8 +169,9 @@ type Tenant struct {
 	// Name is the display name; also the IRIS customer and the
 	// Velociraptor org name.
 	Name string `json:"name"`
-	// RetentionDays is the event retention for the tenant's indices
-	// (consumed by the chart's index policies; not applied here).
+	// RetentionDays is the event retention for the tenant's indices,
+	// applied as an ISM policy on the tenant indexer when retention and
+	// components.wazuh[].indexer are set. 0: not managed.
 	RetentionDays int `json:"retentionDays,omitempty"`
 	// IdP optionally brokers the tenant's own identity provider.
 	IdP *IdP `json:"idp,omitempty"`
@@ -354,6 +386,17 @@ type Wazuh struct {
 	AdminAPIRole   string `json:"adminApiRole,omitempty"`
 	AnalystAPIRole string `json:"analystApiRole,omitempty"`
 	TenantAPIRole  string `json:"tenantApiRole,omitempty"`
+	// Indexer is the tenant's own OpenSearch indexer, for the retention
+	// policy and the health probes. Omitted: neither runs.
+	Indexer *Indexer `json:"indexer,omitempty"`
+}
+
+// Indexer is an OpenSearch REST endpoint with basic authentication.
+type Indexer struct {
+	URL                string        `json:"url"`
+	CredSecretRef      WazuhCredsRef `json:"credSecretRef"`
+	CAFile             string        `json:"caFile,omitempty"`
+	InsecureSkipVerify bool          `json:"insecureSkipVerify,omitempty"`
 }
 
 // WazuhCentral is the central OpenSearch indexer.
@@ -522,6 +565,19 @@ func (c *Config) applyComponentDefaults() {
 		w.AdminAPIRole = orDefault(w.AdminAPIRole, DefaultWazuhAdminRole)
 		w.AnalystAPIRole = orDefault(w.AnalystAPIRole, DefaultWazuhAnalystRole)
 		w.TenantAPIRole = orDefault(w.TenantAPIRole, DefaultWazuhTenantRole)
+		if ix := w.Indexer; ix != nil {
+			ix.CredSecretRef.UsernameKey = orDefault(ix.CredSecretRef.UsernameKey, DefaultIndexerUserKey)
+			ix.CredSecretRef.PasswordKey = orDefault(ix.CredSecretRef.PasswordKey, DefaultIndexerPassKey)
+		}
+	}
+	if r := c.Retention; r != nil {
+		r.PolicyID = orDefault(r.PolicyID, DefaultRetentionPolicyID)
+		if len(r.IndexPatterns) == 0 {
+			r.IndexPatterns = append([]string(nil), DefaultRetentionIndexPatterns...)
+		}
+		if len(r.CentralIndexPatterns) == 0 {
+			r.CentralIndexPatterns = append([]string(nil), DefaultCentralRetentionIndexPatterns...)
+		}
 	}
 	for i := range c.Enrolment {
 		e := &c.Enrolment[i]
@@ -748,8 +804,17 @@ func (c *Config) validateWazuh(fail func(string, ...any)) {
 		if w.CredSecretRef.Namespace == "" || w.CredSecretRef.Name == "" {
 			fail("%s.credSecretRef needs namespace and name", where)
 		}
+		if ix := w.Indexer; ix != nil {
+			if ix.URL == "" {
+				fail("%s.indexer.url is required", where)
+			}
+			if ix.CredSecretRef.Namespace == "" || ix.CredSecretRef.Name == "" {
+				fail("%s.indexer.credSecretRef needs namespace and name", where)
+			}
+		}
 	}
 	c.validateWazuhCentral(fail)
+	c.validateRetention(fail)
 }
 
 func (c *Config) validateWazuhCentral(fail func(string, ...any)) {
@@ -783,6 +848,45 @@ func (c *Config) validateWazuhCentral(fail func(string, ...any)) {
 		for j, s := range r.Seeds {
 			if strings.TrimSpace(s) == "" {
 				fail("%s.seeds[%d] is empty", where, j)
+			}
+		}
+	}
+}
+
+// retentionIndexPattern is an index pattern an ISM policy may manage:
+// no commas, spaces or URL-special characters, and never a pattern
+// matching everything or the hidden system indices.
+var retentionIndexPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._*-]*$`)
+
+var policyIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// maxRetentionDays bounds retention to ten years (catches typos).
+const maxRetentionDays = 3650
+
+func (c *Config) validateRetention(fail func(string, ...any)) {
+	for i, t := range c.Tenants {
+		if t.RetentionDays > maxRetentionDays {
+			fail("tenants[%d].retentionDays must not exceed %d", i, maxRetentionDays)
+		}
+	}
+	r := c.Retention
+	if r == nil {
+		return
+	}
+	if !policyIDPattern.MatchString(r.PolicyID) {
+		fail("retention.policyId %q must match %s", r.PolicyID, policyIDPattern)
+	}
+	if r.WarmAfterDays < 0 || r.CentralDays < 0 || r.CentralDays > maxRetentionDays {
+		fail("retention.warmAfterDays and retention.centralDays must be in 0-%d", maxRetentionDays)
+	}
+	for _, list := range []struct {
+		name     string
+		patterns []string
+	}{{"indexPatterns", r.IndexPatterns}, {"centralIndexPatterns", r.CentralIndexPatterns}} {
+		name := list.name
+		for j, p := range list.patterns {
+			if !retentionIndexPattern.MatchString(p) || strings.Trim(p, "*") == "" {
+				fail("retention.%s[%d] %q must match %s and name more than *", name, j, p, retentionIndexPattern)
 			}
 		}
 	}

@@ -29,6 +29,10 @@ var (
 	)
 
 	securityOperationsHostPrefixPattern = regexp.MustCompile(`^[a-z0-9.-]*$`)
+
+	// securityOperationsStorageSizePattern is a whole Kubernetes binary
+	// quantity, the only form the derived sizes use.
+	securityOperationsStorageSizePattern = regexp.MustCompile(`^[1-9][0-9]*(Mi|Gi|Ti)$`)
 )
 
 const maxPort = 65535
@@ -81,6 +85,9 @@ func hydrateSecurityOperationsDefaults() {
 		tenant := &cfg.Tenants[i]
 		if tenant.IndexerReplicas == 0 {
 			tenant.IndexerReplicas = 1
+		}
+		if tenant.ExpectedGBPerDay == 0 {
+			tenant.ExpectedGBPerDay = constants.SecurityOperationsDefaultGBPerDay
 		}
 		if tenant.AgentPorts == nil {
 			if ports, ok := derivedAgentPorts(cfg.AgentPortBase, tenant.Code); ok {
@@ -199,6 +206,13 @@ func validateSecurityOperationsTenants(tenants []config.SecurityOperationsTenant
 		}
 		if tenant.IndexerReplicas < 1 {
 			return fmt.Errorf("tenants[%d] (%s): indexerReplicas must be at least 1", i, tenant.Code)
+		}
+		if tenant.ExpectedGBPerDay < 0 {
+			return fmt.Errorf("tenants[%d] (%s): expectedGBPerDay must not be negative", i, tenant.Code)
+		}
+		if tenant.IndexerStorageSize != "" && !securityOperationsStorageSizePattern.MatchString(tenant.IndexerStorageSize) {
+			return fmt.Errorf("tenants[%d] (%s): indexerStorageSize %q must look like 80Gi",
+				i, tenant.Code, tenant.IndexerStorageSize)
 		}
 
 		if tenant.AgentPorts == nil {

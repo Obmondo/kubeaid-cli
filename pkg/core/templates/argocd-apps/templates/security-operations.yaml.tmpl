@@ -90,6 +90,11 @@ spec:
                 organization: {{ .Organization }}
             indexer:
               replicas: {{ .IndexerReplicas }}
+              # Sized for retentionDays x expectedGBPerDay x 1.5 (or the explicit
+              # indexerStorageSize). A StatefulSet volume never shrinks; to grow it,
+              # patch the PVCs and re-create the StatefulSet with --cascade=orphan
+              # (security-operations chart README, "Retention").
+              storageSize: {{ .IndexerStorageSize }}
               cred:
                 passwordHash: "{{ .IndexerPasswordHash }}"
             dashboard:

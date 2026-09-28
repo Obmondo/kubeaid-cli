@@ -949,6 +949,8 @@ and namespaces are never pruned (Prune=false on those objects).</p>
 | name | `string` |  | Name is the unique display name (IRIS customer, Velociraptor org).<br> |
 | retentionDays | `int` |  | RetentionDays of the tenant's alerts. Empty: the chart default.<br> |
 | indexerReplicas | `int` |  | IndexerReplicas of the tenant's Wazuh indexer. Default 1.<br> |
+| expectedGBPerDay | `float64` |  | ExpectedGBPerDay of events landing in the tenant's indexer,<br>to derive the indexer volume size (per replica):<br>retentionDays x expectedGBPerDay x 1.5 headroom, at least 10Gi.<br>Each replica holds a full copy (replica shards), so the<br>per-volume size does not divide by indexerReplicas; replicas<br>multiply the total cluster storage instead. Default 0.5.<br> |
+| indexerStorageSize | `string` |  | IndexerStorageSize overrides the derived indexer volume size,<br>e.g. "80Gi". A StatefulSet volume never shrinks: lowering this<br>(or retentionDays) leaves existing PVCs at their size, and<br>growing one needs a PVC patch plus a StatefulSet re-create<br>(security-operations chart README, "Retention").<br> |
 | agentPorts | [`SecurityOperationsAgentPorts`](#securityoperationsagentports) |  | AgentPorts are the tenant's public agent ports. Derived from<br>agentPortBase when the code is all digits, required otherwise.<br> |
 
 ## SecurityOperationsWazuhCredentials

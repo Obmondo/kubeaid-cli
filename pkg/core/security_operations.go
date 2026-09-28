@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/url"
 	"path"
 	"slices"
@@ -128,6 +129,9 @@ type SecurityOperationsTenantValues struct {
 
 	RetentionDays   int
 	IndexerReplicas int
+	// IndexerStorageSize is the tenant indexer's per-replica volume size
+	// (securityOperationsIndexerStorageSize).
+	IndexerStorageSize string
 
 	RegistrationPort int
 	EventsPort       int
@@ -262,8 +266,9 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 			Organization:  group,
 			DashboardHost: host(constants.SecurityOperationsTenantNamespacePrefix + tenant.Code),
 
-			RetentionDays:   tenant.RetentionDays,
-			IndexerReplicas: tenant.IndexerReplicas,
+			RetentionDays:      tenant.RetentionDays,
+			IndexerReplicas:    tenant.IndexerReplicas,
+			IndexerStorageSize: securityOperationsIndexerStorageSize(tenant),
 
 			RegistrationPort: tenant.AgentPorts.Registration,
 			EventsPort:       tenant.AgentPorts.Events,
@@ -274,6 +279,35 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 	}
 
 	return values
+}
+
+// securityOperationsIndexerStorageSize derives a tenant indexer's
+// per-replica volume size: the explicit indexerStorageSize, or
+// retentionDays (the chart default when unset) x expectedGBPerDay x
+// headroom, rounded up to whole Gi and floored at the minimum. Each
+// replica holds a full copy of the data (replica shards), so the size
+// is per volume and replicas only multiply the total. A rendered
+// StatefulSet volume never shrinks; growing an existing one needs a PVC
+// patch plus a StatefulSet re-create (chart README, "Retention").
+func securityOperationsIndexerStorageSize(tenant config.SecurityOperationsTenant) string {
+	if tenant.IndexerStorageSize != "" {
+		return tenant.IndexerStorageSize
+	}
+	days := tenant.RetentionDays
+	if days == 0 {
+		days = constants.SecurityOperationsDefaultRetentionDays
+	}
+	// The parser fills this in; default here too, so a config that did not
+	// pass through it does not silently collapse to the minimum size.
+	perDay := tenant.ExpectedGBPerDay
+	if perDay == 0 {
+		perDay = constants.SecurityOperationsDefaultGBPerDay
+	}
+	gi := int(math.Ceil(float64(days) * perDay * constants.SecurityOperationsIndexerHeadroom))
+	if gi < constants.SecurityOperationsIndexerMinStorageGi {
+		gi = constants.SecurityOperationsIndexerMinStorageGi
+	}
+	return fmt.Sprintf("%dGi", gi)
 }
 
 // securityOperationsCredentials returns secrets.yaml's securityOperations
