@@ -234,7 +234,10 @@ func TestSIEMApplications(t *testing.T) {
 		assert.Equal(t, 1, dig(t, values, "wazuh", "indexer", "replicas"))
 		assert.Equal(t, "$2a$12$indexer."+code, dig(t, values, "wazuh", "indexer", "cred", "passwordHash"))
 		assert.Equal(t, "$2a$12$dashboard."+code, dig(t, values, "wazuh", "dashboard", "cred", "passwordHash"))
-		assert.Equal(t, "key-"+code, dig(t, values, "wazuh", "wazuh", "key"))
+		assert.NotContains(t, digMap(t, values, "wazuh", "wazuh"), "key",
+			"the cluster key is in the sealed wazuh-manager-cluster-key Secret, not in git")
+		assert.NotContains(t, digMap(t, values, "wazuh", "wazuh"), "clusterKeySecret",
+			"the Secret name is shared (values-wazuh-tenant.yaml)")
 
 		host := "soc-wazuh-" + code + ".example.com"
 		assert.Equal(t, host, dig(t, values, "wazuh", "dashboard", "ingress", "host"))
@@ -458,6 +461,27 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 
 	indexerIngress := asMap(t, digList(t, w, "indexer", "networkPolicy", "extraIngresses")[0])
 	assert.Equal(t, 9300, asMap(t, asList(t, indexerIngress["ports"])[0])["port"])
+
+	assert.Equal(t, constants.SecretNameWazuhClusterKey, dig(t, w, "wazuh", "clusterKeySecret", "name"))
+	assert.NotContains(t, digMap(t, w, "wazuh"), "key")
+}
+
+// TestSIEMDashboardBreakGlass: every Wazuh dashboard logs in through SSO only
+// unless securityOperations.dashboardBreakGlass asks for the login form.
+func TestSIEMDashboardBreakGlass(t *testing.T) {
+	tv := withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	for _, want := range []bool{false, true} {
+		config.ParsedGeneralConfig.Cluster.SecurityOperations.DashboardBreakGlass = want
+		tv.SecOps = buildSecurityOperationsValues()
+
+		central := renderDocs(t, siemValuesTmpl, tv)[0]
+		assert.Equal(t, want, dig(t, central, "wazuh", "wazuh", "dashboard", "basicAuth", "breakGlass"))
+		assert.Equal(t, true, dig(t, central, "wazuh", "wazuh", "dashboard", "sso", "oidc", "enabled"))
+
+		tenant := renderDocs(t, siemTenantValuesTmpl, tv)[0]
+		assert.Equal(t, want, dig(t, tenant, "wazuh", "dashboard", "basicAuth", "breakGlass"))
+		assert.Equal(t, true, dig(t, tenant, "wazuh", "dashboard", "sso", "oidc", "enabled"))
+	}
 }
 
 // TestSIEMThirdTenantAddsOnlyItsOwn: adding tenant 003 leaves every rendered
@@ -528,11 +552,16 @@ func TestSIEMSecretFiles(t *testing.T) {
 		"sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml",
 		"sealed-secrets/wazuh-001/wazuh-api-cred.yaml",
 		"sealed-secrets/wazuh-001/wazuh-authd-pass.yaml",
+		"sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml",
 		"sealed-secrets/wazuh-002/wazuh-indexer-cred.yaml",
 		"sealed-secrets/wazuh-002/wazuh-dashboard-cred.yaml",
 		"sealed-secrets/wazuh-002/wazuh-api-cred.yaml",
 		"sealed-secrets/wazuh-002/wazuh-authd-pass.yaml",
+		"sealed-secrets/wazuh-002/wazuh-manager-cluster-key.yaml",
 	}, paths)
+	for _, f := range files {
+		assert.Equal(t, strings.HasSuffix(f.RelativePath, "/wazuh-manager-cluster-key.yaml"), f.SealOnce, f.RelativePath)
+	}
 
 	wantKeys := map[string]map[string]any{
 		"wazuh-indexer-cred":   {"INDEXER_USERNAME": "admin", "INDEXER_PASSWORD": "indexer-002"},
@@ -540,7 +569,8 @@ func TestSIEMSecretFiles(t *testing.T) {
 		"wazuh-api-cred":       {"API_USERNAME": "wazuh-wui", "API_PASSWORD": "Aa1.api002"},
 		"wazuh-authd-pass":     {"authd.pass": "authd-002"},
 	}
-	for _, f := range files[6:] {
+	wantKeys[constants.SecretNameWazuhClusterKey] = map[string]any{"key": "key-002"}
+	for _, f := range files[7:] {
 		docs := renderDocs(t, "templates/"+f.TemplateName, f.Data)
 		require.Len(t, docs, 1)
 		secret := docs[0]
@@ -553,6 +583,15 @@ func TestSIEMSecretFiles(t *testing.T) {
 	central := renderDocs(t, "templates/"+files[0].TemplateName, files[0].Data)[0]
 	assert.Equal(t, "security-operations", dig(t, central, "metadata", "namespace"))
 	assert.Equal(t, "central-indexer", dig(t, central, "stringData", "INDEXER_PASSWORD"))
+
+	misp, err := mispRedisSecretFile(t.TempDir())
+	require.NoError(t, err)
+	require.NotNil(t, misp)
+	assert.True(t, misp.SealOnce)
+	redis := renderDocs(t, "templates/"+misp.TemplateName, misp.Data)[0]
+	assert.Equal(t, "misp-redis", dig(t, redis, "metadata", "name"))
+	assert.Equal(t, "security-operations", dig(t, redis, "metadata", "namespace"))
+	assert.Equal(t, misp.Data.Password, dig(t, redis, "stringData", "password"))
 }
 
 func TestSIEMTemplateNames(t *testing.T) {
@@ -606,7 +645,9 @@ func TestRenderSecurityOperations(t *testing.T) {
 	dir := t.TempDir()
 	written, err := RenderSecurityOperations(context.Background(), dir)
 	require.NoError(t, err)
-	require.Len(t, written, 3+2+2*4)
+	// 3 values/App files, 2 central logins, 5 Secrets per tenant (four logins
+	// and the cluster key), MISP's Valkey password.
+	require.Len(t, written, 3+2+2*5+1)
 
 	var onDisk []string
 	require.NoError(t, filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -667,10 +708,10 @@ func TestSIEMKeycloakHostAlias(t *testing.T) {
 	assert.NotContains(t, digMap(t, central, "dfir-iris"), "hostAliases")
 }
 
-// TestSIEMOptionalComponents covers the Velociraptor client route, the MISP
-// Valkey password and IRIS shared storage: rendered only when set.
+// TestSIEMOptionalComponents covers the Velociraptor client route and IRIS
+// shared storage (rendered only when set) and the MISP Valkey password, which
+// is always read from the misp-redis Secret.
 func TestSIEMOptionalComponents(t *testing.T) {
-	securityOperationsMISPRedisPassword = ""
 	withSIEMConfig(t, siemTenant(1, "Tenant A"))
 	tv := forkTV("")
 	tv.SecOps = buildSecurityOperationsValues()
@@ -678,13 +719,17 @@ func TestSIEMOptionalComponents(t *testing.T) {
 	central := renderDocs(t, siemValuesTmpl, tv)[0]
 	assert.NotContains(t, digMap(t, central, "velociraptor"), "frontendTcpRoute")
 	assert.NotContains(t, digMap(t, central, "dfir-iris"), "persistence")
-	assert.NotContains(t, digMap(t, central, "misp", "misp", "env"), "redisPassword")
+	assert.NotContains(t, digMap(t, central, "misp", "misp", "env"), "redisPassword",
+		"the Valkey password is never rendered into the values")
+	assert.Equal(t, map[string]any{"name": constants.SecretNameMISPRedis, "key": "password"},
+		dig(t, central, "misp", "misp", "env", "redisPasswordSecret"))
+	assert.Equal(t, constants.SecretNameMISPRedis, dig(t, central, "misp", "misp", "valkey", "auth", "usersExistingSecret"))
+	assert.Equal(t, "password", dig(t, central, "misp", "misp", "valkey", "auth", "aclUsers", "default", "passwordKey"))
+	assert.Equal(t, "", dig(t, central, "misp", "misp", "valkey", "auth", "aclUsers", "default", "password"))
 
 	soc := config.ParsedGeneralConfig.Cluster.SecurityOperations
 	soc.VelociraptorEntryPoint = "velociraptor"
 	soc.SharedStorageClass = "shared-fs"
-	securityOperationsMISPRedisPassword = "redis-secret"
-	t.Cleanup(func() { securityOperationsMISPRedisPassword = "" })
 	tv.SecOps = buildSecurityOperationsValues()
 	central = renderDocs(t, siemValuesTmpl, tv)[0]
 
@@ -693,8 +738,6 @@ func TestSIEMOptionalComponents(t *testing.T) {
 	assert.Len(t, digList(t, central, "velociraptor", "frontendAllowedFrom"), 1)
 	assert.Equal(t, map[string]any{"storageClass": "shared-fs", "accessModes": []any{"ReadWriteMany"}},
 		dig(t, central, "dfir-iris", "persistence"))
-	assert.Equal(t, "redis-secret", dig(t, central, "misp", "misp", "env", "redisPassword"))
-	assert.Equal(t, "redis-secret", dig(t, central, "misp", "misp", "valkey", "auth", "aclUsers", "default", "password"))
 }
 
 // The MISP Valkey password survives renders and replaces the chart default.

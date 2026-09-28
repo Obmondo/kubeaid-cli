@@ -94,8 +94,6 @@ spec:
                         - {{ $.SecOps.AnalystRole }}
                         - {{ .Group }}
             wazuh:
-              # Cluster key of the manager (no workers, never leaves the namespace).
-              key: "{{ .ClusterKey }}"
               master:
                 # Every alert of this manager goes to the tenant's IRIS customer.
                 extraConf: |

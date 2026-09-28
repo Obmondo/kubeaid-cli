@@ -156,11 +156,13 @@ wazuh:
           customizeLoginButton:
             enabled: true
             text: "Log in with SSO"
-      # Internal users (admin) keep the login form next to the SSO button;
-      # basic auth goes first without a challenge so service logins never
-      # touch OIDC.
+      # Login through Keycloak only; securityOperations.dashboardBreakGlass adds
+      # the username/password form (internal admin) next to the SSO button.
+      # Basic auth stays first on the indexer without a challenge, so service
+      # logins never touch OIDC.
       basicAuth:
         enabled: true
+        breakGlass: {{ .SecOps.DashboardBreakGlass }}
         order: 0
         challenge: false
       # The default cookie password is public.
@@ -368,10 +370,12 @@ misp:
       oidcDefaultOrg: "1"
       oidcLogoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout?client_id=misp
       oidcScopes: '["openid", "email", "profile"]'
-{{- with .SecOps.MISPRedisPassword }}
-      # Must equal valkey.auth.aclUsers.default.password below.
-      redisPassword: "{{ . }}"
-{{- end }}
+      # Valkey password from the Secret kubeaid-cli seals once
+      # (sealed-secrets/security-operations/misp-redis.yaml); valkey reads the
+      # same Secret below.
+      redisPasswordSecret:
+        name: misp-redis
+        key: password
     misp:
       ingress:
         enabled: true
@@ -381,13 +385,14 @@ misp:
           cert-manager.io/cluster-issuer: {{ .SecOps.ClusterIssuer }}
     tls:
       useTLS: true
-{{- with .SecOps.MISPRedisPassword }}
     valkey:
       auth:
+        usersExistingSecret: misp-redis
         aclUsers:
           default:
-            password: "{{ . }}"
-{{- end }}
+            passwordKey: password
+            # No inline password next to the Secret (the wrapper's default).
+            password: ""
   wazuhCdbExport:
     # Every 15 minutes MISP's indicators become three CDB lists on every tenant
     # manager, which registers them and re-points Wazuh's IoC rules 99901-99920

@@ -69,9 +69,11 @@ type SecurityOperationsValues struct {
 	VelociraptorEntryPoint string
 	// SharedStorageClass, when set, makes the IRIS volume ReadWriteMany.
 	SharedStorageClass string
-	// MISPRedisPassword is MISP's Valkey password (see credentialsFromClusterDir).
-	MISPRedisPassword string
-	ClusterIssuer     string
+	ClusterIssuer      string
+
+	// DashboardBreakGlass offers the username/password form next to SSO on
+	// every Wazuh dashboard (wazuh chart dashboard.basicAuth.breakGlass).
+	DashboardBreakGlass bool
 
 	ReconcilerEnabled          bool
 	ReconcilerImageRepository  string
@@ -122,7 +124,6 @@ type SecurityOperationsTenantValues struct {
 
 	IndexerPasswordHash   string
 	DashboardPasswordHash string
-	ClusterKey            string
 }
 
 // securityOperationsSecret is one Secret to seal: the template and the data
@@ -132,6 +133,11 @@ type securityOperationsSecret struct {
 	// RelativePath is sealed-secrets/<namespace>/<secret name>.yaml.
 	RelativePath string
 	Data         securityOperationsSecretData
+	// SealOnce marks a Secret whose value no rendered file depends on (the
+	// manager cluster key): kubeaid-cli siem render seals it when its file is
+	// missing and otherwise leaves it alone, without regenerating the rest of
+	// its namespace (credentialsFromClusterDir).
+	SealOnce bool
 }
 
 // securityOperationsSecretData is what one Wazuh credentials Secret renders from.
@@ -140,11 +146,6 @@ type securityOperationsSecretData struct {
 	Namespace string
 	Password  string
 }
-
-// securityOperationsMISPRedisPassword is MISP's Valkey password for the
-// current render, kept from the previous render of the cluster directory or
-// generated (RenderSecurityOperations). Empty: the chart default.
-var securityOperationsMISPRedisPassword string
 
 // buildSecurityOperationsValues derives the template values of
 // cluster.securityOperations. Nil when the SOC is not enabled.
@@ -195,8 +196,8 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 		IngressClassName:       cfg.IngressClassName,
 		VelociraptorEntryPoint: cfg.VelociraptorEntryPoint,
 		SharedStorageClass:     cfg.SharedStorageClass,
-		MISPRedisPassword:      securityOperationsMISPRedisPassword,
 		ClusterIssuer:          cfg.ClusterIssuer,
+		DashboardBreakGlass:    cfg.DashboardBreakGlass,
 
 		ReconcilerEnabled:          cfg.Reconciler.Enabled,
 		ReconcilerImageRepository:  cfg.Reconciler.ImageRepository,
@@ -248,7 +249,6 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 
 			IndexerPasswordHash:   tenantCreds.IndexerPasswordHash,
 			DashboardPasswordHash: tenantCreds.DashboardPasswordHash,
-			ClusterKey:            tenantCreds.ClusterKey,
 		})
 	}
 
@@ -270,7 +270,8 @@ func securityOperationsCredentials() *config.SecurityOperationsCredentials {
 
 // securityOperationsSecretFiles lists every Wazuh credentials Secret: the
 // central indexer and dashboard logins in the security-operations namespace,
-// and all four logins of each tenant in wazuh-<code>.
+// and all four logins of each tenant in wazuh-<code>, plus its manager
+// cluster key (SealOnce).
 func securityOperationsSecretFiles() []securityOperationsSecret {
 	if !config.SecurityOperationsEnabled() {
 		return nil
@@ -310,25 +311,39 @@ func securityOperationsSecretFiles() []securityOperationsSecret {
 			secret(constants.TemplateNameWazuhAuthdPass,
 				constants.SecretNameWazuhAuthdPass, ns, c.AuthdPassword),
 		)
+		clusterKey := secret(constants.TemplateNameWazuhClusterKey,
+			constants.SecretNameWazuhClusterKey, ns, c.ClusterKey)
+		clusterKey.SealOnce = true
+		files = append(files, clusterKey)
 	}
 
 	return files
 }
 
 // createOrUpdateSecurityOperationsSealedSecretFiles seals every Wazuh
-// credentials Secret into clusterDir, through SealIfPlaintextChanged so an
-// unchanged Secret keeps its ciphertext. Returns the written paths, relative
-// to clusterDir.
+// credentials Secret and MISP's Valkey password into clusterDir, through
+// SealIfPlaintextChanged so an unchanged Secret keeps its ciphertext. Returns
+// the written paths, relative to clusterDir.
 //
-// Secrets in a namespace listed in keep are left untouched (see
-// credentialsFromClusterDir).
+// Files listed in keep (paths relative to clusterDir) are left untouched (see
+// credentialsFromClusterDir). The Valkey password is sealed only while its
+// file is missing (mispRedisSecretFile).
 func createOrUpdateSecurityOperationsSealedSecretFiles(ctx context.Context, clusterDir string,
 	keep map[string]bool,
 ) ([]string, error) {
 	var written []string
 
-	for _, secret := range securityOperationsSecretFiles() {
-		if keep[secret.Data.Namespace] {
+	files := securityOperationsSecretFiles()
+	misp, err := mispRedisSecretFile(clusterDir)
+	if err != nil {
+		return written, err
+	}
+	if misp != nil {
+		files = append(files, *misp)
+	}
+
+	for _, secret := range files {
+		if keep[secret.RelativePath] {
 			continue
 		}
 		destinationFilePath := path.Join(clusterDir, secret.RelativePath)
@@ -402,10 +417,6 @@ func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string,
 		return nil, fmt.Errorf("reading the credential state in %s: %w", clusterDir, err)
 	}
 	config.ParsedSecretsConfig.SecurityOperations = creds
-
-	if securityOperationsMISPRedisPassword, err = mispRedisPasswordFromClusterDir(clusterDir); err != nil {
-		return nil, err
-	}
 
 	templateValues := &TemplateValues{
 		ForksConfig: config.ParsedGeneralConfig.Forks,

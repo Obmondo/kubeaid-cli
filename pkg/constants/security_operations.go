@@ -52,3 +52,15 @@ const (
 	TemplateNameWazuhAPICred       = "sealed-secrets/security-operations/wazuh-api-cred.yaml.tmpl"
 	TemplateNameWazuhAuthdPass     = "sealed-secrets/security-operations/wazuh-authd-pass.yaml.tmpl"
 )
+
+// Secrets sealed once and then left as they are while their sealed file exists
+// (core.createOrUpdateSecurityOperationsSealedSecretFiles): the manager cluster
+// key of each tenant (wazuh chart wazuh.clusterKeySecret) and MISP's Valkey
+// password (misp chart env.redisPasswordSecret, valkey usersExistingSecret).
+const (
+	SecretNameWazuhClusterKey = "wazuh-manager-cluster-key"
+	SecretNameMISPRedis       = "misp-redis"
+
+	TemplateNameWazuhClusterKey = "sealed-secrets/security-operations/wazuh-manager-cluster-key.yaml.tmpl"
+	TemplateNameMISPRedis       = "sealed-secrets/security-operations/misp-redis.yaml.tmpl"
+)

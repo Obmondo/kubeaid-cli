@@ -89,8 +89,11 @@ wazuh:
         customizeLoginButton:
           enabled: true
           text: "Log in with SSO"
+    # Login through Keycloak only; securityOperations.dashboardBreakGlass adds
+    # the username/password form (internal admin) next to the SSO button.
     basicAuth:
       enabled: true
+      breakGlass: {{ .SecOps.DashboardBreakGlass }}
       order: 0
       challenge: false
     # The default cookie password is public.
@@ -321,6 +324,10 @@ wazuh:
       existingSecret: wazuh-api-cred
     authd:
       existingSecret: wazuh-authd-pass
+    # Cluster key from the sealed Secret kubeaid-cli writes per tenant, so it is
+    # neither in the Application nor in the manager ConfigMap.
+    clusterKeySecret:
+      name: wazuh-manager-cluster-key
     # Master only: one manager takes a few thousand agents.
     worker:
       enabled: false

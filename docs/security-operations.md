@@ -36,6 +36,7 @@ cluster:
       imageTag: ""                 # default: the chart's
       imagePullSecrets: []         # Secret names for a private registry, sealed by you
       dryRun: true                 # default true
+    dashboardBreakGlass: false     # default false: Wazuh dashboards log in through Keycloak only
     tenants:
       - code: "001"                # ^[a-z0-9]{1,32}$, unique
         name: Tenant A             # unique; IRIS customer, Velociraptor org
@@ -78,7 +79,7 @@ securityOperations:
       dashboardPasswordHash: ...
       apiPassword: Aa1.<28 random alphanumerics>   # meets the Wazuh API password policy
       authdPassword: ...
-      clusterKey: ...                               # wazuh.key of the tenant's manager
+      clusterKey: ...                               # manager cluster key, sealed as wazuh-manager-cluster-key
 ```
 
 A hash is regenerated only when it is empty or no longer matches its password, so renders
@@ -101,7 +102,9 @@ sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
 sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml
 sealed-secrets/wazuh-001/wazuh-api-cred.yaml
 sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
-sealed-secrets/wazuh-002/...                     # the same four
+sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml   # sealed once, see below
+sealed-secrets/wazuh-002/...                     # the same five
+sealed-secrets/security-operations/misp-redis.yaml        # sealed once, see below
 ```
 
 Each `wazuh-<code>` Application reads `values-wazuh-tenant.yaml` and carries the tenant's own
@@ -110,6 +113,19 @@ part inline (`helm.valuesObject`): certificate organization `tenant-<code>`, IRI
 dashboard role mappings (`administrator` -> all_access, `analyst` and `tenant-<code>` ->
 readall + kibana_user). Adding a tenant adds one Application and one entry in the central
 values; nothing of the existing tenants changes.
+
+No secret value is rendered in plaintext: the Applications and values files hold only
+bcrypt hashes and Secret names. The tenant releases read the manager cluster key from
+`wazuh-manager-cluster-key` (wazuh chart `wazuh.clusterKeySecret`), and MISP and its Valkey
+read their password from `misp-redis` (misp chart `env.redisPasswordSecret`, valkey
+`usersExistingSecret`). Both are sealed only while their sealed file is missing and are
+never rotated by a render; delete the file to get a new value (then restart the managers,
+or MISP, misp-modules and Valkey).
+
+The Wazuh dashboards (central and tenants) offer only the Keycloak login;
+`dashboardBreakGlass: true` adds the username/password form for the internal `admin`
+(password in `wazuh-indexer-cred`). The indexers keep only `admin` and `kibanaserver` as
+internal users (wazuh chart README, section 8a).
 
 `cluster bootstrap` renders these files with the rest of the cluster's files and syncs
 `security-operations` as an ordered step (after keycloakx and netbird), so the tenant
@@ -143,6 +159,19 @@ cluster (`kubectl get secret`) if it is ever needed.
   Without it the certificate is fetched from the controller (`sealed-secrets` namespace)
   through the cluster `$KUBECONFIG` points at, which needs read access to the service proxy.
   A sealed file keeps its ciphertext while its plaintext and the certificate are unchanged.
+
+### Moving a cluster to sealed cluster keys and Valkey password
+
+A cluster directory rendered before these two Secrets existed has the cluster keys in the
+`wazuh-<code>` Applications (`wazuh.wazuh.key`) and the Valkey password in the central
+values (`misp.misp.env.redisPassword`). The next `siem render` seals exactly those values
+into the new Secrets and drops them from the rendered files; no other sealed file changes
+and nothing is rotated. The charts must be a KubeAid revision that knows
+`wazuh.clusterKeySecret` and the misp `env.redisPasswordSecret` (`chartRevision`), or MISP
+cannot reach Valkey. The values stay in the git history: rotate them if that matters (delete
+the sealed files, render, restart as above). Order on the cluster: sync `secrets` first (the
+Secrets must exist), then `security-operations` and the `wazuh-<code>` Applications. The
+securityadmin hook Job removes the OpenSearch demo users on that sync.
 
 ### How the sealed Secrets reach the cluster
 

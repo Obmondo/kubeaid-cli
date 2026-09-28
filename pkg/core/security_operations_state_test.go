@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,9 +57,11 @@ func TestRenderSecurityOperationsKeepsStateInTheClusterDir(t *testing.T) {
 	_, err := RenderSecurityOperations(ctx, dir)
 	require.NoError(t, err)
 	sealed1, central1, tenants1 := renderedState(t, dir)
-	require.Len(t, sealed1, 2+2*4)
+	require.Len(t, sealed1, 2+2*5+1)
 	assert.NotEmpty(t, central1.IndexerPasswordHash)
-	assert.NotEmpty(t, tenants1["001"].ClusterKey)
+	assert.Empty(t, tenants1["001"].ClusterKey, "the cluster key is only in its sealed Secret")
+	assert.Contains(t, sealed1, "sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml")
+	assert.Contains(t, sealed1, "sealed-secrets/security-operations/misp-redis.yaml")
 	assert.NotEqual(t, tenants1["001"].IndexerPasswordHash, tenants1["002"].IndexerPasswordHash)
 
 	// Second run: nothing changes.
@@ -96,4 +99,81 @@ func TestRenderSecurityOperationsKeepsStateInTheClusterDir(t *testing.T) {
 	assert.Contains(t, sealed4, "sealed-secrets/wazuh-002/wazuh-api-cred.yaml")
 	assert.Equal(t, sealed3["sealed-secrets/wazuh-001/wazuh-api-cred.yaml"],
 		sealed4["sealed-secrets/wazuh-001/wazuh-api-cred.yaml"])
+}
+
+// TestRenderSecurityOperationsMovesPlaintextSecrets: a cluster directory
+// rendered before the cluster key and the MISP Valkey password moved into
+// sealed Secrets carries both in plaintext. The next render seals them with
+// the same values (no rotation), leaves every other sealed file alone and
+// drops them from the rendered files.
+func TestRenderSecurityOperationsMovesPlaintextSecrets(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	config.ParsedSecretsConfig = &config.SecretsConfig{}
+
+	orig := kubernetes.SealingCertSource
+	kubernetes.SealingCertSource = writeTestSealingCert(t)
+	t.Cleanup(func() { kubernetes.SealingCertSource = orig })
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	_, err := RenderSecurityOperations(ctx, dir)
+	require.NoError(t, err)
+	before, _, _ := renderedState(t, dir)
+
+	// Turn the directory into what an older render left: no cluster key or
+	// Valkey Secret, both values in plaintext.
+	const oldKey, oldRedis = "0123456789abcdefABCDEF0123456789", "old-valkey-password"
+	for _, f := range []string{
+		"sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml",
+		"sealed-secrets/security-operations/misp-redis.yaml",
+	} {
+		require.NoError(t, os.Remove(filepath.Join(dir, f)))
+	}
+	appsPath := filepath.Join(dir, securityOperationsAppsFile)
+	apps, err := os.ReadFile(appsPath)
+	require.NoError(t, err)
+	patched := strings.Replace(string(apps), "            wazuh:\n              master:",
+		"            wazuh:\n              key: \""+oldKey+"\"\n              master:", 1)
+	require.NotEqual(t, string(apps), patched)
+	require.NoError(t, os.WriteFile(appsPath, []byte(patched), 0o600)) //nolint:gosec // G703: the test's own temp dir.
+	valuesPath := filepath.Join(dir, securityOperationsCentralValuesFile)
+	values, err := os.ReadFile(valuesPath)
+	require.NoError(t, err)
+	patched = strings.Replace(string(values), "      redisPasswordSecret:\n",
+		"      redisPassword: \""+oldRedis+"\"\n      redisPasswordSecret:\n", 1)
+	require.NotEqual(t, string(values), patched)
+	require.NoError(t, os.WriteFile(valuesPath, []byte(patched), 0o600)) //nolint:gosec // G703: the test's own temp dir.
+
+	creds, keep, err := credentialsFromClusterDir(dir)
+	require.NoError(t, err)
+	assert.Equal(t, oldKey, creds.Tenants["001"].ClusterKey, "the running key is sealed, not a new one")
+	assert.False(t, keep["sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml"])
+	assert.True(t, keep["sealed-secrets/wazuh-001/wazuh-api-cred.yaml"])
+	misp, err := mispRedisSecretFile(dir)
+	require.NoError(t, err)
+	require.NotNil(t, misp)
+	assert.Equal(t, oldRedis, misp.Data.Password)
+
+	_, err = RenderSecurityOperations(ctx, dir)
+	require.NoError(t, err)
+	after, _, tenants := renderedState(t, dir)
+	for path, content := range before {
+		if strings.HasSuffix(path, "wazuh-manager-cluster-key.yaml") || strings.HasSuffix(path, "misp-redis.yaml") {
+			assert.Contains(t, after, path)
+			continue
+		}
+		assert.Equal(t, content, after[path], "%s unchanged", path)
+	}
+	assert.Empty(t, tenants["001"].ClusterKey, "the key is gone from the Application")
+	rendered, err := os.ReadFile(valuesPath)
+	require.NoError(t, err)
+	assert.NotContains(t, string(rendered), oldRedis)
+
+	// Sealed once: a later render finds the files and needs neither value.
+	misp, err = mispRedisSecretFile(dir)
+	require.NoError(t, err)
+	assert.Nil(t, misp)
+	_, keep, err = credentialsFromClusterDir(dir)
+	require.NoError(t, err)
+	assert.True(t, keep["sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml"])
 }

@@ -347,6 +347,12 @@ type (
 		// The reconciler creates its IRIS account (svc_ai) and key either way.
 		AITriage SecurityOperationsAITriageConfig `yaml:"aiTriage"`
 
+		// DashboardBreakGlass offers the username/password form next to the
+		// SSO button on the central and every tenant Wazuh dashboard, for the
+		// internal admin user. Default false: the dashboards log in through
+		// Keycloak only.
+		DashboardBreakGlass bool `yaml:"dashboardBreakGlass"`
+
 		// Tenants, one entry each. Adding one and rendering again onboards it.
 		Tenants []SecurityOperationsTenant `yaml:"tenants"`
 	}
