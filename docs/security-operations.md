@@ -36,6 +36,10 @@ cluster:
       imageTag: ""                 # default: the chart's
       imagePullSecrets: []         # Secret names for a private registry, sealed by you
       dryRun: true                 # default true
+    content:                       # detection content as code (KubeAid kubesoc-content)
+      enabled: false               # default false
+      canary: "001"                # tenant rolled out first; default the first tenant
+      extraLists: []               # more etc/lists/<name> to register in every tenant
     tenants:
       - code: "001"                # ^[a-z0-9]{1,32}$, unique
         name: Tenant A             # unique; IRIS customer, Velociraptor org
@@ -56,6 +60,23 @@ Agent ports: for an all-digit code, registration is `agentPortBase + code*10 + 5
 `wazuh-agents` with `externalIPs: [agentAddress]` on its own port pair, forwarding to 1515 and
 1514 on its manager; agents dial `agentHost` on those ports. All ports must be unique and at
 most 65535.
+
+### Detection content
+
+With `content.enabled`, the rules, decoders, CDB lists and agent group configs of the KubeAid
+`kubesoc-content` chart (its README is the authoring guide) are what the tenants run, and the
+`siem-reconciler` uploads them to every manager over the API: canary tenant first, validated,
+hot-reloaded, rolled back on failure. kubeaid-cli then:
+
+- stops rendering `wazuh.localRules` and the hand-copied `<ruleset>` block in each tenant's
+  `master.extraConf`, and instead registers the MISP lists (plus `content.extraLists`) and
+  excludes the stock IoC file through `wazuh.ruleset.extraLists` / `extraRuleExcludes`;
+- turns the Velociraptor `customArtifacts` mount off, since the reconciler sets the artifacts
+  with `artifact_set` (no server restart);
+- adds `kubesoc-content.enabled` (and `canary`) to the central values.
+
+Off, everything renders exactly as before. Registering a new list restarts the managers (it is
+an `ossec.conf` change); the rules themselves never need a restart.
 
 ## secrets.yaml
 

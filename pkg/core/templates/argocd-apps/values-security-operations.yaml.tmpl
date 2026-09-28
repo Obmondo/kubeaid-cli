@@ -231,6 +231,12 @@ velociraptor:
         {{- end }}
       {{- end }}
 {{- end }}
+{{- if .SecOps.ContentEnabled }}
+    # The reconciler sets the artifacts (kubesoc-content); artifacts loaded from
+    # this mount would be built in and could not be replaced.
+    customArtifacts:
+      enabled: false
+{{- end }}
     gui:
       publicUrl: https://{{ .SecOps.VelociraptorHost }}/app/index.html
       ingress:
@@ -401,4 +407,15 @@ misp:
         credentialsSecret: wazuh-api-cred-{{ .Code }}
         verifyTls: false
 {{- else }} []
+{{- end }}
+{{- if .SecOps.ContentEnabled }}
+
+# Detection content as code (KubeAid kubesoc-content): the reconciler rolls the
+# package out to every tenant manager, the canary first, and sets the
+# Velociraptor artifacts.
+kubesoc-content:
+  enabled: true
+  {{- with .SecOps.ContentCanary }}
+  canary: "{{ . }}"
+  {{- end }}
 {{- end }}

@@ -347,6 +347,10 @@ type (
 		// The reconciler creates its IRIS account (svc_ai) and key either way.
 		AITriage SecurityOperationsAITriageConfig `yaml:"aiTriage"`
 
+		// Content switches detection content as code (the KubeAid
+		// kubesoc-content chart, rolled out by the reconciler).
+		Content SecurityOperationsContentConfig `yaml:"content"`
+
 		// Tenants, one entry each. Adding one and rendering again onboards it.
 		Tenants []SecurityOperationsTenant `yaml:"tenants"`
 	}
@@ -402,6 +406,25 @@ type (
 		// Set it until the model is on the volume, then set it back to false:
 		// with it off, nothing the model receives can leave the cluster.
 		DownloadModel bool `yaml:"downloadModel"`
+	}
+
+	// SecurityOperationsContentConfig drives the kubesoc-content package. When
+	// enabled, the tenant Wazuh rules come from the package (the reconciler
+	// uploads them) instead of wazuh.localRules, the tenants' <ruleset> is
+	// extended through wazuh.ruleset rather than a second block in extraConf,
+	// and the reconciler sets the Velociraptor artifacts (customArtifacts off).
+	// Needs a KubeAid chartRevision that has the kubesoc-content chart.
+	SecurityOperationsContentConfig struct {
+		Enabled bool `yaml:"enabled"`
+
+		// Canary is the tenant code whose manager gets new content first; the
+		// others follow only when it succeeds. Empty: the first tenant.
+		Canary string `yaml:"canary"`
+
+		// ExtraLists are more CDB lists (etc/lists/<name>) to register in every
+		// tenant's <ruleset>, for static lists the package ships. The MISP-fed
+		// lists are always registered. Registering a list restarts the managers.
+		ExtraLists []string `yaml:"extraLists"`
 	}
 
 	// SecurityOperationsTenant is one tenant of the SOC.

@@ -127,6 +127,26 @@ func TestValidateSecurityOperationsConfig(t *testing.T) {
 	}{
 		{name: "valid", mutate: func(*config.SecurityOperationsConfig) {}},
 		{
+			name: "content canary must be a tenant",
+			mutate: func(cfg *config.SecurityOperationsConfig) {
+				cfg.Content = config.SecurityOperationsContentConfig{Enabled: true, Canary: "009"}
+			},
+			wantErr: `content.canary "009"`,
+		},
+		{
+			name: "content extra list must be a flat etc/lists path",
+			mutate: func(cfg *config.SecurityOperationsConfig) {
+				cfg.Content = config.SecurityOperationsContentConfig{Enabled: true, ExtraLists: []string{"etc/lists/a/b"}}
+			},
+			wantErr: "content.extraLists",
+		},
+		{
+			name: "content valid",
+			mutate: func(cfg *config.SecurityOperationsConfig) {
+				cfg.Content = config.SecurityOperationsContentConfig{Enabled: true, Canary: "002", ExtraLists: []string{"etc/lists/kubesoc-x"}}
+			},
+		},
+		{
 			name:   "disabled block is not checked",
 			mutate: func(cfg *config.SecurityOperationsConfig) { cfg.Enabled = false; cfg.Domain = "" },
 		},

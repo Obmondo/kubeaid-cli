@@ -194,6 +194,30 @@ cluster:
       imagePullSecrets:
       # DryRun prints the plan only. Default true; nil means true.
       dryRun:
+    # AITriage switches IRIS alert triage by the in-cluster Ollama model.
+    # The reconciler creates its IRIS account (svc_ai) and key either way.
+    aiTriage:
+      enabled:
+      # DryRun logs each answer without writing it to IRIS. Default true;
+      # nil means true.
+      dryRun:
+      # Model is the Ollama model name. Empty: the chart's (llama3.1:8b).
+      model:
+      # DownloadModel opens Ollama's HTTPS egress and pulls Model at start.
+      # Set it until the model is on the volume, then set it back to false:
+      # with it off, nothing the model receives can leave the cluster.
+      downloadModel:
+    # Content switches detection content as code (the KubeAid
+    # kubesoc-content chart, rolled out by the reconciler).
+    content:
+      enabled:
+      # Canary is the tenant code whose manager gets new content first; the
+      # others follow only when it succeeds. Empty: the first tenant.
+      canary:
+      # ExtraLists are more CDB lists (etc/lists/<name>) to register in every
+      # tenant's <ruleset>, for static lists the package ships. The MISP-fed
+      # lists are always registered. Registering a list restarts the managers.
+      extraLists:
     # Tenants, one entry each. Adding one and rendering again onboards it.
     tenants:
   # NetBird declares the NetBird Management instance this VPN

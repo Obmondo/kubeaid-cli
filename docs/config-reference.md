@@ -67,8 +67,10 @@
 - [SSHKeyPairConfig](#sshkeypairconfig)
 - [SecretsConfig](#secretsconfig)
 - [SecurityConfig](#securityconfig)
+- [SecurityOperationsAITriageConfig](#securityoperationsaitriageconfig)
 - [SecurityOperationsAgentPorts](#securityoperationsagentports)
 - [SecurityOperationsConfig](#securityoperationsconfig)
+- [SecurityOperationsContentConfig](#securityoperationscontentconfig)
 - [SecurityOperationsCredentials](#securityoperationscredentials)
 - [SecurityOperationsKeycloakConfig](#securityoperationskeycloakconfig)
 - [SecurityOperationsReconcilerConfig](#securityoperationsreconcilerconfig)
@@ -841,6 +843,17 @@ until its config opts in.</p>
 | vulnerabilityScanning | `bool` |  | VulnerabilityScanning deploys trivy-operator together with<br>version-checker. They are one switch because the chart's<br>ImageOutdatedAndVulnerable alert joins both metrics —<br>trivy-operator alone yields an alert that cannot fire.<br> |
 | runtimeDetection | `bool` |  | RuntimeDetection deploys tetragon. Observability-only until<br>TracingPolicy resources are applied. Needs a BTF-enabled<br>kernel (>= 5.4) on every node.<br> |
 
+## SecurityOperationsAITriageConfig
+
+<p>SecurityOperationsAITriageConfig drives dfir-iris aiTriage and Ollama.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| dryRun | `bool` |  | DryRun logs each answer without writing it to IRIS. Default true;<br>nil means true.<br> |
+| model | `string` |  | Model is the Ollama model name. Empty: the chart's (llama3.1:8b).<br> |
+| downloadModel | `bool` |  | DownloadModel opens Ollama's HTTPS egress and pulls Model at start.<br>Set it until the model is on the volume, then set it back to false:<br>with it off, nothing the model receives can leave the cluster.<br> |
+
 ## SecurityOperationsAgentPorts
 
 <p>SecurityOperationsAgentPorts is a tenant's public agent port pair.</p>
@@ -874,7 +887,24 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | velociraptorEntryPoint | `string` |  | VelociraptorEntryPoint is the Traefik TCP entry point (with a public<br>hostPort, 8000 by convention) that forwards Velociraptor client<br>traffic to the frontend by SNI. Empty: no client route.<br> |
 | sharedStorageClass | `string` |  | SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for<br>the IRIS data volume, so the IRIS app and worker may run on different<br>nodes. Empty: a ReadWriteOnce volume on the default class, with the<br>worker kept on the app's node.<br> |
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
+| aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
+| content | [`SecurityOperationsContentConfig`](#securityoperationscontentconfig) |  | Content switches detection content as code (the KubeAid<br>kubesoc-content chart, rolled out by the reconciler).<br> |
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
+
+## SecurityOperationsContentConfig
+
+<p>SecurityOperationsContentConfig drives the kubesoc-content package. When
+enabled, the tenant Wazuh rules come from the package (the reconciler
+uploads them) instead of wazuh.localRules, the tenants' <ruleset> is
+extended through wazuh.ruleset rather than a second block in extraConf,
+and the reconciler sets the Velociraptor artifacts (customArtifacts off).
+Needs a KubeAid chartRevision that has the kubesoc-content chart.</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| enabled | `bool` |  |  |
+| canary | `string` |  | Canary is the tenant code whose manager gets new content first; the<br>others follow only when it succeeds. Empty: the first tenant.<br> |
+| extraLists | []`string` |  | ExtraLists are more CDB lists (etc/lists/<name>) to register in every<br>tenant's <ruleset>, for static lists the package ships. The MISP-fed<br>lists are always registered. Registering a list restarts the managers.<br> |
 
 ## SecurityOperationsCredentials
 

@@ -117,6 +117,19 @@ wazuh:
                 matchLabels:
                   kubernetes.io/metadata.name: traefik
   wazuh:
+{{- if .SecOps.ContentEnabled }}
+    # Detection content: the rules (the IoC pack 99901-99920 included) come from
+    # the KubeAid kubesoc-content package, uploaded by the siem-reconciler. The
+    # MISP-fed lists (and the package's static ones) are registered in the stock
+    # <ruleset>, and the stock IoC file is excluded so those ids are defined once.
+    ruleset:
+      extraLists:
+{{- range .SecOps.ContentLists }}
+        - {{ . }}
+{{- end }}
+      extraRuleExcludes:
+        - 0999-malicious-ioc-rules.xml
+{{- else }}
     # MISP indicators: Wazuh 4.14's own IoC rule pack
     # (ruleset/rules/0999-malicious-ioc-rules.xml, rules 99901-99920) re-pointed at
     # the flat lists the MISP export writes; the stock file is excluded in the
@@ -316,7 +329,7 @@ wazuh:
           </rule>
 
         </group>
-
+{{- end }}
     apiCred:
       existingSecret: wazuh-api-cred
     authd:
