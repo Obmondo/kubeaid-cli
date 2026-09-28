@@ -85,21 +85,15 @@ func (c *Client) authenticate(ctx context.Context) error {
 
 // call sends a request and decodes response.data into out.
 func (c *Client) call(ctx context.Context, method, path string, in, out any) error {
-	c.mu.Lock()
-	haveToken := c.token != ""
-	c.mu.Unlock()
-	if !haveToken {
-		if err := c.authenticate(ctx); err != nil {
-			return err
+	var body []byte
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return fmt.Errorf("encoding wazuh request: %w", err)
 		}
+		body = b
 	}
-	code, raw, err := c.send(ctx, method, path, in)
-	if err == nil && code == http.StatusUnauthorized {
-		if err := c.authenticate(ctx); err != nil {
-			return err
-		}
-		code, raw, err = c.send(ctx, method, path, in)
-	}
+	code, _, raw, err := c.do(ctx, method, path, "application/json", body)
 	if err != nil {
 		return err
 	}
@@ -124,33 +118,51 @@ func (c *Client) call(ctx context.Context, method, path string, in, out any) err
 	return nil
 }
 
-func (c *Client) send(ctx context.Context, method, path string, in any) (int, []byte, error) {
-	var body io.Reader
-	if in != nil {
-		b, err := json.Marshal(in)
-		if err != nil {
-			return 0, nil, fmt.Errorf("encoding wazuh request: %w", err)
+// do sends a request with a raw body of the given content type,
+// logging in first and once more on 401, and returns the status, the
+// response content type and body.
+func (c *Client) do(ctx context.Context, method, path, contentType string, body []byte) (int, string, []byte, error) {
+	c.mu.Lock()
+	haveToken := c.token != ""
+	c.mu.Unlock()
+	if !haveToken {
+		if err := c.authenticate(ctx); err != nil {
+			return 0, "", nil, err
 		}
-		body = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, body)
+	code, ctype, raw, err := c.send(ctx, method, path, contentType, body)
+	if err == nil && code == http.StatusUnauthorized {
+		if err := c.authenticate(ctx); err != nil {
+			return 0, "", nil, err
+		}
+		code, ctype, raw, err = c.send(ctx, method, path, contentType, body)
+	}
+	return code, ctype, raw, err
+}
+
+func (c *Client) send(ctx context.Context, method, path, contentType string, body []byte) (int, string, []byte, error) {
+	var rd io.Reader
+	if body != nil {
+		rd = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, rd)
 	if err != nil {
-		return 0, nil, fmt.Errorf("building wazuh request: %w", err)
+		return 0, "", nil, fmt.Errorf("building wazuh request: %w", err)
 	}
 	c.mu.Lock()
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	c.mu.Unlock()
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("wazuh %s %s: %w", method, path, err)
+		return 0, "", nil, fmt.Errorf("wazuh %s %s: %w", method, path, err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, nil, fmt.Errorf("reading wazuh %s: %w", path, err)
+		return 0, "", nil, fmt.Errorf("reading wazuh %s: %w", path, err)
 	}
-	return resp.StatusCode, raw, nil
+	return resp.StatusCode, resp.Header.Get("Content-Type"), raw, nil
 }
 
 // items GETs a list endpoint and decodes its affected_items.
