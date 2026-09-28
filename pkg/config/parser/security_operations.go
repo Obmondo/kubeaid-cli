@@ -71,17 +71,69 @@ func hydrateSecurityOperationsDefaults() {
 		dryRun := true
 		cfg.Reconciler.DryRun = &dryRun
 	}
+	if cfg.Profile == "" {
+		cfg.Profile = constants.SecurityOperationsProfileStandard
+	}
+	if cfg.TopologyKey == "" {
+		cfg.TopologyKey = constants.SecurityOperationsDefaultTopologyKey
+	}
+	hydrateSecurityOperationsBackupDefaults(cfg)
+
+	// Indexer nodes a tenant that named none gets. Only the ha profile
+	// departs from the single node every release has had.
+	defaultIndexerReplicas := 1
+	if cfg.Profile == constants.SecurityOperationsProfileHA {
+		defaultIndexerReplicas = constants.SecurityOperationsHAIndexerNodes
+	}
 
 	for i := range cfg.Tenants {
 		tenant := &cfg.Tenants[i]
 		if tenant.IndexerReplicas == 0 {
-			tenant.IndexerReplicas = 1
+			tenant.IndexerReplicas = defaultIndexerReplicas
 		}
 		if tenant.AgentPorts == nil {
 			if ports, ok := derivedAgentPorts(cfg.AgentPortBase, tenant.Code); ok {
 				tenant.AgentPorts = ports
 			}
 		}
+	}
+}
+
+// hydrateSecurityOperationsBackupDefaults fills the object store placeholders.
+// They are only read once backup.enabled is set, so a cluster that does not
+// back anything up carries them without effect.
+func hydrateSecurityOperationsBackupDefaults(cfg *config.SecurityOperationsConfig) {
+	backup := &cfg.Backup
+
+	if backup.Region == "" {
+		backup.Region = constants.SecurityOperationsBackupDefaultRegion
+	}
+	if backup.BasePath == "" {
+		backup.BasePath = constants.SecurityOperationsBackupDefaultBasePath
+	}
+	if backup.CredentialsSecret == "" {
+		backup.CredentialsSecret = constants.SecurityOperationsBackupDefaultCredentialsSecret
+	}
+	if backup.VeleroNamespace == "" {
+		backup.VeleroNamespace = constants.SecurityOperationsBackupDefaultVeleroNamespace
+	}
+	if backup.SnapshotRepositoryType == "" {
+		backup.SnapshotRepositoryType = constants.SecurityOperationsSnapshotRepositoryFS
+	}
+	if backup.SnapshotVolumeSize == "" {
+		backup.SnapshotVolumeSize = constants.SecurityOperationsBackupDefaultSnapshotSize
+	}
+	if backup.RetentionDays == 0 {
+		backup.RetentionDays = constants.SecurityOperationsBackupDefaultRetentionDays
+	}
+	if backup.PathStyleAccess == nil {
+		pathStyle := true
+		backup.PathStyleAccess = &pathStyle
+	}
+	if backup.SnapshotStorageClass == "" {
+		// The snapshot repository is one volume every indexer node mounts, so
+		// it needs the same ReadWriteMany class the IRIS volume does.
+		backup.SnapshotStorageClass = cfg.SharedStorageClass
 	}
 }
 
@@ -127,8 +179,30 @@ func validateSecurityOperationsConfig() error {
 		return fmt.Errorf("keycloak.url must be an http(s) URL (got %q)", cfg.Keycloak.URL)
 	}
 
+	if cfg.Keycloak.InternalURL != "" {
+		if u, err := url.Parse(cfg.Keycloak.InternalURL); err != nil ||
+			(u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return fmt.Errorf("keycloak.internalURL must be an http(s) URL (got %q)", cfg.Keycloak.InternalURL)
+		}
+	}
+
 	if cfg.Keycloak.HostAliasIP != "" && net.ParseIP(cfg.Keycloak.HostAliasIP) == nil {
 		return fmt.Errorf("keycloak.hostAliasIP must be an IP address (got %q)", cfg.Keycloak.HostAliasIP)
+	}
+
+	switch cfg.Profile {
+	case constants.SecurityOperationsProfileSingle,
+		constants.SecurityOperationsProfileStandard,
+		constants.SecurityOperationsProfileHA:
+	default:
+		return fmt.Errorf("profile must be %s, %s or %s (got %q)",
+			constants.SecurityOperationsProfileSingle,
+			constants.SecurityOperationsProfileStandard,
+			constants.SecurityOperationsProfileHA, cfg.Profile)
+	}
+
+	if err := validateSecurityOperationsBackup(cfg); err != nil {
+		return err
 	}
 
 	if !securityOperationsHostnamePattern.MatchString(cfg.AgentHost) {
@@ -142,6 +216,46 @@ func validateSecurityOperationsConfig() error {
 	}
 
 	return validateSecurityOperationsTenants(cfg.Tenants)
+}
+
+// validateSecurityOperationsBackup checks the backup block once it is on: a
+// bucket nobody named, or a snapshot repository nothing can reach, would only
+// show up when the first backup failed.
+func validateSecurityOperationsBackup(cfg *config.SecurityOperationsConfig) error {
+	backup := cfg.Backup
+	if !backup.Enabled {
+		return nil
+	}
+
+	if backup.Bucket == "" {
+		return errors.New("backup.bucket is required when backup.enabled")
+	}
+	if backup.Endpoint != "" {
+		if u, err := url.Parse(backup.Endpoint); err != nil ||
+			(u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			return fmt.Errorf("backup.endpoint must be an http(s) URL (got %q)", backup.Endpoint)
+		}
+	}
+	if backup.RetentionDays < 1 {
+		return fmt.Errorf("backup.retentionDays must be at least 1 (got %d)", backup.RetentionDays)
+	}
+
+	switch backup.SnapshotRepositoryType {
+	case constants.SecurityOperationsSnapshotRepositoryFS:
+		if backup.SnapshotStorageClass == "" {
+			return errors.New(
+				"backup.snapshotStorageClass is required with snapshotRepositoryType fs" +
+					" - every indexer node mounts one volume, so it must be ReadWriteMany" +
+					" (or set sharedStorageClass, or use snapshotRepositoryType s3)")
+		}
+	case constants.SecurityOperationsSnapshotRepositoryS3:
+	default:
+		return fmt.Errorf("backup.snapshotRepositoryType must be %s or %s (got %q)",
+			constants.SecurityOperationsSnapshotRepositoryFS,
+			constants.SecurityOperationsSnapshotRepositoryS3, backup.SnapshotRepositoryType)
+	}
+
+	return nil
 }
 
 func validateSecurityOperationsTenants(tenants []config.SecurityOperationsTenant) error {

@@ -353,8 +353,90 @@ type (
 		// Keycloak only.
 		DashboardBreakGlass bool `yaml:"dashboardBreakGlass"`
 
+		// Profile sizes the stack. "single" is one of everything with no
+		// PodDisruptionBudget, for an evaluation or a single-node lab;
+		// "standard" (the default) is what every release rendered before
+		// profiles existed; "ha" puts no single pod between the analysts
+		// and their data: three indexer nodes with a shard copy each, a
+		// Wazuh worker behind the agent Service, two of each IRIS
+		// Deployment, three database instances and budgets everywhere.
+		// Empty: standard, which renders nothing extra.
+		Profile string `yaml:"profile"`
+
+		// TopologyKey is the node label the profile spreads replicas over.
+		// Empty: kubernetes.io/hostname. topology.kubernetes.io/zone
+		// spreads across availability zones, which needs as many zones as
+		// the profile has replicas.
+		TopologyKey string `yaml:"topologyKey"`
+
+		// Backup switches the backups of the SOC's own state on. One block
+		// here fans out to the Velero Schedules and OpenSearch snapshots in
+		// the security-operations chart, the CloudNativePG object store of
+		// the IRIS database and the MISP database's MariaDB Backup.
+		Backup SecurityOperationsBackupConfig `yaml:"backup"`
+
 		// Tenants, one entry each. Adding one and rendering again onboards it.
 		Tenants []SecurityOperationsTenant `yaml:"tenants"`
+	}
+
+	// SecurityOperationsBackupConfig is the one place an operator turns the
+	// SOC backups on. Everything is off by default and the object store is a
+	// placeholder, because no bucket exists yet.
+	SecurityOperationsBackupConfig struct {
+		// Enabled renders the Velero Schedules and the OpenSearch snapshot
+		// CronJobs, and switches the two databases' own backups on.
+		Enabled bool `yaml:"enabled"`
+
+		// Bucket every backend writes to. Required with Enabled.
+		Bucket string `yaml:"bucket"`
+
+		// Endpoint of the object store, e.g. https://s3.example.com. Empty:
+		// AWS S3 itself.
+		Endpoint string `yaml:"endpoint"`
+
+		// Region of the bucket. Default: us-east-1.
+		Region string `yaml:"region"`
+
+		// BasePath is the prefix inside the bucket; each backend adds its
+		// own path under it. Default: kubesoc.
+		BasePath string `yaml:"basePath"`
+
+		// CredentialsSecret holds the access key id and the secret access
+		// key. It must exist in the Velero namespace, the security-operations
+		// namespace and every tenant namespace (seal it yourself). Default:
+		// kubesoc-backup-s3.
+		CredentialsSecret string `yaml:"credentialsSecret"`
+
+		// PathStyleAccess addresses the bucket as <endpoint>/<bucket>, which
+		// MinIO and Ceph RGW need and AWS S3 does not. Default true; nil
+		// means true.
+		PathStyleAccess *bool `yaml:"pathStyleAccess"`
+
+		// VeleroNamespace is where Velero runs, and so where the Schedules
+		// are created. Default: velero.
+		VeleroNamespace string `yaml:"veleroNamespace"`
+
+		// SnapshotRepositoryType is the OpenSearch snapshot repository: "fs"
+		// (the default) is a ReadWriteMany volume mounted on every indexer
+		// node, "s3" needs an indexer image with the repository-s3 plugin,
+		// which the stock one does not ship. Empty: fs.
+		SnapshotRepositoryType string `yaml:"snapshotRepositoryType"`
+
+		// SnapshotStorageClass is the ReadWriteMany class of the snapshot
+		// volume with SnapshotRepositoryType fs. Empty: sharedStorageClass,
+		// then the cluster default.
+		SnapshotStorageClass string `yaml:"snapshotStorageClass"`
+
+		// SnapshotVolumeSize of that volume, per Wazuh release. Default: 50Gi.
+		SnapshotVolumeSize string `yaml:"snapshotVolumeSize"`
+
+		// RetentionDays of the OpenSearch snapshots. Default: 30.
+		RetentionDays int `yaml:"retentionDays"`
+
+		// VerifyRestore runs the monthly Job that recovers the newest IRIS
+		// database backup into a scratch cluster and queries it. Off by
+		// default: it creates and deletes a CloudNativePG Cluster.
+		VerifyRestore bool `yaml:"verifyRestore"`
 	}
 
 	// SecurityOperationsKeycloakConfig is the Keycloak realm of the SOC.
@@ -367,9 +449,25 @@ type (
 		// Realm defaults to "soc".
 		Realm string `yaml:"realm"`
 
-		// HostAliasIP pins URL's host name to this IP in every SOC pod, for a
-		// Keycloak that pods cannot reach through DNS, e.g. one served only by
-		// an internal ingress whose Service ClusterIP this is. Empty: DNS.
+		// InternalURL is the same Keycloak as the pods in this cluster reach
+		// it, e.g. http://keycloakx-http.keycloakx.svc/auth. Every
+		// back-channel call uses it (the reconciler's admin API, the
+		// Velociraptor Keycloak sync, the Wazuh dashboard's and indexer's
+		// OIDC discovery) while URL stays the issuer in every token, which
+		// still matches because Keycloak's own frontend URL decides what goes
+		// into the discovery document. Empty: URL is used for both.
+		//
+		// Velociraptor, IRIS and MISP fetch discovery from the issuer itself
+		// and refuse a mismatch, so URL must also resolve inside the cluster:
+		// add a CoreDNS rewrite to the ingress Service (KubeAid's coredns
+		// chart, `rewrites`) rather than pinning an address.
+		InternalURL string `yaml:"internalURL"`
+
+		// HostAliasIP pins URL's host name to this IP in every SOC pod.
+		//
+		// Deprecated: a Service ClusterIP changes when the Service is
+		// recreated, and SSO then breaks in every component at once until
+		// someone renders again. Use InternalURL and a CoreDNS rewrite.
 		HostAliasIP string `yaml:"hostAliasIP"`
 	}
 

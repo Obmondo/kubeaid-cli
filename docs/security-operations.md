@@ -22,9 +22,12 @@ cluster:
     # chartRevision: my-branch     # KubeAid revision of the charts; default forks.kubeaid.version
     # configRevision: my-branch    # kubeaid-config revision of the values files; default HEAD
     keycloak:
-      url: https://keycloak.example.com/auth  # default https://<cluster.keycloak.dns>/auth
+      url: https://keycloak.example.com/auth  # required: the browser-facing issuer
       realm: soc                   # default soc
-      # hostAliasIP: 10.0.0.10     # pin the Keycloak host in every pod (internal-only Keycloak)
+      # internalURL: http://keycloakx-http.keycloakx.svc/auth  # back channel; see "Reaching Keycloak"
+      # hostAliasIP: 10.0.0.10     # deprecated, see "Reaching Keycloak"
+    profile: standard              # single | standard (default) | ha; see "Deployment profiles"
+    topologyKey: kubernetes.io/hostname  # failure domain the profile spreads replicas over
     agentHost: agents.example.com  # required: host name the agents dial
     agentAddress: 192.0.2.10       # required: external IP of the per-tenant agent Services
     agentPortBase: 20000           # default 20000
@@ -37,6 +40,20 @@ cluster:
       imagePullSecrets: []         # Secret names for a private registry, sealed by you
       dryRun: true                 # default true
     dashboardBreakGlass: false     # default false: Wazuh dashboards log in through Keycloak only
+    backup:                        # see "Backups"; everything off until a bucket exists
+      enabled: false               # default false
+      bucket: kubesoc-backups      # required with enabled
+      endpoint: ""                 # default: AWS S3; e.g. https://s3.example.com
+      region: us-east-1            # default us-east-1
+      basePath: kubesoc            # default kubesoc
+      credentialsSecret: kubesoc-backup-s3   # you seal it into every namespace concerned
+      pathStyleAccess: true        # default true (MinIO, Ceph RGW)
+      veleroNamespace: velero      # default velero
+      snapshotRepositoryType: fs   # fs (default) | s3
+      snapshotStorageClass: ""     # ReadWriteMany; default: sharedStorageClass
+      snapshotVolumeSize: 50Gi     # default 50Gi, per Wazuh release
+      retentionDays: 30            # default 30
+      verifyRestore: false         # default false: it creates and deletes a CNPG Cluster
     tenants:
       - code: "001"                # ^[a-z0-9]{1,32}$, unique
         name: Tenant A             # unique; IRIS customer, Velociraptor org
@@ -181,6 +198,96 @@ are created by the `security-operations` chart (not by `secrets`), so on an exis
 sync in this order after pushing: `root` (creates the new Applications), `security-operations`,
 `secrets` (a first `secrets` sync before the namespaces exist fails for the new
 SealedSecrets; sync it again), then the `wazuh-<code>` Applications.
+
+## Deployment profiles
+
+`securityOperations.profile` sizes the stack. It changes only what the rendered values files
+say; the charts do the rest.
+
+| | `single` | `standard` (default) | `ha` |
+|---|---|---|---|
+| Tenant indexer nodes | 1 | 1 | 3, spread over `topologyKey`, `minAvailable: 2` |
+| Shard copies of the alert indices | 0 | 0 | 1 (with allocation awareness) |
+| Wazuh manager | master only | master only | master + 2 workers behind the agent Service |
+| Wazuh master budget | none | none | `minAvailable: 1` |
+| Central dashboard | 1 | 1 | 2, budget, spread |
+| IRIS app / worker | 1 | 1 | 2 each, budgets, spread |
+| PostgreSQL, RabbitMQ, MariaDB | 1 | 1 | 3 each |
+| Velociraptor | 1 | 1 | 1 with a budget (its datastore has one writer) |
+
+`standard` renders exactly what every release rendered before profiles existed, and `single`
+renders the same thing — they differ only in that `single` never adds a budget, so a
+single-node cluster can always be drained. Everything new is in `ha`.
+
+Two things `ha` needs that it cannot arrange for itself:
+
+- **`sharedStorageClass` (ReadWriteMany)**, or the second IRIS app pod cannot mount the
+  volume and the update strategy stays `Recreate`.
+- **As many failure domains as replicas.** With `topologyKey:
+  topology.kubernetes.io/zone` and three indexer nodes, a cluster with two zones leaves the
+  third pod Pending — the indexer spread is `DoNotSchedule` on purpose, because a third
+  copy on a node that already holds one is not a third copy.
+
+A per-tenant `indexerReplicas` always wins over the profile's.
+
+## Backups
+
+`securityOperations.backup` is the one place backups are turned on. It fans out to four
+backends, because no single one covers everything (security-operations README, "Backups"):
+
+| What | Backend | Where it lands |
+|---|---|---|
+| Volumes: Wazuh manager data (`client.keys`) and indexer data, the Velociraptor datastore, the IRIS files, the MISP attachments | Velero `Schedule` (Kopia), 14 daily and 4 weekly | `backup.velero` in the chart |
+| Alert indices | OpenSearch snapshots, one `CronJob` per indexer | `backup.opensearch` |
+| The IRIS database | CloudNativePG barman object store with WAL archiving | `dfir-iris.global.postgresql.backups` |
+| The MISP database | mariadb-operator `Backup` with a schedule | `misp.externalMariadb.backup` |
+
+Steps for an operator:
+
+1. Create the bucket and an access key for it.
+2. Seal a Secret named `credentialsSecret` with the keys `ACCESS_KEY_ID` and
+   `ACCESS_SECRET_KEY` into **the Velero namespace, `security-operations` and every
+   `wazuh-<code>` namespace**. kubeaid-cli does not seal it: it is the object store's
+   credential, not the SOC's.
+3. Fill in `bucket`, `endpoint`, `region` and, with the default `snapshotRepositoryType: fs`,
+   a ReadWriteMany `snapshotStorageClass` (or `sharedStorageClass`).
+4. Set `enabled: true` and render.
+
+`snapshotRepositoryType: s3` needs an indexer image with the **`repository-s3` plugin**,
+which the stock `wazuh/wazuh-indexer` image does not ship, and the bucket keys in the
+indexer's keystore. The `fs` default needs only a shared volume.
+
+`verifyRestore: true` adds a monthly Job that recovers the newest IRIS database backup into a
+scratch CloudNativePG cluster, queries it and deletes it again. It creates and deletes a
+`Cluster`, so it is off by default.
+
+`kubeaid-cli siem backup` and `siem restore` drive what is rendered here: they select by the
+label `kubesoc.io/backup-set` and find the Velero `Schedule`, the CloudNativePG
+`ScheduledBackup`, the MariaDB `Backup` and the snapshot `CronJob`s.
+
+## Reaching Keycloak
+
+`keycloak.url` is the browser-facing URL and the issuer in every token. The pods have to
+reach Keycloak too, and a Keycloak published only by an internal ingress does not resolve to
+anything useful from inside the cluster.
+
+- **`keycloak.internalURL`** is the same Keycloak as the pods reach it, normally a Service
+  DNS name. Every back-channel call uses it: the reconciler's admin API, the Velociraptor
+  Keycloak sync, and the Wazuh dashboard's and indexer's OIDC discovery. The issuer stays
+  public and still matches, because Keycloak's own frontend URL decides what goes into its
+  discovery document.
+- **A CoreDNS rewrite** covers Velociraptor, IRIS and MISP, which fetch discovery from the
+  issuer itself and refuse a mismatch. In KubeAid's `coredns` chart:
+
+  ```yaml
+  rewrites:
+    - from: keycloak.example.com
+      to: traefik-internal.traefik.svc.cluster.local
+  ```
+
+- **`keycloak.hostAliasIP` is deprecated.** It pins the host name to an ingress Service's
+  ClusterIP in every SOC pod; that address changes when the Service is recreated, and SSO
+  then breaks everywhere at once until someone renders again. It still works, as a stop-gap.
 
 ## What stays manual
 

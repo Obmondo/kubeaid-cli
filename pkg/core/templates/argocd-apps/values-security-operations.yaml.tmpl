@@ -9,7 +9,13 @@ hosts:
   velociraptor: {{ .SecOps.VelociraptorHost }}
 
 keycloak:
+  # The browser-facing URL: it is the issuer in every token.
   url: {{ .SecOps.KeycloakURL }}
+{{- with .SecOps.KeycloakInternalURL }}
+  # The same Keycloak as the pods reach it. Every back-channel call uses it, so
+  # SSO no longer depends on an address that changes when a Service is recreated.
+  internalURL: {{ . }}
+{{- end }}
   realm: {{ .SecOps.KeycloakRealm }}
 
 operators:
@@ -31,6 +37,38 @@ tenants:
       registration: {{ .RegistrationPort }}
       events: {{ .EventsPort }}
 {{- else }} []
+{{- end }}
+
+{{- if .SecOps.Backup.Enabled }}
+# Backups of the SOC's own state (securityOperations.backup in general.yaml;
+# security-operations README, "Backups"). Velero copies the volumes, the
+# OpenSearch snapshot CronJobs the alert indices, and the two databases back
+# themselves up further down in their own blocks.
+backup:
+  enabled: true
+  objectStore:
+    bucket: {{ .SecOps.Backup.Bucket }}
+    endpoint: {{ .SecOps.Backup.Endpoint | printf "%q" }}
+    region: {{ .SecOps.Backup.Region }}
+    basePath: {{ .SecOps.Backup.BasePath }}
+    credentialsSecret: {{ .SecOps.Backup.CredentialsSecret }}
+    pathStyleAccess: {{ .SecOps.Backup.PathStyleAccess }}
+  velero:
+    namespace: {{ .SecOps.Backup.VeleroNamespace }}
+  opensearch:
+    type: {{ .SecOps.Backup.SnapshotRepositoryType }}
+{{- if .SecOps.Backup.SnapshotFS }}
+    fs:
+      # The releases' wazuh indexer.snapshot.fs.path, which is their path.repo.
+      location: {{ .SecOps.Backup.SnapshotVolumePath }}
+{{- end }}
+    retentionDays: {{ .SecOps.Backup.RetentionDays }}
+{{- if .SecOps.Profile.IndexShardReplicas }}
+    # Every shard of the alert indices gets a copy on another indexer node.
+    numberOfReplicas: {{ .SecOps.Profile.IndexShardReplicas }}
+{{- end }}
+  verifyRestore:
+    enabled: {{ .SecOps.Backup.VerifyRestore }}
 {{- end }}
 
 reconciler:
@@ -64,12 +102,31 @@ wazuh:
     autoreload:
       enabled: true
     indexer:
-{{- if .SecOps.KeycloakHostAliasIP }}
+{{- if .SecOps.Profile.HA }}
+      # The central indexer holds no events, only the Wazuh app's own saved
+      # objects, but the dashboard is unusable without it.
+      replicas: {{ .SecOps.Profile.IndexerNodes }}
+      pdb:
+        enabled: true
+        minAvailable: {{ .SecOps.Profile.IndexerMinAvailable }}
+{{- end }}
+{{- if or .SecOps.KeycloakHostAliasIP .SecOps.Profile.HA }}
       extraSpec:
         pod:
+{{- if .SecOps.KeycloakHostAliasIP }}
           hostAliases:
             - ip: {{ .SecOps.KeycloakHostAliasIP }}
               hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: {{ .SecOps.Profile.TopologyKey }}
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  app: wazuh-indexer
+{{- end }}
 {{- end }}
       cred:
         existingSecret: wazuh-indexer-cred
@@ -110,12 +167,29 @@ wazuh:
                   matchLabels:
                     app.kubernetes.io/name: siem-reconciler
     dashboard:
-{{- if .SecOps.KeycloakHostAliasIP }}
+{{- if .SecOps.Profile.HA }}
+      replicas: {{ .SecOps.Profile.DashboardReplicas }}
+      pdb:
+        enabled: true
+        minAvailable: 1
+{{- end }}
+{{- if or .SecOps.KeycloakHostAliasIP .SecOps.Profile.HA }}
       extraSpec:
         pod:
+{{- if .SecOps.KeycloakHostAliasIP }}
           hostAliases:
             - ip: {{ .SecOps.KeycloakHostAliasIP }}
               hostnames: [{{ .SecOps.KeycloakHost }}]
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: {{ .SecOps.Profile.TopologyKey }}
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  app: wazuh-dashboard
+{{- end }}
 {{- end }}
       cred:
         existingSecret: wazuh-dashboard-cred
@@ -135,7 +209,8 @@ wazuh:
       sso:
         oidc:
           enabled: true
-          url: {{ .SecOps.KeycloakIssuer }}/.well-known/openid-configuration
+          # Discovery is a back-channel call; the issuer below stays public.
+          url: {{ .SecOps.KeycloakDiscoveryURL }}
           logoutUrl: {{ .SecOps.KeycloakIssuer }}/protocol/openid-connect/logout
           issuer: {{ .SecOps.KeycloakIssuer }}
           scope: "openid profile email"
@@ -257,6 +332,13 @@ velociraptor:
         clientId: velociraptor
         existingSecret: velociraptor-oidc
         existingSecretKey: oauth_client_secret
+{{- if .SecOps.Profile.HA }}
+    # Velociraptor's metadata datastore has a single writer, so the frontend
+    # stays at one replica; the budget keeps a drain from taking it silently.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+{{- end }}
     networkPolicy:
       # The ingress controller reaches the GUI.
       guiAllowedFrom:
@@ -293,6 +375,43 @@ dfir-iris:
   persistence:
     storageClass: {{ . }}
     accessModes: [ReadWriteMany]
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+  app:
+    replicas: {{ .SecOps.Profile.IRISAppReplicas }}
+  worker:
+    replicas: {{ .SecOps.Profile.IRISWorkerReplicas }}
+  topologySpreadTopologyKey: {{ .SecOps.Profile.TopologyKey }}
+{{- if .SecOps.SharedStorageClass }}
+  # The volume is ReadWriteMany, so a rolling update no longer deadlocks on
+  # Multi-Attach and an upgrade stops being an outage.
+  strategy:
+    type: RollingUpdate
+{{- end }}
+{{- end }}
+{{- if or .SecOps.Profile.HA .SecOps.Backup.Enabled }}
+  global:
+    postgresql:
+{{- if .SecOps.Profile.HA }}
+      instances: {{ .SecOps.Profile.DatabaseInstances }}
+      topologyKey: {{ .SecOps.Profile.TopologyKey }}
+{{- end }}
+{{- if .SecOps.Backup.Enabled }}
+      # CloudNativePG archives its WAL to the object store next to the base
+      # backups, so a restore can roll forward rather than only to the last one.
+      # The pods carry velero.io/exclude-from-backup: their volumes are barman's.
+      backups:
+        enabled: true
+        cloud: aws
+        destinationPath: {{ .SecOps.Backup.PostgresDestination }}
+        endpointURL: {{ .SecOps.Backup.Endpoint | printf "%q" }}
+        secretName: {{ .SecOps.Backup.CredentialsSecret }}
+        retentionPolicy: {{ .SecOps.Backup.RetentionDays }}d
+{{- end }}
+{{- if .SecOps.Profile.HA }}
+    rabbitmq:
+      replicas: {{ .SecOps.Profile.DatabaseInstances }}
+{{- end }}
 {{- end }}
 {{- if .SecOps.KeycloakHostAliasIP }}
   hostAliases:
@@ -355,6 +474,29 @@ ollama:
 {{- end }}
 
 misp:
+{{- if or .SecOps.Profile.HA .SecOps.Backup.Enabled }}
+  externalMariadb:
+{{- if .SecOps.Profile.HA }}
+    replicas: {{ .SecOps.Profile.DatabaseInstances }}
+    topologyKey: {{ .SecOps.Profile.TopologyKey }}
+{{- end }}
+{{- if .SecOps.Backup.Enabled }}
+    # The attachments are not in the dump; Velero copies that volume.
+    backup:
+      enabled: true
+      maxRetention: {{ .SecOps.Backup.MariaDBMaxRetention }}
+      storage:
+        type: S3
+        s3:
+          bucket: {{ .SecOps.Backup.Bucket }}
+          prefix: {{ .SecOps.Backup.BasePath }}/misp-mariadb
+          # mariadb-operator takes a host and port, not a URL.
+          endpoint: {{ .SecOps.Backup.MariaDBEndpoint }}
+          region: {{ .SecOps.Backup.Region }}
+          tls: {{ .SecOps.Backup.MariaDBTLS }}
+          credentialsSecret: {{ .SecOps.Backup.CredentialsSecret }}
+{{- end }}
+{{- end }}
   misp:
 {{- if .SecOps.KeycloakHostAliasIP }}
     hostAliases:

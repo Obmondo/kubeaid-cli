@@ -39,6 +39,9 @@ const (
 
 	siemAgentAddress = "192.0.2.10"
 	siemIssuer       = "https://keycloak.example.com/auth/realms/soc"
+
+	siemSharedStorageClass = "rook-cephfs"
+	siemVeleroNamespace    = "velero"
 )
 
 // siemTenant returns a tenant as the parser leaves it: defaults applied and
@@ -469,6 +472,11 @@ func TestSIEMTenantBaseValues(t *testing.T) {
 
 	assert.Equal(t, constants.SecretNameWazuhClusterKey, dig(t, w, "wazuh", "clusterKeySecret", "name"))
 	assert.NotContains(t, digMap(t, w, "wazuh"), "key")
+
+	// TLS: a soc-ca certificate for the API and authd, naming the agent host.
+	assert.Equal(t, true, dig(t, w, "wazuh", "managerTls", "enabled"))
+	assert.Equal(t, []any{"agents.example.com"}, dig(t, w, "wazuh", "managerTls", "extraDnsNames"))
+	assert.Equal(t, "full", dig(t, w, "dashboard", "opensearchVerificationMode"))
 }
 
 // TestSIEMDashboardBreakGlass: every Wazuh dashboard logs in through SSO only
@@ -487,10 +495,6 @@ func TestSIEMDashboardBreakGlass(t *testing.T) {
 		assert.Equal(t, want, dig(t, tenant, "wazuh", "dashboard", "basicAuth", "breakGlass"))
 		assert.Equal(t, true, dig(t, tenant, "wazuh", "dashboard", "sso", "oidc", "enabled"))
 	}
-	// TLS: a soc-ca certificate for the API and authd, naming the agent host.
-	assert.Equal(t, true, dig(t, w, "wazuh", "managerTls", "enabled"))
-	assert.Equal(t, []any{"agents.example.com"}, dig(t, w, "wazuh", "managerTls", "extraDnsNames"))
-	assert.Equal(t, "full", dig(t, w, "dashboard", "opensearchVerificationMode"))
 }
 
 // TestSIEMThirdTenantAddsOnlyItsOwn: adding tenant 003 leaves every rendered
@@ -806,4 +810,180 @@ func TestSIEMAITriage(t *testing.T) {
 		dig(t, central, "dfir-iris", "aiTriage"))
 	assert.Equal(t, []any{testAIModel}, dig(t, central, "ollama", "ollama", "ollama", "models", "pull"))
 	assert.Equal(t, true, dig(t, central, "ollama", "networkPolicy", "allowModelDownload"))
+}
+
+// TestSIEMProfileStandardRendersNothing: the default profile is what every
+// release rendered before profiles existed, so it must add no line at all.
+func TestSIEMProfileStandardRendersNothing(t *testing.T) {
+	render := func(profile string) (string, string) {
+		withSIEMConfig(t, siemTenant(1, "Tenant A"))
+		cfg := config.ParsedGeneralConfig.Cluster.SecurityOperations
+		cfg.Profile = profile
+		cfg.TopologyKey = constants.SecurityOperationsDefaultTopologyKey
+		tv := forkTV("")
+		tv.SecOps = buildSecurityOperationsValues()
+
+		central := templates.ParseAndExecuteTemplate(context.Background(),
+			&KubeaidConfigFileTemplates, siemValuesTmpl, tv)
+		tenant := templates.ParseAndExecuteTemplate(context.Background(),
+			&KubeaidConfigFileTemplates, siemTenantValuesTmpl, tv)
+		return string(central), string(tenant)
+	}
+
+	emptyCentral, emptyTenant := render("")
+	standardCentral, standardTenant := render(constants.SecurityOperationsProfileStandard)
+	assert.Equal(t, emptyCentral, standardCentral, "standard must render like no profile at all")
+	assert.Equal(t, emptyTenant, standardTenant)
+
+	singleCentral, singleTenant := render(constants.SecurityOperationsProfileSingle)
+	assert.Equal(t, emptyCentral, singleCentral, "single only drops the budgets the others add")
+	assert.Equal(t, emptyTenant, singleTenant)
+}
+
+// TestSIEMProfileHA: the ha profile puts no single pod between the analysts
+// and their data - three indexer nodes spread over the topology key with a
+// shard copy each, a Wazuh worker behind the agent Service, two of each IRIS
+// Deployment and three database instances, with budgets throughout.
+func TestSIEMProfileHA(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	cfg := config.ParsedGeneralConfig.Cluster.SecurityOperations
+	cfg.Profile = constants.SecurityOperationsProfileHA
+	cfg.TopologyKey = "topology.kubernetes.io/zone"
+	cfg.SharedStorageClass = siemSharedStorageClass
+	// The parser gives a tenant that named none the profile's node count.
+	cfg.Tenants[0].IndexerReplicas = constants.SecurityOperationsHAIndexerNodes
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+
+	tenant := renderDocs(t, siemTenantValuesTmpl, tv)[0]
+	w := digMap(t, tenant, "wazuh")
+
+	assert.Equal(t, 2, dig(t, w, "indexer", "pdb", "minAvailable"))
+	spread := asMap(t, digList(t, w, "indexer", "extraSpec", "pod", "topologySpreadConstraints")[0])
+	assert.Equal(t, "topology.kubernetes.io/zone", spread["topologyKey"])
+	assert.Equal(t, "DoNotSchedule", spread["whenUnsatisfiable"])
+	// A shard copy needs another node to live on, so awareness goes with it.
+	assert.Equal(t, "zone",
+		dig(t, w, "indexer", "config", "extraOpensearch", "cluster.routing.allocation.awareness.attributes"))
+	assert.Equal(t, "${NODE_ZONE}",
+		dig(t, w, "indexer", "config", "extraOpensearch", "node.attr.zone"))
+
+	assert.Equal(t, true, dig(t, w, "wazuh", "worker", "enabled"))
+	assert.Equal(t, 2, dig(t, w, "wazuh", "worker", "replicas"))
+	assert.Equal(t, "topology.kubernetes.io/zone", dig(t, w, "wazuh", "worker", "podAntiAffinityTopologyKey"))
+	assert.Equal(t, true, dig(t, w, "wazuh", "master", "pdb", "enabled"))
+	assert.Equal(t, 2, dig(t, w, "dashboard", "replicas"))
+
+	// The agent Service must front the workers once they exist: they take the
+	// events and forward enrolment to the master.
+	apps := siemApps(t, tv)
+	tenantApp := asMap(t, digList(t, apps["wazuh-001"], "spec", "sources")[0])
+	assert.Equal(t, "worker",
+		dig(t, asMap(t, tenantApp["helm"]), "valuesObject", "agentService", "nodeType"))
+
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, 3, dig(t, central, "wazuh", "wazuh", "indexer", "replicas"))
+	assert.Equal(t, 2, dig(t, central, "wazuh", "wazuh", "dashboard", "replicas"))
+	assert.Equal(t, 2, dig(t, central, "dfir-iris", "app", "replicas"))
+	assert.Equal(t, 2, dig(t, central, "dfir-iris", "worker", "replicas"))
+	// Only a ReadWriteMany volume makes a rolling update possible at all.
+	assert.Equal(t, "RollingUpdate", dig(t, central, "dfir-iris", "strategy", "type"))
+	assert.Equal(t, 3, dig(t, central, "dfir-iris", "global", "postgresql", "instances"))
+	assert.Equal(t, 3, dig(t, central, "dfir-iris", "global", "rabbitmq", "replicas"))
+	assert.Equal(t, 3, dig(t, central, "misp", "externalMariadb", "replicas"))
+	assert.Equal(t, true, dig(t, central, "velociraptor", "velociraptor", "podDisruptionBudget", "enabled"))
+}
+
+// TestSIEMBackup: one block in general.yaml reaches all four backends.
+func TestSIEMBackup(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	cfg := config.ParsedGeneralConfig.Cluster.SecurityOperations
+	cfg.SharedStorageClass = siemSharedStorageClass
+	cfg.Backup = config.SecurityOperationsBackupConfig{
+		Enabled:                true,
+		Bucket:                 "kubesoc-backups",
+		Endpoint:               "http://minio.example.com:9000",
+		Region:                 "us-east-1",
+		BasePath:               "kubesoc",
+		CredentialsSecret:      "kubesoc-backup-s3",
+		VeleroNamespace:        siemVeleroNamespace,
+		SnapshotRepositoryType: constants.SecurityOperationsSnapshotRepositoryFS,
+		SnapshotStorageClass:   siemSharedStorageClass,
+		SnapshotVolumeSize:     "50Gi",
+		RetentionDays:          30,
+		VerifyRestore:          true,
+	}
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	backup := digMap(t, central, "backup")
+	assert.Equal(t, true, backup["enabled"])
+	assert.Equal(t, "kubesoc-backups", dig(t, backup, "objectStore", "bucket"))
+	assert.Equal(t, siemVeleroNamespace, dig(t, backup, "velero", "namespace"))
+	assert.Equal(t, "fs", dig(t, backup, "opensearch", "type"))
+	assert.Equal(t, constants.SecurityOperationsSnapshotVolumePath,
+		dig(t, backup, "opensearch", "fs", "location"))
+	assert.Equal(t, true, dig(t, backup, "verifyRestore", "enabled"))
+
+	// The two databases back themselves up in their own charts, which the
+	// security-operations chart's checks.backupTargets insists on.
+	pg := digMap(t, central, "dfir-iris", "global", "postgresql", "backups")
+	assert.Equal(t, true, pg["enabled"])
+	assert.Equal(t, "s3://kubesoc-backups/kubesoc/iris-pgsql", pg["destinationPath"])
+	assert.Equal(t, "30d", pg["retentionPolicy"])
+	assert.Equal(t, "kubesoc-backup-s3", pg["secretName"])
+
+	mariadb := digMap(t, central, "misp", "externalMariadb", "backup")
+	assert.Equal(t, true, mariadb["enabled"])
+	assert.Equal(t, "720h", mariadb["maxRetention"])
+	// mariadb-operator takes a host and port, and switches TLS with a flag.
+	assert.Equal(t, "minio.example.com:9000", dig(t, mariadb, "storage", "s3", "endpoint"))
+	assert.Equal(t, false, dig(t, mariadb, "storage", "s3", "tls"))
+
+	// Every indexer mounts the shared snapshot volume, which is also what sets
+	// path.repo; without it the indexer refuses the repository.
+	tenant := renderDocs(t, siemTenantValuesTmpl, tv)[0]
+	snapshot := digMap(t, tenant, "wazuh", "indexer", "snapshot")
+	assert.Equal(t, true, snapshot["enabled"])
+	assert.Equal(t, constants.SecurityOperationsSnapshotVolumePath, dig(t, snapshot, "fs", "path"))
+	assert.Equal(t, siemSharedStorageClass, dig(t, snapshot, "fs", "storageClass"))
+
+	// Off renders nothing.
+	cfg.Backup.Enabled = false
+	tv.SecOps = buildSecurityOperationsValues()
+	assert.NotContains(t, renderDocs(t, siemValuesTmpl, tv)[0], "backup")
+	assert.NotContains(t, digMap(t, renderDocs(t, siemTenantValuesTmpl, tv)[0], "wazuh", "indexer"), "snapshot")
+}
+
+// TestSIEMKeycloakInternalURL: the back channel moves to the in-cluster URL
+// while the issuer, which is in every token, stays the public one.
+func TestSIEMKeycloakInternalURL(t *testing.T) {
+	withSIEMConfig(t, siemTenant(1, "Tenant A"))
+	internal := "http://keycloakx-http.keycloakx.svc/auth"
+	config.ParsedGeneralConfig.Cluster.SecurityOperations.Keycloak.InternalURL = internal
+	tv := forkTV("")
+	tv.SecOps = buildSecurityOperationsValues()
+
+	discovery := internal + "/realms/soc/.well-known/openid-configuration"
+	central := renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.Equal(t, internal, dig(t, central, "keycloak", "internalURL"))
+	assert.Equal(t, "https://keycloak.example.com/auth", dig(t, central, "keycloak", "url"))
+	assert.Equal(t, discovery, dig(t, central, "wazuh", "wazuh", "dashboard", "sso", "oidc", "url"))
+	assert.Equal(t, siemIssuer, dig(t, central, "wazuh", "wazuh", "dashboard", "sso", "oidc", "issuer"))
+	// The components that fetch discovery from the issuer keep the public one.
+	assert.Equal(t, siemIssuer, dig(t, central, "velociraptor", "velociraptor", "gui", "oidc", "issuer"))
+	assert.Equal(t, siemIssuer, dig(t, central, "dfir-iris", "authentication", "oidc", "issuerUrl"))
+
+	tenant := renderDocs(t, siemTenantValuesTmpl, tv)[0]
+	assert.Equal(t, discovery, dig(t, tenant, "wazuh", "dashboard", "sso", "oidc", "url"))
+	assert.Equal(t, siemIssuer, dig(t, tenant, "wazuh", "dashboard", "sso", "oidc", "issuer"))
+
+	// Without it the public URL is used for both.
+	config.ParsedGeneralConfig.Cluster.SecurityOperations.Keycloak.InternalURL = ""
+	tv.SecOps = buildSecurityOperationsValues()
+	central = renderDocs(t, siemValuesTmpl, tv)[0]
+	assert.NotContains(t, digMap(t, central, "keycloak"), "internalURL")
+	assert.Equal(t, siemIssuer+"/.well-known/openid-configuration",
+		dig(t, central, "wazuh", "wazuh", "dashboard", "sso", "oidc", "url"))
 }

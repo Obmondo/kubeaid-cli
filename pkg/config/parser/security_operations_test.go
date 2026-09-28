@@ -242,3 +242,120 @@ func TestValidateSecurityOperationsConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestSecurityOperationsProfileDefaults: the default profile is standard, and
+// only ha changes what a tenant that named no indexer replicas gets.
+func TestSecurityOperationsProfileDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		profile      string
+		wantProfile  string
+		wantReplicas int
+	}{
+		{"", constants.SecurityOperationsProfileStandard, 1},
+		{constants.SecurityOperationsProfileSingle, constants.SecurityOperationsProfileSingle, 1},
+		{
+			constants.SecurityOperationsProfileHA,
+			constants.SecurityOperationsProfileHA,
+			constants.SecurityOperationsHAIndexerNodes,
+		},
+	} {
+		cfg := validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+		cfg.Profile = tc.profile
+		cfg.Tenants[0].IndexerReplicas = 0
+		withSecurityOperations(t, cfg, nil)
+
+		hydrateSecurityOperationsDefaults()
+		require.NoError(t, validateSecurityOperationsConfig())
+
+		got := config.ParsedGeneralConfig.Cluster.SecurityOperations
+		assert.Equal(t, tc.wantProfile, got.Profile)
+		assert.Equal(t, constants.SecurityOperationsDefaultTopologyKey, got.TopologyKey)
+		assert.Equal(t, tc.wantReplicas, got.Tenants[0].IndexerReplicas)
+	}
+
+	// An explicit per-tenant count always wins over the profile's.
+	cfg := validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+	cfg.Profile = constants.SecurityOperationsProfileHA
+	cfg.Tenants[0].IndexerReplicas = 5
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	require.NoError(t, validateSecurityOperationsConfig())
+	assert.Equal(t, 5, config.ParsedGeneralConfig.Cluster.SecurityOperations.Tenants[0].IndexerReplicas)
+
+	cfg = validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+	cfg.Profile = "gold"
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	assert.ErrorContains(t, validateSecurityOperationsConfig(), "profile must be")
+}
+
+// TestSecurityOperationsBackupValidation: a backup that cannot work must fail
+// the render, not the first backup.
+func TestSecurityOperationsBackupValidation(t *testing.T) {
+	// Off: the placeholders are filled in but nothing is required.
+	cfg := validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	require.NoError(t, validateSecurityOperationsConfig())
+	backup := config.ParsedGeneralConfig.Cluster.SecurityOperations.Backup
+	assert.Equal(t, constants.SecurityOperationsBackupDefaultCredentialsSecret, backup.CredentialsSecret)
+	assert.Equal(t, constants.SecurityOperationsSnapshotRepositoryFS, backup.SnapshotRepositoryType)
+	assert.Equal(t, constants.SecurityOperationsBackupDefaultRetentionDays, backup.RetentionDays)
+	require.NotNil(t, backup.PathStyleAccess)
+	assert.True(t, *backup.PathStyleAccess)
+
+	for _, tc := range []struct {
+		name   string
+		mutate func(*config.SecurityOperationsConfig)
+		want   string
+	}{
+		{"no bucket", func(c *config.SecurityOperationsConfig) {
+			c.Backup.Enabled = true
+			c.SharedStorageClass = "cephfs"
+		}, "backup.bucket is required"},
+		{"endpoint that is not a URL", func(c *config.SecurityOperationsConfig) {
+			c.Backup.Enabled = true
+			c.Backup.Bucket = "b"
+			c.SharedStorageClass = "cephfs"
+			c.Backup.Endpoint = "minio.example.com"
+		}, "backup.endpoint must be an http(s) URL"},
+		{"a filesystem repository with no shared class", func(c *config.SecurityOperationsConfig) {
+			c.Backup.Enabled = true
+			c.Backup.Bucket = "b"
+		}, "backup.snapshotStorageClass is required"},
+		{"an unknown repository type", func(c *config.SecurityOperationsConfig) {
+			c.Backup.Enabled = true
+			c.Backup.Bucket = "b"
+			c.Backup.SnapshotRepositoryType = "gcs"
+		}, "backup.snapshotRepositoryType must be"},
+		{"an internal URL that is not a URL", func(c *config.SecurityOperationsConfig) {
+			c.Keycloak.InternalURL = "keycloakx-http.keycloakx.svc"
+		}, "keycloak.internalURL must be an http(s) URL"},
+	} {
+		cfg := validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+		tc.mutate(cfg)
+		withSecurityOperations(t, cfg, nil)
+		hydrateSecurityOperationsDefaults()
+		assert.ErrorContains(t, validateSecurityOperationsConfig(), tc.want, tc.name)
+	}
+
+	// The shared storage class is the filesystem repository's default.
+	cfg = validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+	cfg.Backup.Enabled = true
+	cfg.Backup.Bucket = "kubesoc-backups"
+	cfg.SharedStorageClass = "rook-cephfs"
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	require.NoError(t, validateSecurityOperationsConfig())
+	assert.Equal(t, "rook-cephfs",
+		config.ParsedGeneralConfig.Cluster.SecurityOperations.Backup.SnapshotStorageClass)
+
+	// s3 needs no volume, so no shared class either.
+	cfg = validSOC(config.SecurityOperationsTenant{Code: "001", Name: testSOCTenantA})
+	cfg.Backup.Enabled = true
+	cfg.Backup.Bucket = "kubesoc-backups"
+	cfg.Backup.SnapshotRepositoryType = constants.SecurityOperationsSnapshotRepositoryS3
+	withSecurityOperations(t, cfg, nil)
+	hydrateSecurityOperationsDefaults()
+	assert.NoError(t, validateSecurityOperationsConfig())
+}
