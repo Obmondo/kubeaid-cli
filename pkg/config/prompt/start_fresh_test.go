@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 )
 
 // stubLoadExistingConfirm answers the "Load existing / Start fresh" question
@@ -70,7 +72,7 @@ func TestLoadExistingKeepsTheClusterName(t *testing.T) {
 
 func TestResolveWriteTarget(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Cleanup(clusterdir.SetUserConfigDir(home))
 
 	tests := []struct {
 		name        string
@@ -135,7 +137,7 @@ func TestResolveWriteTarget(t *testing.T) {
 // alone has to still be there afterwards.
 func TestStartFreshUnderAnotherClusterDoesNotClobberIt(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Cleanup(clusterdir.SetUserConfigDir(home))
 
 	oldDirectory := filepath.Join(home, "kubeaid-cli", "old-cluster", "configs")
 	require.NoError(t, os.MkdirAll(oldDirectory, 0o700))

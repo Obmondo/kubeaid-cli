@@ -11,11 +11,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// withConfigHome points os.UserConfigDir at a temp tree for the test.
+// withConfigHome points UserConfigDir at a temp tree for the test.
+// XDG_CONFIG_HOME would not do it: os.UserConfigDir reads it on Linux only.
 func withConfigHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Cleanup(SetUserConfigDir(home))
 	return home
 }
 

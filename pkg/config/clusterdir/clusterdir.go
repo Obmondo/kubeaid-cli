@@ -16,6 +16,7 @@
 package clusterdir
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,30 @@ import (
 	"sort"
 	"strings"
 )
+
+// UserConfigDir locates the per-user configuration root the cluster
+// directories sit under. It is a variable, and every lookup in this package
+// goes through it, because os.UserConfigDir reads XDG_CONFIG_HOME on Linux
+// only: on macOS it is always ~/Library/Application Support and on Windows
+// %AppData%. A test that exported XDG_CONFIG_HOME would therefore read — and
+// write — the developer's own clusters on those systems. Point it at a temp
+// tree with SetUserConfigDir instead.
+var UserConfigDir = os.UserConfigDir
+
+// SetUserConfigDir points UserConfigDir at dir and returns the function that
+// puts the previous one back, for a test to hand to t.Cleanup. An empty dir
+// makes it fail the way the stdlib does, for the case where no per-user root
+// can be located at all.
+func SetUserConfigDir(dir string) func() {
+	previous := UserConfigDir
+	UserConfigDir = func() (string, error) {
+		if dir == "" {
+			return "", errors.New("neither $XDG_CONFIG_HOME nor $HOME are defined")
+		}
+		return dir, nil
+	}
+	return func() { UserConfigDir = previous }
+}
 
 // dirName is the per-user root every cluster's config directory sits under.
 const dirName = "kubeaid-cli"
@@ -89,7 +114,7 @@ func Home(clusterName string) (string, error) {
 	if err := ValidateName(clusterName); err != nil {
 		return "", err
 	}
-	base, err := os.UserConfigDir()
+	base, err := UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("locating the user config directory: %w", err)
 	}
@@ -142,7 +167,7 @@ func LogsDirForConfigs(configsDirectory string) string {
 // answers from the path alone, so a run can route its log file before
 // general.yaml has been read.
 func OwnerOfConfigs(path string) string {
-	base, err := os.UserConfigDir()
+	base, err := UserConfigDir()
 	if err != nil {
 		return ""
 	}
@@ -172,7 +197,7 @@ func OwnerOfConfigs(path string) string {
 // "logs" is therefore a reserved name no cluster may take; ValidateName
 // enforces that on every path builder.
 func SharedLogsDir() (string, error) {
-	base, err := os.UserConfigDir()
+	base, err := UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("locating the user config directory: %w", err)
 	}
@@ -185,7 +210,7 @@ func SharedLogsDir() (string, error) {
 // Callers use this to enrich a message the operator is already reading, so
 // failing to build it must never replace the message it was decorating.
 func List() []string {
-	base, err := os.UserConfigDir()
+	base, err := UserConfigDir()
 	if err != nil {
 		return nil
 	}

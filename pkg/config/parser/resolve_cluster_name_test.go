@@ -13,13 +13,15 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 )
 
 // resetFlags restores the globals both flags write into, so one case cannot
 // leak its directory into the next.
 func resetFlags(t *testing.T) {
 	t.Helper()
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Cleanup(clusterdir.SetUserConfigDir(t.TempDir()))
 
 	configsDirectory, clusterName := globals.ConfigsDirectory, globals.ClusterName
 	t.Cleanup(func() {
@@ -60,7 +62,7 @@ func TestResolveConfigsDirectoryAutoSelectsTheOnlySavedCluster(t *testing.T) {
 	resetFlags(t)
 
 	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Cleanup(clusterdir.SetUserConfigDir(configHome))
 	dir := filepath.Join(configHome, "kubeaid-cli", "prod-eu", "configs")
 	require.NoError(t, os.MkdirAll(dir, 0o700))
 	require.NoError(t, os.WriteFile(
@@ -89,7 +91,7 @@ func TestResolveConfigsDirectoryRefusalListsTheSavedClusters(t *testing.T) {
 	resetFlags(t)
 
 	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Cleanup(clusterdir.SetUserConfigDir(configHome))
 	for _, cluster := range []string{"prod-eu", "staging-01"} {
 		dir := filepath.Join(configHome, "kubeaid-cli", cluster, "configs")
 		require.NoError(t, os.MkdirAll(dir, 0o700))

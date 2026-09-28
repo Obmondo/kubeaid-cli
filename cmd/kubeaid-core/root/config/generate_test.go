@@ -13,6 +13,8 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 )
 
 const (
@@ -49,7 +51,7 @@ func freshFlagState(t *testing.T) (string, *promptRecorder) {
 	t.Helper()
 
 	home := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", home)
+	t.Cleanup(clusterdir.SetUserConfigDir(home))
 
 	configsDirectory, clusterName := globals.ConfigsDirectory, globals.ClusterName
 	t.Cleanup(func() {

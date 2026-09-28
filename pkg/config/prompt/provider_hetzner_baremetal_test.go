@@ -11,6 +11,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 )
 
 func TestLookupExistingBMRole(t *testing.T) {
@@ -292,7 +294,7 @@ func TestScanSiblingConfigsForServerIDs(t *testing.T) {
 	// fires again.
 	t.Run("per-cluster layout scans the other saved clusters", func(t *testing.T) {
 		configHome := t.TempDir()
-		t.Setenv("XDG_CONFIG_HOME", configHome)
+		t.Cleanup(clusterdir.SetUserConfigDir(configHome))
 		root := filepath.Join(configHome, "kubeaid-cli")
 
 		writeCluster := func(name, yaml string) {

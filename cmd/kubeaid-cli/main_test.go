@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -66,8 +67,26 @@ func runCLI(t *testing.T, args ...string) (string, int) {
 	return output, exitCode
 }
 
-// runCLIInHome is runCLI plus the home it ran against, for the cases that need
-// to look at what the run wrote.
+// userConfigEnv is the environment that puts the child's os.UserConfigDir
+// under home, and the directory it will resolve to. Only Linux reads
+// XDG_CONFIG_HOME: macOS derives the path from HOME and Windows from AppData,
+// so exporting XDG_CONFIG_HOME alone would send the run to the developer's own
+// config directory.
+func userConfigEnv(home string) (env []string, configRoot string) {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{"HOME=" + home}, filepath.Join(home, "Library", "Application Support")
+	case "windows":
+		configRoot = filepath.Join(home, "AppData", "Roaming")
+		return []string{"HOME=" + home, "AppData=" + configRoot}, configRoot
+	default:
+		configRoot = filepath.Join(home, ".config")
+		return []string{"HOME=" + home, "XDG_CONFIG_HOME=" + configRoot}, configRoot
+	}
+}
+
+// runCLIInHome is runCLI plus the per-user config root the run wrote into, for
+// the cases that need to look at what it wrote.
 func runCLIInHome(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
 
@@ -83,12 +102,11 @@ func runCLIInHome(t *testing.T, args ...string) (string, string, int) {
 	//nolint:gosec // os.Args[0] is this test binary.
 	cmd := exec.Command(os.Args[0], args...)
 	cmd.Dir = workingDirectory
-	cmd.Env = []string{
+	configEnv, configRoot := userConfigEnv(home)
+	cmd.Env = append([]string{
 		runMainEnv + "=1",
-		"HOME=" + home,
-		"XDG_CONFIG_HOME=" + filepath.Join(home, ".config"),
 		"PATH=" + os.Getenv("PATH"),
-	}
+	}, configEnv...)
 
 	output, err := cmd.CombinedOutput()
 
@@ -99,7 +117,7 @@ func runCLIInHome(t *testing.T, args ...string) (string, string, int) {
 		exitCode = exitErr.ExitCode()
 	}
 
-	return home, string(output), exitCode
+	return configRoot, string(output), exitCode
 }
 
 // servingAPI answers the install endpoint the way the portal does, so the fetch
@@ -218,7 +236,7 @@ func TestBootstrapWithATokenAndNoCertnameIsRefusedBeforeTheFetch(t *testing.T) {
 // A run that stops at the missing-config check never asked for it; a run that
 // stops at the fetch never got it.
 func TestBootstrapWithATokenWritesTheFetchedConfig(t *testing.T) {
-	home, output, exitCode := runCLIInHome(t,
+	configRoot, output, exitCode := runCLIInHome(t,
 		"cluster", "bootstrap",
 		"--token", testToken,
 		"--certname", testCertname,
@@ -231,7 +249,7 @@ func TestBootstrapWithATokenWritesTheFetchedConfig(t *testing.T) {
 	assert.NotContains(t, output, fetchFailure,
 		"the fetch itself failed, so this says nothing about what happens after it")
 
-	written, err := filepath.Glob(filepath.Join(home, ".config", "kubeaid-cli", "*", "configs", "general.yaml"))
+	written, err := filepath.Glob(filepath.Join(configRoot, "kubeaid-cli", "*", "configs", "general.yaml"))
 	require.NoError(t, err)
 	assert.NotEmpty(t, written, "the fetched general.yaml never reached disk: %s", output)
 }

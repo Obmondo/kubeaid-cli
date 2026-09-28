@@ -11,6 +11,8 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+
+	"github.com/Obmondo/kubeaid-cli/pkg/config/clusterdir"
 )
 
 // Mutates globals.LogFilePath; not parallel.
@@ -143,11 +145,11 @@ func TestUseOutputsHome(t *testing.T) {
 	}
 }
 
-// Mutates globals and parsed config; not parallel. XDG_CONFIG_HOME is
+// Mutates globals and parsed config; not parallel. The per-user root is
 // pointed at a temp dir so clusterdir resolves under the test's control.
 func TestOutputsHome(t *testing.T) {
 	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Cleanup(clusterdir.SetUserConfigDir(configHome))
 
 	origParsed := config.ParsedGeneralConfig
 	origConfigsDirectory := globals.ConfigsDirectory
@@ -229,11 +231,10 @@ func TestOutputsHome(t *testing.T) {
 }
 
 // Mutates globals and parsed config; not parallel. An explicit
-// --configs-directory works without HOME/XDG_CONFIG_HOME: the operator's
-// directory is the home, and the per-user root is never consulted.
+// --configs-directory works with no per-user root at all: the operator's
+// directory is the home, and the root is never consulted.
 func TestOutputsHomeWithoutUserConfigDir(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "")
+	t.Cleanup(clusterdir.SetUserConfigDir(""))
 
 	origParsed := config.ParsedGeneralConfig
 	origConfigsDirectory := globals.ConfigsDirectory

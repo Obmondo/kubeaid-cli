@@ -51,11 +51,11 @@ func TestCommandNeedsNoLogFile(t *testing.T) {
 	}
 }
 
-// Mutates globals; not parallel. XDG_CONFIG_HOME is pointed at a temp dir
+// Mutates globals; not parallel. The per-user root is pointed at a temp dir
 // so clusterdir resolves under the test's control.
 func TestResolveLogsDirectory(t *testing.T) {
 	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Cleanup(clusterdir.SetUserConfigDir(configHome))
 
 	origConfigsDirectory := globals.ConfigsDirectory
 	origClusterName := globals.ClusterName
@@ -117,10 +117,9 @@ func TestResolveLogsDirectory(t *testing.T) {
 	}
 }
 
-// Mutates globals and unsets HOME/XDG_CONFIG_HOME; not parallel.
+// Mutates globals; not parallel. No per-user root can be located at all.
 func TestResolveLogsDirectoryWithoutUserConfigDir(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", "")
-	t.Setenv("HOME", "")
+	t.Cleanup(clusterdir.SetUserConfigDir(""))
 
 	origConfigsDirectory := globals.ConfigsDirectory
 	origClusterName := globals.ClusterName
