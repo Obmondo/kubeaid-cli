@@ -1,7 +1,7 @@
 # siem-reconciler
 
 `siem-reconciler` makes the API-only state of a KubeAid SIEM stack (Keycloak,
-DFIR-IRIS, Wazuh, Velociraptor) match one input file, `tenants.json`, rendered by
+DFIR-IRIS, Wazuh, Velociraptor, MISP) match one input file, `tenants.json`, rendered by
 the `security-operations` Helm chart. It replaces the one-off scripts that used to
 set this up by hand, and it is safe to run repeatedly: a second run against an
 unchanged system prints only `ok` lines and `0 changes`.
@@ -20,14 +20,16 @@ Components run in this order; `--only` selects a subset.
 | `secrets` | Secrets listed under `secrets` | Created with random (or literal `value`) values when missing; missing keys added; existing values never changed. A Secret owned by a SealedSecret is only checked (a missing key is an error, fix the SealedSecret). |
 | | Keys listed under `secretCopies` | Target key created or overwritten when its bytes differ from the source; other target keys kept. A missing source is an error for that copy. |
 | `enrolment` | One agent enrolment bundle Secret per `enrolment` entry | Rendered from the config and the tenant's authd password; created when missing, updated when any key differs. A missing authd Secret is an error for that bundle. Keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`, `install-linux.sh`, `install-macos.sh`, `install-windows.ps1`; the `velociraptor` step adds two more (below). |
-| `keycloak` | Realm (created if missing), `bruteForceProtected`, OTP policy, `CONFIGURE_TOTP` as default required action | Only the attributes set in the config are compared. |
+| `keycloak` | Login (kind `login`) | As the `clientCredentials` client when configured, else, or while that client cannot log in yet, as the master-realm admin. See [Keycloak identity](#keycloak-identity). |
+| | Realm (created if missing), `bruteForceProtected`, OTP policy, `CONFIGURE_TOTP` as default required action | Only the attributes set in the config are compared. |
 | | Realm roles `operators.adminRole`, `operators.analystRole`, group `operators.analystGroup` | Created if missing. |
 | | Per tenant: realm role and group `<tenantGroupPrefix><code>`, group grants the role | Created if missing; other role mappings kept. |
 | | Clients: settings, secret, protocol mappers, default scopes, scope mappings, service-account client roles | Update on drift for managed fields only (see below). |
 | | `browser-mfa` flow | Copy `browser`, OTP sub-flow REQUIRED, its conditions DISABLED, OTP Form REQUIRED, Username Password Form first; re-read and verify; only a verified flow is bound as the realm browser flow. |
 | | Optional per-tenant identity-provider broker | Created/updated; a hardcoded-group mapper puts brokered users in the tenant group. |
 | `iris` | One customer per tenant (name = tenant name) | Created if missing. |
-| | Service accounts listed in `components.iris.serviceAccounts` | Groups and customers (all tenants + the initial customer) added; never removed. With `create: true` a missing login is added as an IRIS service account (no password). With `apiKeySecretRef` the account's API key is kept in that Secret key: a stored key IRIS still accepts is left alone, otherwise the key is renewed and stored. |
+| | Groups listed in `components.iris.groups` | Created if missing; permission mask reset on drift. |
+| | Service accounts listed in `components.iris.serviceAccounts` | Groups added, never removed. Customers: all tenants + the initial customer, added and never removed; or, with `customers`, exactly those (others removed), e.g. one tenant's customer for that tenant's Wazuh manager. With `create: true` a missing login is added as an IRIS service account (no password). With `apiKeySecretRef` the account's API key is kept in that Secret key: a stored key IRIS still accepts as that account (`/user/whoami`) is left alone, otherwise the key is renewed and stored (so a shared key copied there earlier is replaced). |
 | `wazuh` | Per tenant manager (reported as `wazuh/<code>`): rules `oidc_<adminRole>`, `oidc_<analystRole>` and `oidc_<g>` (dashes as underscores) mapping the backend roles to `adminApiRole`, `analystApiRole` and `tenantApiRole` | Created, condition corrected, linked to the existing API role. The whole manager belongs to the tenant: no per-tenant policies, roles or agent groups. |
 | `wazuhcentral` | Persistent `cluster.remote.<alias>.seeds` on the central indexer | Created or corrected; remotes not in the config are reported as `skip` and left in place. |
 | | `dashboardConfigSecret` (`wazuh.yml`) | Rendered from every manager's URL and API credentials; created or updated when it differs. Not written while any manager's credentials are unreadable. |
@@ -36,6 +38,8 @@ Components run in this order; `--only` selects a subset.
 | `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
 | | Keys `velociraptor-client.config.yaml` and `install-velociraptor.txt` in each enrolment bundle (reported as kind `bundle`) | The tenant org's client config as the server renders it (`orgs()` column `_client_config`, the same YAML as `velociraptor config client --org <id>`: server URLs, CA, the org nonce) and a short install hint for the matching release binary. Read after the orgs step, so a new org's config lands in the same run; a dry run reports a not-yet-created org as `create`. Created or updated when either key differs; other bundle keys kept. Needs the `enrolment` entry and `components.velociraptor`. |
 | | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
+| `misp` | Users listed in `components.misp.users` (kind `user`) | Created if missing (API only: random password, no e-mail); role reset on drift; another organisation or a disabled user is an error. |
+| | Their auth keys (kind `user-key`) | A stored key MISP accepts as that user is kept; otherwise a new key is generated and stored in `apiKeySecretRef`. |
 
 Client fields and how drift is handled:
 
@@ -101,7 +105,7 @@ Flags:
 |---|---|---|
 | `--config` | `/etc/siem/tenants.json` | Input file. |
 | `--dry-run` | `true` | Report only. `--dry-run=false` applies. |
-| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
+| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor,misp`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
 | `--kubeconfig`, `--context` | in-cluster | Outside a cluster the default kubeconfig rules apply. |
 | `--timeout` | `5m` | Whole run. |
 | `--exit-zero` | `false` | Exit 0 even when objects could not be reconciled; errors are still reported. |
@@ -126,14 +130,47 @@ The Job's ServiceAccount needs:
   live in. `create` cannot be limited by `resourceNames`.
 - For `publish-api-client`: `get`, `create`, `update` on the api_client Secret.
 
-API-side permissions: Keycloak master-realm admin; an IRIS API key of a
-server administrator; per manager a Wazuh API user allowed to manage security
+API-side permissions: Keycloak master-realm admin, or the realm-management roles
+of the `clientCredentials` client (below); an IRIS API key of a
+server administrator; a MISP site admin auth key (for `components.misp`); per manager a Wazuh API user allowed to manage security
 (`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
 `indexPatterns`, to write saved objects and advanced settings in the dashboard's
 global tenant);
 a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
 `org_create` and for `orgs()` to list every org with its client config, and
 `COLLECT_SERVER` for `add_server_monitoring`).
+
+## Keycloak identity
+
+Without `keycloak.clientCredentials` every run logs in as the master-realm admin,
+which can change every realm of the Keycloak. With it the reconciler logs in as the
+service account of a confidential client in the SOC realm, whose rights end at
+that realm and at the realm-management roles it holds. The client is created the
+same way as every other client, from `clients[]`, so the usual path is:
+
+1. Add the client to `clients[]` (the `security-operations` chart does this with
+   `keycloak.reconcilerClient.enabled`): `serviceAccountsEnabled: true`,
+   `secretRef` to a generated Secret, and `serviceAccountClientRoles:
+   {realm-management: [...]}` with the roles the run needs: `view-realm`,
+   `manage-realm` (realm settings, roles, required actions, flows), `view-users`,
+   `manage-users`, `query-users`, `query-groups` (groups and their role
+   mappings), `view-clients`, `manage-clients`, `query-clients` (clients, secrets,
+   mappers, scopes, service-account roles), `view-identity-providers`,
+   `manage-identity-providers` (tenant brokers). Keycloak only lets an identity
+   grant realm-management roles it holds itself, so the client needs every role it
+   hands out to other clients (e.g. `view-users` for `iris-sync`).
+2. Set `keycloak.clientCredentials: {clientId, secretRef}` and keep
+   `adminSecretRef`. The first run cannot log in as the client (it does not exist
+   yet), falls back to the admin (reported as `keycloak login skip ...
+   fallback`), and creates the client with its secret and roles.
+3. The next run logs in as the client (`keycloak login ok client ...`). Once it
+   does, drop `adminSecretRef` (and the reconciler's read access to the admin
+   Secret). Creating a realm that does not exist yet needs the admin again.
+
+An administrator can also create the client by hand (Keycloak admin console,
+realm → Clients → Create, client authentication on, service accounts roles on,
+then Service account roles → Assign role → Filter by clients → realm-management)
+and store its secret in the `secretRef` Secret.
 
 ## Velociraptor gRPC without generated code
 

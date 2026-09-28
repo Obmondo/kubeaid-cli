@@ -36,6 +36,7 @@ const (
 	DefaultWazuhAgentVersion = "4.14.8-1"
 	DefaultVeloAPIClientKey  = "api_client.yaml"
 	DefaultIdPProvider       = "oidc"
+	DefaultMISPRole          = "Read Only"
 )
 
 // Config is the root of tenants.json.
@@ -74,9 +75,14 @@ type Keycloak struct {
 	URL   string `json:"url"`
 	Realm string `json:"realm"`
 	// AdminUsername defaults to "admin"; AdminSecretRef holds its
-	// password (master realm).
+	// password (master realm). Required without ClientCredentials; with
+	// them it is the fallback while the client does not exist yet.
 	AdminUsername  string    `json:"adminUsername,omitempty"`
 	AdminSecretRef SecretRef `json:"adminSecretRef"`
+	// ClientCredentials, when set, make the reconciler log in as the
+	// service account of this confidential client in Realm instead of
+	// as the master-realm admin.
+	ClientCredentials *ClientCredentials `json:"clientCredentials,omitempty"`
 
 	CAFile             string `json:"caFile,omitempty"`
 	InsecureSkipVerify bool   `json:"insecureSkipVerify,omitempty"`
@@ -89,6 +95,16 @@ type Keycloak struct {
 	// MFAFlow, when set, makes OTP mandatory in the browser flow.
 	MFAFlow *MFAFlow `json:"mfaFlow,omitempty"`
 }
+
+// ClientCredentials name a confidential Keycloak client in the realm
+// and the Secret key holding its client secret.
+type ClientCredentials struct {
+	ClientID  string    `json:"clientId"`
+	SecretRef SecretRef `json:"secretRef"`
+}
+
+// HasAdmin reports whether a master-realm admin login is configured.
+func (k Keycloak) HasAdmin() bool { return k.AdminSecretRef != (SecretRef{}) }
 
 // OTPPolicy mirrors Keycloak's realm OTP policy fields.
 type OTPPolicy struct {
@@ -225,6 +241,31 @@ type Components struct {
 	// tenants' indexers through cross-cluster search.
 	WazuhCentral *WazuhCentral `json:"wazuhCentral,omitempty"`
 	Velociraptor *Velociraptor `json:"velociraptor,omitempty"`
+	MISP         *MISP         `json:"misp,omitempty"`
+}
+
+// MISP is the MISP REST API, reached with a site admin's auth key.
+type MISP struct {
+	URL                string    `json:"url"`
+	APIKeySecretRef    SecretRef `json:"apiKeySecretRef"`
+	CAFile             string    `json:"caFile,omitempty"`
+	InsecureSkipVerify bool      `json:"insecureSkipVerify,omitempty"`
+	// Users are MISP users the reconciler creates when missing, keeps
+	// in their role, and whose auth key it keeps in a Secret.
+	Users []MISPUser `json:"users,omitempty"`
+}
+
+// MISPUser is a MISP (API-only) user owned by the reconciler.
+type MISPUser struct {
+	Email string `json:"email"`
+	// Role is the MISP role name, e.g. "Read Only" (DefaultMISPRole).
+	Role string `json:"role,omitempty"`
+	// Org is the organisation name; empty means the admin key's own org.
+	Org string `json:"org,omitempty"`
+	// APIKeySecretRef is where the user's auth key is kept: a stored key
+	// MISP accepts for this user is left alone, otherwise a new key is
+	// generated and stored.
+	APIKeySecretRef SecretRef `json:"apiKeySecretRef"`
 }
 
 // IRIS is DFIR-IRIS.
@@ -237,8 +278,45 @@ type IRIS struct {
 	// service account's customer list next to the tenants.
 	InitialCustomer string `json:"initialCustomer,omitempty"`
 	// ServiceAccounts get these IRIS groups and every tenant's
-	// customer. The accounts themselves are not created.
+	// customer (or their own Customers).
 	ServiceAccounts []IRISServiceAccount `json:"serviceAccounts,omitempty"`
+	// Groups are IRIS groups the reconciler creates when missing and
+	// whose permissions it keeps equal to Permissions.
+	Groups []IRISGroup `json:"groups,omitempty"`
+}
+
+// IRISGroup is an IRIS group owned by the reconciler.
+type IRISGroup struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// Permissions are IRIS permission names (IRISPermissions).
+	Permissions []string `json:"permissions"`
+}
+
+// IRISPermissions are the IRIS 2.4 permission bits by name
+// (app/models/authorization.py).
+var IRISPermissions = map[string]int{
+	"standard_user":        0x1,
+	"server_administrator": 0x2,
+	"alerts_read":          0x4,
+	"alerts_write":         0x8,
+	"alerts_delete":        0x10,
+	"search_across_cases":  0x20,
+	"customers_read":       0x40,
+	"customers_write":      0x80,
+	"case_templates_read":  0x100,
+	"case_templates_write": 0x200,
+	"activities_read":      0x400,
+	"all_activities_read":  0x800,
+}
+
+// PermissionMask returns the IRIS permission mask of the group.
+func (g IRISGroup) PermissionMask() int {
+	mask := 0
+	for _, p := range g.Permissions {
+		mask |= IRISPermissions[p]
+	}
+	return mask
 }
 
 // IRISServiceAccount is an existing IRIS login.
@@ -251,9 +329,14 @@ type IRISServiceAccount struct {
 	Name   string `json:"name,omitempty"`
 	Email  string `json:"email,omitempty"`
 	// APIKeySecretRef, when set, is where the account's API key is kept for
-	// the job that uses it: a stored key IRIS still accepts is left alone,
+	// the job that uses it: a stored key IRIS accepts as this login is left alone,
 	// otherwise the key is renewed and stored.
 	APIKeySecretRef *SecretRef `json:"apiKeySecretRef,omitempty"`
+	// Customers, when set (even empty), are exactly the IRIS customers
+	// of the account: missing ones are added, others removed. Unset, the
+	// account gets every tenant's customer and the initial customer, and
+	// customers added by hand are kept.
+	Customers []string `json:"customers,omitempty"`
 }
 
 // Wazuh is one tenant's Wazuh manager API. The whole manager belongs
@@ -450,6 +533,11 @@ func (c *Config) applyComponentDefaults() {
 	if v := c.Components.Velociraptor; v != nil && v.APIClientSecretRef != nil {
 		v.APIClientSecretRef.Key = orDefault(v.APIClientSecretRef.Key, DefaultVeloAPIClientKey)
 	}
+	if m := c.Components.MISP; m != nil {
+		for i := range m.Users {
+			m.Users[i].Role = orDefault(m.Users[i].Role, DefaultMISPRole)
+		}
+	}
 }
 
 func orDefault(v, def string) string {
@@ -483,7 +571,7 @@ func (c *Config) Validate() error {
 	if c.Keycloak.URL == "" || c.Keycloak.Realm == "" {
 		fail("keycloak.url and keycloak.realm are required")
 	}
-	validateRef(fail, "keycloak.adminSecretRef", c.Keycloak.AdminSecretRef)
+	c.validateKeycloakLogin(fail)
 	c.validateTenants(fail)
 	c.validateClients(fail)
 	c.validateSecrets(fail)
@@ -491,6 +579,21 @@ func (c *Config) Validate() error {
 	c.validateComponents(fail)
 	c.validateEnrolment(fail)
 	return errors.Join(errs...)
+}
+
+// validateKeycloakLogin needs the admin login, the client credentials or
+// both (the admin then only when the client cannot log in).
+func (c *Config) validateKeycloakLogin(fail func(string, ...any)) {
+	cc := c.Keycloak.ClientCredentials
+	if cc == nil || c.Keycloak.HasAdmin() {
+		validateRef(fail, "keycloak.adminSecretRef", c.Keycloak.AdminSecretRef)
+	}
+	if cc != nil {
+		if cc.ClientID == "" {
+			fail("keycloak.clientCredentials.clientId is required")
+		}
+		validateRef(fail, "keycloak.clientCredentials.secretRef", cc.SecretRef)
+	}
 }
 
 func (c *Config) validateTenants(fail func(string, ...any)) {
@@ -597,9 +700,16 @@ func (c *Config) validateComponents(fail func(string, ...any)) {
 			if sa.APIKeySecretRef != nil {
 				validateRef(fail, fmt.Sprintf("components.iris.serviceAccounts[%d].apiKeySecretRef", i), *sa.APIKeySecretRef)
 			}
+			for _, cu := range sa.Customers {
+				if cu != iris.InitialCustomer && !c.tenantNames()[cu] {
+					fail("components.iris.serviceAccounts[%d].customers: %q is not a tenant name", i, cu)
+				}
+			}
 		}
+		validateIRISGroups(fail, iris.Groups)
 	}
 	c.validateWazuh(fail)
+	c.validateMISP(fail)
 	if v := c.Components.Velociraptor; v != nil {
 		if (v.APIClientSecretRef == nil) == (v.APIClientFile == "") {
 			fail("components.velociraptor needs exactly one of apiClientSecretRef and apiClientFile")
@@ -729,6 +839,14 @@ func (c *Config) validateEnrolment(fail func(string, ...any)) {
 	}
 }
 
+func (c *Config) tenantNames() map[string]bool {
+	out := make(map[string]bool, len(c.Tenants))
+	for _, t := range c.Tenants {
+		out[t.Name] = true
+	}
+	return out
+}
+
 func (c *Config) tenantCodes() map[string]bool {
 	out := make(map[string]bool, len(c.Tenants))
 	for _, t := range c.Tenants {
@@ -740,5 +858,56 @@ func (c *Config) tenantCodes() map[string]bool {
 func validateRef(fail func(string, ...any), where string, ref SecretRef) {
 	if ref.Namespace == "" || ref.Name == "" || ref.Key == "" {
 		fail("%s needs namespace, name and key", where)
+	}
+}
+
+func validateIRISGroups(fail func(string, ...any), groups []IRISGroup) {
+	names := map[string]bool{}
+	for i, g := range groups {
+		where := fmt.Sprintf("components.iris.groups[%d]", i)
+		switch {
+		case strings.TrimSpace(g.Name) == "":
+			fail("%s.name is required", where)
+		case names[g.Name]:
+			fail("%s.name %q is not unique", where, g.Name)
+		}
+		names[g.Name] = true
+		if len(g.Permissions) == 0 {
+			fail("%s.permissions must not be empty", where)
+		}
+		for _, p := range g.Permissions {
+			if _, ok := IRISPermissions[p]; !ok {
+				fail("%s.permissions: unknown IRIS permission %q", where, p)
+			}
+			if p == "server_administrator" {
+				fail("%s.permissions: server_administrator is not for a reconciler-owned group", where)
+			}
+		}
+	}
+}
+
+func (c *Config) validateMISP(fail func(string, ...any)) {
+	m := c.Components.MISP
+	if m == nil {
+		return
+	}
+	if m.URL == "" {
+		fail("components.misp.url is required")
+	}
+	validateRef(fail, "components.misp.apiKeySecretRef", m.APIKeySecretRef)
+	emails := map[string]bool{}
+	for i, u := range m.Users {
+		where := fmt.Sprintf("components.misp.users[%d]", i)
+		switch {
+		case !strings.Contains(u.Email, "@"):
+			fail("%s.email %q is not an e-mail address", where, u.Email)
+		case emails[strings.ToLower(u.Email)]:
+			fail("%s.email %q is not unique", where, u.Email)
+		}
+		emails[strings.ToLower(u.Email)] = true
+		validateRef(fail, where+".apiKeySecretRef", u.APIKeySecretRef)
+		if u.APIKeySecretRef == m.APIKeySecretRef {
+			fail("%s.apiKeySecretRef must not be the admin key's Secret key", where)
+		}
 	}
 }

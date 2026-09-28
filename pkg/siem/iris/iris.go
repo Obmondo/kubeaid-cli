@@ -1,10 +1,10 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-// Package iris reconciles DFIR-IRIS customers (one per tenant) and
-// the customer and group lists of IRIS service accounts. It never
-// creates, deactivates or edits IRIS users: the Keycloak sync job owns
-// human users.
+// Package iris reconciles DFIR-IRIS customers (one per tenant), the
+// groups the reconciler owns, and IRIS service accounts (created when
+// asked, with their groups, customers and API key). It never touches
+// human users: the Keycloak sync job owns them.
 package iris
 
 import (
@@ -104,8 +104,8 @@ type Customer struct {
 }
 
 // ServiceAccount is an IRIS login whose groups and customers are managed
-// (added to, never removed from). With Create it is added as an IRIS
-// service account when missing; with Key its API key is kept there.
+// (groups added to, never removed from). With Create it is added as an
+// IRIS service account when missing; with Key its API key is kept there.
 type ServiceAccount struct {
 	Login  string
 	Groups []string
@@ -113,13 +113,27 @@ type ServiceAccount struct {
 	Name   string
 	Email  string
 	Key    KeyStore
+	// Customers, when non-nil, are exactly the account's customers
+	// (others are removed). Nil means every Spec customer plus the
+	// initial customer, and customers added by hand are kept.
+	Customers []string
+}
+
+// Group is an IRIS group the reconciler owns: created when missing, its
+// permission mask kept equal to Permissions.
+type Group struct {
+	Name        string
+	Description string
+	Permissions int
 }
 
 // Spec is the desired IRIS state.
 type Spec struct {
 	Customers []Customer
-	// InitialCustomer is added to every service account's customers.
+	// InitialCustomer is added to the customers of every service
+	// account without its own Customers.
 	InitialCustomer string
+	Groups          []Group
 	ServiceAccounts []ServiceAccount
 }
 
@@ -152,6 +166,7 @@ func Reconcile(ctx context.Context, c *Client, spec Spec, dryRun bool) []report.
 		}
 		add("customer", want.Name, report.ActionCreate, "")
 	}
+	results = append(results, c.reconcileGroups(ctx, spec.Groups, dryRun)...)
 	if len(spec.ServiceAccounts) == 0 {
 		return results
 	}
@@ -167,6 +182,11 @@ func Reconcile(ctx context.Context, c *Client, spec Spec, dryRun bool) []report.
 		add("api", "groups", report.ActionError, err.Error())
 		return results
 	}
+	for _, g := range spec.Groups {
+		if _, ok := groups[g.Name]; !ok && dryRun {
+			groups[g.Name] = -1 // created by this run; only reported in a dry run
+		}
+	}
 
 	wantCustomers := make([]string, 0, len(spec.Customers)+1)
 	if spec.InitialCustomer != "" {
@@ -176,13 +196,17 @@ func Reconcile(ctx context.Context, c *Client, spec Spec, dryRun bool) []report.
 		wantCustomers = append(wantCustomers, cu.Name)
 	}
 	for _, sa := range spec.ServiceAccounts {
-		results = append(results, c.reconcileServiceAccount(ctx, sa, groups, customers, wantCustomers, dryRun)...)
+		want, exclusive := wantCustomers, false
+		if sa.Customers != nil {
+			want, exclusive = sa.Customers, true
+		}
+		results = append(results, c.reconcileServiceAccount(ctx, sa, groups, customers, want, exclusive, dryRun)...)
 	}
 	return results
 }
 
 func (c *Client) reconcileServiceAccount(
-	ctx context.Context, sa ServiceAccount, groups, customers map[string]int, wantCustomers []string, dryRun bool,
+	ctx context.Context, sa ServiceAccount, groups, customers map[string]int, wantCustomers []string, exclusive, dryRun bool,
 ) (out []report.Result) {
 	res := func(kind string, a report.Action, detail string) report.Result {
 		return report.Result{Component: Component, Kind: kind, Name: sa.Login, Action: a, Detail: detail}
@@ -240,10 +264,56 @@ func (c *Client) reconcileServiceAccount(
 		out = append(out, res("service-account-customers", report.ActionError, "IRIS customers do not exist: "+strings.Join(unknownCust, ",")))
 		return out
 	}
-	if len(cMissing) == 0 {
+	var extra []string
+	if exclusive {
+		cIDs, extra = exactIDs(wantCustomers, customers, curCustomers)
+	}
+	if len(cMissing) == 0 && len(extra) == 0 {
 		return append(out, res("service-account-customers", report.ActionOK, ""))
 	}
+	if len(extra) > 0 {
+		return append(out, c.replace(ctx, res, uid, cIDs, cMissing, extra, dryRun))
+	}
 	return append(out, c.update(ctx, res, "service-account-customers", uid, "customers", cIDs, cMissing, dryRun))
+}
+
+// exactIDs returns the ids of the wanted names IRIS knows and the ids
+// the account has beyond them.
+func exactIDs(want []string, byName map[string]int, current map[string]bool) (ids, extra []string) {
+	keep := map[string]bool{}
+	for _, name := range want {
+		if id, ok := byName[name]; ok {
+			keep[strconv.Itoa(id)] = true
+		}
+	}
+	for id := range keep {
+		ids = append(ids, id)
+	}
+	for id := range current {
+		if !keep[id] {
+			extra = append(extra, id)
+		}
+	}
+	sort.Strings(ids)
+	sort.Strings(extra)
+	return ids, extra
+}
+
+// replace sets the account's customers to exactly ids, dropping the
+// customer ids in extra.
+func (c *Client) replace(
+	ctx context.Context, res func(string, report.Action, string) report.Result,
+	uid int, ids, added, extra []string, dryRun bool,
+) report.Result {
+	r := c.update(ctx, res, "service-account-customers", uid, "customers", ids, added, dryRun)
+	detail := "remove customer ids " + strings.Join(extra, ",")
+	if len(added) > 0 {
+		detail = "add " + strings.Join(added, ",") + "; " + detail
+	}
+	if r.Action != report.ActionError {
+		r.Detail = detail
+	}
+	return r
 }
 
 // update POSTs the union of current and wanted ids. IRIS replaces the
@@ -310,6 +380,53 @@ func (c *Client) customers(ctx context.Context) (map[string]int, error) {
 		out[pickString(cu, "customer_name", "name")] = pickInt(cu, "customer_id", "client_id", "id")
 	}
 	return out, nil
+}
+
+// reconcileGroups creates the owned groups that are missing and resets
+// the permission mask of those that drifted.
+func (c *Client) reconcileGroups(ctx context.Context, want []Group, dryRun bool) []report.Result {
+	if len(want) == 0 {
+		return nil
+	}
+	res := func(name string, a report.Action, detail string) report.Result {
+		return report.Result{Component: Component, Kind: "group", Name: name, Action: a, Detail: detail}
+	}
+	var list []map[string]any
+	if err := c.call(ctx, http.MethodGet, "/manage/groups/list", nil, &list); err != nil {
+		return []report.Result{{Component: Component, Kind: "api", Name: "groups", Action: report.ActionError, Detail: err.Error()}}
+	}
+	type current struct{ id, perms int }
+	have := make(map[string]current, len(list))
+	for _, g := range list {
+		have[pickString(g, "group_name", "name")] = current{id: pickInt(g, "group_id", "id"), perms: pickInt(g, "group_permissions")}
+	}
+	out := make([]report.Result, 0, len(want))
+	for _, g := range want {
+		body := map[string]any{"group_name": g.Name, "group_description": g.Description, "group_permissions": g.Permissions}
+		cur, found := have[g.Name]
+		switch {
+		case found && cur.perms == g.Permissions:
+			out = append(out, res(g.Name, report.ActionOK, ""))
+		case found:
+			detail := fmt.Sprintf("permissions %#x -> %#x", cur.perms, g.Permissions)
+			if !dryRun {
+				if err := c.call(ctx, http.MethodPost, "/manage/groups/update/"+strconv.Itoa(cur.id), body, nil); err != nil {
+					out = append(out, res(g.Name, report.ActionError, err.Error()))
+					continue
+				}
+			}
+			out = append(out, res(g.Name, report.ActionUpdate, detail))
+		default:
+			if !dryRun {
+				if err := c.call(ctx, http.MethodPost, "/manage/groups/add", body, nil); err != nil {
+					out = append(out, res(g.Name, report.ActionError, err.Error()))
+					continue
+				}
+			}
+			out = append(out, res(g.Name, report.ActionCreate, fmt.Sprintf("permissions %#x", g.Permissions)))
+		}
+	}
+	return out
 }
 
 func (c *Client) groups(ctx context.Context) (map[string]int, error) {

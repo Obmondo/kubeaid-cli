@@ -27,6 +27,8 @@ const (
 	initialCust = "IrisInitialClient"
 	svcLogin    = "svc_ai"
 	userID      = "user_id"
+	userLogin   = "user_login"
+	groupID     = "group_id"
 )
 
 // fakeIRIS implements the handful of IRIS admin endpoints the
@@ -35,9 +37,11 @@ type fakeIRIS struct {
 	mu        sync.Mutex
 	customers map[string]int
 	groups    map[string]int
-	users     map[string]*fakeUser
-	nextID    int
-	writes    int
+	// groupPerms are the permission masks of groups (name -> mask).
+	groupPerms map[string]int
+	users      map[string]*fakeUser
+	nextID     int
+	writes     int
 	// userKeys are the API keys of non-admin users (login -> key).
 	userKeys map[string]string
 	renewals int
@@ -51,11 +55,12 @@ type fakeUser struct {
 
 func newFakeIRIS() *fakeIRIS {
 	return &fakeIRIS{
-		customers: map[string]int{initialCust: 1},
-		groups:    map[string]int{"Administrators": 1, analysts: 2, automation: 3},
-		users:     map[string]*fakeUser{svcLogin: {id: 7, groups: []int{3}, customers: []int{1}}},
-		nextID:    10,
-		userKeys:  map[string]string{svcLogin: "svc-key-1"},
+		customers:  map[string]int{initialCust: 1},
+		groups:     map[string]int{"Administrators": 1, analysts: 2, automation: 3},
+		groupPerms: map[string]int{"Administrators": 0xfff, analysts: 0x465, automation: 0xc},
+		users:      map[string]*fakeUser{svcLogin: {id: 7, groups: []int{3}, customers: []int{1}}},
+		nextID:     10,
+		userKeys:   map[string]string{svcLogin: "svc-key-1"},
 	}
 }
 
@@ -73,12 +78,16 @@ func (f *fakeIRIS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	p := r.URL.Path
-	if p == "/api/ping" {
-		for _, k := range f.userKeys {
+	if p == "/user/whoami" {
+		for login, k := range f.userKeys {
 			if r.Header.Get("Authorization") == "Bearer "+k {
-				ok(w, nil)
+				ok(w, map[string]any{userLogin: login})
 				return
 			}
+		}
+		if r.Header.Get("Authorization") == "Bearer "+testKey {
+			ok(w, map[string]any{userLogin: "administrator"})
+			return
 		}
 	}
 	if r.Header.Get("Authorization") != "Bearer "+testKey {
@@ -134,9 +143,21 @@ func (f *fakeIRIS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case p == "/manage/groups/list":
 		list := []map[string]any{}
 		for n, id := range f.groups {
-			list = append(list, map[string]any{"group_name": n, "group_id": id})
+			list = append(list, map[string]any{"group_name": n, groupID: id, "group_permissions": f.groupPerms[n]})
 		}
 		ok(w, list)
+	case (p == "/manage/groups/add" || strings.HasPrefix(p, "/manage/groups/update/")) && r.Method == http.MethodPost:
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		name, _ := body["group_name"].(string)
+		perms, _ := body["group_permissions"].(float64)
+		if p == "/manage/groups/add" {
+			f.nextID++
+			f.groups[name] = f.nextID
+		}
+		f.groupPerms[name] = int(perms)
+		f.writes++
+		ok(w, map[string]any{groupID: f.groups[name]})
 	case strings.HasPrefix(p, "/manage/users/lookup/login/"):
 		u, found := f.users[strings.TrimPrefix(p, "/manage/users/lookup/login/")]
 		if !found {
@@ -166,7 +187,7 @@ func (f *fakeIRIS) handleUser(w http.ResponseWriter, r *http.Request, parts []st
 	if len(parts) == 1 {
 		groups, customers := []map[string]any{}, []map[string]any{}
 		for _, g := range u.groups {
-			groups = append(groups, map[string]any{"group_id": g})
+			groups = append(groups, map[string]any{groupID: g})
 		}
 		for _, c := range u.customers {
 			customers = append(customers, map[string]any{customerID: c})

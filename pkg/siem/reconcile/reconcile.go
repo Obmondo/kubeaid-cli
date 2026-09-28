@@ -3,7 +3,7 @@
 
 // Package reconcile runs the SIEM reconciler components in order
 // (secrets, enrolment, keycloak, iris, wazuh, wazuhcentral,
-// velociraptor) and collects their per-object results. A failing
+// velociraptor, misp) and collects their per-object results. A failing
 // component (or Wazuh manager) is reported and the run continues with
 // the next one.
 package reconcile
@@ -21,6 +21,7 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/enrolment"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/httpx"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/iris"
+	"github.com/Obmondo/kubeaid-cli/pkg/siem/misp"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/report"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/secrets"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/velociraptor"
@@ -38,12 +39,13 @@ const (
 	ComponentWazuh        = wazuh.Component
 	ComponentWazuhCentral = wazuhcentral.Component
 	ComponentVelociraptor = velociraptor.Component
+	ComponentMISP         = misp.Component
 )
 
 // Components lists every component in run order.
 var Components = []string{
 	ComponentSecrets, ComponentEnrolment, ComponentKeycloak, ComponentIRIS,
-	ComponentWazuh, ComponentWazuhCentral, ComponentVelociraptor,
+	ComponentWazuh, ComponentWazuhCentral, ComponentVelociraptor, ComponentMISP,
 }
 
 // Options configure a run.
@@ -110,6 +112,9 @@ func Run(ctx context.Context, opts Options) []report.Result {
 	if selected(ComponentVelociraptor) && cfg.Components.Velociraptor != nil {
 		results = append(results, runVelociraptor(ctx, cfg, store, opts.DryRun)...)
 	}
+	if selected(ComponentMISP) && cfg.Components.MISP != nil {
+		results = append(results, runMISP(ctx, cfg, store, opts.DryRun)...)
+	}
 	return results
 }
 
@@ -143,12 +148,36 @@ func IRISSpec(cfg *config.Config) iris.Spec {
 	for _, t := range cfg.Tenants {
 		spec.Customers = append(spec.Customers, iris.Customer{Name: t.Name, Description: "Tenant " + t.Code})
 	}
+	for _, g := range ic.Groups {
+		spec.Groups = append(spec.Groups, iris.Group{Name: g.Name, Description: g.Description, Permissions: g.PermissionMask()})
+	}
 	for _, sa := range ic.ServiceAccounts {
 		spec.ServiceAccounts = append(spec.ServiceAccounts, iris.ServiceAccount{
 			Login: sa.Login, Groups: sa.Groups, Create: sa.Create, Name: sa.Name, Email: sa.Email,
+			Customers: sa.Customers,
 		})
 	}
 	return spec
+}
+
+func runMISP(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {
+	mc := cfg.Components.MISP
+	key, err := store.Read(ctx, mc.APIKeySecretRef)
+	if err != nil {
+		return errorResult(ComponentMISP, "api-key", err)
+	}
+	hc, err := httpx.Client(mc.CAFile, mc.InsecureSkipVerify)
+	if err != nil {
+		return errorResult(ComponentMISP, "http", err)
+	}
+	var spec misp.Spec
+	for _, u := range mc.Users {
+		spec.Users = append(spec.Users, misp.User{
+			Email: u.Email, Role: u.Role, Org: u.Org,
+			Key: secretKeyStore{store: store, ref: u.APIKeySecretRef},
+		})
+	}
+	return misp.Reconcile(ctx, &misp.Client{BaseURL: mc.URL, APIKey: key, HTTP: hc}, spec, dryRun)
 }
 
 func runWazuh(ctx context.Context, cfg *config.Config, wc config.Wazuh, store secrets.Store, dryRun bool) []report.Result {

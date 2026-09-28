@@ -14,8 +14,8 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/secrets"
 )
 
-// secretKeyStore keeps an IRIS service account's API key in one key of a
-// Kubernetes Secret (iris.KeyStore).
+// secretKeyStore keeps a service account's API key in one key of a
+// Kubernetes Secret (iris.KeyStore, misp.KeyStore).
 type secretKeyStore struct {
 	store secrets.Store
 	ref   config.SecretRef

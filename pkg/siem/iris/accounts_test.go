@@ -80,7 +80,9 @@ func TestServiceAccountStoredKeyKept(t *testing.T) {
 
 func TestServiceAccountMissingOrStaleKeyRenewed(t *testing.T) {
 	t.Parallel()
-	for name, stored := range map[string]string{"missing": "", "stale": "revoked-key"} {
+	// "shared": a working key of another user (the admin key copied there
+	// before the account had its own) is replaced too.
+	for name, stored := range map[string]string{"missing": "", "stale": "revoked-key", "shared": testKey} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()

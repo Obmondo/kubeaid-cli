@@ -39,7 +39,7 @@ var flags struct {
 // RootCmd reconciles once and exits.
 var RootCmd = &cobra.Command{
 	Use:   "siem-reconciler",
-	Short: "Reconcile Keycloak, DFIR-IRIS, Wazuh and Velociraptor with tenants.json",
+	Short: "Reconcile Keycloak, DFIR-IRIS, Wazuh, Velociraptor and MISP with tenants.json",
 	Long: `siem-reconciler reads tenants.json and makes the SIEM components match it:
 Kubernetes Secrets (create-if-missing, key copies), Wazuh agent enrolment bundles,
 Keycloak realm/clients/roles/groups/MFA flow, IRIS customers, the API RBAC of each

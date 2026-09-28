@@ -6,6 +6,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/keycloak"
 	"github.com/Obmondo/kubeaid-cli/pkg/siem/config"
@@ -53,21 +54,55 @@ func action(c keycloak.Change) report.Action {
 }
 
 func runKeycloak(ctx context.Context, cfg *config.Config, store secrets.Store, dryRun bool) []report.Result {
-	kcfg := cfg.Keycloak
-	password, err := store.Read(ctx, kcfg.AdminSecretRef)
-	if err != nil {
-		return errorResult(ComponentKeycloak, "admin-credentials", err)
-	}
-	hc, err := httpx.Client(kcfg.CAFile, kcfg.InsecureSkipVerify)
+	hc, err := httpx.Client(cfg.Keycloak.CAFile, cfg.Keycloak.InsecureSkipVerify)
 	if err != nil {
 		return errorResult(ComponentKeycloak, "http", err)
 	}
-	kc, err := keycloak.NewReconcilerWithHTTPClient(ctx, kcfg.URL, kcfg.AdminUsername, password, hc)
-	if err != nil {
-		return errorResult(ComponentKeycloak, "login", err)
+	kc, login := keycloakLogin(ctx, cfg.Keycloak, store, hc)
+	if kc == nil {
+		return []report.Result{login}
 	}
 	kc.SetDryRun(dryRun)
-	return reconcileKeycloak(ctx, kc, cfg, store, dryRun)
+	return append([]report.Result{login}, reconcileKeycloak(ctx, kc, cfg, store, dryRun)...)
+}
+
+// keycloakLogin logs in as the configured client (client credentials)
+// when there is one, else, or when the client cannot log in yet (it is
+// created by the first run), as the master-realm admin. The result says
+// which identity the run uses; kc is nil when no login worked.
+func keycloakLogin(ctx context.Context, kcfg config.Keycloak, store secrets.Store, hc *http.Client) (*keycloak.Reconciler, report.Result) {
+	res := func(a report.Action, detail string) report.Result {
+		return report.Result{Component: ComponentKeycloak, Kind: "login", Name: kcfg.Realm, Action: a, Detail: detail}
+	}
+	var clientErr error
+	if cc := kcfg.ClientCredentials; cc != nil {
+		secret, err := store.Read(ctx, cc.SecretRef)
+		if err == nil {
+			var kc *keycloak.Reconciler
+			if kc, err = keycloak.NewReconcilerWithClientCredentials(ctx, kcfg.URL, kcfg.Realm, cc.ClientID, secret, hc); err == nil {
+				return kc, res(report.ActionOK, "client "+cc.ClientID)
+			}
+		}
+		clientErr = err
+		if !kcfg.HasAdmin() {
+			return nil, res(report.ActionError, clientErr.Error())
+		}
+	}
+	password, err := store.Read(ctx, kcfg.AdminSecretRef)
+	if err != nil {
+		return nil, res(report.ActionError, "admin credentials: "+err.Error())
+	}
+	kc, err := keycloak.NewReconcilerWithHTTPClient(ctx, kcfg.URL, kcfg.AdminUsername, password, hc)
+	if err != nil {
+		return nil, res(report.ActionError, err.Error())
+	}
+	if clientErr != nil {
+		// Expected on the run that creates the client; afterwards the
+		// client should log in and this fallback should not show up.
+		return kc, res(report.ActionSkip, fmt.Sprintf("master admin %s (fallback: client %s: %v)",
+			kcfg.AdminUsername, kcfg.ClientCredentials.ClientID, clientErr))
+	}
+	return kc, res(report.ActionOK, "master admin "+kcfg.AdminUsername)
 }
 
 //nolint:gocognit // a flat sequence of independent steps
