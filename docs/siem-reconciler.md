@@ -131,9 +131,16 @@ server administrator; per manager a Wazuh API user allowed to manage security
 (`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
 `indexPatterns`, to write saved objects and advanced settings in the dashboard's
 global tenant);
-a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
-`org_create` and for `orgs()` to list every org with its client config, and
-`COLLECT_SERVER` for `add_server_monitoring`).
+a Velociraptor api_client with six permissions, which the `velociraptor` chart
+grants with `apiClient.policy` instead of the `administrator` role:
+`any_query` (every call), `read_results` (`get_server_monitoring`), `org_admin`
+(`org_create`, and `orgs()` listing every org with its client config),
+`collect_server` (`add_server_monitoring`) and `artifact_writer` plus
+`server_artifact_writer` (`artifact_set`, for the content package). Each was
+confirmed on a 0.77.1 server by dropping it and re-running these calls.
+Velociraptor logs a refusal without naming the missing permission, so the
+reconciler adds it to the report itself (`refusal` in
+`pkg/siem/velociraptor/reconcile.go`).
 
 ## Velociraptor gRPC without generated code
 

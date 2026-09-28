@@ -369,3 +369,45 @@ func TestOrgClientConfigs(t *testing.T) {
 	}, got, "orgs without a client config are left out; duplicates are kept for the caller")
 	assert.Contains(t, vqlOrgClientConfigs, "_client_config AS ClientConfig", "hidden column must be selected explicitly")
 }
+
+// The API client runs with an explicit least-privilege policy instead of
+// the administrator role (velociraptor chart, apiClient.policy), and
+// Velociraptor logs a refusal without naming the missing permission, so
+// the report has to name it.
+func TestRefusalNamesThePermission(t *testing.T) {
+	t.Parallel()
+	for vql, want := range map[string]string{
+		vqlCreateOrg:           PermOrgAdmin,
+		vqlListOrgs:            PermOrgAdmin,
+		vqlOrgClientConfigs:    PermOrgAdmin,
+		vqlAddMonitoring:       PermCollectServer,
+		vqlGetMonitoring:       PermReadResults,
+		"SELECT 1 FROM info()": "",
+	} {
+		got := refusal(vql, []string{"permission denied"})
+		assert.Contains(t, got, "permission denied", "the server's own log must stay")
+		if want == "" {
+			assert.NotContains(t, got, "permissions for this call", "%s needs nothing beyond %s", vql, PermAnyQuery)
+			continue
+		}
+		assert.Contains(t, got, want, "refusal of %s must name %s", vql, want)
+		assert.Contains(t, got, PermAnyQuery, "every call needs %s", PermAnyQuery)
+	}
+}
+
+func TestRefusedMonitoringWriteNamesCollectServer(t *testing.T) {
+	t.Parallel()
+	f := &fakeServer{
+		orgs:       []string{tenantA, tenantB},
+		specs:      map[string]map[string]string{},
+		knownArtis: map[string]bool{},
+	}
+	var detail string
+	for _, r := range Reconcile(context.Background(), dial(t, f), spec(), false) {
+		if r.Kind == "server-monitoring" && r.Name == irisCollector {
+			detail = r.Detail
+		}
+	}
+	assert.Contains(t, detail, PermCollectServer)
+	assert.Contains(t, detail, PermAnyQuery)
+}
