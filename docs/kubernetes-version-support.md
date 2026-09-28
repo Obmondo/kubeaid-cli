@@ -10,10 +10,10 @@ Every Kubernetes version you request is validated at bootstrap. It must:
 
 | KubeAid CLI | AWS · Azure · Hetzner (Cluster API) | Bare metal (KubeOne) |
 |---|---|---|
-| `v0.31.x` | `v1.30` → latest released (non-EOL) | `v1.33` – `v1.35` |
+| `v0.31.x` | `v1.30` → latest released (non-EOL) | `v1.34` – `v1.36` |
 
 - **Cluster API clouds** — `v1.30` up to the latest released minor.
-- **Bare metal** — fixed to `v1.33`–`v1.35` by **KubeOne v1.13**; the range moves when KubeOne is upgraded.
+- **Bare metal** — fixed to `v1.34`–`v1.36` by **KubeOne v1.14**; the range moves when KubeOne is upgraded.
 - **KubePrometheus** — matched to the Kubernetes version automatically, over `v1.32`–`v1.36` (`cgroup v1`
   support ends at `v1.35`).
 

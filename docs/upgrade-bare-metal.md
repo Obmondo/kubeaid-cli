@@ -5,7 +5,7 @@
 > `general.yaml` is the source of truth, and kubeaid-cli drives the
 > embedded KubeOne.
 
-Supported Kubernetes range: **v1.33 – v1.35** (KubeOne v1.13). The range
+Supported Kubernetes range: **v1.34 – v1.36** (KubeOne v1.14). The range
 moves when kubeaid-cli bumps its embedded KubeOne.
 
 ## Steps
@@ -47,9 +47,9 @@ moves when kubeaid-cli bumps its embedded KubeOne.
    4. **Verify** — the run waits until every node is Ready at the target
       kubelet version.
 
-3. Multi-minor jumps = repeat. Going v1.33 → v1.35 means editing
-   `general.yaml` to v1.34.x, running the upgrade, then editing to
-   v1.35.x and running it again.
+3. Multi-minor jumps = repeat. Going v1.34 → v1.36 means editing
+   `general.yaml` to v1.35.x, running the upgrade, then editing to
+   v1.36.x and running it again.
 
 ## Reconcile semantics
 
@@ -139,11 +139,11 @@ kernel command line (and a reboot) before the upgrade.
 
 ## Caveats
 
-- **Clusters still on v1.32 or older**: KubeOne v1.13 (embedded since
+- **Clusters still on v1.33 or older**: KubeOne v1.14 (embedded since
   this kubeaid-cli version) can't manage them. Do one manual hop to
-  v1.33 with a KubeOne v1.12 binary first, then use `kubeaid-cli
+  v1.34 with a KubeOne v1.13 binary first, then use `kubeaid-cli
   cluster upgrade` from there on.
-- **containerd 1.7 → 2.x**: KubeOne v1.13 moves nodes to containerd 2.x
+- **containerd 1.7 → 2.x**: KubeOne v1.14 moves nodes to containerd 2.x
   as part of node upgrades. This is handled per-node during the rolling
   upgrade; no action needed, but expect it in the diff of installed
   packages.
