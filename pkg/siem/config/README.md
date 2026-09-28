@@ -21,7 +21,7 @@ Kubernetes Secret.
 | `clients` | list | no | Keycloak OIDC clients. |
 | `secrets` | list | no | Secrets created with random values when missing. |
 | `secretCopies` | list | no | Single Secret keys copied into other Secrets, see below. |
-| `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`; an absent component is skipped. |
+| `components` | object | yes | `iris`, `wazuh`, `wazuhCentral`, `velociraptor`, `misp`; an absent component is skipped. |
 | `enrolment` | list | no | Per-tenant agent enrolment bundle Secrets, see below. |
 
 ## `keycloak`
@@ -31,7 +31,8 @@ Kubernetes Secret.
 | `url` | string, req. | Keycloak root incl. context path, e.g. `http://keycloakx-http.keycloakx.svc/auth`. |
 | `realm` | string, req. | Realm to manage (created if missing). |
 | `adminUsername` | string | Master-realm admin, default `admin`. |
-| `adminSecretRef` | SecretRef, req. | The admin password. |
+| `adminSecretRef` | SecretRef | The admin password. Required without `clientCredentials`; with them it is only the fallback used while the client cannot log in (the run that creates it). |
+| `clientCredentials` | `{clientId, secretRef}` | Log in as the service account of this confidential client in `realm` (client-credentials grant) instead of as the master-realm admin. The run reports which identity it used (kind `login`: `ok` for the client or an admin-only config, `skip` with the reason when it fell back to the admin). |
 | `caFile`, `insecureSkipVerify` | string, bool | TLS to Keycloak. |
 | `bruteForceProtected` | bool | Omitted = left alone. |
 | `otpPolicy` | `{type, algorithm, digits, period}` | Omitted = left alone. |
@@ -88,8 +89,16 @@ by the reconciler, never generated or copied by it.
 
 - `iris`: `url`, `apiKeySecretRef` (key of an IRIS server administrator),
   `caFile`, `insecureSkipVerify`, `initialCustomer` (default `IrisInitialClient`),
-  `serviceAccounts: [{login, groups}]` (existing IRIS logins; groups and every
-  tenant customer plus `initialCustomer` are added, never removed).
+  `groups: [{name, description, permissions}]` (IRIS groups the reconciler owns:
+  created when missing, permission mask reset when it drifted; `permissions` are
+  IRIS 2.4 names such as `alerts_write`, `customers_read`, never
+  `server_administrator`),
+  `serviceAccounts: [{login, groups, create, name, email, apiKeySecretRef,
+  customers}]`: groups are added, never removed. Without `customers` the account
+  gets every tenant customer plus `initialCustomer` (added, never removed); with
+  `customers` (tenant names, or `initialCustomer`) it has exactly those, and any
+  other customer is removed. `create: true` adds a missing login as an IRIS
+  service account; `apiKeySecretRef` keeps its API key in that Secret key.
 - `wazuh`: a **list**, one Wazuh manager per tenant (each manager belongs to one
   tenant, usually in namespace `wazuh-<code>`). Per entry: `tenant` (req., a code
   from `tenants`, at most one entry per tenant), `url`, `credSecretRef: {namespace,
@@ -125,6 +134,16 @@ by the reconciler, never generated or copied by it.
   `api_client.yaml`) and `apiClientFile`; `address` overrides the api_client's
   `api_connection_string`; `serverMonitoring: [{artifact, parameters}]` must be
   running (only listed parameters compared; other artifacts are never removed).
+
+- `misp`: `url`, `apiKeySecretRef` (auth key of a MISP site admin), `caFile`,
+  `insecureSkipVerify`, `users: [{email, role (default "Read Only"), org (default:
+  the admin key's own organisation), apiKeySecretRef}]`. A missing user is created
+  (random password nobody keeps, no e-mail sent) in that role and organisation; a
+  user in another role is put back into it; a disabled user or one in another
+  organisation is an error. A stored key is kept when MISP accepts it *as that
+  user* (`/users/view/me`), otherwise a new key is generated
+  (`/users/resetauthkey`, with or without advanced auth keys) and stored. The key
+  Secret must not be the admin key's.
 
 ## `enrolment[]`
 

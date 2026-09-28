@@ -58,14 +58,17 @@ func (c *Client) createServiceAccount(ctx context.Context, sa ServiceAccount) (s
 	return pickString(out, "user_api_key", "api_key"), nil
 }
 
-// keyWorks tells whether IRIS accepts key.
-func (c *Client) keyWorks(ctx context.Context, key string) (bool, error) {
+// keyIsAccount tells whether IRIS accepts key as the login (not as
+// another user, e.g. a shared key copied there before the account had
+// its own).
+func (c *Client) keyIsAccount(ctx context.Context, key, login string) (bool, error) {
 	probe := &Client{BaseURL: c.BaseURL, APIKey: key, HTTP: c.HTTP}
-	err := probe.call(ctx, http.MethodGet, "/api/ping", nil, nil)
+	var me map[string]any
+	err := probe.call(ctx, http.MethodGet, "/user/whoami", nil, &me)
 	var apiErr *APIError
 	switch {
 	case err == nil:
-		return true, nil
+		return pickString(me, "user_login", "login") == login, nil
 	case errors.As(err, &apiErr) && (apiErr.Code == http.StatusUnauthorized || apiErr.Code == http.StatusForbidden):
 		return false, nil
 	default:
@@ -74,7 +77,7 @@ func (c *Client) keyWorks(ctx context.Context, key string) (bool, error) {
 }
 
 // ensureKey keeps a working API key of the account in sa.Key: a stored key
-// IRIS accepts is left alone; otherwise the key from a just-created account,
+// IRIS accepts as this account is left alone; otherwise the key from a just-created account,
 // or a renewed one, is stored.
 func (c *Client) ensureKey(ctx context.Context, sa ServiceAccount, uid int, createdKey string, dryRun bool) report.Result {
 	res := func(a report.Action, detail string) report.Result {
@@ -85,7 +88,7 @@ func (c *Client) ensureKey(ctx context.Context, sa ServiceAccount, uid int, crea
 		return res(report.ActionError, err.Error())
 	}
 	if stored != "" {
-		ok, err := c.keyWorks(ctx, stored)
+		ok, err := c.keyIsAccount(ctx, stored, sa.Login)
 		if err != nil {
 			return res(report.ActionError, err.Error())
 		}

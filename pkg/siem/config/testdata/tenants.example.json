@@ -6,6 +6,7 @@
     "realm": "soc",
     "adminUsername": "admin",
     "adminSecretRef": {"namespace": "keycloakx", "name": "keycloak-admin", "key": "KEYCLOAK_PASSWORD"},
+    "clientCredentials": {"clientId": "siem-reconciler", "secretRef": {"namespace": "security-operations", "name": "siem-reconciler-keycloak", "key": "KEYCLOAK_CLIENT_SECRET"}},
     "bruteForceProtected": true,
     "otpPolicy": {"type": "totp", "algorithm": "HmacSHA1", "digits": 6, "period": 30},
     "requireTOTP": true,
@@ -135,7 +136,14 @@
       "url": "http://dfir-iris-app:8000",
       "apiKeySecretRef": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
       "initialCustomer": "IrisInitialClient",
-      "serviceAccounts": [{"login": "svc_ai", "groups": ["Automation"]}]
+      "groups": [{"name": "Wazuh alert intake", "description": "Alerts from one tenant's Wazuh manager", "permissions": ["alerts_write", "customers_read"]}],
+      "serviceAccounts": [
+        {"login": "svc_ai", "groups": ["Automation"]},
+        {"login": "svc_wazuh_001", "groups": ["Wazuh alert intake"], "create": true, "customers": ["Tenant A"],
+         "apiKeySecretRef": {"namespace": "wazuh-001", "name": "iris-api-key", "key": "API_KEY"}},
+        {"login": "svc_wazuh_002", "groups": ["Wazuh alert intake"], "create": true, "customers": ["Tenant B"],
+         "apiKeySecretRef": {"namespace": "wazuh-002", "name": "iris-api-key", "key": "API_KEY"}}
+      ]
     },
     "wazuh": [
       {
@@ -174,6 +182,14 @@
       "serverMonitoring": [
         {"artifact": "Custom.Server.IrisCollector"},
         {"artifact": "Custom.Server.KeycloakSync", "parameters": {"DryRun": "N"}}
+      ]
+    },
+    "misp": {
+      "url": "http://misp",
+      "apiKeySecretRef": {"namespace": "security-operations", "name": "misp-api-key", "key": "key"},
+      "users": [
+        {"email": "ioc-export@example.com", "role": "Read Only",
+         "apiKeySecretRef": {"namespace": "security-operations", "name": "misp-export-key", "key": "key"}}
       ]
     }
   },

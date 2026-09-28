@@ -34,6 +34,13 @@ type Reconciler struct {
 	adminUser     string
 	adminPassword string
 
+	// clientID, clientSecret and loginRealm are set instead of the admin
+	// credentials when the Reconciler logs in as a confidential client's
+	// service account (NewReconcilerWithClientCredentials).
+	clientID     string
+	clientSecret string
+	loginRealm   string
+
 	// httpClient is used by the raw admin-API helper (rest.go) for the
 	// endpoints gocloak does not cover (auth flows, scope mappings,
 	// identity-provider mappers, ...).
@@ -88,6 +95,36 @@ func NewReconcilerWithHTTPClient(
 	return r, nil
 }
 
+// NewReconcilerWithClientCredentials logs in as the service account of a
+// confidential client in realm (client-credentials grant) instead of the
+// master-realm admin. The Reconciler can then do exactly what the
+// client's service account roles allow, typically realm-management roles
+// of that one realm; creating the realm itself needs the admin login.
+func NewReconcilerWithClientCredentials(
+	ctx context.Context,
+	baseURL, realm, clientID, clientSecret string,
+	httpClient *http.Client,
+) (*Reconciler, error) {
+	api := gocloak.NewClient(baseURL)
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	} else if httpClient.Transport != nil {
+		api.RestyClient().SetTransport(httpClient.Transport)
+	}
+	r := &Reconciler{
+		api:          api,
+		baseURL:      baseURL,
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		loginRealm:   realm,
+		httpClient:   httpClient,
+	}
+	if err := r.login(ctx); err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // SetDryRun switches the Ensure* methods between reporting and
 // applying. It does not affect the legacy Reconcile* methods.
 func (r *Reconciler) SetDryRun(dryRun bool) { r.dryRun = dryRun }
@@ -95,11 +132,22 @@ func (r *Reconciler) SetDryRun(dryRun bool) { r.dryRun = dryRun }
 // DryRun reports whether the Reconciler is in dry-run mode.
 func (r *Reconciler) DryRun() bool { return r.dryRun }
 
-// login fetches a fresh admin access token.
+// login fetches a fresh access token, as the admin or as the client.
 func (r *Reconciler) login(ctx context.Context) error {
-	jwt, err := r.api.LoginAdmin(ctx, r.adminUser, r.adminPassword, adminLoginRealm)
-	if err != nil {
-		return fmt.Errorf("logging into Keycloak as admin: %w", err)
+	var (
+		jwt *gocloak.JWT
+		err error
+	)
+	if r.clientID != "" {
+		jwt, err = r.api.LoginClient(ctx, r.clientID, r.clientSecret, r.loginRealm)
+		if err != nil {
+			return fmt.Errorf("logging into Keycloak as client %s in realm %s: %w", r.clientID, r.loginRealm, err)
+		}
+	} else {
+		jwt, err = r.api.LoginAdmin(ctx, r.adminUser, r.adminPassword, adminLoginRealm)
+		if err != nil {
+			return fmt.Errorf("logging into Keycloak as admin: %w", err)
+		}
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -112,6 +160,10 @@ func (r *Reconciler) login(ctx context.Context) error {
 	return nil
 }
 
+// canRelogin reports whether the Reconciler holds credentials to log in
+// again (a password or a client secret).
+func (r *Reconciler) canRelogin() bool { return r.adminPassword != "" || r.clientSecret != "" }
+
 // tok returns an access token, logging in again first when the
 // current one is about to expire. A failed refresh falls back to the
 // stale token: the call then fails with 401 and is retried by the raw
@@ -120,7 +172,7 @@ func (r *Reconciler) tok(ctx context.Context) string {
 	r.mu.Lock()
 	expiry, token := r.tokenExpiry, r.token
 	r.mu.Unlock()
-	if !expiry.IsZero() && time.Until(expiry) < tokenRefreshMargin && r.adminPassword != "" {
+	if !expiry.IsZero() && time.Until(expiry) < tokenRefreshMargin && r.canRelogin() {
 		if err := r.login(ctx); err == nil {
 			r.mu.Lock()
 			token = r.token

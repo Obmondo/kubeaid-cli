@@ -236,7 +236,7 @@ func TestRunIRISAndKeycloakLoginFailure(t *testing.T) {
 	for _, r := range results {
 		got[r.Component+"/"+r.Kind+"/"+r.Name] = r.Action
 	}
-	assert.Equal(t, report.ActionError, got["keycloak/setup/login"])
+	assert.Equal(t, report.ActionError, got["keycloak/login/soc"])
 	assert.Equal(t, report.ActionCreate, got["iris/customer/Tenant A"])
 	assert.Equal(t, report.ActionSkip, got["iris/service-account/svc_ai"])
 }
