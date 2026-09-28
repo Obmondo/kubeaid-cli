@@ -355,6 +355,27 @@ type (
 
 		// Tenants, one entry each. Adding one and rendering again onboards it.
 		Tenants []SecurityOperationsTenant `yaml:"tenants"`
+
+		// Sync is how Argo CD syncs the SOC Applications. Default: by hand.
+		Sync SecurityOperationsSyncConfig `yaml:"sync"`
+	}
+
+	// SecurityOperationsSyncConfig is the syncPolicy of the security-operations
+	// and wazuh-<code> Applications. Whatever it says, the SOC's sealed Secrets
+	// and namespaces are never pruned (Prune=false on those objects).
+	SecurityOperationsSyncConfig struct {
+		// Automated turns on automated sync with selfHeal. Default false: the
+		// Applications only sync when someone syncs them.
+		Automated bool `yaml:"automated"`
+
+		// Prune lets automated sync delete what was removed from git. Default
+		// false. Needs automated.
+		Prune bool `yaml:"prune"`
+
+		// ServerSideApply adds the ServerSideApply=true sync option (no
+		// last-applied annotation, so large manifests such as the Wazuh
+		// ConfigMaps never hit its size limit). Default: the value of automated.
+		ServerSideApply *bool `yaml:"serverSideApply"`
 	}
 
 	// SecurityOperationsKeycloakConfig is the Keycloak realm of the SOC.

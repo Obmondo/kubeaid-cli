@@ -73,6 +73,7 @@
 - [SecurityOperationsCredentials](#securityoperationscredentials)
 - [SecurityOperationsKeycloakConfig](#securityoperationskeycloakconfig)
 - [SecurityOperationsReconcilerConfig](#securityoperationsreconcilerconfig)
+- [SecurityOperationsSyncConfig](#securityoperationssyncconfig)
 - [SecurityOperationsTenant](#securityoperationstenant)
 - [SecurityOperationsWazuhCredentials](#securityoperationswazuhcredentials)
 - [UserConfig](#userconfig)
@@ -887,8 +888,12 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | sharedStorageClass | `string` |  | SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for<br>the IRIS data volume, so the IRIS app and worker may run on different<br>nodes. Empty: a ReadWriteOnce volume on the default class, with the<br>worker kept on the app's node.<br> |
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
 | aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
+<<<<<<< HEAD
 | dashboardBreakGlass | `bool` |  | DashboardBreakGlass offers the username/password form next to the<br>SSO button on the central and every tenant Wazuh dashboard, for the<br>internal admin user. Default false: the dashboards log in through<br>Keycloak only.<br> |
+=======
+>>>>>>> kubesoc/07-gitops
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
+| sync | [`SecurityOperationsSyncConfig`](#securityoperationssyncconfig) |  | Sync is how Argo CD syncs the SOC Applications. Default: by hand.<br> |
 
 ## SecurityOperationsCredentials
 
@@ -924,6 +929,18 @@ and the next render follows it.</p>
 | imageTag | `string` |  | ImageTag of the siem-reconciler image. Empty: the chart's.<br> |
 | imagePullSecrets | []`string` |  | ImagePullSecrets names Secrets (type kubernetes.io/dockerconfigjson,<br>in the security-operations namespace) for a private registry. The<br>operator creates and seals them.<br> |
 | dryRun | `bool` |  | DryRun prints the plan only. Default true; nil means true.<br> |
+
+## SecurityOperationsSyncConfig
+
+<p>SecurityOperationsSyncConfig is the syncPolicy of the security-operations
+and wazuh-<code> Applications. Whatever it says, the SOC's sealed Secrets
+and namespaces are never pruned (Prune=false on those objects).</p>
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| automated | `bool` |  | Automated turns on automated sync with selfHeal. Default false: the<br>Applications only sync when someone syncs them.<br> |
+| prune | `bool` |  | Prune lets automated sync delete what was removed from git. Default<br>false. Needs automated.<br> |
+| serverSideApply | `bool` |  | ServerSideApply adds the ServerSideApply=true sync option (no<br>last-applied annotation, so large manifests such as the Wazuh<br>ConfigMaps never hit its size limit). Default: the value of automated.<br> |
 
 ## SecurityOperationsTenant
 

@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
@@ -100,6 +101,15 @@ type SecurityOperationsValues struct {
 	AnalystRole string
 
 	Tenants []SecurityOperationsTenantValues
+
+	// SealedSecretsDir is SecurityOperationsSealedSecretsDir: each
+	// Application's extra source is <it>/<its namespace>.
+	SealedSecretsDir string
+
+	// Sync is cluster.securityOperations.sync, resolved.
+	SyncAutomated       bool
+	SyncPrune           bool
+	SyncServerSideApply bool
 }
 
 // SecurityOperationsTenantValues is one tenant, fully derived.
@@ -130,7 +140,9 @@ type SecurityOperationsTenantValues struct {
 // it renders from, and where the sealed file lands in the cluster directory.
 type securityOperationsSecret struct {
 	TemplateName string
-	// RelativePath is sealed-secrets/<namespace>/<secret name>.yaml.
+	// RelativePath is security-operations/sealed-secrets/<namespace>/<secret
+	// name>.yaml (securityOperationsSealedSecretPath): owned by the
+	// Application of that namespace, not by the shared `secrets` app.
 	RelativePath string
 	Data         securityOperationsSecretData
 	// SealOnce marks a Secret whose value no rendered file depends on (the
@@ -218,6 +230,15 @@ func buildSecurityOperationsValues() *SecurityOperationsValues {
 
 		AdminRole:   "administrator",
 		AnalystRole: "analyst",
+
+		SealedSecretsDir: SecurityOperationsSealedSecretsDir,
+
+		SyncAutomated:       cfg.Sync.Automated,
+		SyncPrune:           cfg.Sync.Automated && cfg.Sync.Prune,
+		SyncServerSideApply: cfg.Sync.Automated,
+	}
+	if cfg.Sync.ServerSideApply != nil {
+		values.SyncServerSideApply = *cfg.Sync.ServerSideApply
 	}
 
 	if values.AIModel == "" {
@@ -281,7 +302,7 @@ func securityOperationsSecretFiles() []securityOperationsSecret {
 	secret := func(templateName, name, namespace, password string) securityOperationsSecret {
 		return securityOperationsSecret{
 			TemplateName: templateName,
-			RelativePath: path.Join("sealed-secrets", namespace, name+".yaml"),
+			RelativePath: securityOperationsSealedSecretPath(namespace, name),
 			Data: securityOperationsSecretData{
 				Name:      name,
 				Namespace: namespace,
@@ -343,7 +364,22 @@ func createOrUpdateSecurityOperationsSealedSecretFiles(ctx context.Context, clus
 	}
 
 	for _, secret := range files {
-		if keep[secret.RelativePath] {
+		// A Secret still in the shared sealed-secrets/ directory is copied to
+		// its owned location as it is (see adoptLegacySealedSecret).
+		adopted, err := adoptLegacySealedSecret(clusterDir, secret.Data.Namespace, secret.Data.Name)
+		if err != nil {
+			return written, fmt.Errorf("moving %s/%s to %s: %w", secret.Data.Namespace, secret.Data.Name,
+				SecurityOperationsSealedSecretsDir, err)
+		}
+		written = append(written, adopted...)
+
+		// A kept release keeps the files it already has. A Secret sealed once
+		// (the manager cluster key) can still be missing from a kept release
+		// rendered before it existed, and is sealed now.
+		if keep[secret.Data.Namespace] && fileExists(path.Join(clusterDir, secret.RelativePath)) {
+			if err := annotateSealedSecretFile(path.Join(clusterDir, secret.RelativePath)); err != nil {
+				return written, err
+			}
 			continue
 		}
 		destinationFilePath := path.Join(clusterDir, secret.RelativePath)
@@ -369,7 +405,19 @@ func createOrUpdateSecurityOperationsSealedSecretFiles(ctx context.Context, clus
 		if err := kubernetes.SealIfPlaintextChanged(ctxWithPath, destinationFilePath, plaintextBytes); err != nil {
 			return written, fmt.Errorf("sealing %s: %w", destinationFilePath, err)
 		}
-		written = append(written, secret.RelativePath)
+		if err := annotateSealedSecretFile(destinationFilePath); err != nil {
+			return written, err
+		}
+		// Until the legacy copy is removed, both the `secrets` app and the
+		// owning SOC app apply this SealedSecret: they must apply the same one.
+		legacy, err := syncLegacySealedSecret(clusterDir, secret.Data.Namespace, secret.Data.Name)
+		if err != nil {
+			return written, err
+		}
+		written = append(written, legacy...)
+		if !slices.Contains(written, secret.RelativePath) {
+			written = append(written, secret.RelativePath)
+		}
 	}
 
 	return written, nil
@@ -405,14 +453,27 @@ func irisOptions(customerName string) string {
 // files and the sealed Wazuh credentials. Nothing else in clusterDir is
 // touched and no git operation runs. It needs no secrets.yaml: the Wazuh
 // credentials come from clusterDir itself (credentialsFromClusterDir), so a
-// release rendered before keeps its passwords and new ones get fresh ones.
+// release rendered before keeps its passwords and new ones get fresh ones; a
+// release whose state is incomplete is an error, never a silent rotation.
 // Returns the written paths, relative to clusterDir.
 func RenderSecurityOperations(ctx context.Context, clusterDir string) ([]string, error) {
+	return RenderSecurityOperationsWithOptions(ctx, clusterDir, SecurityOperationsRenderOptions{})
+}
+
+// RenderSecurityOperationsWithOptions is RenderSecurityOperations with
+// deliberate credential rotation (opts.Rotate).
+func RenderSecurityOperationsWithOptions(ctx context.Context, clusterDir string,
+	opts SecurityOperationsRenderOptions,
+) ([]string, error) {
 	if !config.SecurityOperationsEnabled() {
 		return nil, fmt.Errorf("cluster.securityOperations is not enabled in general.yaml")
 	}
 
-	creds, keep, err := credentialsFromClusterDir(clusterDir)
+	rotate, err := opts.rotateSet()
+	if err != nil {
+		return nil, err
+	}
+	creds, keep, err := credentialsFromClusterDir(clusterDir, rotate)
 	if err != nil {
 		return nil, fmt.Errorf("reading the credential state in %s: %w", clusterDir, err)
 	}

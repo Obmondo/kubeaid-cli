@@ -1,10 +1,17 @@
 # Security operations: the central side (KubeAid security-operations chart) and
 # one Wazuh per tenant (KubeAid wazuh chart, README section 11). Rendered by
 # kubeaid-cli from cluster.securityOperations; the tenant namespaces are created
-# by the security-operations chart, so sync it before the wazuh-<code> Apps.
+# by the security-operations chart, so sync it before the wazuh-<code> Apps
+# (sync waves 60 and 61 under the root app).
+#
+# Each Application owns its namespace's sealed Secrets through an extra source,
+# {{ .SecOps.SealedSecretsDir }}/<namespace>: the shared secrets app does
+# not see them and cannot prune them.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "60"
   labels:
     kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
@@ -26,15 +33,30 @@ spec:
     - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: {{ .SecOps.ConfigRevision }}
       ref: values
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: {{ .SecOps.ConfigRevision }}
+      path: k8s/{{ .KubeaidConfigFork.Directory }}/{{ .SecOps.SealedSecretsDir }}/security-operations
+      directory:
+        recurse: true
   syncPolicy:
+    {{- if .SecOps.SyncAutomated }}
+    automated:
+      selfHeal: true
+      prune: {{ .SecOps.SyncPrune }}
+    {{- end }}
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+      {{- if .SecOps.SyncServerSideApply }}
+      - ServerSideApply=true
+      {{- end }}
 {{- range .SecOps.Tenants }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "61"
   labels:
     kubeaid.io/version: {{ $.KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
@@ -129,8 +151,21 @@ spec:
     - repoURL: {{ $.KubeaidConfigFork.URL }}
       targetRevision: {{ $.SecOps.ConfigRevision }}
       ref: values
+    - repoURL: {{ $.KubeaidConfigFork.URL }}
+      targetRevision: {{ $.SecOps.ConfigRevision }}
+      path: k8s/{{ $.KubeaidConfigFork.Directory }}/{{ $.SecOps.SealedSecretsDir }}/{{ .Namespace }}
+      directory:
+        recurse: true
   syncPolicy:
+    {{- if $.SecOps.SyncAutomated }}
+    automated:
+      selfHeal: true
+      prune: {{ $.SecOps.SyncPrune }}
+    {{- end }}
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
+      {{- if $.SecOps.SyncServerSideApply }}
+      - ServerSideApply=true
+      {{- end }}
 {{- end }}

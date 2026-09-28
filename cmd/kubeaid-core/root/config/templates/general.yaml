@@ -207,13 +207,28 @@ cluster:
       # Set it until the model is on the volume, then set it back to false:
       # with it off, nothing the model receives can leave the cluster.
       downloadModel:
+<<<<<<< HEAD
     # DashboardBreakGlass offers the username/password form next to the
     # SSO button on the central and every tenant Wazuh dashboard, for the
     # internal admin user. Default false: the dashboards log in through
     # Keycloak only.
     dashboardBreakGlass:
+=======
+>>>>>>> kubesoc/07-gitops
     # Tenants, one entry each. Adding one and rendering again onboards it.
     tenants:
+    # Sync is how Argo CD syncs the SOC Applications. Default: by hand.
+    sync:
+      # Automated turns on automated sync with selfHeal. Default false: the
+      # Applications only sync when someone syncs them.
+      automated:
+      # Prune lets automated sync delete what was removed from git. Default
+      # false. Needs automated.
+      prune:
+      # ServerSideApply adds the ServerSideApply=true sync option (no
+      # last-applied annotation, so large manifests such as the Wazuh
+      # ConfigMaps never hit its size limit). Default: the value of automated.
+      serverSideApply:
   # NetBird declares the NetBird Management instance this VPN
   # cluster hosts. Only meaningful when cluster.type=vpn AND
   # cluster.keycloak.mode=managed. NetBird Mgmt's OIDC client

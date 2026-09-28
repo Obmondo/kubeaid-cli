@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -27,120 +28,195 @@ const (
 	securityOperationsCentralValuesFile = "argocd-apps/values-security-operations.yaml"
 )
 
+// SecurityOperationsRotateAll in SecurityOperationsRenderOptions.Rotate
+// rotates the credentials of every release.
+const SecurityOperationsRotateAll = "*"
+
+// SecurityOperationsRenderOptions tunes RenderSecurityOperationsWithOptions.
+type SecurityOperationsRenderOptions struct {
+	// Rotate names the releases whose Wazuh credentials are generated anew
+	// even though they exist: security-operations (the central search) and
+	// wazuh-<code> (one tenant), or SecurityOperationsRotateAll. Without it a
+	// render never replaces the credentials of an existing release.
+	Rotate []string
+}
+
+// rotateSet validates opts.Rotate against the configured releases.
+func (opts SecurityOperationsRenderOptions) rotateSet() (map[string]bool, error) {
+	releases := SecurityOperationsApplicationsInSyncOrder()
+	set := map[string]bool{}
+	for _, name := range opts.Rotate {
+		name = strings.TrimSpace(name)
+		switch {
+		case name == "":
+		case name == SecurityOperationsRotateAll:
+			for _, release := range releases {
+				set[release] = true
+			}
+		case slices.Contains(releases, name):
+			set[name] = true
+		default:
+			return nil, fmt.Errorf("cannot rotate %q: not a release of this cluster (one of %s)",
+				name, strings.Join(releases, ", "))
+		}
+	}
+	return set, nil
+}
+
 // credentialsFromClusterDir builds the Wazuh credentials of a render without
 // secrets.yaml. The state lives in the cluster directory: the bcrypt hashes
-// in the rendered values, the passwords only inside the sealed Secrets. A
-// release (the central search, or one tenant) whose sealed files and hashes
-// are all present is kept: its hashes are reused and its sealed files are not
-// rewritten, so its passwords are never needed. Any other release gets fresh
-// credentials, and all its Secrets are sealed anew.
+// and cluster keys in the rendered values, the passwords only inside the
+// sealed Secrets (in the owned security-operations/sealed-secrets/ directory,
+// or still in the legacy sealed-secrets/ one). A release (the central search,
+// or one tenant; its name is also its namespace) whose sealed files and
+// hashes are all present is kept: its hashes are reused and its sealed files
+// are not rewritten, so its passwords are never needed.
 //
-// The manager cluster key (SealOnce) does not decide whether a release is
-// kept. A kept tenant without its sealed cluster key gets one: the key a
-// render before the move to wazuh.clusterKeySecret left in plaintext in the
-// Application (so nothing changes for the manager), else a fresh one.
+// A release nothing was rendered for yet gets fresh credentials. A release
+// that exists (its Application, values or any sealed file is there) but whose
+// state is incomplete is an error listing what is missing: generating new
+// passwords for it would silently rotate them. Releases in rotate get fresh
+// credentials, and all their Secrets are sealed anew, regardless.
 //
-// Returns the credentials and the sealed files (relative to clusterDir) that
-// stay as they are.
-func credentialsFromClusterDir(clusterDir string) (*config.SecurityOperationsCredentials, map[string]bool, error) {
-	central, tenants, err := readRenderedCredentialState(clusterDir)
+// Returns the credentials and the namespaces whose sealed files stay as they are.
+func credentialsFromClusterDir(clusterDir string, rotate map[string]bool) (
+	*config.SecurityOperationsCredentials, map[string]bool, error,
+) {
+	state, err := readRenderedCredentialState(clusterDir)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	exists := func(relativePath string) bool {
-		_, err := os.Stat(path.Join(clusterDir, relativePath))
-		return err == nil
-	}
-
-	sealedPresent := map[string]bool{}
+	// Sealed files per namespace: which exist (owned or legacy location),
+	// which are missing.
+	sealedFound := map[string]bool{}
+	sealedMissing := map[string][]string{}
 	for _, secret := range securityOperationsSecretFiles() {
 		if secret.SealOnce {
 			continue
 		}
-		ns := secret.Data.Namespace
-		if _, seen := sealedPresent[ns]; !seen {
-			sealedPresent[ns] = true
+		ns, name := secret.Data.Namespace, secret.Data.Name
+		if fileExists(path.Join(clusterDir, securityOperationsSealedSecretPath(ns, name))) ||
+			fileExists(path.Join(clusterDir, securityOperationsLegacySealedSecretPath(ns, name))) {
+			sealedFound[ns] = true
+			continue
 		}
-		if !exists(secret.RelativePath) {
-			sealedPresent[ns] = false
-		}
+		sealedMissing[ns] = append(sealedMissing[ns], securityOperationsSealedSecretPath(ns, name))
 	}
 
 	creds := &config.SecurityOperationsCredentials{
 		Tenants: map[string]config.SecurityOperationsWazuhCredentials{},
 	}
-	keptNamespaces := map[string]bool{}
+	keep := map[string]bool{}
+	var incomplete []string
 
-	resolve := func(namespace string, state config.SecurityOperationsWazuhCredentials, tenant bool) (
+	resolve := func(release string, current config.SecurityOperationsWazuhCredentials, rendered, tenant bool) (
 		config.SecurityOperationsWazuhCredentials, error,
 	) {
-		complete := state.IndexerPasswordHash != "" && state.DashboardPasswordHash != ""
-		if !complete || !sealedPresent[namespace] {
+		if rotate[release] {
 			return parser.NewWazuhCredentials(tenant)
 		}
-		keptNamespaces[namespace] = true
-		clusterKeyFile := path.Join("sealed-secrets", namespace, constants.SecretNameWazuhClusterKey+".yaml")
-		if tenant && state.ClusterKey == "" && !exists(clusterKeyFile) {
-			if state.ClusterKey, err = randval.Password(); err != nil {
-				return state, err
-			}
+
+		missing := slices.Clone(sealedMissing[release])
+		source := securityOperationsCentralValuesFile
+		if tenant {
+			source = securityOperationsAppsFile + " (Application " + release + ")"
 		}
-		return state, nil
+		if current.IndexerPasswordHash == "" {
+			missing = append(missing, "indexer password hash in "+source)
+		}
+		if current.DashboardPasswordHash == "" {
+			missing = append(missing, "dashboard password hash in "+source)
+		}
+		switch {
+		case len(missing) == 0:
+			keep[release] = true
+			return current, nil
+		case !rendered && !sealedFound[release]:
+			// A new release: nothing to keep, nothing to rotate.
+			return parser.NewWazuhCredentials(tenant)
+		default:
+			incomplete = append(incomplete, fmt.Sprintf("%s:\n    - %s", release, strings.Join(missing, "\n    - ")))
+			return current, nil
+		}
 	}
 
-	if creds.Central, err = resolve(constants.NamespaceSecurityOperations, central, false); err != nil {
+	central := constants.NamespaceSecurityOperations
+	if creds.Central, err = resolve(central, state.central, state.centralRendered, false); err != nil {
 		return nil, nil, err
 	}
 	for _, tenant := range config.ParsedGeneralConfig.Cluster.SecurityOperations.Tenants {
-		ns := constants.SecurityOperationsTenantNamespacePrefix + tenant.Code
-		c, err := resolve(ns, tenants[tenant.Code], true)
+		release := constants.SecurityOperationsTenantNamespacePrefix + tenant.Code
+		c, err := resolve(release, state.tenants[tenant.Code], state.tenantsRendered[tenant.Code], true)
 		if err != nil {
 			return nil, nil, err
 		}
 		creds.Tenants[tenant.Code] = c
 	}
 
-	keep := map[string]bool{}
-	for _, secret := range securityOperationsSecretFiles() {
-		if keptNamespaces[secret.Data.Namespace] && (!secret.SealOnce || exists(secret.RelativePath)) {
-			keep[secret.RelativePath] = true
-		}
+	if len(incomplete) > 0 {
+		return nil, nil, &IncompleteSecurityOperationsStateError{Releases: incomplete}
 	}
 	return creds, keep, nil
 }
 
-// readRenderedCredentialState reads the password hashes from a previous
-// render: the central ones from the central values file, a tenant's from the
-// helm.valuesObject of its wazuh-<code> Application, with the cluster key a
-// render before wazuh.clusterKeySecret put there (empty since). Missing files
+// IncompleteSecurityOperationsStateError: releases that exist in the cluster
+// directory but whose credential state is incomplete. A render refuses to
+// replace their credentials unless asked to rotate them.
+type IncompleteSecurityOperationsStateError struct {
+	// Releases are "<release>:" followed by an indented list of what is missing.
+	Releases []string
+}
+
+func (e *IncompleteSecurityOperationsStateError) Error() string {
+	return "refusing to generate new credentials for releases that already exist " +
+		"(that would rotate their passwords); missing:\n  " + strings.Join(e.Releases, "\n  ") +
+		"\nRestore the missing files from git, or rotate on purpose with --rotate=<release>"
+}
+
+// renderedCredentialState is what a previous render left in the cluster
+// directory.
+type renderedCredentialState struct {
+	central config.SecurityOperationsWazuhCredentials
+	// centralRendered: the central values file exists.
+	centralRendered bool
+
+	tenants map[string]config.SecurityOperationsWazuhCredentials
+	// tenantsRendered: the wazuh-<code> Application exists.
+	tenantsRendered map[string]bool
+}
+
+// readRenderedCredentialState reads the password hashes and cluster keys from
+// a previous render: the central ones from the central values file, a tenant's
+// from the helm.valuesObject of its wazuh-<code> Application. Missing files
 // mean a first render and yield empty state.
-func readRenderedCredentialState(clusterDir string) (
-	config.SecurityOperationsWazuhCredentials, map[string]config.SecurityOperationsWazuhCredentials, error,
-) {
-	var central config.SecurityOperationsWazuhCredentials
-	tenants := map[string]config.SecurityOperationsWazuhCredentials{}
+func readRenderedCredentialState(clusterDir string) (renderedCredentialState, error) {
+	state := renderedCredentialState{
+		tenants:         map[string]config.SecurityOperationsWazuhCredentials{},
+		tenantsRendered: map[string]bool{},
+	}
 
 	raw, err := os.ReadFile(path.Join(clusterDir, securityOperationsCentralValuesFile))
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 	case err != nil:
-		return central, nil, err
+		return state, err
 	default:
+		state.centralRendered = true
 		var values map[string]any
 		if err := yaml.Unmarshal(raw, &values); err != nil {
-			return central, nil, fmt.Errorf("parsing %s: %w", securityOperationsCentralValuesFile, err)
+			return state, fmt.Errorf("parsing %s: %w", securityOperationsCentralValuesFile, err)
 		}
-		central.IndexerPasswordHash = stringAt(values, "wazuh", "wazuh", "indexer", "cred", "passwordHash")
-		central.DashboardPasswordHash = stringAt(values, "wazuh", "wazuh", "dashboard", "cred", "passwordHash")
+		state.central.IndexerPasswordHash = stringAt(values, "wazuh", "wazuh", "indexer", "cred", "passwordHash")
+		state.central.DashboardPasswordHash = stringAt(values, "wazuh", "wazuh", "dashboard", "cred", "passwordHash")
 	}
 
 	raw, err = os.ReadFile(path.Join(clusterDir, securityOperationsAppsFile))
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		return central, tenants, nil
+		return state, nil
 	case err != nil:
-		return central, nil, err
+		return state, err
 	}
 
 	decoder := yaml.NewDecoder(bytes.NewReader(raw))
@@ -150,27 +226,28 @@ func readRenderedCredentialState(clusterDir string) (
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return central, nil, fmt.Errorf("parsing %s: %w", securityOperationsAppsFile, err)
+			return state, fmt.Errorf("parsing %s: %w", securityOperationsAppsFile, err)
 		}
 		name := stringAt(app, "metadata", "name")
 		code, ok := strings.CutPrefix(name, constants.SecurityOperationsTenantNamespacePrefix)
 		if !ok || code == "" {
 			continue
 		}
+		state.tenantsRendered[code] = true
 		sources, _ := valueAt(app, "spec", "sources").([]any)
 		for _, source := range sources {
 			values, ok := valueAt(source, "helm", "valuesObject").(map[string]any)
 			if !ok {
 				continue
 			}
-			tenants[code] = config.SecurityOperationsWazuhCredentials{
+			state.tenants[code] = config.SecurityOperationsWazuhCredentials{
 				IndexerPasswordHash:   stringAt(values, "wazuh", "indexer", "cred", "passwordHash"),
 				DashboardPasswordHash: stringAt(values, "wazuh", "dashboard", "cred", "passwordHash"),
 				ClusterKey:            stringAt(values, "wazuh", "wazuh", "key"),
 			}
 		}
 	}
-	return central, tenants, nil
+	return state, nil
 }
 
 // valueAt walks nested maps; nil when a key is missing.
@@ -191,41 +268,11 @@ func stringAt(v any, keys ...string) string {
 	return s
 }
 
-// mispRedisSecretFile returns MISP's Valkey password Secret
-// (sealed-secrets/security-operations/misp-redis.yaml) to seal, or nil when
-// its sealed file exists already: the password then lives only in there and
-// is never rotated by a render.
-func mispRedisSecretFile(clusterDir string) (*securityOperationsSecret, error) {
-	if !config.SecurityOperationsEnabled() {
-		return nil, nil
-	}
-	ns := constants.NamespaceSecurityOperations
-	relativePath := path.Join("sealed-secrets", ns, constants.SecretNameMISPRedis+".yaml")
-	if _, err := os.Stat(path.Join(clusterDir, relativePath)); err == nil {
-		return nil, nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-	password, err := mispRedisPasswordFromClusterDir(clusterDir)
-	if err != nil {
-		return nil, err
-	}
-	return &securityOperationsSecret{
-		TemplateName: constants.TemplateNameMISPRedis,
-		RelativePath: relativePath,
-		Data: securityOperationsSecretData{
-			Name:      constants.SecretNameMISPRedis,
-			Namespace: ns,
-			Password:  password,
-		},
-		SealOnce: true,
-	}, nil
-}
-
-// mispRedisPasswordFromClusterDir returns the Valkey password for a new
-// misp-redis Secret: the one a render before the move to that Secret left in
-// plaintext (misp.misp.env.redisPassword in the central values), so running
-// pods keep working, else a fresh one (also instead of the chart default).
+// mispRedisPasswordFromClusterDir keeps MISP's Valkey password from the
+// previous render (misp.misp.env.redisPassword in the central values) and
+// generates one on the first render or when it is still the chart default.
+// Like the Wazuh hashes, the value lives only in the cluster directory; the
+// MISP chart puts it into a ConfigMap either way.
 func mispRedisPasswordFromClusterDir(clusterDir string) (string, error) {
 	raw, err := os.ReadFile(path.Join(clusterDir, securityOperationsCentralValuesFile))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -245,3 +292,33 @@ func mispRedisPasswordFromClusterDir(clusterDir string) (string, error) {
 
 // mispChartDefaultRedisPassword is the misp chart's placeholder.
 const mispChartDefaultRedisPassword = "change-me"
+
+// mispRedisSecretFile returns MISP's Valkey password Secret
+// (sealed-secrets/security-operations/misp-redis.yaml) to seal, or nil when
+// its sealed file exists already: the password then lives only in there and
+// is never rotated by a render.
+func mispRedisSecretFile(clusterDir string) (*securityOperationsSecret, error) {
+	if !config.SecurityOperationsEnabled() {
+		return nil, nil
+	}
+	ns := constants.NamespaceSecurityOperations
+	relativePath := securityOperationsSealedSecretPath(ns, constants.SecretNameMISPRedis)
+	if fileExists(path.Join(clusterDir, relativePath)) ||
+		fileExists(path.Join(clusterDir, securityOperationsLegacySealedSecretPath(ns, constants.SecretNameMISPRedis))) {
+		return nil, nil
+	}
+	password, err := mispRedisPasswordFromClusterDir(clusterDir)
+	if err != nil {
+		return nil, err
+	}
+	return &securityOperationsSecret{
+		TemplateName: constants.TemplateNameMISPRedis,
+		RelativePath: relativePath,
+		Data: securityOperationsSecretData{
+			Name:      constants.SecretNameMISPRedis,
+			Namespace: ns,
+			Password:  password,
+		},
+		SealOnce: true,
+	}, nil
+}
