@@ -425,7 +425,8 @@ type (
 		// nil means true.
 		DryRun *bool `yaml:"dryRun"`
 
-		// Model is the Ollama model name. Empty: the chart's (llama3.1:8b).
+		// Model is the Ollama model name. Empty: mistral:7b (Apache-2.0, CPU).
+		// On a GPU node mistral-small3.1 (24B) is the documented upgrade.
 		Model string `yaml:"model"`
 
 		// DownloadModel opens Ollama's HTTPS egress and pulls Model at start.

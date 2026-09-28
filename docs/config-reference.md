@@ -852,7 +852,7 @@ until its config opts in.</p>
 |-------|------|---------|-------------|
 | enabled | `bool` |  |  |
 | dryRun | `bool` |  | DryRun logs each answer without writing it to IRIS. Default true;<br>nil means true.<br> |
-| model | `string` |  | Model is the Ollama model name. Empty: the chart's (llama3.1:8b).<br> |
+| model | `string` |  | Model is the Ollama model name. Empty: mistral:7b (Apache-2.0, CPU).<br>On a GPU node mistral-small3.1 (24B) is the documented upgrade.<br> |
 | downloadModel | `bool` |  | DownloadModel opens Ollama's HTTPS egress and pulls Model at start.<br>Set it until the model is on the volume, then set it back to false:<br>with it off, nothing the model receives can leave the cluster.<br> |
 
 ## SecurityOperationsAgentPorts

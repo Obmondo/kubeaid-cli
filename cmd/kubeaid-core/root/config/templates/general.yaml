@@ -201,7 +201,8 @@ cluster:
       # DryRun logs each answer without writing it to IRIS. Default true;
       # nil means true.
       dryRun:
-      # Model is the Ollama model name. Empty: the chart's (llama3.1:8b).
+      # Model is the Ollama model name. Empty: mistral:7b (Apache-2.0, CPU).
+      # On a GPU node mistral-small3.1 (24B) is the documented upgrade.
       model:
       # DownloadModel opens Ollama's HTTPS egress and pulls Model at start.
       # Set it until the model is on the volume, then set it back to false:
