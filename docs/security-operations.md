@@ -96,7 +96,6 @@ argocd-apps/templates/security-operations.yaml   # Apps security-operations (syn
                                                  # wazuh-001 and wazuh-002 (61)
 argocd-apps/values-security-operations.yaml      # central values
 argocd-apps/values-wazuh-tenant.yaml             # values shared by every tenant release
-<<<<<<< HEAD
 sealed-secrets/security-operations/wazuh-indexer-cred.yaml
 sealed-secrets/security-operations/wazuh-dashboard-cred.yaml
 sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
@@ -106,7 +105,6 @@ sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
 sealed-secrets/wazuh-001/wazuh-manager-cluster-key.yaml   # sealed once, see below
 sealed-secrets/wazuh-002/...                     # the same five
 sealed-secrets/security-operations/misp-redis.yaml        # sealed once, see below
-=======
 security-operations/sealed-secrets/security-operations/wazuh-indexer-cred.yaml
 security-operations/sealed-secrets/security-operations/wazuh-dashboard-cred.yaml
 security-operations/sealed-secrets/wazuh-001/wazuh-indexer-cred.yaml
@@ -114,7 +112,6 @@ security-operations/sealed-secrets/wazuh-001/wazuh-dashboard-cred.yaml
 security-operations/sealed-secrets/wazuh-001/wazuh-api-cred.yaml
 security-operations/sealed-secrets/wazuh-001/wazuh-authd-pass.yaml
 security-operations/sealed-secrets/wazuh-002/...  # the same four
->>>>>>> kubesoc/07-gitops
 ```
 
 Each `wazuh-<code>` Application reads `values-wazuh-tenant.yaml` and carries the tenant's own

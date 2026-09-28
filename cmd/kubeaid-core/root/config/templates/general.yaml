@@ -207,14 +207,11 @@ cluster:
       # Set it until the model is on the volume, then set it back to false:
       # with it off, nothing the model receives can leave the cluster.
       downloadModel:
-<<<<<<< HEAD
     # DashboardBreakGlass offers the username/password form next to the
     # SSO button on the central and every tenant Wazuh dashboard, for the
     # internal admin user. Default false: the dashboards log in through
     # Keycloak only.
     dashboardBreakGlass:
-=======
->>>>>>> kubesoc/07-gitops
     # Tenants, one entry each. Adding one and rendering again onboards it.
     tenants:
     # Sync is how Argo CD syncs the SOC Applications. Default: by hand.

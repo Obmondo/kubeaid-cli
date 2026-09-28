@@ -888,10 +888,7 @@ Defaults and cross-field checks live in parser/security_operations.go.</p>
 | sharedStorageClass | `string` |  | SharedStorageClass is a ReadWriteMany StorageClass (e.g. CephFS) for<br>the IRIS data volume, so the IRIS app and worker may run on different<br>nodes. Empty: a ReadWriteOnce volume on the default class, with the<br>worker kept on the app's node.<br> |
 | reconciler | [`SecurityOperationsReconcilerConfig`](#securityoperationsreconcilerconfig) |  | Reconciler switches the chart's siem-reconciler CronJob.<br> |
 | aiTriage | [`SecurityOperationsAITriageConfig`](#securityoperationsaitriageconfig) |  | AITriage switches IRIS alert triage by the in-cluster Ollama model.<br>The reconciler creates its IRIS account (svc_ai) and key either way.<br> |
-<<<<<<< HEAD
 | dashboardBreakGlass | `bool` |  | DashboardBreakGlass offers the username/password form next to the<br>SSO button on the central and every tenant Wazuh dashboard, for the<br>internal admin user. Default false: the dashboards log in through<br>Keycloak only.<br> |
-=======
->>>>>>> kubesoc/07-gitops
 | tenants | [][`SecurityOperationsTenant`](#securityoperationstenant) |  | Tenants, one entry each. Adding one and rendering again onboards it.<br> |
 | sync | [`SecurityOperationsSyncConfig`](#securityoperationssyncconfig) |  | Sync is how Argo CD syncs the SOC Applications. Default: by hand.<br> |
 
