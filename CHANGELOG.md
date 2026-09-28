@@ -1,4 +1,18 @@
 - - -
+## v0.31.11 - 2026-09-28
+#### Bug Fixes
+- (**kubeone**) bind scheduler and controller-manager metrics to 0.0.0.0 - (fd0854e) - aman
+#### Documentation
+- (**readme**) clarify Apache-2.0 vs AGPLv3 licensing delineation - (ee47a99) - rishi
+#### Tests
+- (**e2e**) expect the AWS AMI prompts before the security form - (a843ac3) - aman
+#### Miscellaneous Chores
+- (**config**) refresh the embedded K8s EOL snapshot - (52d83a0) - aman
+- (**config**) refresh embedded K8s EOL snapshot - (2f9618b) - rishi
+- (**kubeone**) bump KubeOne to v1.14.3 - (df6ddc2) - aman
+
+- - -
+
 ## v0.31.10 - 2026-09-23
 #### Bug Fixes
 - (**backup**) discover the exporter by its component label - (4c255b7) - Ashish Jaiswal
