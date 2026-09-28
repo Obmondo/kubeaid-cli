@@ -140,13 +140,23 @@ updated when its rendered content differs; it holds no generated value of its ow
 | `eventsPort` | int, req. | Agent events port (1-65535). |
 | `agentVersion` | string | Wazuh agent package version the scripts install, default `4.14.8-1`. Must not be newer than the manager. |
 | `authdSecretRef` | SecretRef, req. | The manager's authd password, copied into the bundle. A missing Secret is an error for this bundle only. |
+| `caSecretRef` | SecretRef | CA of the manager's authd certificate (e.g. `ca.crt` of its cert-manager Secret). A missing Secret leaves the CA out (reported in the detail); a Secret without the key is an error. |
 
-Bundle keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`, and
-the install scripts `install-linux.sh` (deb or rpm), `install-windows.ps1` (MSI)
-and `install-macos.sh` (pkg). The scripts install the Wazuh agent `agentVersion`
-from packages.wazuh.com and set
+Bundle keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`,
+`manager-ca.pem` (with a CA), and the install scripts `install-linux.sh` (deb or
+rpm), `install-windows.ps1` (MSI) and `install-macos.sh` (pkg). The scripts install
+the Wazuh agent `agentVersion` from packages.wazuh.com and set
 `WAZUH_MANAGER`, `WAZUH_MANAGER_PORT`, `WAZUH_REGISTRATION_SERVER`,
 `WAZUH_REGISTRATION_PORT` and `WAZUH_REGISTRATION_PASSWORD`; agent groups are not
-used. With `components.velociraptor` set, the velociraptor step also writes
+used. With a CA they write it to `/etc/wazuh-manager-ca.pem`
+(`%ProgramData%\wazuh-manager-ca.pem` on Windows) and set `WAZUH_REGISTRATION_CA`,
+so the agent verifies the manager's certificate and the host name it dials when
+it enrols. The packages are verified before they are installed: deb from the
+Wazuh apt repository (`signed-by` the Wazuh key, the source removed again after
+the install), rpm with `rpm -K` against the imported Wazuh key, the key's
+fingerprint checked where gpg can show it; the macOS pkg and the Windows MSI
+against the SHA-512 published under packages.wazuh.com/4.x/checksums and their
+Developer ID (Wazuh Inc, team KLZK8P68R5) or Authenticode (`Wazuh, Inc`)
+signature. With `components.velociraptor` set, the velociraptor step also writes
 `velociraptor-client.config.yaml` (the client config of the org named like the
 tenant) and `install-velociraptor.txt` (install hint) into the bundle.
