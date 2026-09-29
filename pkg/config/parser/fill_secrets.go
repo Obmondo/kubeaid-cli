@@ -43,7 +43,9 @@ func FillMissingSecrets(ctx context.Context) error {
 	wantManagedKeycloak := cluster.Keycloak != nil &&
 		cluster.Keycloak.Mode == constants.KeycloakModeManaged
 
-	if !wantNetBird && !wantManagedKeycloak {
+	wantSecurityOperations := config.SecurityOperationsEnabled()
+
+	if !wantNetBird && !wantManagedKeycloak && !wantSecurityOperations {
 		return nil
 	}
 
@@ -74,6 +76,14 @@ func FillMissingSecrets(ctx context.Context) error {
 
 	if wantManagedKeycloak {
 		wrote, err := fillManagedKeycloakSecrets(ctx, docMap)
+		if err != nil {
+			return err
+		}
+		changed = changed || wrote
+	}
+
+	if wantSecurityOperations {
+		wrote, err := fillSecurityOperationsSecrets(ctx, docMap, cluster.SecurityOperations.Tenants)
 		if err != nil {
 			return err
 		}
@@ -175,7 +185,7 @@ func documentRootMapping(node *yaml.Node) (*yaml.Node, error) {
 	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
 		// Empty file or unexpected shape — synthesize a fresh root
 		// mapping so the caller can append into it.
-		mapping := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		mapping := &yaml.Node{Kind: yaml.MappingNode, Tag: yamlTagMap}
 		node.Kind = yaml.DocumentNode
 		node.Content = []*yaml.Node{mapping}
 		return mapping, nil
@@ -208,14 +218,14 @@ func ensureMappingChild(parent *yaml.Node, key string) (*yaml.Node, error) {
 			// Operator wrote `netbird:` or `netbird: null` — turn the
 			// value into an empty mapping in place so we can append
 			// children. Preserves existing comments on the key node.
-			*v = yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+			*v = yaml.Node{Kind: yaml.MappingNode, Tag: yamlTagMap}
 		}
 		return v, nil
 	}
 
 	// Key not present — append a fresh key + empty mapping pair.
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
-	valNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagStr, Value: key}
+	valNode := &yaml.Node{Kind: yaml.MappingNode, Tag: yamlTagMap}
 	parent.Content = append(parent.Content, keyNode, valNode)
 	return valNode, nil
 }
@@ -236,7 +246,7 @@ func setScalarIfEmpty(mapping *yaml.Node, key string, gen func() (string, error)
 			continue
 		}
 		// Existing key. Only generate if value is empty / null.
-		if v.Kind == yaml.ScalarNode && v.Value != "" && v.Tag != "!!null" {
+		if v.Kind == yaml.ScalarNode && v.Value != "" && v.Tag != yamlTagNull {
 			return false, nil
 		}
 		value, err := gen()
@@ -244,7 +254,7 @@ func setScalarIfEmpty(mapping *yaml.Node, key string, gen func() (string, error)
 			return false, err
 		}
 		v.Kind = yaml.ScalarNode
-		v.Tag = "!!str"
+		v.Tag = yamlTagStr
 		v.Value = value
 		v.Style = 0
 		return true, nil
@@ -255,8 +265,8 @@ func setScalarIfEmpty(mapping *yaml.Node, key string, gen func() (string, error)
 	if err != nil {
 		return false, err
 	}
-	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
-	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value}
+	keyNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagStr, Value: key}
+	valNode := &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlTagStr, Value: value}
 	mapping.Content = append(mapping.Content, keyNode, valNode)
 	return true, nil
 }

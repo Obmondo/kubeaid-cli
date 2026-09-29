@@ -33,6 +33,16 @@ builds:
       - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Version={{ .Tag }}
       - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Commit={{ .ShortCommit }}
       - -X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-storagectl/root/version.Date={{ .Date }}
+  - id: siem-reconciler
+    main: ./cmd/siem-reconciler
+    binary: siem-reconciler
+    goos: ["darwin", "linux"]
+    goarch: ["amd64", "arm64"]
+    ldflags:
+      - -s -w
+      - -X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Version={{ .Tag }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Commit={{ .ShortCommit }}
+      - -X github.com/Obmondo/kubeaid-cli/cmd/siem-reconciler/root/version.Date={{ .Date }}
 
 upx:
   - enabled: true
@@ -44,6 +54,8 @@ changelog:
 
 archives:
   - id: kubeaid-cli
+    # siem-reconciler ships as its own asset and image, not in here.
+    ids: [kubeaid-cli, kubeaid-storagectl]
     formats: [tar.gz]
 
     # This name template makes the OS and Arch compatible with the results of uname.
@@ -68,13 +80,41 @@ archives:
   # `formats: [binary]` means no tarball — the asset is the binary itself,
   # so the chart's cloud-init stays a single `wget + chmod +x` step.
   - id: kubeaid-storagectl
-    builds: [kubeaid-storagectl]
+    ids: [kubeaid-storagectl]
     formats: [binary]
     name_template: >-
       kubeaid-storagectl_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else }}{{ .Arch }}{{ end }}
+
+  # Standalone bare-binary asset for siem-reconciler (the SIEM tenant
+  # reconciler run by the security-operations chart).
+  - id: siem-reconciler
+    ids: [siem-reconciler]
+    formats: [binary]
+    name_template: >-
+      siem-reconciler_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+
+# Container image for siem-reconciler (ghcr.io/obmondo/siem-reconciler).
+# Disabled until the release workflow logs in to ghcr.io: dockers_v2
+# builds multi-platform images with buildx and pushes them, so enabling
+# it publishes the image.
+dockers_v2:
+  - id: siem-reconciler
+    ids: [siem-reconciler]
+    dockerfile: cmd/siem-reconciler/Dockerfile
+    images: ["ghcr.io/obmondo/siem-reconciler"]
+    tags: ["{{ .Tag }}"]
+    platforms: [linux/amd64, linux/arm64]
+    labels:
+      org.opencontainers.image.source: https://github.com/Obmondo/kubeaid-cli
+      org.opencontainers.image.version: "{{ .Tag }}"
+      org.opencontainers.image.licenses: Apache-2.0
+    disable: true
 
 # TODO : github.com/Obmondo/homebrew-tab needs to be renamed to github.com/Obmondo/homebrew-tap.
 # homebrew_casks:
@@ -87,7 +127,8 @@ archives:
 #       name: homebrew-tap
 
 nfpms:
-  - file_name_template: >-
+  - ids: [kubeaid-cli, kubeaid-storagectl]
+    file_name_template: >-
       {{- .PackageName }}_
       {{- .Tag }}_
       {{- .Os }}_

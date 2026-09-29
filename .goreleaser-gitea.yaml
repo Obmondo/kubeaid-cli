@@ -2,9 +2,10 @@ version: 2
 
 project_name: kubeaid-cli
 
-# Gitea releases publish only the changelog + release notes. Binaries are
-# built and published to GitHub via .goreleaser-github.yaml; mirroring them
-# to Gitea is redundant and wastes CI time.
+# Gitea releases publish only the changelog + release notes. Binaries
+# (kubeaid-cli, kubeaid-storagectl, siem-reconciler) and the
+# siem-reconciler image are built via .goreleaser-github.yaml; mirroring
+# them to Gitea is redundant and wastes CI time.
 builds:
   - skip: true
 

@@ -93,6 +93,11 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		// defaults so error messages reference the user-visible value.
 		hydrateKeycloakDefaults()
 
+		// Default cluster.securityOperations (realm, Keycloak URL from
+		// cluster.keycloak.dns, agent ports of all-digit tenant codes, ...).
+		// After the Keycloak defaults, which it reads.
+		hydrateSecurityOperationsDefaults()
+
 		// Default cluster.netbird.{stunDNS,turnDNS,turnUser} when
 		// unset. Renders into the netbird Secret consumed by NetBird
 		// Mgmt, Dashboard, and Coturn.
