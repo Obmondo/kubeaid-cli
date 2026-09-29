@@ -70,7 +70,7 @@ spec:
   project: kubeaid
   sources:
     - repoURL: {{ $.KubeaidFork.URL }}
-      path: argocd-helm-charts/kubesoc/wazuh
+      path: argocd-helm-charts/kubesoc/charts/wazuh
       targetRevision: {{ $.SecOps.ChartRevision }}
       helm:
         valueFiles:

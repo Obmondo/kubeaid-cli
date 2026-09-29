@@ -34,7 +34,7 @@ type HelmRelease struct {
 	Name      string
 	Namespace string
 	// Chart is the chart's path in the KubeAid repository (e.g.
-	// argocd-helm-charts/kubesoc/wazuh).
+	// argocd-helm-charts/kubesoc/charts/wazuh).
 	Chart      string
 	ChartPath  string
 	ValueFiles []string

@@ -33,7 +33,7 @@ spec:
     namespace: wazuh-002
   sources:
     - repoURL: https://github.com/example/KubeAid
-      path: argocd-helm-charts/kubesoc/wazuh
+      path: argocd-helm-charts/kubesoc/charts/wazuh
       targetRevision: v1
       helm:
         valueFiles:
@@ -72,7 +72,7 @@ spec:
   destination:
     namespace: wazuh-001
   sources:
-    - path: argocd-helm-charts/kubesoc/wazuh
+    - path: argocd-helm-charts/kubesoc/charts/wazuh
 `
 
 func writeApps(t *testing.T) string {
@@ -98,7 +98,7 @@ func TestReadApplicationsAndSyncOrder(t *testing.T) {
 	assert.Equal(t, 61, apps[0].Order)
 	assert.Equal(t, "wazuh-002", apps[0].Namespace)
 	require.Len(t, apps[0].Sources, 2)
-	assert.Equal(t, "argocd-helm-charts/kubesoc/wazuh", apps[0].Sources[0].Path)
+	assert.Equal(t, "argocd-helm-charts/kubesoc/charts/wazuh", apps[0].Sources[0].Path)
 	agentService, ok := apps[0].Sources[0].ValuesObject["agentService"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, 20025, agentService["registrationPort"])
@@ -116,7 +116,7 @@ func TestHelmReleasesFromApps(t *testing.T) {
 	rels, err := HelmReleasesFromApps(apps[:2], "/src/KubeAid", dir)
 	require.NoError(t, err)
 	configRoot := filepath.Dir(filepath.Dir(dir))
-	assert.Equal(t, "/src/KubeAid/argocd-helm-charts/kubesoc/wazuh", rels[0].ChartPath)
+	assert.Equal(t, "/src/KubeAid/argocd-helm-charts/kubesoc/charts/wazuh", rels[0].ChartPath)
 	assert.Equal(t, []string{filepath.Join(configRoot, "k8s/demo/argocd-apps/values-wazuh-tenant.yaml")}, rels[0].ValueFiles)
 	assert.NotEmpty(t, rels[0].ValuesObject)
 	assert.Equal(t, "security-operations", rels[1].Namespace)

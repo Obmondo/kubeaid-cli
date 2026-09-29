@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // Package content rolls the kubesoc detection content package (KubeAid
-// argocd-helm-charts/kubesoc/kubesoc-content) out to the running tools: Wazuh
+// argocd-helm-charts/kubesoc/charts/kubesoc-content) out to the running tools: Wazuh
 // rules, decoders, CDB lists and agent group configs through each tenant
 // manager's API (canary first, validated, hot-reloaded, rolled back on
 // failure), and Velociraptor artifacts through VQL artifact_set. The

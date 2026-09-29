@@ -55,7 +55,7 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    sources:
      - repoURL: https://github.com/example/KubeAid
 -      path: argocd-helm-charts/wazuh
-+      path: argocd-helm-charts/kubesoc/wazuh
++      path: argocd-helm-charts/kubesoc/charts/wazuh
        targetRevision: v1.0.0
        helm:
          valueFiles:
@@ -106,7 +106,7 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    sources:
      - repoURL: https://github.com/example/KubeAid
 -      path: argocd-helm-charts/wazuh
-+      path: argocd-helm-charts/kubesoc/wazuh
++      path: argocd-helm-charts/kubesoc/charts/wazuh
        targetRevision: v1.0.0
        helm:
          valueFiles:
@@ -157,7 +157,7 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    sources:
      - repoURL: https://github.com/example/KubeAid
 -      path: argocd-helm-charts/wazuh
-+      path: argocd-helm-charts/kubesoc/wazuh
++      path: argocd-helm-charts/kubesoc/charts/wazuh
        targetRevision: v1.0.0
        helm:
          valueFiles:
@@ -324,7 +324,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
 @@ -1,11 +1,17 @@
  # Rendered by kubeaid-cli from cluster.securityOperations in general.yaml. Shared
 -# values of every tenant's Wazuh (KubeAid argocd-helm-charts/wazuh, README
-+# values of every tenant's Wazuh (KubeAid argocd-helm-charts/kubesoc/wazuh, README
++# values of every tenant's Wazuh (KubeAid argocd-helm-charts/kubesoc/charts/wazuh, README
  # section 11; mirrors tests/values-tenant.yaml there). The per-tenant part
  # (certificate organization, IRIS customer, replicas, password hashes, host,
  # agent ports, role mappings) is the valuesObject of each wazuh-<code>
@@ -419,7 +419,7 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
      localRules: |
          <!-- Wazuh's 0999-malicious-ioc-rules.xml re-pointed at the MISP-fed lists.
 -             Generated; see argocd-helm-charts/misp/README.md section 5. -->
-+             Generated; see argocd-helm-charts/kubesoc/misp/README.md section 5. -->
++             Generated; see argocd-helm-charts/kubesoc/charts/misp/README.md section 5. -->
          <group name="malware,">
  
            <rule id="99901" level="14">
