@@ -25,7 +25,7 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    sources:
      - repoURL: https://github.com/example/KubeAid
 -      path: argocd-helm-charts/security-operations
-+      path: argocd-helm-charts/kubesoc/security-operations
++      path: argocd-helm-charts/kubesoc
        targetRevision: v1.0.0
        helm:
          valueFiles:
@@ -201,7 +201,7 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
  # Rendered by kubeaid-cli from cluster.securityOperations in general.yaml; edit
  # that and render again (kubeaid-cli siem render) rather than this file. Chart:
 -# KubeAid argocd-helm-charts/security-operations (README.md there).
-+# KubeAid argocd-helm-charts/kubesoc/security-operations (README.md there).
++# KubeAid argocd-helm-charts/kubesoc (README.md there).
  domain: example.com
  hosts:
    wazuh: soc-wazuh.example.com

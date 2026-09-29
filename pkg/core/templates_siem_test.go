@@ -201,7 +201,7 @@ func TestSIEMApplications(t *testing.T) {
 	assert.Equal(t, "60", dig(t, central, "metadata", "labels", "kubeaid.io/sync-order"))
 	assert.Equal(t, "security-operations", dig(t, central, "spec", "destination", "namespace"))
 	centralSource := asMap(t, digList(t, central, "spec", "sources")[0])
-	assert.Equal(t, "argocd-helm-charts/kubesoc/security-operations", centralSource["path"])
+	assert.Equal(t, "argocd-helm-charts/kubesoc", centralSource["path"])
 	assert.Equal(t, "master", centralSource["targetRevision"])
 	assert.Equal(t,
 		[]any{"$values/k8s/demo/argocd-apps/values-security-operations.yaml"},

@@ -25,7 +25,7 @@ spec:
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
-      path: argocd-helm-charts/kubesoc/security-operations
+      path: argocd-helm-charts/kubesoc
       targetRevision: {{ .SecOps.ChartRevision }}
       helm:
         valueFiles:

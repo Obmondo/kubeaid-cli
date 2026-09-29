@@ -55,7 +55,7 @@ spec:
     namespace: security-operations
   sources:
     - repoURL: https://github.com/example/KubeAid
-      path: argocd-helm-charts/kubesoc/security-operations
+      path: argocd-helm-charts/kubesoc
       helm:
         valueFiles:
           - $values/k8s/demo/argocd-apps/values-security-operations.yaml
