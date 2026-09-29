@@ -20,6 +20,15 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    labels:
      kubeaid.io/version: 1.0.0
      kubeaid.io/managed-by: kubeaid
+@@ -18,7 +25,7 @@ spec:
+   project: kubeaid
+   sources:
+     - repoURL: https://github.com/example/KubeAid
+-      path: argocd-helm-charts/security-operations
++      path: argocd-helm-charts/kubesoc/security-operations
+       targetRevision: v1.0.0
+       helm:
+         valueFiles:
 @@ -26,6 +33,11 @@ spec:
      - repoURL: https://git.example.com/example/kubeaid-config.git
        targetRevision: HEAD
@@ -41,6 +50,15 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    labels:
      kubeaid.io/version: 1.0.0
      kubeaid.io/managed-by: kubeaid
+@@ -47,7 +61,7 @@ spec:
+   project: kubeaid
+   sources:
+     - repoURL: https://github.com/example/KubeAid
+-      path: argocd-helm-charts/wazuh
++      path: argocd-helm-charts/kubesoc/wazuh
+       targetRevision: v1.0.0
+       helm:
+         valueFiles:
 @@ -67,6 +81,11 @@ spec:
                  organization: tenant-001
              indexer:
@@ -83,6 +101,15 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    labels:
      kubeaid.io/version: 1.0.0
      kubeaid.io/managed-by: kubeaid
+@@ -151,7 +175,7 @@ spec:
+   project: kubeaid
+   sources:
+     - repoURL: https://github.com/example/KubeAid
+-      path: argocd-helm-charts/wazuh
++      path: argocd-helm-charts/kubesoc/wazuh
+       targetRevision: v1.0.0
+       helm:
+         valueFiles:
 @@ -171,6 +195,11 @@ spec:
                  organization: tenant-002
              indexer:
@@ -125,6 +152,15 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
    labels:
      kubeaid.io/version: 1.0.0
      kubeaid.io/managed-by: kubeaid
+@@ -255,7 +289,7 @@ spec:
+   project: kubeaid
+   sources:
+     - repoURL: https://github.com/example/KubeAid
+-      path: argocd-helm-charts/wazuh
++      path: argocd-helm-charts/kubesoc/wazuh
+       targetRevision: v1.0.0
+       helm:
+         valueFiles:
 @@ -275,6 +309,11 @@ spec:
                  organization: tenant-demo
              indexer:
@@ -161,6 +197,14 @@ diff --git a/argocd-apps/templates/security-operations.yaml b/argocd-apps/templa
 diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-security-operations.yaml
 --- a/argocd-apps/values-security-operations.yaml
 +++ b/argocd-apps/values-security-operations.yaml
+@@ -1,6 +1,6 @@
+ # Rendered by kubeaid-cli from cluster.securityOperations in general.yaml; edit
+ # that and render again (kubeaid-cli siem render) rather than this file. Chart:
+-# KubeAid argocd-helm-charts/security-operations (README.md there).
++# KubeAid argocd-helm-charts/kubesoc/security-operations (README.md there).
+ domain: example.com
+ hosts:
+   wazuh: soc-wazuh.example.com
 @@ -9,6 +9,7 @@ hosts:
    velociraptor: soc-velociraptor.example.com
  
@@ -277,7 +321,13 @@ diff --git a/argocd-apps/values-security-operations.yaml b/argocd-apps/values-se
 diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-tenant.yaml
 --- a/argocd-apps/values-wazuh-tenant.yaml
 +++ b/argocd-apps/values-wazuh-tenant.yaml
-@@ -6,6 +6,12 @@
+@@ -1,11 +1,17 @@
+ # Rendered by kubeaid-cli from cluster.securityOperations in general.yaml. Shared
+-# values of every tenant's Wazuh (KubeAid argocd-helm-charts/wazuh, README
++# values of every tenant's Wazuh (KubeAid argocd-helm-charts/kubesoc/wazuh, README
+ # section 11; mirrors tests/values-tenant.yaml there). The per-tenant part
+ # (certificate organization, IRIS customer, replicas, password hashes, host,
+ # agent ports, role mappings) is the valuesObject of each wazuh-<code>
  # Application in templates/security-operations.yaml.
  irisIntegration:
    enabled: true
@@ -364,6 +414,15 @@ diff --git a/argocd-apps/values-wazuh-tenant.yaml b/argocd-apps/values-wazuh-ten
    wazuh:
      # MISP indicators: Wazuh 4.14's own IoC rule pack
      # (ruleset/rules/0999-malicious-ioc-rules.xml, rules 99901-99920) re-pointed at
+@@ -111,7 +92,7 @@ wazuh:
+     # rather than editing. Replaces the chart's sample local_rules.xml.
+     localRules: |
+         <!-- Wazuh's 0999-malicious-ioc-rules.xml re-pointed at the MISP-fed lists.
+-             Generated; see argocd-helm-charts/misp/README.md section 5. -->
++             Generated; see argocd-helm-charts/kubesoc/misp/README.md section 5. -->
+         <group name="malware,">
+ 
+           <rule id="99901" level="14">
 @@ -302,11 +283,21 @@ wazuh:
            </rule>
  

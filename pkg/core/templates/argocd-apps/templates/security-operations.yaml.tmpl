@@ -25,7 +25,7 @@ spec:
   project: kubeaid
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
-      path: argocd-helm-charts/security-operations
+      path: argocd-helm-charts/kubesoc/security-operations
       targetRevision: {{ .SecOps.ChartRevision }}
       helm:
         valueFiles:
@@ -70,7 +70,7 @@ spec:
   project: kubeaid
   sources:
     - repoURL: {{ $.KubeaidFork.URL }}
-      path: argocd-helm-charts/wazuh
+      path: argocd-helm-charts/kubesoc/wazuh
       targetRevision: {{ $.SecOps.ChartRevision }}
       helm:
         valueFiles:

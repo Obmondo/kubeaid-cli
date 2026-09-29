@@ -8,8 +8,8 @@ One block in `general.yaml` sets up a multi-tenant security operations stack on 
   section 11),
 - the Wazuh credentials of every release, generated into `secrets.yaml` and sealed.
 
-The chart READMEs in KubeAid (`argocd-helm-charts/security-operations/README.md`,
-`argocd-helm-charts/wazuh/README.md`) describe what the charts do with these values.
+The chart READMEs in KubeAid (`argocd-helm-charts/kubesoc/security-operations/README.md`,
+`argocd-helm-charts/kubesoc/wazuh/README.md`) describe what the charts do with these values.
 
 ## general.yaml
 

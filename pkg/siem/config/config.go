@@ -313,7 +313,7 @@ const DefaultContentStatePrefix = "kubesoc-content-"
 // Content is the kubesoc-content package rollout.
 type Content struct {
 	// Dir is the package: the kubesoc-content ConfigMap mount, or a
-	// checkout of KubeAid argocd-helm-charts/kubesoc-content.
+	// checkout of KubeAid argocd-helm-charts/kubesoc/kubesoc-content.
 	Dir string `json:"dir"`
 	// ArtifactDirs are more directories of Velociraptor artifact files
 	// (*.yaml), e.g. the security-operations velociraptor-artifacts
