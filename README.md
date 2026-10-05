@@ -200,9 +200,10 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 ## Dependency licenses
 
-The CI workflow checks the runtime dependencies of `./cmd/kubeaid-cli` against
-the approved Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, and MPL-2.0
-license set. Run these commands locally to inspect the same dependency graph:
+The repository-owned license checker reads the resolved runtime dependencies of
+`./cmd/kubeaid-cli` and their license files. It permits Apache-2.0,
+BSD-2-Clause, BSD-3-Clause, ISC, MIT, and MPL-2.0. CI runs the same check and
+uploads its CSV inventory as an artifact. Run these commands locally:
 
 ```sh
 make check-licenses
