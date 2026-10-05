@@ -92,6 +92,15 @@ Exactly one of the two must be set.
    kubeaid-cli config generate
    ```
 
+   > **License notice:** `kubeaid-cli` is Apache-2.0, but the generated
+   > configuration defaults `forkURLs.kubeaid` to
+   > [`Obmondo/KubeAid`](https://github.com/Obmondo/KubeAid), which is
+   > AGPL-3.0. Before bootstrapping, review that repository's license and the
+   > licenses of the charts it deploys. To use a different platform source, set
+   > `forkURLs.kubeaid.url` and `forkURLs.kubeaid.version` in `general.yaml`
+   > to your chosen repository and pinned revision. Your KubeAid and KubeAid
+   > Config repositories must be on the same Git server.
+
 2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (on macOS the per-user root is
    `~/Library/Application Support/kubeaid-cli/` instead). The prompt covers everything required to bootstrap;
    hand-edit only when you want to override defaults.
