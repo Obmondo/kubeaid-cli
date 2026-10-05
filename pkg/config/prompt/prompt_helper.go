@@ -30,7 +30,6 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 		fmt.Sprintf("  Config Repo:   %s", cfg.KubeaidConfigForkURL),
 		fmt.Sprintf("  Cloud:         %s", cfg.CloudProvider),
 	}
-	lines = append(lines, kubeAidLicenseSummaryLines(cfg)...)
 
 	prompter := prompterForProvider(cfg.CloudProvider)
 	lines = append(lines, prompter.SummaryLines(cfg)...)
@@ -67,13 +66,6 @@ func printSummary(cfg *PromptedConfig, state *promptState) {
 
 	fmt.Println()
 	printBox("Configuration Summary", lines)
-}
-
-func kubeAidLicenseSummaryLines(cfg *PromptedConfig) []string {
-	if cfg.KubeaidForkURL != constants.KubeAidPublicHTTPSURL {
-		return nil
-	}
-	return []string{"  License:       Obmondo/KubeAid is AGPL-3.0 - review before bootstrap"}
 }
 
 // workloadNetBirdSummaryLines summarises a workload cluster's NetBird join and,

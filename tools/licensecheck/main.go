@@ -28,14 +28,14 @@ var approvedLicenses = map[string]struct{}{
 }
 
 type goPackage struct {
-	Module *goModule
+	Module *goModule `json:"Module"`
 }
 
 type goModule struct {
-	Path    string
-	Version string
-	Dir     string
-	Main    bool
+	Path    string `json:"Path"`
+	Version string `json:"Version"`
+	Dir     string `json:"Dir"`
+	Main    bool   `json:"Main"`
 }
 
 type dependency struct {

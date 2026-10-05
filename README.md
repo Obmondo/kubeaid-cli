@@ -100,9 +100,6 @@ Exactly one of the two must be set.
    > `forkURLs.kubeaid.url` and `forkURLs.kubeaid.version` in `general.yaml`
    > to your chosen repository and pinned revision. Your KubeAid and KubeAid
    > Config repositories must be on the same Git server.
-   >
-   > The prompt repeats this notice in its final summary when the default
-   > source is selected.
 
 2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (on macOS the per-user root is
    `~/Library/Application Support/kubeaid-cli/` instead). The prompt covers everything required to bootstrap;
