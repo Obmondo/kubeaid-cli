@@ -100,6 +100,9 @@ Exactly one of the two must be set.
    > `forkURLs.kubeaid.url` and `forkURLs.kubeaid.version` in `general.yaml`
    > to your chosen repository and pinned revision. Your KubeAid and KubeAid
    > Config repositories must be on the same Git server.
+   >
+   > The prompt repeats this notice in its final summary when the default
+   > source is selected.
 
 2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (on macOS the per-user root is
    `~/Library/Application Support/kubeaid-cli/` instead). The prompt covers everything required to bootstrap;
@@ -194,6 +197,17 @@ KubeAid CLI uses two YAML config files:
 - **`secrets.yaml`** — cloud credentials, tokens, and other sensitive values.
 
 See [`docs/config-reference.md`](docs/config-reference.md) for the full configuration reference.
+
+## Dependency licenses
+
+The CI workflow checks the runtime dependencies of `./cmd/kubeaid-cli` against
+the approved Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MIT, and MPL-2.0
+license set. Run these commands locally to inspect the same dependency graph:
+
+```sh
+make check-licenses
+make license-report
+```
 
 ## Documentation
 
