@@ -101,6 +101,59 @@ func TestSSHGitURL(t *testing.T) {
 	}
 }
 
+func TestGitRepositoryURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{name: "HTTPS URL passes", in: "https://github.com/acme/platform.git"},
+		{name: "scp-like SSH URL passes", in: "git@github.com:acme/platform.git"},
+		{name: "SSH URL passes", in: "ssh://git@github.com/acme/platform.git"},
+		{name: "missing repository path fails", in: "https://github.com", wantErr: true},
+		{name: "HTTP URL fails", in: "http://github.com/acme/platform.git", wantErr: true},
+		{name: "unsupported protocol fails", in: "file:///tmp/platform.git", wantErr: true},
+		{name: "empty fails", in: "", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := GitRepositoryURL(tc.in)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestPlatformSourceVersion(t *testing.T) {
+	tests := []struct {
+		name    string
+		in      string
+		wantErr bool
+	}{
+		{name: "tag passes", in: "v1.2.3"},
+		{name: "branch passes", in: "main"},
+		{name: "latest fails", in: "latest", wantErr: true},
+		{name: "SHA-1 commit hash fails", in: "0123456789abcdef0123456789abcdef01234567", wantErr: true},
+		{name: "SHA-256 commit hash fails", in: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", wantErr: true},
+		{name: "empty fails", in: "", wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := PlatformSourceVersion(tc.in)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func TestIPv4(t *testing.T) {
 	tests := []struct {
 		name    string
