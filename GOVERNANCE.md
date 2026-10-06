@@ -51,11 +51,36 @@ to:
 
 All current maintainers are listed in [MAINTAINERS.md](MAINTAINERS.md).
 
+### Teams and review
+
+Maintainers are responsible for the whole project. The teams below give people
+a clear first place to review and maintain. They are not exclusive ownership
+and they do not change repository permissions.
+
+* **Core maintainers:** shared design, configuration rendering, GitOps and
+  Argo CD integration, governance, and architecture decisions.
+* **Provider teams:** AWS/CAPA, Azure/CAPZ, Hetzner/CAPH, and generic bare
+  metal/KubeOne code and tests.
+* **Technical team:** shared tooling, tests, security, and cross-provider
+  work.
+* **Documentation and release team:** user and contributor documentation,
+  release notes, and release-process changes.
+
+Ask for review from the team affected by a change. A core maintainer must also
+review changes to shared configuration or lifecycle behavior, GitOps/Argo CD,
+security-sensitive code, or more than one provider.
+
 ### Changes in Leadership
 
 The maintainer group is self-governing. New maintainers must be nominated by
 an existing maintainer. Both appointments and removals are decided by a
 **two-thirds (⅔) majority vote** of current maintainers.
+
+Team assignments are recorded in [MAINTAINERS.md](MAINTAINERS.md). Core
+maintainers review assignment changes and announce them publicly.
+
+People listed as maintainer nominees are awaiting the required vote. They are
+not maintainers and do not receive maintainer permissions before approval.
 
 A maintainer who steps down, or is removed by vote, is acknowledged for their
 past contributions in the project's history and release notes.
