@@ -8,6 +8,7 @@ LDFLAGS := -s -w \
 	-X github.com/Obmondo/kubeaid-cli/cmd/kubeaid-core/root/version.Date=$(BUILD_DATE)
 
 MANAGEMENT_CLUSTER_NAME := kubeaid-bootstrapper
+GO_TEST_COVERAGE_VERSION := v2.19.0
 
 default: help ## Run help by default
 
@@ -54,7 +55,15 @@ coverage: test ## Open the per-file HTML coverage report in a browser
 
 .PHONY: check-coverage
 check-coverage: test ## Enforce testcoverage.yaml thresholds
-	@go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
+	@go run github.com/vladopajic/go-test-coverage/v2@$(GO_TEST_COVERAGE_VERSION) --config=./testcoverage.yaml
+
+.PHONY: license-report
+license-report: ## Print licenses for runtime dependencies
+	@go run ./tools/licensecheck --report
+
+.PHONY: check-licenses
+check-licenses: ## Reject runtime dependencies outside the approved license list
+	@go run ./tools/licensecheck --check
 
 .PHONY: run-generators
 run-generators: ## Generate config artifacts

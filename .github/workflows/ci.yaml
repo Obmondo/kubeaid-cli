@@ -95,7 +95,7 @@ jobs:
         run: go tool cover -func=coverage.out
 
       - name: Check test coverage
-        run: go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
+        run: go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=./testcoverage.yaml
 
   go-build:
     runs-on: ubuntu-latest
@@ -124,6 +124,42 @@ jobs:
 
       - name: Build
         run: CGO_ENABLED=0 go build -v ./...
+
+  dependency-licenses:
+    runs-on: ubuntu-latest
+    needs: [go-build]
+    container:
+      image: golang:1.26.5-bookworm
+    env:
+      GOCACHE: /root/.cache/go-build
+      GOMODCACHE: /go/pkg/mod
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Trust checkout directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Restore Go cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: go-Linux-1.26.5-${{ hashFiles('go.sum') }}
+
+      - name: Check dependency licenses
+        run: make check-licenses
+
+      - name: Generate dependency license report
+        run: make license-report > dependency-licenses.csv
+
+      - name: Upload dependency license report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-licenses
+          path: dependency-licenses.csv
+          if-no-files-found: error
 
   check-k8s-eol-fresh:
     runs-on: ubuntu-latest
