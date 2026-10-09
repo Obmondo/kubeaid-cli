@@ -204,9 +204,7 @@ func upgradeControlPlane(ctx context.Context,
 ) {
 	slog.InfoContext(ctx, "Triggering control plane upgrade")
 
-	var (
-		kubeadmControlPlaneName = fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
-	)
+	kubeadmControlPlaneName := fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
 
 	// When the user wants a Kubernetes version upgrade,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
