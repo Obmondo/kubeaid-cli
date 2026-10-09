@@ -13,7 +13,6 @@ import (
 	argoCDV1Aplha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
 	yqCmdLib "github.com/mikefarah/yq/v4/cmd"
 	clusterctlClientLib "sigs.k8s.io/cluster-api/cmd/clusterctl/client"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
@@ -70,29 +69,29 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	}
 
 	// (1) Upgrading the Control Plane.
-	upgradeControlPlane(ctx, clusterClient, clusterctlClient, args)
+	upgradeControlPlane(ctx, clusterctlClient, args)
 
 	// (2) Upgrading each node-group one by one.
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.AWS.NodeGroups {
-			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+			upgradeNodeGroup(ctx, clusterctlClient, nodeGroup.Name, args)
 		}
 
 	case constants.CloudProviderAzure:
 		for _, nodeGroup := range config.ParsedGeneralConfig.Cloud.Azure.NodeGroups {
-			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+			upgradeNodeGroup(ctx, clusterctlClient, nodeGroup.Name, args)
 		}
 
 	case constants.CloudProviderHetzner:
 		nodeGroups := config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups
 
 		for _, nodeGroup := range nodeGroups.HCloud {
-			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+			upgradeNodeGroup(ctx, clusterctlClient, nodeGroup.Name, args)
 		}
 
 		for _, nodeGroup := range nodeGroups.BareMetal {
-			upgradeNodeGroup(ctx, clusterClient, clusterctlClient, nodeGroup.Name, args)
+			upgradeNodeGroup(ctx, clusterctlClient, nodeGroup.Name, args)
 		}
 
 	default:
@@ -200,7 +199,6 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 }
 
 func upgradeControlPlane(ctx context.Context,
-	clusterClient client.Client,
 	clusterctlClient clusterctlClientLib.Client,
 	args UpgradeClusterArgs,
 ) {
@@ -208,18 +206,7 @@ func upgradeControlPlane(ctx context.Context,
 
 	var (
 		kubeadmControlPlaneName = fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name)
-		machineTemplateName     = kubeadmControlPlaneName
 	)
-
-	// When the user wants an OS upgrade,
-	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource
-	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
-	// immutable, we cannot update it in-place.
-	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	err := globals.CloudProvider.UpdateMachineTemplate(ctx,
-		clusterClient, machineTemplateName, args.CloudSpecificUpdates,
-	)
-	assert.AssertErrNil(ctx, err, "Failed updating MachineTemplate for control plane")
 
 	// When the user wants a Kubernetes version upgrade,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
@@ -249,7 +236,6 @@ func upgradeControlPlane(ctx context.Context,
 }
 
 func upgradeNodeGroup(ctx context.Context,
-	clusterClient client.Client,
 	clusterctlClient clusterctlClientLib.Client,
 	name string,
 	args UpgradeClusterArgs,
@@ -263,20 +249,7 @@ func upgradeNodeGroup(ctx context.Context,
 	var (
 		machineDeploymentName     = fmt.Sprintf("%s-%s", config.ParsedGeneralConfig.Cluster.Name, name)
 		kubeadmConfigTemplateName = machineDeploymentName
-		machineTemplateName       = machineDeploymentName
 	)
-
-	// When the user wants to do an OS upgrade,
-	// make necessary updates in the corresponding infrastructure specific MachineTemplate resource
-	// (like in AWSMachineTemplate when dealing with AWS), by deleting and recreating it. Since it's
-	// immutable, we cannot update them directly.
-	// REFER : https://cluster-api.sigs.k8s.io/tasks/upgrading-clusters#upgrading-the-control-plane-machines.
-	err := globals.CloudProvider.UpdateMachineTemplate(ctx,
-		clusterClient,
-		machineTemplateName,
-		args.CloudSpecificUpdates,
-	)
-	assert.AssertErrNil(ctx, err, "Failed updating MachineTemplate for node group")
 
 	/*
 		When the user wants a Kubernetes version upgrade,
