@@ -120,6 +120,33 @@ func HCloudControlPlanePublicNetwork() bool {
 	return !HCloudSingleNodePublic()
 }
 
+// HCloudNATGatewayNeeded reports whether the cluster needs the HCloud NAT
+// gateway (the masquerading server plus the 0.0.0.0/0 route on the Hetzner
+// Network): true when at least one HCloud node has no public IP of its own,
+// and so no egress without a masquerading hop.
+//
+// Control-plane nodes are public either via network.type=public
+// (HCloudSingleNodePublic) or via controlPlane.hcloud.publicNetwork.enabled
+// (HCloudControlPlanePublicNetwork), so a VPN cluster's control plane is
+// public at every replica count. An HCloud worker node-group is the one thing
+// that keeps the gateway: those nodes are always private-only. False for pure
+// bare-metal — those hosts have their own public connectivity and there is no
+// HCloud Network to attach a gateway to.
+//
+// Unrelated to the private network, which stays either way: etcd, the
+// apiserver InternalIP, the CCM's pod routes and the private control-plane
+// load-balancer targets all use it.
+func HCloudNATGatewayNeeded() bool {
+	hetzner := ParsedGeneralConfig.Cloud.Hetzner
+	if hetzner == nil || !UsingHCloud() {
+		return false
+	}
+	if len(hetzner.NodeGroups.HCloud) > 0 {
+		return true
+	}
+	return !HCloudSingleNodePublic() && !HCloudControlPlanePublicNetwork()
+}
+
 // VPNClusterEnabled reports whether to render the VPN-cluster-wide
 // infrastructure (cnpg, traefik, the netbird SealedSecrets, the postgres DSN
 // patch): any VPN cluster with a keycloak block, regardless of Keycloak mode —
