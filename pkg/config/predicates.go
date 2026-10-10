@@ -99,6 +99,27 @@ func HCloudSingleNodePublic() bool {
 	return len(hetzner.NodeGroups.HCloud) == 0
 }
 
+// HCloudControlPlanePublicNetwork reports whether to render the capi-cluster
+// chart's controlPlane.hcloud.publicNetwork.enabled — a public IPv4 on every
+// control-plane node while the private network stays: VPN clusters with an
+// HCloud control-plane (hcloud or hybrid), at any replica count. Coturn
+// (STUN/TURN) has to reflect and relay from a public address on the node
+// itself, and HCloud only attaches a Floating IP to a server that already has
+// a Primary IP. False on the single-node public topology, where
+// network.type=public already makes the node public.
+func HCloudControlPlanePublicNetwork() bool {
+	if ParsedGeneralConfig.Cluster.Type != constants.ClusterTypeVPN {
+		return false
+	}
+	if !ControlPlaneInHCloud() {
+		return false
+	}
+	if ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud == nil {
+		return false
+	}
+	return !HCloudSingleNodePublic()
+}
+
 // VPNClusterEnabled reports whether to render the VPN-cluster-wide
 // infrastructure (cnpg, traefik, the netbird SealedSecrets, the postgres DSN
 // patch): any VPN cluster with a keycloak block, regardless of Keycloak mode —
