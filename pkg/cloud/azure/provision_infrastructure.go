@@ -36,7 +36,7 @@ type xrClaimRef struct {
 func (a *Azure) ProvisionInfrastructure(ctx context.Context) error {
 	// Create Composite Resource (XR) Claims,
 	// to provision the Azure Workload Identity and Disaster Recovery infrastructure.
-	err := syncArgoCDAppFn(ctx, "infrastructure", []*argoCDV1Alpha1.SyncOperationResource{})
+	err := syncArgoCDAppFn(ctx, constants.ArgoCDAppInfrastructure, []*argoCDV1Alpha1.SyncOperationResource{})
 	if err != nil {
 		return fmt.Errorf("syncing infrastructure ArgoCD app: %w", err)
 	}
@@ -52,16 +52,16 @@ func (a *Azure) ProvisionInfrastructure(ctx context.Context) error {
 
 	xrClaims := []xrClaimRef{
 		{
-			group:   "infrastructure.obmondo.com",
-			version: "v1alpha1",
+			group:   constants.AzureXRClaimAPIGroup,
+			version: constants.AzureXRClaimAPIVersion,
 			kind:    "WorkloadIdentityInfrastructure",
 			name:    "default",
 		},
 	}
 	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
 		xrClaims = append(xrClaims, xrClaimRef{
-			group:   "infrastructure.obmondo.com",
-			version: "v1alpha1",
+			group:   constants.AzureXRClaimAPIGroup,
+			version: constants.AzureXRClaimAPIVersion,
 			kind:    "DisasterRecoveryInfrastructure",
 			name:    "default",
 		})

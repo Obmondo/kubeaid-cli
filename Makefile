@@ -52,9 +52,10 @@ test: ## Run unit tests and write coverage.out
 coverage: test ## Open the per-file HTML coverage report in a browser
 	@go tool cover -html=coverage.out
 
+# Same pin as the "Check test coverage" step in .github/workflows/ci.yaml.
 .PHONY: check-coverage
 check-coverage: test ## Enforce testcoverage.yaml thresholds
-	@go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
+	@go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=./testcoverage.yaml
 
 .PHONY: run-generators
 run-generators: ## Generate config artifacts

@@ -38,8 +38,10 @@ func readyXRClaim(kind, name string) *unstructured.Unstructured {
 			},
 		},
 	}
+	// Spelled out rather than taken from constants : this is the group the claim templates and
+	// KubeAid's XRDs use, so the poll has to look there.
 	obj.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "infrastructure.obmondo.com",
+		Group:   "azure.kubeaid.org",
 		Version: "v1alpha1",
 		Kind:    kind,
 	})

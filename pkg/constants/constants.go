@@ -248,6 +248,9 @@ const (
 	ArgoCDAppCCMHCloud          = "ccm-hcloud"
 	ArgoCDAppCCMHetzner         = "ccm-hetzner"
 	ArgoCDAppTraefik            = "traefik"
+	ArgoCDAppCrossplane         = "crossplane"
+	ArgoCDAppCrossplaneProvider = "crossplane-provider"
+	ArgoCDAppInfrastructure     = "infrastructure"
 
 	ArgoCDProjectRolePolicyFmt = "p, proj:%s:%s, %s, %s, %s/*, %s" // Inputs: project-name, role-name, resource, action, project-name, effect
 	ArgoCDLabelKeyManagedBy    = "kubeaid.io/managed-by"
@@ -284,6 +287,11 @@ const (
 	AzureRoleIDStorageBlobDataOwner = "b7e6dc6d-f1e8-4753-8033-0f276bb0955b"
 
 	AzureResponseStatusCodeResourceAlreadyExists = 409
+
+	// API group and version of the Composite Resource (XR) Claims rendered into the infrastructure
+	// ArgoCD App. They're served by the XRDs in KubeAid's crossplane-provider chart.
+	AzureXRClaimAPIGroup   = "azure.kubeaid.org"
+	AzureXRClaimAPIVersion = "v1alpha1"
 )
 
 // Hetzner

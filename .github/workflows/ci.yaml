@@ -94,8 +94,11 @@ jobs:
       - name: Show total coverage
         run: go tool cover -func=coverage.out
 
+      # Pinned rather than @latest : a release that raises the tool's minimum Go version above
+      # the image used here fails this step on every PR. Bump it together with the Go version,
+      # and keep the Makefile's check-coverage target on the same pin.
       - name: Check test coverage
-        run: go run github.com/vladopajic/go-test-coverage/v2@latest --config=./testcoverage.yaml
+        run: go run github.com/vladopajic/go-test-coverage/v2@v2.19.0 --config=./testcoverage.yaml
 
   go-build:
     runs-on: ubuntu-latest
