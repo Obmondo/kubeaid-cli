@@ -69,7 +69,8 @@ The VPN cluster relies on several infrastructural elements. These elements are o
 ### B. NAT Gateway
 * **Purpose**: Since nodes are often placed in a private network without public IPv4, a NAT Gateway is required to provide outbound internet access (e.g., pulling container images).
 * **Code Reference (kubeaid-cli)**: `pkg/cloud/hetzner/server.go` -> `CreateNATGateway()`. Provisions a small `cpx22` VM (configurable via `cloud.hetzner.hcloud.natGatewayServerType`), configures `iptables` for `MASQUERADE`, and adds a `0.0.0.0/0` route via this server in the Hetzner Network.
-* **Helm Reference**: `argocd-helm-charts/capi-cluster/charts/hetzner/templates/KubeadmConfigTemplate.yaml`. Nodes run a `preKubeadmCommand` script (`/connect-nat-gateway.sh`) to route default traffic through the NAT Gateway.
+* **Helm Reference**: `argocd-helm-charts/capi-cluster/charts/hetzner/templates/KubeadmConfigTemplate.yaml`. Private-only worker nodes run a `preKubeadmCommand` script (`/connect-nat-gateway.sh`) to route default traffic through the NAT Gateway.
+* **When it is skipped**: only HCloud nodes *without* a public IP need it. A VPN cluster's control-plane nodes are always public — `network.type: public` at one replica, `controlPlane.hcloud.publicNetwork.enabled` above that — so a VPN cluster with no `nodeGroups.hcloud` entries gets no NAT Gateway at all (`config.HCloudNATGatewayNeeded`). The control plane then egresses from each node's own public IP, and the private network stays for etcd, the apiserver InternalIP, CCM pod routes and the private load-balancer targets.
 
 ### C. Single-Node Control Plane
 * **Purpose**: The Kubernetes control plane. By specifying `replicas: 1` and omitting node groups, this node also acts as the sole worker node.
