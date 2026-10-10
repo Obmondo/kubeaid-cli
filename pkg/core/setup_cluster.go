@@ -714,6 +714,14 @@ func printHelpTextForArgoCDDashboardAccess(ctx context.Context, clusterType stri
 //     pre-pivot (clusterctl move transfers them to
 //     main afterwards)
 //
+// Self-managed Azure clusters additionally need :
+//   - crossplane, crossplane-provider — Crossplane and its Azure
+//     providers, which SetupCluster syncs on the management cluster
+//   - infrastructure  — the XR claims that make Crossplane provision the
+//     workload-identity (and disaster-recovery) infrastructure CAPZ
+//     authenticates through, so it has to exist before the workload
+//     cluster does
+//
 // Each child is a Kind=Application in the argoproj.io group, deployed
 // to the argocd namespace.
 //
@@ -733,6 +741,17 @@ func managementClusterRootChildResources() []*argoCDV1Alpha1.SyncOperationResour
 	if globals.CloudProviderName != constants.CloudProviderLocal {
 		mgmtApps = append(mgmtApps, "cluster-api-operator", constants.ArgoCDAppCapiCluster)
 	}
+
+	// AKS clusters skip the Crossplane block in SetupCluster, and
+	// azureNonSecretTemplateNames renders none of these Apps for them.
+	if globals.CloudProviderName == constants.CloudProviderAzure && !config.AKSEnabled() {
+		mgmtApps = append(mgmtApps,
+			constants.ArgoCDAppCrossplane,
+			constants.ArgoCDAppCrossplaneProvider,
+			constants.ArgoCDAppInfrastructure,
+		)
+	}
+
 	resources := make([]*argoCDV1Alpha1.SyncOperationResource, 0, len(mgmtApps))
 	for _, name := range mgmtApps {
 		resources = append(resources, &argoCDV1Alpha1.SyncOperationResource{

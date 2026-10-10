@@ -117,10 +117,8 @@ var (
 		// For CrossPlane.
 		"argocd-apps/templates/crossplane.yaml.tmpl",
 		"argocd-apps/values-crossplane.yaml.tmpl",
-		"argocd-apps/templates/crossplane-providers-and-functions.yaml.tmpl",
-		"argocd-apps/values-crossplane-providers-and-functions.yaml.tmpl",
-		"argocd-apps/templates/crossplane-compositions.yaml.tmpl",
-		"argocd-apps/values-crossplane-compositions.yaml.tmpl",
+		"argocd-apps/templates/crossplane-provider.yaml.tmpl",
+		"argocd-apps/values-crossplane-provider.yaml.tmpl",
 		"argocd-apps/templates/infrastructure.yaml.tmpl",
 		"infrastructure/azure/workload-identity-infrastructure.yaml.tmpl",
 

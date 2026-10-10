@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-11
 **Status:** Proposed
-**Repos affected:** `Obmondo/kubeaid` (crossplane-compositions + capi-cluster charts),
+**Repos affected:** `Obmondo/kubeaid` (crossplane-provider + capi-cluster charts),
 `Obmondo/kubeaid-cli` (bootstrap flow)
 **Depends on:** AKS support (`2026-08-11-aks-support-design.md`, shipped)
 
@@ -66,7 +66,7 @@ parameterization.
 
 ## Chart changes (KubeAid)
 
-- **crossplane-compositions/charts/azure/workload-identity-infrastructure**:
+- **crossplane-provider/charts/azure/templates/workload-identity-infrastructure**:
   XRD gains `issuerURL` (optional string); the composition gates
   ResourceGroup / storage Account / Container / storage RoleAssignment on
   `issuerURL` being empty, and the FederatedIdentityCredentials use

@@ -40,18 +40,17 @@ func TestInstallAndSetupCrossplane(t *testing.T) {
 		wantGetNames  []string
 	}{
 		{
-			name:        "all three apps already synced — no Sync called",
+			name:        "both apps already synced — no Sync called",
 			useTracking: true,
 			client: &trackingArgoCDAppClient{
 				fakeArgoCDAppClient: fakeArgoCDAppClient{
 					getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
 				},
 			},
-			wantGetCalled: 3,
+			wantGetCalled: 2,
 			wantGetNames: []string{
 				"crossplane",
-				"crossplane-providers-and-functions",
-				"crossplane-compositions",
+				"crossplane-provider",
 			},
 		},
 		{

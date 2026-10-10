@@ -5,7 +5,7 @@ metadata:
     kubeaid.io/version: "{{ .KubeaidFork.Version }}"
     kubeaid.io/managed-by: "kubeaid"
     kubeaid.io/priority: "default"
-  name: crossplane-providers-and-functions
+  name: crossplane-provider
   namespace: argocd
 spec:
   destination:
@@ -13,16 +13,25 @@ spec:
     server: https://kubernetes.default.svc
   sources:
     - repoURL: {{ .KubeaidFork.URL }}
-      path: argocd-helm-charts/crossplane-providers-and-functions
+      path: argocd-helm-charts/crossplane-provider
       targetRevision: {{ .KubeaidFork.Version }}
       helm:
         valueFiles:
-          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-crossplane-providers-and-functions.yaml
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-crossplane-provider.yaml
     - repoURL: {{ .KubeaidConfigFork.URL }}
       targetRevision: HEAD
       ref: values
   project: kubeaid
   syncPolicy:
+    # The chart orders its objects with sync waves : Provider / Function packages first, then
+    # ProviderConfigs and XRDs, then Compositions. A slow package install is retried instead of
+    # failing the sync.
+    retry:
+      limit: 5
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
     syncOptions:
       - CreateNamespace=true
       - ApplyOutOfSyncOnly=true
