@@ -172,6 +172,7 @@ hetzner:
     wipeDisks: {{ .HetznerConfig.BareMetal.WipeDisks }}
     installImage:
       imagePath: {{ .HetznerConfig.BareMetal.InstallImage.ImagePath }}
+      firmware: {{ .HetznerConfig.BareMetal.InstallImage.Firmware }}
       vg0:
         size: {{ .HetznerConfig.BareMetal.InstallImage.VG0.Size }}
         rootVolumeSize: {{ .HetznerConfig.BareMetal.InstallImage.VG0.RootVolumeSize }}

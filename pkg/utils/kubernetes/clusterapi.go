@@ -71,11 +71,11 @@ var (
 	capiWaitPollInterval = 15 * time.Second
 
 	// capiWaitTotalTimeout caps the live-status wait. Hetzner HCloud
-	// provisions usually finish in 5-15 min; 30 min is a generous
+	// provisions usually finish in 5-15 min; 180 min is a generous
 	// safety net before we give up. Past that, the wait exits with
 	// a clear error so the operator's session doesn't hang
 	// indefinitely while the cluster's stuck.
-	capiWaitTotalTimeout = 30 * time.Minute
+	capiWaitTotalTimeout = 180 * time.Minute
 )
 
 // Returns whether we're using Clusterapi or not.

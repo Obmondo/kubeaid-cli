@@ -649,6 +649,7 @@ type (
 
 	InstallImageConfig struct {
 		ImagePath string    `yaml:"imagePath" default:"/root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst" validate:"notblank"`
+		Firmware  string    `yaml:"firmware"  default:"efi"`
 		VG0       VG0Config `yaml:"vg0"`
 	}
 
