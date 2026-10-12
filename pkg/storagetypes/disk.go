@@ -66,15 +66,17 @@ func (d *Disk) Unallocated() int {
 func (d *Disk) AssignPriorityScores() {
 	d.PriorityScores = PriorityScores{}
 
+	// The OS always goes on the fastest disks available : NVMe first, then SSD, and HDD only when
+	// the server has nothing faster.
 	d.PriorityScores.OS = (func() int {
 		switch d.Type {
-		case constants.DiskTypeHDD:
+		case constants.DiskTypeNVMe:
 			return 3
 
 		case constants.DiskTypeSSD:
 			return 2
 
-		case constants.DiskTypeNVMe:
+		case constants.DiskTypeHDD:
 			return 1
 
 		default:

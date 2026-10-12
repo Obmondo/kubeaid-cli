@@ -81,7 +81,7 @@ func TestGenerateStoragePlan_FourIdenticalHDDs(t *testing.T) {
 	assert.Len(t, plan.CEPH, 4)
 }
 
-func TestGenerateStoragePlan_HDDsForOS_NVMeForZFS(t *testing.T) {
+func TestGenerateStoragePlan_NVMeForOSAndZFS(t *testing.T) {
 	mock := newMock("1000\n", []LSBLKOutputRow{
 		nvme("nvme0n1", 500), nvme("nvme1n1", 500),
 		hdd("sda", 500), hdd("sdb", 500),
@@ -90,9 +90,9 @@ func TestGenerateStoragePlan_HDDsForOS_NVMeForZFS(t *testing.T) {
 	plan, err := GenerateStoragePlan(context.Background(), "srv2", mock, 50, 100)
 	require.NoError(t, err)
 
-	// OS priority: HDD=3 > NVMe=1
-	assert.Equal(t, "sda", plan.OS[0].Name)
-	assert.Equal(t, "sdb", plan.OS[1].Name)
+	// OS priority: NVMe=3 > HDD=1
+	assert.Equal(t, "nvme0n1", plan.OS[0].Name)
+	assert.Equal(t, "nvme1n1", plan.OS[1].Name)
 
 	// ZFS priority: NVMe=5 > HDD=3
 	assert.Equal(t, "nvme0n1", plan.ZFS[0].Name)
@@ -111,9 +111,9 @@ func TestGenerateStoragePlan_HighSpeedNIC_HDDsPreferredForZFS(t *testing.T) {
 	plan, err := GenerateStoragePlan(context.Background(), "srv8", mock, 50, 100)
 	require.NoError(t, err)
 
-	// OS priority: HDD=3 > SSD=2
-	assert.Equal(t, "sdc", plan.OS[0].Name)
-	assert.Equal(t, "sdd", plan.OS[1].Name)
+	// OS priority: SSD=2 > HDD=1
+	assert.Equal(t, "sda", plan.OS[0].Name)
+	assert.Equal(t, "sdb", plan.OS[1].Name)
 
 	// ZFS priority: HDD=3 > SSD with high-speed NIC=2 (SSDs reserved for CEPH)
 	assert.Equal(t, "sdc", plan.ZFS[0].Name)

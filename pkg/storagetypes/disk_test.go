@@ -82,15 +82,15 @@ func TestAssignPriorityScores(t *testing.T) {
 		wantOS           int
 		wantZFS          int
 	}{
-		{name: "HDD without high-speed NIC", diskType: constants.DiskTypeHDD, wantOS: 3, wantZFS: 3},
+		{name: "HDD without high-speed NIC", diskType: constants.DiskTypeHDD, wantOS: 1, wantZFS: 3},
 		{name: "SSD without high-speed NIC", diskType: constants.DiskTypeSSD, wantOS: 2, wantZFS: 4},
-		{name: "NVMe without high-speed NIC", diskType: constants.DiskTypeNVMe, wantOS: 1, wantZFS: 5},
+		{name: "NVMe without high-speed NIC", diskType: constants.DiskTypeNVMe, wantOS: 3, wantZFS: 5},
 		{name: "unknown disk type without NIC", diskType: constants.DiskTypeUnknown, wantOS: 0, wantZFS: 0},
 		{
 			name:             "HDD with high-speed NIC unaffected",
 			diskType:         constants.DiskTypeHDD,
 			withHighSpeedNIC: true,
-			wantOS:           3,
+			wantOS:           1,
 			wantZFS:          3,
 		},
 		{
@@ -104,7 +104,7 @@ func TestAssignPriorityScores(t *testing.T) {
 			name:             "NVMe with high-speed NIC drops ZFS priority",
 			diskType:         constants.DiskTypeNVMe,
 			withHighSpeedNIC: true,
-			wantOS:           1,
+			wantOS:           3,
 			wantZFS:          1,
 		},
 		{
@@ -119,7 +119,7 @@ func TestAssignPriorityScores(t *testing.T) {
 			name:        "preexisting scores are overwritten",
 			diskType:    constants.DiskTypeHDD,
 			preexisting: &PriorityScores{OS: 99, ZFS: 99},
-			wantOS:      3,
+			wantOS:      1,
 			wantZFS:     3,
 		},
 	}
