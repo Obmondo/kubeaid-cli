@@ -119,6 +119,10 @@ const (
 
 	FlagNameOSSize      = "os-size"
 	FlagNameZFSPoolSize = "zfs-pool-size"
+
+	// FlagNameEtcdDataset makes kubeaid-storagectl put etcd's data directory
+	// on the ZFS pool. Meant for control-plane nodes only.
+	FlagNameEtcdDataset = "etcd-dataset"
 )
 
 // Kube API server CLI flags.
@@ -156,7 +160,17 @@ const (
 	ZFSVolumeSizeContainerImages     = 100
 	ZFSVolumeSizePodLogs             = 50
 	ZFSVolumeSizePodEphemeralVolumes = 50
+
+	// ZFSEtcdDatasetReservation is the space (in GB) guaranteed to the etcd
+	// dataset, so the container images and pod volumes sharing the pool can't
+	// fill it up and stall etcd. It fits in the pool's 20 GB of headroom, and
+	// covers etcd's default 2 GB backend quota with room for the WAL and a
+	// defragmentation.
+	ZFSEtcdDatasetReservation = 10
 )
+
+// EtcdDataDirectory is where kubeadm points etcd's --data-dir.
+const EtcdDataDirectory = "/var/lib/etcd"
 
 const CEPHNodeMinSize = 50 // GB.
 

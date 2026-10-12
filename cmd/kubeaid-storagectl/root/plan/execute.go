@@ -21,6 +21,8 @@ var ExecuteCommand = &cobra.Command{
 		commandExecutor := commandexecutor.NewLocalCommandExecutor(false)
 
 		storagePlan := generateAndPrintStoragePlan(ctx, commandExecutor)
-		storageplan.Execute(ctx, storagePlan, commandExecutor)
+		storageplan.Execute(ctx, storagePlan, commandExecutor, storageplan.ExecuteOptions{
+			EtcdDataset: etcdDataset,
+		})
 	},
 }

@@ -80,3 +80,38 @@ else
   # REFER : https://openzfs.github.io/openzfs-docs/man/master/8/zpool-trim.8.html.
   systemctl enable zfs-trim-weekly@primary.timer --now
 fi
+
+{{- if .EtcdDataset }}
+
+# Keep etcd off the OS volume. The OS volume sits on the server's slowest disk
+# pair, which usually also carries a Rook Ceph OSD partition, and etcd's WAL
+# fsync is far too slow there. The ZFS pool is on the fastest pair.
+#
+# This is deliberately outside the import-or-create branch above: a server
+# that gets re-provisioned imports its existing pool, and still needs this.
+if [ -e /etc/kubernetes/manifests/etcd.yaml ]; then
+  # kubeadm has already set etcd up on this server, so this is a re-run on a
+  # live control-plane node. Touching the data directory now would lose the
+  # etcd member.
+  echo "etcd is already running from {{ .EtcdDataDirectory }}, leaving it untouched"
+else
+  # Always start from an empty dataset. kubeadm refuses to initialise or join a
+  # control-plane node when the etcd data directory has content, and a
+  # re-provisioned server joins as a new etcd member anyway — exactly as when
+  # the data directory lived on the reinstalled OS volume.
+  if zfs list -H -o name primary/etcd >/dev/null 2>&1; then
+    zfs destroy -r primary/etcd
+  fi
+
+  # The reservation keeps the container images and pod volumes, which share the
+  # pool, from filling it up and stalling etcd.
+  zfs create \
+    -o mountpoint={{ .EtcdDataDirectory }} \
+    -o atime=off \
+    -o reservation={{ .EtcdDatasetReservation }}G \
+    primary/etcd
+
+  # etcd wants its data directory private.
+  chmod 700 {{ .EtcdDataDirectory }}
+fi
+{{- end }}

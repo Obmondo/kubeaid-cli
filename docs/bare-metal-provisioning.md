@@ -95,6 +95,32 @@ The storagectl version is pinned by `global.kubeaidStoragectl.version`.
 kubeaid-cli sets it to its own release version; dev builds leave it empty
 and the chart falls back to `latest`.
 
+### etcd's data directory
+
+By default etcd's data directory, `/var/lib/etcd`, is a plain directory on
+the OS volume. The planner puts the OS volume on the server's slowest disk
+pair, and hands the leftover space on those same disks to a Ceph OSD. On a
+server with spinning disks that leaves etcd with tens of milliseconds per
+WAL fsync, where it wants under 10 ms.
+
+`kubeaid-storagectl plan execute --etcd-dataset` moves it onto the ZFS
+pool, which sits on the fastest pair. It creates the dataset `primary/etcd`,
+mounted at `/var/lib/etcd`, with 10 GB reserved so the container images and
+pod volumes sharing the pool can't starve it. Use it on control-plane nodes
+only.
+
+- The dataset is recreated empty every time the node is provisioned.
+  kubeadm refuses to initialise or join a control-plane node when the
+  directory has content, and a re-provisioned node joins as a new etcd
+  member either way.
+- On a node where kubeadm has already set etcd up
+  (`/etc/kubernetes/manifests/etcd.yaml` exists), a re-run leaves the
+  directory untouched.
+- The flag is off by default. The chart has to pass it in the control
+  plane's `preKubeadmCommand`, pinned to a storagectl release that knows
+  it; an older storagectl rejects the unknown flag and the node fails to
+  provision.
+
 ## The storage plan
 
 kubeaid-cli builds a storage plan during the prerequisite phase, but it is

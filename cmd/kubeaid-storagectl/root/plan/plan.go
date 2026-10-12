@@ -27,7 +27,11 @@ var PlanCommand = &cobra.Command{
 	},
 }
 
-var osSize, zfsPoolSize int
+var (
+	osSize, zfsPoolSize int
+
+	etcdDataset bool
+)
 
 // generateAndPrintStoragePlan scans the server's disks (via commandExecutor),
 // builds the storage plan and pretty-prints it. It performs NO disk mutation:
@@ -44,6 +48,13 @@ func generateAndPrintStoragePlan(
 	slog.InfoContext(ctx, "Generated storage plan:")
 	storageplan.PrettyPrint(storagePlan)
 
+	if etcdDataset {
+		slog.InfoContext(ctx, "etcd's data directory goes on the ZFS pool",
+			slog.String("dataset", "primary/etcd"),
+			slog.String("mountpoint", constants.EtcdDataDirectory),
+		)
+	}
+
 	return storagePlan
 }
 
@@ -58,4 +69,8 @@ func init() {
 
 	PlanCommand.PersistentFlags().
 		IntVar(&zfsPoolSize, constants.FlagNameZFSPoolSize, constants.ZFSPoolDefaultSize, "ZFS pool size (in GB)")
+
+	PlanCommand.PersistentFlags().
+		BoolVar(&etcdDataset, constants.FlagNameEtcdDataset, false,
+			"Put etcd's data directory on the ZFS pool, instead of the OS volume (control-plane nodes only)")
 }
