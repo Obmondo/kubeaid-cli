@@ -31,6 +31,7 @@ If you only want to *use* the CLI, start at the [README](../README.md). This doc
 10. [Cluster lifecycle](#10-cluster-lifecycle)
 11. [Codebase map](#11-codebase-map)
 12. [Development guide](#12-development-guide)
+13. [How KubeAid CLI uses Cluster API](why-kubeaid-cli-builds-on-cluster-api.md)
 
 ---
 
@@ -44,6 +45,9 @@ KubeAid CLI provisions, upgrades, tests, and recovers production Kubernetes clus
 - **One config, many clouds.** The same `general.yaml` shape provisions AWS, Azure, Hetzner, or bare-metal clusters.
 - **Opinionated addon stack.** Cilium, Cert-Manager, Sealed Secrets, KubePrometheus, Rook-Ceph, Velero - pre-wired.
 - **Self-managing result.** After `clusterctl move`, the target cluster manages itself; the bootstrap environment can be thrown away.
+
+For the boundary between KubeAid CLI, Cluster API, and `clusterctl`, see
+[How KubeAid CLI uses Cluster API](why-kubeaid-cli-builds-on-cluster-api.md).
 
 **Supported providers:**
 
