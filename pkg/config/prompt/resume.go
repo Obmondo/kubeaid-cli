@@ -429,6 +429,7 @@ func completedPromptStateFromValues(cfg *PromptedConfig) promptState {
 	return promptState{
 		K8sProfile:          cfg.K8sVersion != "",
 		Basics:              !missingBasics(cfg),
+		PlatformSource:      !missingPlatformSource(cfg),
 		VPNKeycloak:         cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNKeycloak(cfg),
 		VPNEndpoints:        cfg.ClusterType != constants.ClusterTypeVPN || !missingVPNEndpoints(cfg),
 		WorkloadLockdown:    cfg.ClusterType == constants.ClusterTypeVPN || cfg.Lockdown != nil,

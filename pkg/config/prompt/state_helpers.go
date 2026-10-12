@@ -6,10 +6,11 @@ package prompt
 import "github.com/Obmondo/kubeaid-cli/pkg/constants"
 
 type promptState struct {
-	K8sProfile   bool `yaml:"k8sProfile"`
-	Basics       bool `yaml:"basics"`
-	VPNKeycloak  bool `yaml:"vpnKeycloak"`
-	VPNEndpoints bool `yaml:"vpnEndpoints"`
+	K8sProfile     bool `yaml:"k8sProfile"`
+	Basics         bool `yaml:"basics"`
+	PlatformSource bool `yaml:"platformSource"`
+	VPNKeycloak    bool `yaml:"vpnKeycloak"`
+	VPNEndpoints   bool `yaml:"vpnEndpoints"`
 	// WorkloadLockdown gates the workload Host Firewall (CCNP) step.
 	WorkloadLockdown bool `yaml:"workloadLockdown"`
 	// Security gates the optional security Apps step.
@@ -26,6 +27,10 @@ func missingBasics(cfg *PromptedConfig) bool {
 	return cfg.CloudProvider == "" ||
 		cfg.ClusterName == "" ||
 		cfg.ClusterType == ""
+}
+
+func missingPlatformSource(cfg *PromptedConfig) bool {
+	return cfg.KubeaidForkURL == "" || cfg.KubeaidVersion == ""
 }
 
 // netBirdStepDone reports whether the NetBird prompt step is complete for cfg.

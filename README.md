@@ -92,6 +92,11 @@ Exactly one of the two must be set.
    kubeaid-cli config generate
    ```
 
+   Choose KubeAid's maintained charts or your own copy of them. The official
+   [`Obmondo/KubeAid`](https://github.com/Obmondo/KubeAid) repository is
+   AGPL-3.0; the prompt shows this before you select it. For your own copy,
+   provide the repository's Git URL and a tag or branch.
+
 2. Review the generated files under `~/.config/kubeaid-cli/<cluster>/configs/` (on macOS the per-user root is
    `~/Library/Application Support/kubeaid-cli/` instead). The prompt covers everything required to bootstrap;
    hand-edit only when you want to override defaults.

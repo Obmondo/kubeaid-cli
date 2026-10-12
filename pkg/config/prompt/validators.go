@@ -86,6 +86,44 @@ func SSHGitURL(s string) error {
 	return nil
 }
 
+// GitRepositoryURL validates a Git repository URL accepted by the CLI's
+// configuration parser: HTTPS, SSH, or scp-like SSH syntax.
+func GitRepositoryURL(s string) error {
+	if err := NonEmpty(s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if repourl.DetectProtocol(s) == repourl.ProtocolHTTP {
+		return errors.New("must use HTTPS or SSH, not HTTP")
+	}
+	parsed, err := repourl.Parse(s)
+	if err != nil {
+		return fmt.Errorf("invalid Git repository URL: %w", err)
+	}
+	if parsed == nil {
+		return errors.New("must be an HTTPS or SSH Git repository URL")
+	}
+	return nil
+}
+
+var gitCommitHash = regexp.MustCompile(`^[a-fA-F0-9]{40}$|^[a-fA-F0-9]{64}$`)
+
+// PlatformSourceVersion validates the tag or branch used to pin a platform
+// source. The configuration parser applies the same restrictions at runtime.
+func PlatformSourceVersion(s string) error {
+	if err := NonEmpty(s); err != nil {
+		return err
+	}
+	s = strings.TrimSpace(s)
+	if strings.EqualFold(s, "latest") {
+		return errors.New(`"latest" is not a pinned platform version; use a tag or branch`)
+	}
+	if gitCommitHash.MatchString(s) {
+		return errors.New("commit hashes are not supported; use a tag or branch")
+	}
+	return nil
+}
+
 // IPv4 validates that s is a non-empty IPv4 address.
 func IPv4(s string) error {
 	if err := NonEmpty(s); err != nil {
