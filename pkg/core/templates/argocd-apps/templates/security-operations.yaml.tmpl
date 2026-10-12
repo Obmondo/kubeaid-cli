@@ -1,0 +1,138 @@
+# Security operations: the central side (KubeAid security-operations chart) and
+# one Wazuh per tenant (KubeAid wazuh chart, README section 11). Rendered by
+# kubeaid-cli from cluster.securityOperations; the tenant namespaces are created
+# by the security-operations chart, so sync it before the wazuh-<code> Apps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "60"
+  name: security-operations
+  namespace: argocd
+spec:
+  destination:
+    namespace: security-operations
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/security-operations
+      targetRevision: {{ .SecOps.ChartRevision }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-security-operations.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: {{ .SecOps.ConfigRevision }}
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+{{- range .SecOps.Tenants }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ $.KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "61"
+  name: wazuh-{{ .Code }}
+  namespace: argocd
+spec:
+  destination:
+    namespace: {{ .Namespace }}
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ $.KubeaidFork.URL }}
+      path: argocd-helm-charts/wazuh
+      targetRevision: {{ $.SecOps.ChartRevision }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ $.KubeaidConfigFork.Directory }}/argocd-apps/values-wazuh-tenant.yaml
+        # This tenant's part; everything shared is in values-wazuh-tenant.yaml.
+        valuesObject:
+          agentService:
+            enabled: true
+            externalIPs:
+              - {{ $.SecOps.AgentAddress }}
+            registrationPort: {{ .RegistrationPort }}
+            eventsPort: {{ .EventsPort }}
+          wazuh:
+            certificates:
+              subject:
+                # Unique node DN per tenant: CN=wazuh-indexer,O={{ .Organization }},...
+                organization: {{ .Organization }}
+            indexer:
+              replicas: {{ .IndexerReplicas }}
+              cred:
+                passwordHash: "{{ .IndexerPasswordHash }}"
+            dashboard:
+              cred:
+                passwordHash: "{{ .DashboardPasswordHash }}"
+              ingress:
+                host: {{ .DashboardHost }}
+                tls:
+                  - hosts:
+                      - {{ .DashboardHost }}
+                    secretName: wazuh-tls
+              sso:
+                oidc:
+                  roleMappings:
+                    allAccess:
+                      backendRoles:
+                        - {{ $.SecOps.AdminRole }}
+                    readall:
+                      backendRoles:
+                        - {{ $.SecOps.AnalystRole }}
+                        - {{ .Group }}
+                    kibanaUser:
+                      backendRoles:
+                        - {{ $.SecOps.AnalystRole }}
+                        - {{ .Group }}
+            wazuh:
+              # Cluster key of the manager (no workers, never leaves the namespace).
+              key: "{{ .ClusterKey }}"
+              master:
+                # Every alert of this manager goes to the tenant's IRIS customer.
+                extraConf: |
+                  <integration>
+                    <name>custom-iris</name>
+                    <hook_url>http://dfir-iris-app.security-operations.svc:8000</hook_url>
+                    <api_key>file:/var/ossec/integrations/iris/API_KEY</api_key>
+                    <level>10</level>
+                    <alert_format>json</alert_format>
+                    <options>{{ .IRISOptions }}</options>
+                  </integration>
+                  <!-- MISP indicators: the misp chart's wazuhCdbExport job writes these
+                       flat CDB lists through the API (it cannot write into the
+                       malicious-ioc/ subdirectory the stock IoC pack uses). A second
+                       <ruleset> is additive, but a rule_exclude makes analysisd rebuild
+                       the ruleset from this block alone, so it repeats the chart's own
+                       entries. Until the first export, analysisd warns that the lists
+                       are missing and skips rules 99901-99920. -->
+                  <ruleset>
+                    <list>etc/lists/misp-malware-hashes</list>
+                    <list>etc/lists/misp-malicious-ip</list>
+                    <list>etc/lists/misp-malicious-domains</list>
+                    <decoder_dir>ruleset/decoders</decoder_dir>
+                    <rule_dir>ruleset/rules</rule_dir>
+                    <rule_exclude>0215-policy_rules.xml</rule_exclude>
+                    <rule_exclude>0999-malicious-ioc-rules.xml</rule_exclude>
+                    <list>etc/lists/audit-keys</list>
+                    <list>etc/lists/amazon/aws-sources</list>
+                    <list>etc/lists/amazon/aws-eventnames</list>
+                    <decoder_dir>etc/decoders</decoder_dir>
+                    <rule_dir>etc/rules</rule_dir>
+                  </ruleset>
+    - repoURL: {{ $.KubeaidConfigFork.URL }}
+      targetRevision: {{ $.SecOps.ConfigRevision }}
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+{{- end }}

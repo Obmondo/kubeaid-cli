@@ -35,7 +35,7 @@ func (r *Reconciler) ReconcileUser(
 	spec UserSpec,
 	initialPassword string,
 ) error {
-	users, err := r.api.GetUsers(ctx, r.token, realm, gocloak.GetUsersParams{
+	users, err := r.api.GetUsers(ctx, r.tok(ctx), realm, gocloak.GetUsersParams{
 		Username: gocloak.StringP(spec.Username),
 		Exact:    gocloak.BoolP(true),
 	})
@@ -64,13 +64,13 @@ func (r *Reconciler) ReconcileUser(
 		user.LastName = gocloak.StringP(spec.LastName)
 	}
 
-	id, err := r.api.CreateUser(ctx, r.token, realm, user)
+	id, err := r.api.CreateUser(ctx, r.tok(ctx), realm, user)
 	if err != nil {
 		return fmt.Errorf("creating user %q in realm %q: %w", spec.Username, realm, err)
 	}
 
 	if initialPassword != "" {
-		if err := r.api.SetPassword(ctx, r.token, id, realm, initialPassword, false); err != nil {
+		if err := r.api.SetPassword(ctx, r.tok(ctx), id, realm, initialPassword, false); err != nil {
 			return fmt.Errorf(
 				"setting initial password for user %q in realm %q: %w",
 				spec.Username, realm, err,

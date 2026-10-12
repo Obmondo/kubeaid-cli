@@ -59,6 +59,12 @@ var (
 	}
 
 	renameTempFileFn = renameio.TempFile
+
+	// SealingCertSource, when set, is a local file path or URL of the
+	// sealed-secrets controller's public certificate (kubeseal --cert). Empty:
+	// the certificate is fetched from the controller through the cluster in
+	// $KUBECONFIG, as during bootstrap.
+	SealingCertSource string
 )
 
 // InstallSealedSecrets performs a minimal installation of Sealed Secrets in the underlying
@@ -282,7 +288,7 @@ func sealPlaintextToBytes(ctx context.Context, plaintextBytes []byte) ([]byte, e
 func loadSealingCert(ctx context.Context) ([]byte, *rsa.PublicKey, error) {
 	kubesealClientConfig := newKubesealClientConfigFn()
 	certReader, err := openCertFn(ctx, kubesealClientConfig,
-		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, "",
+		constants.NamespaceSealedSecrets, constants.SealedSecretsControllerName, SealingCertSource,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("reading sealed secrets controller's certificate: %w", err)

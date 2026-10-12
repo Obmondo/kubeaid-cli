@@ -200,6 +200,11 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 - [Keycloak bootstrap](docs/keycloak-bootstrap.md) — the managed Keycloak a VPN cluster bootstraps
 
+**Security operations**
+
+- [Security operations](docs/security-operations.md) — a multi-tenant SOC from `cluster.securityOperations`, and `kubeaid-cli siem render`
+- [siem-reconciler](docs/siem-reconciler.md) — the API-only setup of that stack (Keycloak, IRIS, Wazuh, Velociraptor)
+
 **Architecture and background**
 
 - [Architecture](docs/architecture.md) — how the CLI is put together

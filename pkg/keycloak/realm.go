@@ -15,7 +15,7 @@ import (
 // default leaves it disabled, which would silently break OIDC
 // discovery and token issuance.
 func (r *Reconciler) ReconcileRealm(ctx context.Context, name string) error {
-	_, err := r.api.GetRealm(ctx, r.token, name)
+	_, err := r.api.GetRealm(ctx, r.tok(ctx), name)
 	if err == nil {
 		return nil
 	}
@@ -23,7 +23,7 @@ func (r *Reconciler) ReconcileRealm(ctx context.Context, name string) error {
 		return fmt.Errorf("looking up realm %q: %w", name, err)
 	}
 
-	if _, err := r.api.CreateRealm(ctx, r.token, gocloak.RealmRepresentation{
+	if _, err := r.api.CreateRealm(ctx, r.tok(ctx), gocloak.RealmRepresentation{
 		Realm:   gocloak.StringP(name),
 		Enabled: gocloak.BoolP(true),
 	}); err != nil {

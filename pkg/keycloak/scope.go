@@ -42,7 +42,7 @@ type ClientScopeSpec struct {
 // in the realm. Idempotent: if a scope with the same name already
 // exists the function no-ops.
 func (r *Reconciler) ReconcileClientScope(ctx context.Context, realm string, spec ClientScopeSpec) error {
-	scopes, err := r.api.GetClientScopes(ctx, r.token, realm)
+	scopes, err := r.api.GetClientScopes(ctx, r.tok(ctx), realm)
 	if err != nil {
 		return fmt.Errorf("listing client scopes in realm %q: %w", realm, err)
 	}
@@ -68,7 +68,7 @@ func (r *Reconciler) ReconcileClientScope(ctx context.Context, realm string, spe
 		}
 	}
 
-	if _, err := r.api.CreateClientScope(ctx, r.token, realm, scope); err != nil {
+	if _, err := r.api.CreateClientScope(ctx, r.tok(ctx), realm, scope); err != nil {
 		return fmt.Errorf("creating client scope %q in realm %q: %w", spec.Name, realm, err)
 	}
 	return nil
@@ -80,7 +80,7 @@ func (r *Reconciler) ReconcileClientScope(ctx context.Context, realm string, spe
 // missing ones are added. Unknown scope names return an error
 // rather than silently being ignored.
 func (r *Reconciler) AssignClientDefaultScopes(ctx context.Context, realm, clientID string, scopeNames []string) error {
-	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+	clients, err := r.api.GetClients(ctx, r.tok(ctx), realm, gocloak.GetClientsParams{
 		ClientID: gocloak.StringP(clientID),
 	})
 	if err != nil {
@@ -91,7 +91,7 @@ func (r *Reconciler) AssignClientDefaultScopes(ctx context.Context, realm, clien
 		return fmt.Errorf("client %q not found in realm %q", clientID, realm)
 	}
 
-	scopes, err := r.api.GetClientScopes(ctx, r.token, realm)
+	scopes, err := r.api.GetClientScopes(ctx, r.tok(ctx), realm)
 	if err != nil {
 		return fmt.Errorf("listing client scopes in realm %q: %w", realm, err)
 	}
@@ -105,7 +105,7 @@ func (r *Reconciler) AssignClientDefaultScopes(ctx context.Context, realm, clien
 		if scope == nil || scope.ID == nil {
 			return fmt.Errorf("client scope %q not found in realm %q", name, realm)
 		}
-		if err := r.api.AddDefaultScopeToClient(ctx, r.token, realm, *target.ID, *scope.ID); err != nil {
+		if err := r.api.AddDefaultScopeToClient(ctx, r.tok(ctx), realm, *target.ID, *scope.ID); err != nil {
 			return fmt.Errorf(
 				"assigning scope %q to client %q in realm %q: %w",
 				name, clientID, realm, err,
