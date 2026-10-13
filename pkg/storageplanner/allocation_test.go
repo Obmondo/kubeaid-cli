@@ -43,6 +43,56 @@ func TestAllocateStoragePlan(t *testing.T) {
 			osDiskSize: 50,
 			minZFSSize: 100,
 			assertPlan: func(t *testing.T, plan *storageplan.StoragePlan, _ []*storageplan.Disk) {
+				assert.Equal(t, []string{"nvme0n1", "sda"}, diskNames(plan.OS))
+			},
+		},
+		{
+			name:     "prefers NVMe over SSD and HDD for OS",
+			serverID: "srv",
+			disks: func() []*storageplan.Disk {
+				return []*storageplan.Disk{
+					testDisk("sda", constants.DiskTypeHDD, 500),
+					testDisk("sdb", constants.DiskTypeSSD, 500),
+					testDisk("nvme1n1", constants.DiskTypeNVMe, 500),
+					testDisk("sdc", constants.DiskTypeSSD, 500),
+					testDisk("nvme0n1", constants.DiskTypeNVMe, 500),
+				}
+			},
+			osDiskSize: 50,
+			minZFSSize: 100,
+			assertPlan: func(t *testing.T, plan *storageplan.StoragePlan, _ []*storageplan.Disk) {
+				assert.Equal(t, []string{"nvme0n1", "nvme1n1"}, diskNames(plan.OS))
+			},
+		},
+		{
+			name:     "falls back to SSD over HDD for OS when no NVMe",
+			serverID: "srv",
+			disks: func() []*storageplan.Disk {
+				return []*storageplan.Disk{
+					testDisk("sda", constants.DiskTypeHDD, 500),
+					testDisk("sdd", constants.DiskTypeSSD, 500),
+					testDisk("sdb", constants.DiskTypeHDD, 500),
+					testDisk("sdc", constants.DiskTypeSSD, 500),
+				}
+			},
+			osDiskSize: 50,
+			minZFSSize: 100,
+			assertPlan: func(t *testing.T, plan *storageplan.StoragePlan, _ []*storageplan.Disk) {
+				assert.Equal(t, []string{"sdc", "sdd"}, diskNames(plan.OS))
+			},
+		},
+		{
+			name:     "falls back to HDD for OS when no NVMe or SSD",
+			serverID: "srv",
+			disks: func() []*storageplan.Disk {
+				return []*storageplan.Disk{
+					testDisk("sdb", constants.DiskTypeHDD, 500),
+					testDisk("sda", constants.DiskTypeHDD, 500),
+				}
+			},
+			osDiskSize: 50,
+			minZFSSize: 100,
+			assertPlan: func(t *testing.T, plan *storageplan.StoragePlan, _ []*storageplan.Disk) {
 				assert.Equal(t, []string{"sda", "sdb"}, diskNames(plan.OS))
 			},
 		},
