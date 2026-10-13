@@ -1,4 +1,17 @@
 - - -
+## v0.31.12 - 2026-10-13
+#### Features
+- (**azure**) install Crossplane providers from the crossplane-provider chart - (9114e0a) - Divyam Azad
+#### Bug Fixes
+- (**cert-manager**) enable the cert-manager ServiceMonitor - (5920db4) - mdasif
+- (**storageplanner**) prefer NVMe, then SSD, then HDD for OS disks - (88a2e55) - Deepak Tiwari
+#### Documentation
+- organize maintainer teams - (f605c80) - rishi
+#### Continuous Integration
+- pin go-test-coverage to a release that builds with Go 1.26 - (d2fa475) - Divyam Azad
+
+- - -
+
 ## v0.31.11 - 2026-09-28
 #### Bug Fixes
 - (**kubeone**) bind scheduler and controller-manager metrics to 0.0.0.0 - (fd0854e) - aman
