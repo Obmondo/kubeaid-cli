@@ -108,6 +108,12 @@ type TemplateValues struct {
 	// apiserver endpoint from the operator's api DNS name.
 	HCloudSingleNodePublic bool
 
+	// HCloudControlPlanePublicNetwork mirrors
+	// config.HCloudControlPlanePublicNetwork. Renders the capi-cluster chart's
+	// controlPlane.hcloud.publicNetwork.enabled, which gives every
+	// control-plane node a public IPv4 without leaving the private network.
+	HCloudControlPlanePublicNetwork bool
+
 	// ControlPlaneExtraCertSANs are operator-supplied extra DNS names rendered
 	// into the chart's values so kubeadm includes them in the apiserver TLS
 	// cert SAN list alongside the primary endpoint.host. Sourced from
@@ -289,9 +295,10 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		VeleroUAMIClientID:           globals.VeleroUAMIClientID,
 		AzureStorageAccountAccessKey: globals.AzureStorageAccountAccessKey,
 
-		HetznerConfig:          sanitizedHetznerConfigForChart(config.ParsedGeneralConfig.Cloud.Hetzner),
-		HetznerCredentials:     config.ParsedSecretsConfig.Hetzner,
-		HCloudSingleNodePublic: config.HCloudSingleNodePublic(),
+		HetznerConfig:                   sanitizedHetznerConfigForChart(config.ParsedGeneralConfig.Cloud.Hetzner),
+		HetznerCredentials:              config.ParsedSecretsConfig.Hetzner,
+		HCloudSingleNodePublic:          config.HCloudSingleNodePublic(),
+		HCloudControlPlanePublicNetwork: config.HCloudControlPlanePublicNetwork(),
 
 		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
 

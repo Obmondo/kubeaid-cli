@@ -276,6 +276,18 @@ hetzner:
         - {{ . }}
         {{- end }}
       {{- end }}
+      {{- if .HCloudControlPlanePublicNetwork }}
+      {{- /* VPN cluster: every control-plane node gets a public IPv4 while
+           the private network stays (enableIPv4 on the CP
+           HCloudMachineTemplate + source-based policy routing, so the
+           default route stays on the NAT gateway). Coturn (STUN/TURN) must
+           reflect and relay from a public address on the node, and HCloud
+           only attaches a Floating IP to a server that already has a
+           Primary IP. Omitted for the single public node, which
+           network.type=public above already makes public. */}}
+      publicNetwork:
+        enabled: true
+      {{- end }}
       loadBalancer:
         {{- /* enabled toggles CAPH creating its own control-plane LB. Forced
              off for the single public node (no LB exists at all) and when

@@ -106,6 +106,69 @@ func TestCapiClusterValuesSingleNodePublic(t *testing.T) {
 	})
 }
 
+// TestCapiClusterValuesControlPlanePublicNetwork verifies the public-IPv4-on-
+// a-private-network overlay is driven by cluster.type, not by replica count:
+// a multi-CP VPN cluster renders controlPlane.hcloud.publicNetwork.enabled and
+// keeps the chart's default private network, while the single public node and
+// workload clusters render no publicNetwork block at all.
+func TestCapiClusterValuesControlPlanePublicNetwork(t *testing.T) {
+	const tmplPath = "templates/argocd-apps/values-capi-cluster.yaml.tmpl"
+
+	// controlPlaneHCloud parses the rendered values and returns the
+	// hetzner.controlPlane.hcloud block, so an indentation bug surfaces as a
+	// structural mismatch instead of passing a string match.
+	controlPlaneHCloud := func(t *testing.T, out string) map[string]any {
+		t.Helper()
+
+		var parsed map[string]any
+		require.NoError(t, yaml.Unmarshal([]byte(out), &parsed),
+			"rendered capi-cluster values must be valid YAML:\n%s", out)
+
+		hetzner, ok := parsed["hetzner"].(map[string]any)
+		require.True(t, ok, "hetzner block must be present")
+		controlPlane, ok := hetzner["controlPlane"].(map[string]any)
+		require.True(t, ok, "hetzner.controlPlane must be present")
+		hcloud, ok := controlPlane["hcloud"].(map[string]any)
+		require.True(t, ok, "hetzner.controlPlane.hcloud must be present")
+
+		return hcloud
+	}
+
+	t.Run("vpn with 3 replicas: publicNetwork.enabled, private network kept", func(t *testing.T) {
+		tv := capiClusterTV(false)
+		tv.HetznerConfig.ControlPlane.HCloud.Replicas = 3
+		tv.HCloudControlPlanePublicNetwork = true
+
+		out := renderEmbeddedTemplate(t, tmplPath, tv)
+
+		publicNetwork, ok := controlPlaneHCloud(t, out)["publicNetwork"].(map[string]any)
+		require.True(t, ok, "controlPlane.hcloud.publicNetwork must render:\n%s", out)
+		assert.Equal(t, true, publicNetwork["enabled"],
+			"Coturn needs a public IPv4 on every control-plane node")
+		assert.NotContains(t, out, "type: public",
+			"the private network must stay — only the CP machines get a public IPv4")
+	})
+
+	t.Run("vpn single public node: no publicNetwork block", func(t *testing.T) {
+		// The predicate excludes the single-node topology, so the flag is
+		// false here; network.type=public already makes that node public.
+		out := renderEmbeddedTemplate(t, tmplPath, capiClusterTV(true))
+
+		assert.NotContains(t, controlPlaneHCloud(t, out), "publicNetwork")
+		assert.Contains(t, out, "type: public")
+	})
+
+	t.Run("workload cluster: no publicNetwork block", func(t *testing.T) {
+		tv := capiClusterTV(false)
+		tv.Type = constants.ClusterTypeWorkload
+		tv.HetznerConfig.ControlPlane.HCloud.Replicas = 3
+
+		out := renderEmbeddedTemplate(t, tmplPath, tv)
+
+		assert.NotContains(t, controlPlaneHCloud(t, out), "publicNetwork")
+	})
+}
+
 // The audit policy kubeaid-cli injects into APIServer.Files separates its rule
 // groups with blank lines, which `nindent 8` turns into lines of 8 spaces.
 func TestCapiClusterValuesNoTrailingWhitespace(t *testing.T) {
