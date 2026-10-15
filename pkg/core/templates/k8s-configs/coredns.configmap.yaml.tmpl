@@ -1,10 +1,15 @@
 {{- /*
 Replaces kubeadm's default kube-system/coredns ConfigMap with one
-that adds A records for the apiserver endpoint, mapping it to both
-the LB's public (bootstrap window) and private (steady state) IPs.
-Pods inside the cluster (incl. CAPI components after clusterctl
+that maps the apiserver endpoint to the control-plane LB's private
+IP. Pods inside the cluster (incl. CAPI components after clusterctl
 move) resolve the endpoint through CoreDNS without any extra
 Corefile imports or Deployment patches.
+
+Only the private IP belongs in the hosts block. CoreDNS is an addon
+the apiserver itself schedules, so it never answers before the
+apiserver is reachable, and the Corefile ends in `loadbalance` — a
+second A record for the same name would round-robin half of all
+lookups onto an IP that gets disabled once the cluster is up.
 
 The non-hosts portion mirrors kubeadm's default Corefile. When
 upstream changes the default (rare, but happens on plugin
@@ -29,9 +34,6 @@ data:
             ttl 30
         }
         hosts {
-{{- if .ControlPlaneLBBootstrapPublicIP }}
-            {{ .ControlPlaneLBBootstrapPublicIP }} {{ .ControlPlaneEndpoint }}
-{{- end }}
             {{ .ControlPlaneLBPrivateIP }} {{ .ControlPlaneEndpoint }}
             fallthrough
         }
