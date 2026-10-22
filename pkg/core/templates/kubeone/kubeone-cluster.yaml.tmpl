@@ -41,16 +41,17 @@ controlPlane:
 # which leaves their /metrics reachable only from the node itself - Prometheus
 # runs in a Pod, so both targets are permanently down (KubeSchedulerInstance-
 # Unreachable / KubeControllerManagerInstanceUnreachable, which is what
-# kube-prometheus alerts on). The ports stay authenticated; only the bind
-# address changes.
-controlPlaneComponents:
-  controllerManager:
-    flags:
-      bind-address: 0.0.0.0
-  scheduler:
-    flags:
-      bind-address: 0.0.0.0
-
+# kube-prometheus alerts on).
+#
+# Setting bind-address: 0.0.0.0 here "fixes" the alert but puts the real
+# components on every interface the node has, including the public one -
+# CIS Kubernetes Benchmark 1.3.7/1.4.2 call this out explicitly, and
+# kubernetes/kubeadm#2202 tracks it as an open, unresolved exposure upstream.
+# Both components stay on 127.0.0.1 by design; Prometheus reaches them
+# through the haproxy chart (argocd-helm-charts/haproxy) instead, a
+# control-plane-only DaemonSet that forwards each node's real IP on
+# 10257/10259 to that same node's 127.0.0.1 over a plain TCP proxy, never
+# terminating or touching the components' own TLS/auth.
 clusterNetwork:
   podSubnet: "10.244.0.0/16"
   serviceSubnet: "10.96.0.0/12"
