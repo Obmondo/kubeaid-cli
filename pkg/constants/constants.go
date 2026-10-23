@@ -239,7 +239,7 @@ const (
 	ArgoCDAppClusterAutoscaler  = "cluster-autoscaler"
 	ArgoCDAppVelero             = "velero"
 	ArgoCDAppKubePrometheus     = "kube-prometheus"
-	ArgoCDExternalSnapshotter   = "external-snapshotter"
+	ArgoCDAppSnapshotController = "snapshot-controller"
 	ArgoCDAppCilium             = "cilium"
 	ArgoCDAppAzureDiskCSIDriver = "azuredisk-csi-driver"
 	ArgoCDAppHCloudCSIDriver    = "hcloud-csi-driver"

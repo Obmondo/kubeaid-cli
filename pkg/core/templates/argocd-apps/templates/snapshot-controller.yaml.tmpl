@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  labels:
+    kubeaid.io/version: {{ .KubeaidFork.Version }}
+    kubeaid.io/managed-by: kubeaid
+    kubeaid.io/sync-order: "10"
+  name: snapshot-controller
+  namespace: argocd
+spec:
+  destination:
+    namespace: snapshot-controller
+    server: https://kubernetes.default.svc
+  project: kubeaid
+  sources:
+    - repoURL: {{ .KubeaidFork.URL }}
+      path: argocd-helm-charts/snapshot-controller
+      targetRevision: {{ .KubeaidFork.Version }}
+      helm:
+        valueFiles:
+          - $values/k8s/{{ .KubeaidConfigFork.Directory }}/argocd-apps/values-snapshot-controller.yaml
+    - repoURL: {{ .KubeaidConfigFork.URL }}
+      targetRevision: HEAD
+      ref: values
+  syncPolicy:
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+      - CreateNamespace=true
+      - ServerSideApply=true
