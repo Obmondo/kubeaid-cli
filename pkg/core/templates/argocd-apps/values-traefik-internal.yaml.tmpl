@@ -17,6 +17,11 @@ namespace.
 Rendered only when secrets.yaml's netbird.apiKey is set — paired with the
 traefik-internal ArgoCD Application (templates/traefik-internal.yaml.tmpl),
 which is gated the same way.
+
+providers.kubernetesIngress writes traefik-internal.traefik.svc into every
+Ingress's status: Argo CD marks an Ingress Healthy only once its status has an
+address, and this ClusterIP Service has no load-balancer address for
+publishedService (on by default in the wrapper chart) to copy.
 */ -}}
 {{- if .NetBirdAPIKey }}
 traefik:
@@ -37,4 +42,10 @@ traefik:
     - '--providers.kubernetesingress.ingressclass=traefik-internal'
     - '--entrypoints.websecure.http.tls'
     - '--metrics.prometheus=true'
+  providers:
+    kubernetesIngress:
+      publishedService:
+        enabled: false
+      ingressEndpoint:
+        hostname: traefik-internal.traefik.svc
 {{- end }}
