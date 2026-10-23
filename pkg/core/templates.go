@@ -594,6 +594,9 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	switch globals.CloudProviderName {
 	case constants.CloudProviderAWS:
 		embeddedTemplateNames = append(embeddedTemplateNames, awsNonSecretTemplateNames()...)
+		embeddedTemplateNames = append(embeddedTemplateNames,
+			constants.SnapshotControllerTemplateNames...,
+		)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recovery.
 		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
@@ -604,6 +607,13 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	case constants.CloudProviderAzure:
 		embeddedTemplateNames = append(embeddedTemplateNames, azureNonSecretTemplateNames()...)
+
+		// AKS ships the snapshot controller with its managed CSI drivers.
+		if !config.AKSEnabled() {
+			embeddedTemplateNames = append(embeddedTemplateNames,
+				constants.SnapshotControllerTemplateNames...,
+			)
+		}
 
 		// Add Disaster Recovery related templates, if the user wants disaster
 		// recovery. Validation rejects the DR block for AKS clusters.
@@ -647,6 +657,11 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			if config.RookCephEnabled() {
 				embeddedTemplateNames = append(embeddedTemplateNames,
 					constants.RookCephTemplateNames...,
+				)
+
+				// Rook Ceph's VolumeSnapshotClasses need the VolumeSnapshot CRDs.
+				embeddedTemplateNames = append(embeddedTemplateNames,
+					constants.SnapshotControllerTemplateNames...,
 				)
 			}
 

@@ -487,13 +487,13 @@ flowchart TD
   root --> vel["velero"]
   root --> hr["hetzner-robot (Hetzner only)"]
   root --> ca["cluster-autoscaler"]
-  root --> ext["external-snapshotter"]
+  root --> snap["snapshot-controller"]
   root --> csi["CSI driver (provider-specific)"]
 
   classDef root fill:#eef2ff,stroke:#4f46e5,color:#1e1b4b;
   classDef app fill:#ecfeff,stroke:#0891b2,color:#083344;
   class root root;
-  class argocd,caphc,sealed,cert,cil,kp,rook,vel,hr,ca,ext,csi app;
+  class argocd,caphc,sealed,cert,cil,kp,rook,vel,hr,ca,snap,csi app;
 ```
 
 **Why app-of-apps?** Operators only hand ArgoCD one manifest (`root`); every other addon is reconciled transitively. Enabling or disabling an addon is a one-line flip in `general.yaml`.

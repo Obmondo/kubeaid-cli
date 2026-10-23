@@ -573,6 +573,11 @@ func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
 			// domain; Ceph can't schedule on the tainted control-plane nodes), so on
 			// smaller clusters we skip it — see config.RookCephEnabled.
 			if config.RookCephEnabled() {
+				// The snapshot-controller App installs the VolumeSnapshot CRDs that
+				// Rook Ceph's VolumeSnapshotClasses need, so it syncs first.
+				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppSnapshotController, noResources); err != nil {
+					return err
+				}
 				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
 					return err
 				}

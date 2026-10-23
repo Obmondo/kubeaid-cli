@@ -1,0 +1,4 @@
+{{- /* The chart's NetworkPolicies are Calico resources (crd.projectcalico.org),
+     which a Cilium cluster doesn't have, so they would fail to sync. */ -}}
+---
+networkpolicies: false

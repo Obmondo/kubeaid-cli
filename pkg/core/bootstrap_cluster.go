@@ -481,19 +481,19 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		bar.Substep("Synced cluster-autoscaler ArgoCD app")
 	}
 
-	// Sync the external-snapshotter ArgoCD App,
+	// Sync the snapshot-controller ArgoCD App,
 	// if not using Hetzner (since currently we don't support setting up disaster recovery for
-	// Hetzner 🥴). AKS skips it too — the app isn't rendered there (AKS ships
-	// the snapshot controller with its managed CSI drivers).
+	// Hetzner 🥴; with Rook Ceph it syncs ahead of rook-ceph instead). AKS skips it too — the
+	// app isn't rendered there (AKS ships the snapshot controller with its managed CSI drivers).
 	if globals.CloudProviderName != constants.CloudProviderHetzner && !config.AKSEnabled() {
-		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
+		releaseSnap := bar.InProgress("Syncing snapshot-controller ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(
-			ctx, constants.ArgoCDExternalSnapshotter,
+			ctx, constants.ArgoCDAppSnapshotController,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
 		releaseSnap()
-		assert.AssertErrNil(ctx, err, "Failed syncing external-snapshotter ArgoCD app")
-		bar.Substep("Synced external-snapshotter ArgoCD app")
+		assert.AssertErrNil(ctx, err, "Failed syncing snapshot-controller ArgoCD app")
+		bar.Substep("Synced snapshot-controller ArgoCD app")
 	}
 }
 

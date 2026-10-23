@@ -56,6 +56,15 @@ var (
 	}
 )
 
+// SnapshotControllerTemplateNames are the snapshot-controller ArgoCD App + values
+// templates : the VolumeSnapshot CRDs and the cluster-wide snapshot controller that
+// CSI snapshots (and so Velero) rely on. Rendered on AWS, EKS and non-AKS Azure (AKS
+// ships its own), and alongside Rook Ceph, whose VolumeSnapshotClasses need the CRDs.
+var SnapshotControllerTemplateNames = []string{
+	"argocd-apps/templates/snapshot-controller.yaml.tmpl",
+	"argocd-apps/values-snapshot-controller.yaml.tmpl",
+}
+
 // AWS specific template names.
 var (
 	AWSSpecificNonSecretTemplateNames = []string{
@@ -66,9 +75,6 @@ var (
 		// For Cluster Autoscaler.
 		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
-
-		// For External Snapshotter.
-		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	// EKS clusters : the EKS control plane runs the AWS cloud controller, so
@@ -79,9 +85,6 @@ var (
 		// For Cluster Autoscaler.
 		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
-
-		// For External Snapshotter.
-		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 
 		// For the EBS CSI driver.
 		"argocd-apps/templates/aws-ebs-csi-driver.yaml.tmpl",
@@ -137,9 +140,6 @@ var (
 		// For Cluster Autoscaler.
 		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
-
-		// For External Snapshotter.
-		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	// AKS clusters : Azure runs the cloud controller, the CSI drivers (with
