@@ -481,11 +481,9 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		bar.Substep("Synced cluster-autoscaler ArgoCD app")
 	}
 
-	// Sync the external-snapshotter ArgoCD App,
-	// if not using Hetzner (since currently we don't support setting up disaster recovery for
-	// Hetzner 🥴). AKS skips it too — the app isn't rendered there (AKS ships
-	// the snapshot controller with its managed CSI drivers).
-	if globals.CloudProviderName != constants.CloudProviderHetzner && !config.AKSEnabled() {
+	// AKS ships the snapshot.storage.k8s.io CRDs with its managed CSI drivers,
+	// so the app isn't rendered there.
+	if !config.AKSEnabled() {
 		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
 		err = kubernetes.SyncArgoCDApp(
 			ctx, constants.ArgoCDExternalSnapshotter,

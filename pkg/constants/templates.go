@@ -216,6 +216,8 @@ var (
 		// For Cluster Autoscaler.
 		"argocd-apps/templates/cluster-autoscaler.yaml.tmpl",
 		"argocd-apps/values-cluster-autoscaler.yaml.tmpl",
+
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	HetznerBareMetalSpecificNonSecretTemplateNames = []string{
@@ -225,6 +227,9 @@ var (
 		// for every bare-metal Hetzner host's main IP.
 		"argocd-apps/templates/kubelet-csr-approver.yaml.tmpl",
 		"argocd-apps/values-kubelet-csr-approver.yaml.tmpl",
+
+		// The rook-ceph chart's VolumeSnapshotClasses need the CRDs this installs.
+		"argocd-apps/templates/external-snapshotter.yaml.tmpl",
 	}
 
 	// RookCephTemplateNames are the Rook Ceph ArgoCD App + values templates.

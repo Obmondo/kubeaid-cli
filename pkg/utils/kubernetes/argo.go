@@ -46,6 +46,7 @@ type ArgoCDAppClient interface {
 	List(ctx context.Context, q *application.ApplicationQuery, opts ...grpc.CallOption) (*argoCDV1Aplha1.ApplicationList, error)
 	Sync(ctx context.Context, r *application.ApplicationSyncRequest, opts ...grpc.CallOption) (*argoCDV1Aplha1.Application, error)
 	Get(ctx context.Context, q *application.ApplicationQuery, opts ...grpc.CallOption) (*argoCDV1Aplha1.Application, error)
+	Patch(ctx context.Context, r *application.ApplicationPatchRequest, opts ...grpc.CallOption) (*argoCDV1Aplha1.Application, error)
 }
 
 var noResources []*argoCDV1Aplha1.SyncOperationResource
@@ -80,6 +81,8 @@ var (
 	argoCDPortForwardMaxAttempts = 10
 	argoCDPortForwardBackoff     = 5 * time.Second
 )
+
+const argoCDStaleOperationMinPolls = 2
 
 type ArgoCDAppManager struct {
 	client    ArgoCDAppClient
@@ -798,6 +801,9 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 type syncRetryAttempts struct {
 	repoFetch   int
 	portForward int
+
+	staleOperationRecord string
+	staleOperationPolls  int
 }
 
 // classifyAndHandleSyncError inspects err from m.client.Sync and decides
@@ -822,10 +828,12 @@ func (m *ArgoCDAppManager) classifyAndHandleSyncError(
 	// ArgoCD's own auto-sync) is still running. Wait for it to
 	// finish, then loop back and re-evaluate.
 	if strings.Contains(err.Error(), "another operation is already in progress") {
+		argoCDApp := m.getArgoCDApp(ctx, name, appNamespace)
 		slog.WarnContext(ctx,
 			"An ArgoCD App sync operation is already in progress. Waiting before retrying",
-			logger.Error(err),
+			append(argoCDOperationStateAttrs(argoCDApp), logger.Error(err))...,
 		)
+		m.clearStaleArgoCDAppOperation(ctx, argoCDApp, name, appNamespace, attempts)
 		time.Sleep(argoCDSyncInProgressBackoff)
 		return true, nil
 	}
@@ -887,6 +895,102 @@ func (m *ArgoCDAppManager) classifyAndHandleSyncError(
 	}
 
 	return false, fmt.Errorf("failed syncing ArgoCD application %q: %w", name, err)
+}
+
+func (m *ArgoCDAppManager) getArgoCDApp(
+	ctx context.Context,
+	name, appNamespace string,
+) *argoCDV1Aplha1.Application {
+	argoCDApp, err := m.client.Get(ctx, &application.ApplicationQuery{
+		Name:         &name,
+		Project:      []string{constants.ArgoCDProjectKubeAid},
+		AppNamespace: &appNamespace,
+	})
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Failed getting ArgoCD App to read its operation state",
+			logger.Error(err),
+		)
+		return nil
+	}
+	return argoCDApp
+}
+
+func argoCDOperationStateAttrs(argoCDApp *argoCDV1Aplha1.Application) []any {
+	if (argoCDApp == nil) || (argoCDApp.Status.OperationState == nil) {
+		return nil
+	}
+
+	state := argoCDApp.Status.OperationState
+	finishedAt := ""
+	if state.FinishedAt != nil {
+		finishedAt = state.FinishedAt.Format(time.RFC3339)
+	}
+
+	return []any{
+		slog.String("operation-phase", string(state.Phase)),
+		slog.String("operation-message", state.Message),
+		slog.String("operation-started-at", state.StartedAt.Format(time.RFC3339)),
+		slog.String("operation-finished-at", finishedAt),
+	}
+}
+
+// Upstream: the application-controller clears `operation` in the patch
+// that completes an operation, but skips that patch when the computed
+// operationState equals the stored one. finishedAt alone can't be the
+// test — a sync ArgoCD is still retrying has one too, at phase Running.
+func (m *ArgoCDAppManager) clearStaleArgoCDAppOperation(
+	ctx context.Context,
+	argoCDApp *argoCDV1Aplha1.Application,
+	name, appNamespace string,
+	attempts *syncRetryAttempts,
+) {
+	if (argoCDApp == nil) || (argoCDApp.Operation == nil) {
+		return
+	}
+
+	state := argoCDApp.Status.OperationState
+	if (state == nil) || (state.FinishedAt == nil) || !state.Phase.Completed() {
+		attempts.staleOperationRecord, attempts.staleOperationPolls = "", 0
+		return
+	}
+
+	record := fmt.Sprintf("%s/%s/%d",
+		state.Phase, state.FinishedAt.Format(time.RFC3339), state.RetryCount,
+	)
+	if record != attempts.staleOperationRecord {
+		attempts.staleOperationRecord, attempts.staleOperationPolls = record, 1
+		return
+	}
+
+	attempts.staleOperationPolls++
+	if attempts.staleOperationPolls < argoCDStaleOperationMinPolls {
+		return
+	}
+
+	slog.WarnContext(ctx,
+		"Clearing a finished ArgoCD App operation the controller left behind",
+		slog.String("operation-phase", string(state.Phase)),
+		slog.String("operation-finished-at", state.FinishedAt.Format(time.RFC3339)),
+		slog.Int("polls", attempts.staleOperationPolls),
+	)
+
+	_, err := m.client.Patch(ctx, &application.ApplicationPatchRequest{
+		Name:         &name,
+		AppNamespace: &appNamespace,
+		Project:      ptr.To(constants.ArgoCDProjectKubeAid),
+		PatchType:    ptr.To("json"),
+		Patch:        ptr.To(`[{"op":"remove","path":"/operation"}]`),
+	})
+	if err != nil {
+		slog.WarnContext(ctx,
+			"Failed clearing the stale ArgoCD App operation",
+			logger.Error(err),
+		)
+		return
+	}
+
+	attempts.staleOperationRecord, attempts.staleOperationPolls = "", 0
 }
 
 // waitForRootArgoCDChildren blocks until the root ArgoCD app has been

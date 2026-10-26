@@ -629,7 +629,7 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	var cpTotal, cpRunning, workerTotal, workerRunning, workerJoined int
 
 	for _, m := range machines.Items {
-		detail := machineStatusDetail(&m)
+		detail := annotateHRobotNodeWait(machineStatusDetail(&m))
 		if m.Spec.InfrastructureRef.Kind == "HetznerBareMetalMachine" {
 			if override, ok := hbmmOverrides[m.Spec.InfrastructureRef.Name]; ok && override != "" {
 				detail = override
@@ -820,7 +820,7 @@ func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([
 		rows = append(rows, capiStatusRow{
 			Resource: "Machine/" + m.Name,
 			Phase:    m.Status.Phase,
-			Status:   machineStatusDetail(&m),
+			Status:   annotateHRobotNodeWait(machineStatusDetail(&m)),
 			Failed:   isMachineFailed(&m),
 		})
 	}
@@ -839,6 +839,27 @@ func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([
 	}
 
 	return rows, allReady, nil
+}
+
+const hrobotProviderIDMarker = "spec.providerID hrobot://"
+
+// Not a pre-flight check: CAPH renames the Robot server during provisioning,
+// so a default name before that point is legitimate.
+func annotateHRobotNodeWait(detail string) string {
+	_, afterMarker, found := strings.Cut(detail, hrobotProviderIDMarker)
+	if !found {
+		return detail
+	}
+
+	serverID, _, _ := strings.Cut(afterMarker, " ")
+	if serverID == "" {
+		return detail
+	}
+
+	return fmt.Sprintf(
+		"%s (ccm-hetzner matches Robot servers by name: rename server %s to bm-%s-%s in the Hetzner Robot console, else the Node is deleted as soon as it registers)",
+		detail, serverID, config.ParsedGeneralConfig.Cluster.Name, serverID,
+	)
 }
 
 // clusterStatusDetail picks the most useful single-line summary for the

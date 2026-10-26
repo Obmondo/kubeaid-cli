@@ -6,6 +6,7 @@ package kubernetes
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,6 +27,7 @@ import (
 	crFake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
+	syncCommon "github.com/argoproj/argo-cd/gitops-engine/pkg/sync/common"
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 	argoCDEvents "github.com/argoproj/argo-cd/v3/pkg/apiclient/events"
 	"github.com/argoproj/argo-cd/v3/pkg/apiclient/project"
@@ -52,6 +54,9 @@ type fakeArgoCDAppClient struct {
 	getResponses []fakeGetResponse
 	getCalled    int
 	getAppNames  []string
+
+	patchErr      error
+	patchRequests []*application.ApplicationPatchRequest
 }
 
 type fakeGetResponse struct {
@@ -92,6 +97,14 @@ func (f *fakeArgoCDAppClient) Get(_ context.Context, q *application.ApplicationQ
 	}
 	r := f.getResponses[idx]
 	return r.app, r.err
+}
+
+func (f *fakeArgoCDAppClient) Patch(_ context.Context, r *application.ApplicationPatchRequest, _ ...grpc.CallOption) (*argoCDV1Alpha1.Application, error) {
+	f.patchRequests = append(f.patchRequests, r)
+	if f.patchErr != nil {
+		return nil, f.patchErr
+	}
+	return &argoCDV1Alpha1.Application{}, nil
 }
 
 func syncedApp() *argoCDV1Alpha1.Application {
@@ -722,6 +735,183 @@ func TestSyncArgoCDAppReissuesSync(t *testing.T) {
 				"Sync must be re-issued, not just polled")
 		})
 	}
+}
+
+func appWithOperation(
+	phase syncCommon.OperationPhase,
+	finishedAt *metaV1.Time,
+	retryCount int64,
+) *argoCDV1Alpha1.Application {
+	return &argoCDV1Alpha1.Application{
+		Operation: &argoCDV1Alpha1.Operation{},
+		Status: argoCDV1Alpha1.ApplicationStatus{
+			OperationState: &argoCDV1Alpha1.OperationState{
+				Phase:      phase,
+				Message:    "one or more synchronization tasks are not valid",
+				StartedAt:  metaV1.Date(2026, time.October, 13, 19, 50, 0, 0, time.UTC),
+				FinishedAt: finishedAt,
+				RetryCount: retryCount,
+			},
+		},
+	}
+}
+
+// ArgoCD's FailedPrecondition description names none of these four fields,
+// so dropping one takes the real sync failure out of the operator's log.
+func TestArgoCDOperationStateAttrs(t *testing.T) {
+	t.Parallel()
+
+	finishedAt := metaV1.Date(2026, time.October, 13, 19, 53, 14, 0, time.UTC)
+
+	got := map[string]string{}
+	for _, attr := range argoCDOperationStateAttrs(
+		appWithOperation(syncCommon.OperationRunning, &finishedAt, 1),
+	) {
+		slogAttr, ok := attr.(slog.Attr)
+		require.True(t, ok)
+		got[slogAttr.Key] = slogAttr.Value.String()
+	}
+
+	assert.Equal(t, map[string]string{
+		"operation-phase":       "Running",
+		"operation-message":     "one or more synchronization tasks are not valid",
+		"operation-started-at":  "2026-10-13T19:50:00Z",
+		"operation-finished-at": "2026-10-13T19:53:14Z",
+	}, got)
+
+	assert.Nil(t, argoCDOperationStateAttrs(nil))
+	assert.Nil(t, argoCDOperationStateAttrs(&argoCDV1Alpha1.Application{}))
+}
+
+func TestClassifyAndHandleSyncErrorStaleOperation(t *testing.T) {
+	origBackoff := argoCDSyncInProgressBackoff
+	t.Cleanup(func() { argoCDSyncInProgressBackoff = origBackoff })
+	argoCDSyncInProgressBackoff = time.Millisecond
+
+	finishedAt := metaV1.Date(2026, time.October, 13, 19, 53, 14, 0, time.UTC)
+
+	tests := []struct {
+		name      string
+		app       *argoCDV1Alpha1.Application
+		getErr    error
+		patchErr  error
+		polls     int
+		wantPatch int
+	}{
+		{
+			name:      "completed operation left behind is cleared once, on the second poll",
+			app:       appWithOperation(syncCommon.OperationSucceeded, &finishedAt, 0),
+			polls:     3,
+			wantPatch: 1,
+		},
+		{
+			name:      "operation ArgoCD is still retrying is never cleared",
+			app:       appWithOperation(syncCommon.OperationRunning, &finishedAt, 1),
+			polls:     5,
+			wantPatch: 0,
+		},
+		{
+			name:      "first sync still running is never cleared",
+			app:       appWithOperation(syncCommon.OperationRunning, nil, 0),
+			polls:     5,
+			wantPatch: 0,
+		},
+		{
+			name: "no operation field means nothing to clear",
+			app: &argoCDV1Alpha1.Application{
+				Status: argoCDV1Alpha1.ApplicationStatus{
+					OperationState: &argoCDV1Alpha1.OperationState{
+						Phase:      syncCommon.OperationFailed,
+						FinishedAt: &finishedAt,
+					},
+				},
+			},
+			polls:     5,
+			wantPatch: 0,
+		},
+		{
+			// A clear that fails must leave the sync loop running and be
+			// retried, not abandon the app to the stale lock.
+			name:      "a failed clear is retried on the next poll",
+			app:       appWithOperation(syncCommon.OperationSucceeded, &finishedAt, 0),
+			patchErr:  errors.New("etcdserver: request timed out"),
+			polls:     3,
+			wantPatch: 2,
+		},
+		{
+			name:      "an app that cannot be read is never patched",
+			getErr:    errors.New("connection refused"),
+			polls:     3,
+			wantPatch: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &fakeArgoCDAppClient{
+				getResponses: []fakeGetResponse{{app: tc.app, err: tc.getErr}},
+				patchErr:     tc.patchErr,
+			}
+			mgr := NewArgoCDAppManager(client, nil)
+			attempts := syncRetryAttempts{}
+
+			for range tc.polls {
+				retry, err := mgr.classifyAndHandleSyncError(
+					context.Background(),
+					grpcStatus.Error(codes.FailedPrecondition, "another operation is already in progress"),
+					"my-app",
+					constants.NamespaceArgoCD,
+					&attempts,
+				)
+				require.NoError(t, err)
+				assert.True(t, retry)
+			}
+
+			assert.Len(t, client.patchRequests, tc.wantPatch)
+			for _, request := range client.patchRequests {
+				assert.Equal(t, `[{"op":"remove","path":"/operation"}]`, *request.Patch)
+				assert.Equal(t, "json", *request.PatchType)
+			}
+		})
+	}
+}
+
+func TestClassifyAndHandleSyncErrorNeedsTheSameOperationRecordTwice(t *testing.T) {
+	origBackoff := argoCDSyncInProgressBackoff
+	t.Cleanup(func() { argoCDSyncInProgressBackoff = origBackoff })
+	argoCDSyncInProgressBackoff = time.Millisecond
+
+	first := metaV1.Date(2026, time.October, 13, 19, 53, 14, 0, time.UTC)
+	second := metaV1.Date(2026, time.October, 13, 19, 58, 2, 0, time.UTC)
+
+	client := &fakeArgoCDAppClient{
+		getResponses: []fakeGetResponse{
+			{app: appWithOperation(syncCommon.OperationFailed, &first, 0)},
+			{app: appWithOperation(syncCommon.OperationFailed, &second, 1)},
+			{app: appWithOperation(syncCommon.OperationFailed, &second, 1)},
+		},
+	}
+	mgr := NewArgoCDAppManager(client, nil)
+	attempts := syncRetryAttempts{}
+
+	poll := func() {
+		_, err := mgr.classifyAndHandleSyncError(
+			context.Background(),
+			grpcStatus.Error(codes.FailedPrecondition, "another operation is already in progress"),
+			"my-app",
+			constants.NamespaceArgoCD,
+			&attempts,
+		)
+		require.NoError(t, err)
+	}
+
+	poll()
+	poll()
+	assert.Empty(t, client.patchRequests,
+		"a record that changed between polls belongs to a live operation")
+
+	poll()
+	assert.Len(t, client.patchRequests, 1)
 }
 
 // TestIsArgoCDTransientTransportError pins which errors syncArgoCDApp

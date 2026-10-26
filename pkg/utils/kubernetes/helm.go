@@ -45,6 +45,12 @@ type HelmUpgradeRunner interface {
 	Run(name string, chrt *chart.Chart, vals map[string]any) (*release.Release, error)
 }
 
+// HelmUninstallRunner takes the release name at Run() time, matching
+// action.Uninstall's API.
+type HelmUninstallRunner interface {
+	Run(name string) (*release.UninstallReleaseResponse, error)
+}
+
 // HelmListRunner lists Helm releases.
 type HelmListRunner interface {
 	Run() ([]*release.Release, error)
@@ -62,6 +68,9 @@ type HelmActionFactory interface {
 	// removed out-of-band). Install with Replace=true only handles
 	// uninstalled/failed states; upgrade handles every state.
 	NewUpgrade(namespace string) HelmUpgradeRunner
+	// No namespace: action.Uninstall has no Namespace field — the release
+	// record's namespace comes from the action.Configuration.
+	NewUninstall() HelmUninstallRunner
 	// NewList returns a runner that lists releases matching the given filter.
 	NewList(filter string) HelmListRunner
 	// LoadChart loads a Helm chart from the given filesystem path.
@@ -91,6 +100,15 @@ func (f *realHelmFactory) NewUpgrade(namespace string) HelmUpgradeRunner {
 	// MaxHistory caps how many release revisions Helm keeps. Without
 	// this, every upgrade adds a new revision to etcd indefinitely.
 	act.MaxHistory = 10
+	return act
+}
+
+func (f *realHelmFactory) NewUninstall() HelmUninstallRunner {
+	act := action.NewUninstall(f.cfg)
+	act.Timeout = 10 * time.Minute
+	// Wait, so the resources are really gone before the follow-up install
+	// re-creates them.
+	act.Wait = true
 	return act
 }
 
@@ -152,6 +170,20 @@ func (e *ErrReleaseExistsNonDeployed) RecoverableByUpgrade() bool {
 	}
 }
 
+// RecoverableByReinstall reports whether uninstall-then-install can salvage
+// the release: pending-install and uninstalling never reached a deployed
+// revision, so there are no live workloads to lose. pending-upgrade and
+// pending-rollback hide a deployed revision behind the lock — uninstalling
+// those would delete it, so they need `helm rollback` instead.
+func (e *ErrReleaseExistsNonDeployed) RecoverableByReinstall() bool {
+	switch e.Status { //nolint:exhaustive // only pending-install/uninstalling are safe to reinstall; every other status intentionally falls to false.
+	case release.StatusPendingInstall, release.StatusUninstalling:
+		return true
+	default:
+		return false
+	}
+}
+
 // helmInstallWithFactory is the unit-testable core of HelmInstall.
 func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) error {
 	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
@@ -169,11 +201,10 @@ func helmInstallWithFactory(ctx context.Context, factory HelmActionFactory, args
 	// CASE : Helm chart release exists in a non-deployed state
 	//        (pending-install, pending-upgrade, pending-rollback, failed,
 	//        uninstalling, superseded). A naive install would fail with
-	//        "cannot re-use a name that is still in use". For these
-	//        states the right tool is `helm upgrade` (see
-	//        helmUpgradeWithFactory) — install just isn't the right
-	//        operation here. Surface a clear error so the caller can
-	//        decide whether to upgrade-recover or bail.
+	//        "cannot re-use a name that is still in use", so surface a
+	//        clear error and let the caller pick between upgrade,
+	//        uninstall-then-install and bailing (see the error's
+	//        RecoverableBy* predicates).
 	if existingHelmRelease != nil {
 		return &ErrReleaseExistsNonDeployed{
 			ReleaseName: args.ReleaseName,
@@ -265,11 +296,24 @@ func helmUpgradeWithFactory(ctx context.Context, factory HelmActionFactory, args
 	return nil
 }
 
-// HelmInstallOrUpgrade installs the Helm chart, recovering via `helm
-// upgrade` when a prior run left the release in a non-deployed state
-// (failed, superseded) that install-only can't reuse. Callers needing
-// the stricter install-only contract (error out instead of recovering)
-// should use HelmInstall.
+func helmUninstallWithFactory(ctx context.Context, factory HelmActionFactory, args *HelmInstallArgs) error {
+	slog.InfoContext(ctx,
+		"Uninstalling Helm release",
+		slog.String("release-name", args.ReleaseName),
+	)
+
+	uninstaller := factory.NewUninstall()
+	if _, err := uninstaller.Run(args.ReleaseName); err != nil {
+		return fmt.Errorf("failed uninstalling helm release %q: %w", args.ReleaseName, err)
+	}
+	return nil
+}
+
+// HelmInstallOrUpgrade installs the Helm chart, recovering when a prior run
+// left the release in a non-deployed state install-only can't reuse: `helm
+// upgrade` for failed/superseded, uninstall-then-install for
+// pending-install/uninstalling. Callers needing the stricter install-only
+// contract (error out instead of recovering) should use HelmInstall.
 func HelmInstallOrUpgrade(ctx context.Context, args *HelmInstallArgs) error {
 	settings := cli.New()
 
@@ -292,13 +336,30 @@ func helmInstallOrUpgradeWithFactory(ctx context.Context, factory HelmActionFact
 	err := helmInstallWithFactory(ctx, factory, args)
 
 	var existsErr *ErrReleaseExistsNonDeployed
-	if errors.As(err, &existsErr) && existsErr.RecoverableByUpgrade() {
+	if !errors.As(err, &existsErr) {
+		return err
+	}
+
+	if existsErr.RecoverableByUpgrade() {
 		slog.WarnContext(ctx, "helm release in a non-deployed state — recovering via helm upgrade",
 			slog.String("release-name", args.ReleaseName),
 			slog.String("status", string(existsErr.Status)),
 		)
 		return helmUpgradeWithFactory(ctx, factory, args)
 	}
+
+	if existsErr.RecoverableByReinstall() {
+		slog.WarnContext(ctx,
+			"helm release stuck mid-install — recovering via helm uninstall, then a fresh install",
+			slog.String("release-name", args.ReleaseName),
+			slog.String("status", string(existsErr.Status)),
+		)
+		if uninstallErr := helmUninstallWithFactory(ctx, factory, args); uninstallErr != nil {
+			return uninstallErr
+		}
+		return helmInstallWithFactory(ctx, factory, args)
+	}
+
 	return err
 }
 

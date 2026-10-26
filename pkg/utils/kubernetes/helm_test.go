@@ -70,10 +70,26 @@ func (f *fakeUpgradeRunner) Run(name string, _ *chart.Chart, vals map[string]any
 	return &release.Release{}, nil
 }
 
+type fakeUninstallRunner struct {
+	called bool
+	name   string
+	err    error
+}
+
+func (f *fakeUninstallRunner) Run(name string) (*release.UninstallReleaseResponse, error) {
+	f.called = true
+	f.name = name
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &release.UninstallReleaseResponse{}, nil
+}
+
 type fakeHelmFactory struct {
 	lister      *fakeListRunner
 	installer   *fakeInstallRunner
 	upgrader    *fakeUpgradeRunner
+	uninstaller *fakeUninstallRunner
 	chartToLoad *chart.Chart
 	chartErr    error
 }
@@ -84,6 +100,13 @@ func (f *fakeHelmFactory) NewUpgrade(_ string) HelmUpgradeRunner {
 		f.upgrader = &fakeUpgradeRunner{}
 	}
 	return f.upgrader
+}
+
+func (f *fakeHelmFactory) NewUninstall() HelmUninstallRunner {
+	if f.uninstaller == nil {
+		f.uninstaller = &fakeUninstallRunner{}
+	}
+	return f.uninstaller
 }
 func (f *fakeHelmFactory) NewList(_ string) HelmListRunner { return f.lister }
 
@@ -433,6 +456,36 @@ func TestHelmUpgradeWithFactory(t *testing.T) {
 	}
 }
 
+func TestRecoverableByReinstall(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		status release.Status
+		want   bool
+	}{
+		{release.StatusPendingInstall, true},
+		{release.StatusUninstalling, true},
+		// These two keep a deployed revision behind the lock, so an
+		// uninstall would delete live workloads.
+		{release.StatusPendingUpgrade, false},
+		{release.StatusPendingRollback, false},
+		{release.StatusDeployed, false},
+		{release.StatusFailed, false},
+		{release.StatusSuperseded, false},
+		{release.StatusUninstalled, false},
+		{release.StatusUnknown, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(string(tc.status), func(t *testing.T) {
+			t.Parallel()
+
+			err := &ErrReleaseExistsNonDeployed{ReleaseName: "sealed-secrets", Status: tc.status}
+			assert.Equal(t, tc.want, err.RecoverableByReinstall())
+		})
+	}
+}
+
 func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
 	t.Parallel()
 
@@ -444,13 +497,16 @@ func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
 	tests := []struct {
 		name            string
 		releases        []*release.Release
+		listResponses   []fakeListResponse
 		chartToLoad     *chart.Chart
 		chartErr        error
 		installErr      error
 		upgradeErr      error
+		uninstallErr    error
 		values          *values.Options
 		wantInstalled   bool
 		wantUpgraded    bool
+		wantUninstalled bool
 		wantValsKey     string
 		wantErr         bool
 		wantErrContains string
@@ -488,14 +544,81 @@ func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
 			wantUpgraded: true,
 		},
 		{
-			// pending-* holds a release lock upgrade can't clear -- surface
-			// the install-only error instead of attempting recovery.
-			name: "pending-install -- not recovered, error propagates",
+			// Nothing ever deployed under a pending-install lock, so
+			// uninstall and install fresh.
+			name: "pending-install -- uninstalls, then installs fresh",
+			listResponses: []fakeListResponse{
+				{releases: []*release.Release{makeRelease(relName, ns, release.StatusPendingInstall)}},
+				{releases: nil},
+			},
+			chartToLoad:     minimalChart(),
+			wantUninstalled: true,
+			wantInstalled:   true,
+		},
+		{
+			name: "uninstalling -- uninstalls, then installs fresh",
+			listResponses: []fakeListResponse{
+				{releases: []*release.Release{makeRelease(relName, ns, release.StatusUninstalling)}},
+				{releases: nil},
+			},
+			chartToLoad:     minimalChart(),
+			wantUninstalled: true,
+			wantInstalled:   true,
+		},
+		{
+			// Recovery needs `helm rollback`, which the factory cannot
+			// express, so the error has to surface untouched.
+			name: "pending-upgrade -- neither upgraded nor uninstalled, error propagates",
 			releases: []*release.Release{
-				makeRelease(relName, ns, release.StatusPendingInstall),
+				makeRelease(relName, ns, release.StatusPendingUpgrade),
 			},
 			wantErr:         true,
 			wantErrContains: "install-only",
+		},
+		{
+			name: "pending-rollback -- neither upgraded nor uninstalled, error propagates",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusPendingRollback),
+			},
+			wantErr:         true,
+			wantErrContains: "install-only",
+		},
+		{
+			name: "pending-install -- uninstall itself fails, error propagates",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusPendingInstall),
+			},
+			uninstallErr:    errors.New("connection refused"),
+			wantUninstalled: true,
+			wantErr:         true,
+			wantErrContains: "failed uninstalling helm release",
+		},
+		{
+			// Uninstall reported success but the release is still listed:
+			// the retried install must surface the error, not loop.
+			name: "pending-install -- release still listed after uninstall, error propagates",
+			releases: []*release.Release{
+				makeRelease(relName, ns, release.StatusPendingInstall),
+			},
+			chartToLoad:     minimalChart(),
+			wantUninstalled: true,
+			wantErr:         true,
+			wantErrContains: "install-only",
+		},
+		{
+			// The uninstall cleared the lock, so the second install gets
+			// past the pre-check and fails on its own terms.
+			name: "pending-install -- uninstall succeeds, fresh install fails, error propagates",
+			listResponses: []fakeListResponse{
+				{releases: []*release.Release{makeRelease(relName, ns, release.StatusPendingInstall)}},
+				{releases: nil},
+			},
+			chartToLoad:     minimalChart(),
+			installErr:      errors.New("timed out waiting for the condition"),
+			wantUninstalled: true,
+			wantInstalled:   true,
+			wantErr:         true,
+			wantErrContains: "failed installing helm chart",
 		},
 		{
 			// A non-recovery error from the install path (e.g. a
@@ -543,10 +666,18 @@ func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
 
 			installer := &fakeInstallRunner{err: tc.installErr}
 			upgrader := &fakeUpgradeRunner{err: tc.upgradeErr}
+			uninstaller := &fakeUninstallRunner{err: tc.uninstallErr}
+
+			lister := singleResponseLister(tc.releases)
+			if tc.listResponses != nil {
+				lister = &fakeListRunner{responses: tc.listResponses}
+			}
+
 			factory := &fakeHelmFactory{
-				lister:      singleResponseLister(tc.releases),
+				lister:      lister,
 				installer:   installer,
 				upgrader:    upgrader,
+				uninstaller: uninstaller,
 				chartToLoad: tc.chartToLoad,
 				chartErr:    tc.chartErr,
 			}
@@ -562,11 +693,17 @@ func TestHelmInstallOrUpgradeWithFactory(t *testing.T) {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tc.wantErrContains)
 				assert.Equal(t, tc.wantUpgraded, upgrader.called, "upgrade attempt state should match expectation on the error path")
+				assert.Equal(t, tc.wantUninstalled, uninstaller.called, "uninstall attempt state should match expectation on the error path")
+				assert.Equal(t, tc.wantInstalled, installer.called, "install attempt state should match expectation on the error path")
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantInstalled, installer.called)
 			assert.Equal(t, tc.wantUpgraded, upgrader.called)
+			assert.Equal(t, tc.wantUninstalled, uninstaller.called)
+			if tc.wantUninstalled {
+				assert.Equal(t, relName, uninstaller.name, "Run should pass the release name")
+			}
 			if tc.wantValsKey != "" {
 				require.NotNil(t, upgrader.vals)
 				assert.Contains(t, upgrader.vals, tc.wantValsKey)

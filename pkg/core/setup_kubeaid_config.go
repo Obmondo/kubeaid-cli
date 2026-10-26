@@ -320,27 +320,90 @@ func createFileFromTemplate(ctx context.Context,
 		slog.String("path", destinationFilePath),
 	})
 
-	// Open the destination file.
-	destinationFile, err := os.OpenFile(
-		destinationFilePath,
-		os.O_CREATE|os.O_WRONLY|os.O_TRUNC,
-		0o600,
-	)
-	assert.AssertErrNil(ctx, err, "Failed opening file")
-	defer destinationFile.Close()
-
-	// Execute the corresponding template with the template values. Then write the execution result
-	// to that file.
 	content := templates.ParseAndExecuteTemplate(
 		ctx,
 		&KubeaidConfigFileTemplates,
 		path.Join("templates/", embeddedTemplateName),
 		templateValues,
 	)
-	_, err = destinationFile.Write(content)
+
+	// A file that differs from the rendered template otherwise gets overwritten
+	// without a word.
+	existing, readErr := os.ReadFile(destinationFilePath)
+	if (readErr == nil) && !bytes.Equal(existing, content) {
+		diff := diffLines(existing, content)
+		if diff == "" {
+			diff = "whitespace only"
+		}
+		slog.WarnContext(ctx,
+			"Overwriting a file whose content differs from the rendered template",
+			slog.String("diff", diff),
+		)
+	}
+
+	err = os.WriteFile(destinationFilePath, content, 0o600)
 	assert.AssertErrNil(ctx, err, "Failed writing template execution result to file")
 
 	slog.InfoContext(ctx, "Created file in KubeAid config fork")
+}
+
+func diffLines(old, rendered []byte) string {
+	const (
+		maxReportedLines     = 20
+		maxReportedBytes     = 4000
+		maxReportedLineBytes = 200
+	)
+
+	clip := func(line string) string {
+		if len(line) <= maxReportedLineBytes {
+			return line
+		}
+		return line[:maxReportedLineBytes] + "..."
+	}
+
+	oldLines := strings.Split(string(old), "\n")
+	newLines := strings.Split(string(rendered), "\n")
+
+	// Trim the matching head and tail first. Without it a single inserted line
+	// makes every line below it compare unequal, and the cap then truncates
+	// away the edit this is here to show.
+	for len(oldLines) > 0 && len(newLines) > 0 && oldLines[0] == newLines[0] {
+		oldLines, newLines = oldLines[1:], newLines[1:]
+	}
+	for len(oldLines) > 0 && len(newLines) > 0 &&
+		oldLines[len(oldLines)-1] == newLines[len(newLines)-1] {
+		oldLines, newLines = oldLines[:len(oldLines)-1], newLines[:len(newLines)-1]
+	}
+
+	var (
+		report  strings.Builder
+		printed int
+	)
+	for i := range max(len(oldLines), len(newLines)) {
+		oldLine, newLine := "", ""
+		if i < len(oldLines) {
+			oldLine = oldLines[i]
+		}
+		if i < len(newLines) {
+			newLine = newLines[i]
+		}
+		if oldLine == newLine {
+			continue
+		}
+
+		if (printed >= maxReportedLines) || (report.Len() >= maxReportedBytes) {
+			report.WriteString("... (truncated)")
+			break
+		}
+		if oldLine != "" {
+			fmt.Fprintf(&report, "-%s\n", clip(oldLine))
+		}
+		if newLine != "" {
+			fmt.Fprintf(&report, "+%s\n", clip(newLine))
+		}
+		printed++
+	}
+	return strings.TrimRight(report.String(), "\n")
 }
 
 // Creates the jsonnet vars file for the cluster.
