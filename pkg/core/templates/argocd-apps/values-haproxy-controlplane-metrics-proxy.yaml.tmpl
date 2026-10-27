@@ -34,13 +34,31 @@ haproxy:
     https: null
     stat: null
 
-  rawContainerPorts:
-    - name: scheduler-metrics
-      containerPort: 10259
-      protocol: TCP
-    - name: cm-metrics
-      containerPort: 10257
-      protocol: TCP
+  # No rawContainerPorts here. hostNetwork: true makes Kubernetes auto-fill
+  # hostPort = containerPort for anything declared
+  # (https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.33/#containerport-v1-core),
+  # and kube-scheduler/kube-controller-manager's own static pods already
+  # reserve hostPort 10259/10257 (a "probe-port" entry) on every control-plane
+  # node. Declaring the same ports here collides with that reservation at the
+  # Kubernetes scheduling level ("didn't have free ports for the requested pod
+  # ports"), even though there's no real socket conflict underneath. HAProxy's
+  # own `bind ${NODE_IP}:...` below is what actually opens these ports -
+  # Kubernetes never needs to know about them.
+  #
+  # The Service still needs valid ports (containerPorts above is emptied, and
+  # the chart's Service template never reads rawContainerPorts), so give it
+  # numeric targetPorts directly since there's no named container port to
+  # reference.
+  service:
+    rawAdditionalPorts:
+      - name: sched-metrics
+        port: 10259
+        targetPort: 10259
+        protocol: TCP
+      - name: cm-metrics
+        port: 10257
+        targetPort: 10257
+        protocol: TCP
 
   extraEnvs:
     - name: NODE_IP
