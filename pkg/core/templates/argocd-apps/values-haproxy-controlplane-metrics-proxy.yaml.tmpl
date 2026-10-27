@@ -1,0 +1,73 @@
+---
+# Keeps kube-scheduler and kube-controller-manager on --bind-address=127.0.0.1
+# (see kubeone/kubeone-cluster.yaml.tmpl) while still letting Prometheus
+# scrape them by node IP. This DaemonSet runs only on control-plane nodes,
+# listens on each node's real IP on 10257/10259, and forwards in plain TCP
+# (no TLS termination) to that same node's 127.0.0.1 - the components' own
+# TLS/auth is untouched, and nothing but this proxy is ever reachable off
+# loopback for these two ports.
+haproxy:
+  kind: DaemonSet
+
+  daemonset:
+    useHostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-role.kubernetes.io/control-plane
+                operator: Exists
+
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      effect: NoSchedule
+    - key: node-role.kubernetes.io/master
+      effect: NoSchedule
+
+  # Clears the chart's default http/https/stat ports (see the comment in the
+  # upstream values.yaml re: https://github.com/helm/helm/issues/9027).
+  containerPorts:
+    http: null
+    https: null
+    stat: null
+
+  rawContainerPorts:
+    - name: scheduler-metrics
+      containerPort: 10259
+      protocol: TCP
+    - name: cm-metrics
+      containerPort: 10257
+      protocol: TCP
+
+  extraEnvs:
+    - name: NODE_IP
+      valueFrom:
+        fieldRef:
+          fieldPath: status.hostIP
+
+  config: |
+    global
+      log stdout format raw local0
+      daemon
+      maxconn 1024
+    defaults
+      log global
+      mode tcp
+      timeout client 30s
+      timeout connect 5s
+      timeout server 30s
+    frontend kube-scheduler-metrics
+      bind ${NODE_IP}:10259
+      default_backend be-kube-scheduler-metrics
+    backend be-kube-scheduler-metrics
+      mode tcp
+      server kube-scheduler 127.0.0.1:10259 check
+    frontend kube-controller-manager-metrics
+      bind ${NODE_IP}:10257
+      default_backend be-kube-controller-manager-metrics
+    backend be-kube-controller-manager-metrics
+      mode tcp
+      server kube-controller-manager 127.0.0.1:10257 check

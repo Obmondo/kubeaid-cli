@@ -280,6 +280,15 @@ var BareMetalSpecificNonSecretTemplateNames = []string{
 	// For OpenEBS dynamic LocalPV provisioner.
 	"argocd-apps/templates/localpv-provisioner.yaml.tmpl",
 	"argocd-apps/values-localpv-provisioner.yaml.tmpl",
+
+	// kube-scheduler and kube-controller-manager bind to 127.0.0.1 by default
+	// on every kubeone/kubeadm bare-metal cluster, so Prometheus can't reach
+	// them by node IP (KubeSchedulerInstanceUnreachable /
+	// KubeControllerManagerInstanceUnreachable). This haproxy DaemonSet
+	// proxies node-IP:10257/10259 to that same node's 127.0.0.1 instead of
+	// binding the components themselves to 0.0.0.0 — see kubeone-cluster.yaml.tmpl.
+	"argocd-apps/templates/haproxy-controlplane-metrics-proxy.yaml.tmpl",
+	"argocd-apps/values-haproxy-controlplane-metrics-proxy.yaml.tmpl",
 }
 
 // Traefik. The ingress controller in front of NetBird Mgmt (and
