@@ -573,7 +573,7 @@ Every lifecycle command has its own entry point under [pkg/core](../pkg/core). T
 | Command                  | Entry point                                                     | What it does                                         |
 | ------------------------ | --------------------------------------------------------------- | ---------------------------------------------------- |
 | `cluster bootstrap`      | [bootstrap_cluster.go](../pkg/core/bootstrap_cluster.go)        | Four-phase provision (see §4)                        |
-| `cluster upgrade`        | [upgrade_cluster.go](../pkg/core/upgrade_cluster.go)            | Bump K8s version: update values file, recreate MachineTemplates, rolling replace. Refused on EKS/AKS - see [§5.1](#51-managed-control-planes-eks--aks) |
+| `cluster upgrade`        | [upgrade_cluster.go](../pkg/core/upgrade_cluster.go)            | Bump K8s version: update values file, sync the KubeadmControlPlane, rolling replace. Refused on EKS/AKS - see [§5.1](#51-managed-control-planes-eks--aks) |
 | `cluster test`           | [test_cluster.go](../pkg/core/test_cluster.go)                  | Smoke-test a provisioned cluster (Cilium, DNS, storage) |
 | `cluster delete`         | [delete_cluster.go](../pkg/core/delete_cluster.go)              | Delete Cluster CR, wait for CAPI cleanup, tear down infra |
 | `cluster recover`        | [recover_cluster.go](../pkg/core/recover_cluster.go)            | Restore from Velero backup onto a fresh cluster. Not yet supported on EKS/AKS |

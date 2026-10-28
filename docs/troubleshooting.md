@@ -22,8 +22,17 @@ node-pool equivalents) and re-run.
 CAPH treats machine-template specs as immutable, so editing a template in place is
 rejected on sync.
 
-- **Post-bootstrap** — don't hand-edit the template; use `kubeaid-cli cluster upgrade`,
-  which rolls a new one.
+- **Post-bootstrap** — delete the template and let ArgoCD recreate it from the chart with
+  the new spec. `cluster upgrade` deliberately no longer does this for you: the CLI does
+  not delete or create live CAPI resources. Immutability is CAPI's guardrail, and needing
+  this is rare — only a machine image or type change reaches the template.
+
+  ```bash
+  kubectl delete hcloudmachinetemplate <name>
+  ```
+
+  The name is unchanged, so CAPI sees no diff and won't roll on its own — run
+  `kubeaid-cli cluster upgrade` afterwards to sync and roll the owner.
 - **Pre-bootstrap recovery** (the cluster isn't live yet) — delete the machines and the
   template, then re-run:
 

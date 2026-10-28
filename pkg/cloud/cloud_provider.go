@@ -5,8 +5,6 @@ package cloud
 
 import (
 	"context"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type (
@@ -21,12 +19,6 @@ type (
 		// this function does updates in the cloud provider specific section of the cluster's
 		// values-capi-cluster.yaml file.
 		UpdateCapiClusterValuesFile(ctx context.Context, path string, updates any) error
-
-		// While performing a Kubernetes cluster update,
-		// this function recreates the given infrastructure provider specific MachineTemplate resource
-		// (like AWSMachineTemplate for AWS), with the required updates, since it can't be updated
-		// in-place.
-		UpdateMachineTemplate(ctx context.Context, clusterClient client.Client, name string, updates any) error
 	}
 
 	VMSpec struct {
