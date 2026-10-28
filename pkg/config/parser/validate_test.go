@@ -91,6 +91,33 @@ func TestVSwitchVLANIDRangeEnforcedAtParseTime(t *testing.T) {
 	}
 }
 
+func TestK3DDNSServersValidation(t *testing.T) {
+	tests := []struct {
+		name       string
+		dnsServers []string
+		wantErr    bool
+	}{
+		{name: "unset", wantErr: false},
+		{name: "IPv4 and IPv6 addresses", dnsServers: []string{"192.0.2.53", "2001:db8::53"}},
+		{name: "invalid address", dnsServers: []string{"resolver.example.com"}, wantErr: true},
+		{name: "more than three addresses", dnsServers: []string{"192.0.2.1", "192.0.2.2", "192.0.2.3", "192.0.2.4"}, wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			general := minimalLocalConfig("dns-test")
+			general.Cluster.K3D = &config.K3DConfig{DNSServers: tc.dnsServers}
+
+			err := validateConfigStructTags(general, &config.SecretsConfig{})
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
 func stubK8sVersionDeps(t *testing.T) {
 	t.Helper()
 	resetNowFn(t)

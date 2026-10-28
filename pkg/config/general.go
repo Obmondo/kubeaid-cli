@@ -137,6 +137,10 @@ type (
 		// Kubernetes version (>= 1.30.0).
 		K8sVersion string `yaml:"k8sVersion" validate:"notblank"`
 
+		// K3D configures the local management cluster used during bootstrap.
+		// Leave nil to use Docker's normal DNS behavior.
+		K3D *K3DConfig `yaml:"k3d"`
+
 		// Whether you would like to enable Kubernetes Audit Logging out of the box.
 		// Suitable Kubernetes API configurations will be done for you automatically. And they can be
 		// changed using the apiSever struct field.
@@ -206,6 +210,15 @@ type (
 		// for (cert-manager's selector.dnsZones). Empty matches every
 		// DNS-01 order — fine when this is the only solver.
 		DNSZones []string `yaml:"dnsZones"`
+	}
+
+	// K3DConfig controls the local K3D management cluster that bootstrap
+	// creates for every non-bare-metal provider.
+	K3DConfig struct {
+		// DNSServers bypasses Docker's embedded DNS resolver for cluster pods.
+		// Specify up to three literal IPv4 or IPv6 addresses. This is useful
+		// when Docker's resolver returns an incorrect split-horizon answer.
+		DNSServers []string `yaml:"dnsServers" validate:"omitempty,max=3,dive,ip"`
 	}
 
 	// SecurityConfig selects the optional security ArgoCD Apps. Both

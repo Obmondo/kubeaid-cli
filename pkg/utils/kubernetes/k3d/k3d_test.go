@@ -117,9 +117,11 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 		clusterCreateErr   error
 		writeKubeconfigErr error
 		configPathOverride string
+		dnsServers         []string
 		wantCreateCalled   bool
 		wantErr            bool
 		wantInConfig       []string
+		wantNotInConfig    []string
 	}{
 		{
 			name:             "cluster list empty — creates cluster and renders config",
@@ -129,6 +131,21 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 				"name: test-cluster",
 				"network: k3d-test-cluster",
 				"rancher/k3s:v1.30.0-k3s1",
+			},
+			wantNotInConfig: []string{
+				"/etc/kubeaid-resolv.conf",
+				"--resolv-conf",
+			},
+		},
+		{
+			name:             "configures explicit DNS servers for K3S pods",
+			dnsServers:       []string{"192.0.2.53", "2001:db8::53"},
+			wantCreateCalled: true,
+			wantInConfig: []string{
+				"destination: /etc/kubeaid-resolv.conf",
+				"nameserver 192.0.2.53",
+				"nameserver 2001:db8::53",
+				"arg: --resolv-conf=/etc/kubeaid-resolv.conf",
 			},
 		},
 		{
@@ -201,6 +218,11 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 				globals.CloudProviderName = constants.CloudProviderLocal
 				config.ParsedGeneralConfig.Cluster.K8sVersion = "v1.30.0"
 			}
+			if len(tc.dnsServers) > 0 {
+				config.ParsedGeneralConfig.Cluster.K3D = &config.K3DConfig{
+					DNSServers: tc.dnsServers,
+				}
+			}
 
 			tmpDir := t.TempDir()
 			configPath := filepath.Join(tmpDir, "k3d-config.yaml")
@@ -244,6 +266,9 @@ func TestCreateK3DClusterWithParams(t *testing.T) {
 				content := readFileContent(t, configPath)
 				for _, want := range tc.wantInConfig {
 					assert.Contains(t, content, want)
+				}
+				for _, unwanted := range tc.wantNotInConfig {
+					assert.NotContains(t, content, unwanted)
 				}
 			}
 		})

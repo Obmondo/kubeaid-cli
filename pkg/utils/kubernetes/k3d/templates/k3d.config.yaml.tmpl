@@ -15,6 +15,19 @@ hostAliases:
       - {{ .ControlPlaneHostname }}
 {{- end }}
 
+{{- if .DNSServers }}
+files:
+  - description: Resolver configuration supplied by the KubeAid operator
+    source: |
+{{ range .DNSServers }}
+      nameserver {{ . }}
+{{- end }}
+    destination: /etc/kubeaid-resolv.conf
+    nodeFilters:
+      - server:*
+      - agent:*
+{{- end }}
+
 # By default, K3D creates its own container registry (inside one of those containers spun up by
 # K3D).
 # The problem is, when we delete the K3D cluster, that container registry (along with the pulled
@@ -47,6 +60,12 @@ options:
       - arg: --tls-san=0.0.0.0
         nodeFilters:
           - server:*
+      {{- if .DNSServers }}
+      - arg: --resolv-conf=/etc/kubeaid-resolv.conf
+        nodeFilters:
+          - server:*
+          - agent:*
+      {{- end }}
       {{- if .WorkloadIdentity }}
       - arg: "--kube-apiserver-arg=service-account-issuer={{ .WorkloadIdentity.ServiceAccountIssuerURL }}"
         nodeFilters:

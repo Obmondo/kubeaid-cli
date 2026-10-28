@@ -43,6 +43,8 @@ type (
 		ControlPlaneHostname,
 		ControlPlaneLBBootstrapPublicIP string
 
+		DNSServers []string
+
 		WorkloadIdentity *WorkloadIdentity
 	}
 
@@ -249,6 +251,10 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 		ControlPlaneHostname:            globals.ControlPlaneHostname,
 		ControlPlaneLBBootstrapPublicIP: globals.ControlPlaneLBBootstrapPublicIP,
 	}
+	if k3dConfig := config.ParsedGeneralConfig.Cluster.K3D; k3dConfig != nil {
+		k3dConfigTemplateValues.DNSServers = k3dConfig.DNSServers
+	}
+
 	// AKS clusters skip the workload-identity mounts : CAPZ authenticates with
 	// the AAD service principal directly, so the management cluster hosts no
 	// service-account issuer.
