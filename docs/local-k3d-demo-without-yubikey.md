@@ -17,10 +17,10 @@ deploy key belongs only to the one repository and is read-only.
 ## Prerequisites
 
 - Docker is installed and running.
-- The CLI is built from this checkout:
+- KubeAid CLI is installed and available on your `PATH`:
 
   ```sh
-  make build
+  kubeaid-cli version
   ```
 
 ## Create the fork in GitHub
@@ -79,7 +79,7 @@ K3D configuration stay together.
 export DEMO_DIR="$HOME/kubeaid-local-demo"
 mkdir -p "$DEMO_DIR"
 
-./build/kubeaid-cli config generate \
+kubeaid-cli config generate \
   --configs-directory "$DEMO_DIR"
 ```
 
@@ -115,7 +115,7 @@ be committed or shared.
 ## Bootstrap and inspect
 
 ```sh
-./build/kubeaid-cli cluster bootstrap \
+kubeaid-cli cluster bootstrap \
   --configs-directory "$DEMO_DIR"
 ```
 
@@ -142,7 +142,7 @@ the workload cluster, which is why the kubeconfig is under
 After the demo, remove the local K3D management cluster:
 
 ```sh
-./build/kubeaid-cli cluster delete management \
+kubeaid-cli cluster delete management \
   --configs-directory "$DEMO_DIR"
 ```
 
