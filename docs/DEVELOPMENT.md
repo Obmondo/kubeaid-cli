@@ -11,6 +11,9 @@ Also, you must have Docker installed and running.
 
 Let's try to bootstrap a local K3D cluster!
 
+- For a repeatable local demo using normal SSH keys rather than a YubiKey, see
+  [Local K3D Demo Without a YubiKey](local-k3d-demo-without-yubikey.md).
+
 - Build the CLI: `make build`.
 
 - Generate the sample config:
