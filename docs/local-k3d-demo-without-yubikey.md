@@ -1,14 +1,15 @@
 # Local K3D Demo Without a YubiKey
 
 This guide bootstraps a local K3D cluster with KubeAid CLI using two ordinary
-SSH keys instead of an SSH agent or a hardware key.
+SSH keys instead of an SSH agent or a hardware key. It uses GitHub's web UI for
+the one-time repository setup, then uses the CLI for the cluster.
 
-The CLI needs Git access for two different jobs:
+The CLI uses Git in two different places:
 
-1. The operator key clones and pushes the generated configuration to your
-   GitHub fork during bootstrap.
-2. The deploy key lets Argo CD inside the cluster read that fork after
-   bootstrap.
+1. **Operator key:** used on your machine while the CLI clones and pushes the
+   generated configuration to your GitHub fork.
+2. **Deploy key:** used by Argo CD inside the cluster after bootstrap, when it
+   reads that fork.
 
 Keep the keys separate. The operator key belongs to your GitHub account. The
 deploy key belongs only to the one repository and is read-only.
@@ -16,27 +17,27 @@ deploy key belongs only to the one repository and is read-only.
 ## Prerequisites
 
 - Docker is installed and running.
-- GitHub CLI is authenticated with an account that can create a fork:
-
-  ```sh
-  gh auth login
-  ```
-
 - The CLI is built from this checkout:
 
   ```sh
   make build
   ```
 
-## Create the fork and keys
+## Create the fork in GitHub
 
-Replace `YOUR_GITHUB_USER` with your GitHub user name.
+1. Open [Obmondo/kubeaid-config](https://github.com/Obmondo/kubeaid-config).
+2. Click **Fork**.
+3. Choose your account, keep the repository name `kubeaid-config`, and create
+   the fork.
+
+There is no need to clone the fork manually. At bootstrap the CLI clones your
+fork into its workspace, writes the generated files, pushes a branch, and asks
+you to merge that branch. It also clones the pinned KubeAid platform repository
+it needs to render the configuration.
+
+## Create the two keys
 
 ```sh
-gh repo fork Obmondo/kubeaid-config \
-  --fork-name kubeaid-config \
-  --clone=false
-
 ssh-keygen -t ed25519 \
   -f ~/.ssh/kubeaid-demo-operator \
   -C "kubeaid-local-demo-operator" \
@@ -46,18 +47,28 @@ ssh-keygen -t ed25519 \
   -f ~/.ssh/kubeaid-demo-argocd \
   -C "kubeaid-local-demo-argocd" \
   -N ""
-
-gh ssh-key add ~/.ssh/kubeaid-demo-operator.pub \
-  --title "kubeaid-local-demo-operator"
-
-gh repo deploy-key add ~/.ssh/kubeaid-demo-argocd.pub \
-  --repo YOUR_GITHUB_USER/kubeaid-config \
-  --title "kubeaid-local-demo-argocd"
 ```
 
-`gh ssh-key add` authorizes the operator key to push to repositories owned by
-your account. `gh repo deploy-key add` gives the second key read-only access to
-the fork. Do not reuse the operator key as the deploy key.
+The first command creates `kubeaid-demo-operator` and
+`kubeaid-demo-operator.pub`. The private key stays on your machine; the public
+key is added to your GitHub account.
+
+The second command creates `kubeaid-demo-argocd` and
+`kubeaid-demo-argocd.pub`. Its private key stays on your machine until the CLI
+seals it into the cluster. Its public key belongs only on the config fork.
+
+In GitHub:
+
+1. Open **your profile → Settings → SSH and GPG keys → New SSH key**. Paste
+   the contents of `~/.ssh/kubeaid-demo-operator.pub`. This lets the CLI push
+   to repositories owned by your account.
+2. Open **your `kubeaid-config` fork → Settings → Deploy keys → Add deploy
+   key**. Paste the contents of `~/.ssh/kubeaid-demo-argocd.pub`. Leave
+   **Allow write access** unchecked. This lets Argo CD read the fork and
+   nothing more.
+
+Do not upload either private-key file or use the operator key as the deploy
+key.
 
 ## Generate configuration
 
@@ -71,6 +82,9 @@ mkdir -p "$DEMO_DIR"
 ./build/kubeaid-cli config generate \
   --configs-directory "$DEMO_DIR"
 ```
+
+The first line names one directory for all demo files. The second creates it.
+The CLI command writes `general.yaml` and `secrets.yaml` there.
 
 In the interactive prompt:
 
@@ -95,20 +109,29 @@ In the interactive prompt:
   ```
 
 The prompt writes `general.yaml` and `secrets.yaml` to `$DEMO_DIR`. Review
-them before proceeding.
+them before proceeding. `secrets.yaml` contains sensitive values and must not
+be committed or shared.
 
 ## Bootstrap and inspect
 
 ```sh
 ./build/kubeaid-cli cluster bootstrap \
   --configs-directory "$DEMO_DIR"
+```
 
+The CLI clones your config fork, creates the local K3D cluster, installs
+Argo CD, renders the configuration into the clone, and pushes a branch. Merge
+the printed pull request URL when asked, then let bootstrap continue.
+
+```sh
 export KUBECONFIG="$DEMO_DIR/kubeconfigs/management/host.yaml"
-
 kubectl get nodes -o wide
 kubectl get pods -A
 kubectl get applications -n argocd
 ```
+
+`KUBECONFIG` points `kubectl` at the local cluster. The three commands check
+nodes, all workloads, and Argo CD applications.
 
 For a local K3D provider, the K3D cluster is both the management cluster and
 the workload cluster, which is why the kubeconfig is under

@@ -86,55 +86,65 @@ Exactly one of the two must be set.
 
 ### Using a YubiKey
 
-The SSH agent is for the **operator key** that the CLI uses to clone and push
-your `kubeaid-config` fork. Before running the prompt, plug in the YubiKey,
-ensure its public key is registered with your Git host, and verify that the
-agent can authenticate:
+There are two separate SSH identities in a KubeAid bootstrap. Keeping them
+separate avoids a common, confusing failure later in Argo CD:
+
+| Identity | Used by | Where it lives |
+|---|---|---|
+| Operator key | You and the CLI, to clone and push the config repository | Your SSH agent, optionally on a YubiKey |
+| Argo CD deploy key | Argo CD inside the cluster, to read the config repository | A normal private-key file |
+
+The YubiKey is only the operator key. Before running the prompt, plug it in,
+add its public key under **GitHub profile → Settings → SSH and GPG keys**, and
+confirm that the SSH agent can use it:
 
 ```sh
 ssh-add -l
 ssh -T git@github.com
 ```
 
-GitHub asks for a physical touch whenever the agent needs the YubiKey to sign
-an SSH request. During bootstrap that can happen while the CLI clones or pushes
-the configuration repository. A failed `Permission denied (publickey)` means
-the Git host does not recognize the YubiKey's public key, not that KubeAid
-cannot bootstrap the cluster.
+`ssh-add -l` lists identities available to the agent. `ssh -T
+git@github.com` makes a harmless authentication test. GitHub may ask for a
+YubiKey touch each time the CLI clones or pushes. `Permission denied
+(publickey)` means GitHub does not recognize the operator key.
 
-ArgoCD is different: it runs inside the cluster and cannot use your physical
-YubiKey. Give it a separate, normal, read-only deploy key through
-`cluster.argoCD.deployKeys.kubeaidConfig.privateKeyFilePath` in `general.yaml`,
-then add the matching public key as a deploy key on your `kubeaid-config`
-repository. Do not use the YubiKey operator key as the ArgoCD deploy key.
+Argo CD cannot touch a physical YubiKey from inside the cluster. Generate a
+separate normal key, then add its public half under **your config repository →
+Settings → Deploy keys → Add deploy key**. Leave **Allow write access** off.
+Put the private-key path into
+`cluster.argoCD.deployKeys.kubeaidConfig.privateKeyFilePath` when prompted.
 
 For a local K3D demo without a YubiKey, see
 [Local K3D Demo Without a YubiKey](docs/local-k3d-demo-without-yubikey.md).
 
 ### Local K3D demo with a YubiKey
 
-This is the complete path for a local cluster that stores its generated GitOps
-configuration in your own GitHub fork. Replace `YOUR_GITHUB_USER` first.
+This creates a local cluster and stores its generated GitOps configuration in
+your own GitHub fork. The CLI clones both repositories for you:
 
-Create the fork and an ArgoCD deploy key once:
+- your `kubeaid-config` fork, where it writes generated configuration; and
+- the pinned KubeAid platform repository, used to render that configuration.
+
+You do not need to clone either repository before bootstrap.
+
+First, open [`Obmondo/kubeaid-config`](https://github.com/Obmondo/kubeaid-config)
+in GitHub and click **Fork**. Choose your account, leave the repository name
+as `kubeaid-config`, and create the fork. Then generate a normal deploy key:
 
 ```sh
-gh repo fork Obmondo/kubeaid-config \
-  --fork-name kubeaid-config \
-  --clone=false
-
 ssh-keygen -t ed25519 \
   -f ~/.ssh/kubeaid-local-demo-argocd \
   -C "kubeaid-local-demo-argocd" \
   -N ""
-
-gh repo deploy-key add ~/.ssh/kubeaid-local-demo-argocd.pub \
-  --repo YOUR_GITHUB_USER/kubeaid-config \
-  --title "kubeaid-local-demo-argocd"
 ```
 
-The GitHub account running the commands must already have the YubiKey's public
-key registered. Confirm the agent sees the key and GitHub accepts it:
+`ssh-keygen` creates two files. `~/.ssh/kubeaid-local-demo-argocd` is the
+private key read by the CLI and sealed for Argo CD. Its `.pub` counterpart is
+the only file uploaded to GitHub. In your fork, open **Settings → Deploy keys
+→ Add deploy key**, name it `kubeaid-local-demo-argocd`, paste the `.pub`
+file's contents, and keep **Allow write access** disabled.
+
+Confirm that the YubiKey key is available to your agent and accepted by GitHub:
 
 ```sh
 ssh-add -l
@@ -150,6 +160,11 @@ mkdir -p "$DEMO_DIR"
 kubeaid-cli config generate \
   --configs-directory "$DEMO_DIR"
 ```
+
+`export` gives the directory a short name for this terminal. `mkdir -p`
+creates it if needed. `config generate` starts the interactive setup and writes
+`general.yaml` and `secrets.yaml` there. Bootstrap later puts logs, K3D
+configuration, and kubeconfigs in the same directory.
 
 In the interactive prompt, select:
 
@@ -185,6 +200,10 @@ Review the generated configuration, then bootstrap:
 kubeaid-cli cluster bootstrap \
   --configs-directory "$DEMO_DIR"
 ```
+
+Bootstrap clones the config fork, creates the local K3D cluster, installs the
+controllers, renders configuration into the clone, and pushes a branch for you
+to merge. Argo CD then uses the separate deploy key to read the merged result.
 
 For a local provider, the K3D cluster is both the management and workload
 cluster. Use the generated kubeconfig:
