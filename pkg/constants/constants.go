@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-const TempDirectory = "/tmp/kubeaid-core"
+const DefaultTempDirectory = "/tmp/kubeaid-core"
 
 // Environment variable names.
 const (
@@ -172,6 +172,14 @@ const RookCephMinNodes = 3
 
 // Output paths.
 var (
+	// TempDirectory holds the run workspace for cloned repositories, generated
+	// known_hosts data, and downloaded backup contents. It starts under /tmp so
+	// commands that fail before config parsing retain a usable default. Once
+	// config parsing resolves an output home, constants.UseTemporaryDirectory moves
+	// it beneath that home so Docker can bind-mount it, including when Docker is
+	// installed through Snap.
+	TempDirectory = DefaultTempDirectory
+
 	OutputsDirectory = "outputs"
 
 	OutputLogsDirectory = path.Join(OutputsDirectory, "logs")
@@ -196,6 +204,14 @@ var (
 		"workload-identity/openid-provider/jwks.json",
 	)
 )
+
+// UseTemporaryDirectory sets the workspace used for this process. Call it
+// after the config source has been resolved, before any Git operations create
+// repository paths or known_hosts data.
+func UseTemporaryDirectory(directory string) {
+	TempDirectory = directory
+	OutputPathKnownHostsFile = path.Join(directory, "known_hosts")
+}
 
 // UseOutputsHome re-roots every output path under home: the cluster's
 // directory from clusterdir.Home (~/.config/kubeaid-cli/<cluster>) when the
