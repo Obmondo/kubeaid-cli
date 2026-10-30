@@ -89,7 +89,6 @@ The CLI command writes `general.yaml` and `secrets.yaml` there.
 In the interactive prompt:
 
 - Choose the **Local / K3D** provider.
-- Choose **No** when asked to use the SSH agent.
 - Set the operator private key to:
 
   ```text
@@ -107,6 +106,10 @@ In the interactive prompt:
   ```text
   git@github.com:YOUR_GITHUB_USER/kubeaid-config.git
   ```
+
+The CLI automatically uses the SSH agent when `SSH_AUTH_SOCK` is available. To
+use the file-backed operator key in this guide, run `unset SSH_AUTH_SOCK`
+before `kubeaid-cli config generate` if your shell already has an SSH agent.
 
 The prompt writes `general.yaml` and `secrets.yaml` to `$DEMO_DIR`. Review
 them before proceeding. `secrets.yaml` contains sensitive values and must not

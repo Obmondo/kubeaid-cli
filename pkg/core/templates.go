@@ -590,108 +590,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		)
 	}
 
-	// Add cloud provider specific templates.
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-		embeddedTemplateNames = append(embeddedTemplateNames, awsNonSecretTemplateNames()...)
-		embeddedTemplateNames = append(embeddedTemplateNames,
-			constants.SnapshotControllerTemplateNames...,
-		)
-
-		// Add Disaster Recovery related templates, if the user wants disaster recovery.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
-			)
-		}
-
-	case constants.CloudProviderAzure:
-		embeddedTemplateNames = append(embeddedTemplateNames, azureNonSecretTemplateNames()...)
-
-		// AKS ships the snapshot controller with its managed CSI drivers.
-		if !config.AKSEnabled() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.SnapshotControllerTemplateNames...,
-			)
-		}
-
-		// Add Disaster Recovery related templates, if the user wants disaster
-		// recovery. Validation rejects the DR block for AKS clusters.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
-			)
-		}
-
-	case constants.CloudProviderHetzner:
-		// CCM selection by mode — mirrors the postKubeadm helm blocks in
-		// argocd-helm-charts/capi-cluster/charts/hetzner/templates/KubeadmControlPlane.yaml:
-		//   hcloud    → ccm-hcloud only (networking=true, robot=false, owns LBs + routes)
-		//   bare-metal → ccm-hetzner only (robot=true, no networking)
-		//   hybrid    → both (ccm-hcloud for HCloud nodes + LBs, ccm-hetzner for Robot nodes)
-		if config.UsingHCloud() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.HCloudCCMNonSecretTemplateNames...,
-			)
-		}
-		if config.UsingHetznerBareMetal() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.HetznerCCMNonSecretTemplateNames...,
-			)
-		}
-
-		if config.UsingHetznerBareMetal() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
-			)
-
-			// Rook Ceph is rendered only when the cluster has enough bare-metal
-			// worker nodes to form a healthy CephCluster (see config.RookCephEnabled).
-			//
-			// NOTE: if a cluster that already runs Ceph is later re-bootstrapped
-			// below the threshold, the rook-ceph App drops out of the rendered set
-			// and becomes orphaned from the root App. kubeaid-cli never prunes it
-			// automatically (no automated / prune sync policy), but an operator who
-			// then deletes it must pass --cascade=false to avoid destroying live
-			// Ceph data.
-			if config.RookCephEnabled() {
-				embeddedTemplateNames = append(embeddedTemplateNames,
-					constants.RookCephTemplateNames...,
-				)
-
-				// Rook Ceph's VolumeSnapshotClasses need the VolumeSnapshot CRDs.
-				embeddedTemplateNames = append(embeddedTemplateNames,
-					constants.SnapshotControllerTemplateNames...,
-				)
-			}
-
-			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
-			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
-			// to a healthy master node, in a failover scenario.
-			if config.ControlPlaneInHetznerBareMetal() &&
-				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
-
-				embeddedTemplateNames = append(embeddedTemplateNames,
-					"argocd-apps/templates/hetzner-robot.yaml.tmpl",
-					"argocd-apps/values-hetzner-robot.yaml.tmpl",
-				)
-			}
-		}
-
-		if config.UsingHCloud() {
-			embeddedTemplateNames = append(embeddedTemplateNames,
-				constants.HCloudSpecificNonSecretTemplateNames...,
-			)
-		}
-
-	case constants.CloudProviderBareMetal:
-		embeddedTemplateNames = append(constants.CommonNonSecretTemplateNames,
-			constants.BareMetalSpecificNonSecretTemplateNames...,
-		)
-
-	case constants.CloudProviderLocal:
-		embeddedTemplateNames = constants.CommonNonSecretTemplateNames
-	}
+	embeddedTemplateNames = appendCloudProviderNonSecretTemplateNames(embeddedTemplateNames)
 
 	// VPN cluster (any Keycloak mode): traefik for the NetBird Mgmt
 	// Ingress (and Keycloak ingress when managed), CloudNativePG
@@ -758,6 +657,84 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	return embeddedTemplateNames
+}
+
+func appendCloudProviderNonSecretTemplateNames(templateNames []string) []string {
+	switch globals.CloudProviderName {
+	case constants.CloudProviderAWS:
+		return appendAWSNonSecretTemplateNames(templateNames)
+	case constants.CloudProviderAzure:
+		return appendAzureNonSecretTemplateNames(templateNames)
+	case constants.CloudProviderHetzner:
+		return appendHetznerNonSecretTemplateNames(templateNames)
+	case constants.CloudProviderBareMetal:
+		return append(constants.CommonNonSecretTemplateNames,
+			constants.BareMetalSpecificNonSecretTemplateNames...,
+		)
+	case constants.CloudProviderLocal:
+		return constants.CommonNonSecretTemplateNames
+	default:
+		return templateNames
+	}
+}
+
+func appendAWSNonSecretTemplateNames(templateNames []string) []string {
+	templateNames = append(templateNames, awsNonSecretTemplateNames()...)
+	templateNames = append(templateNames, constants.SnapshotControllerTemplateNames...)
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		templateNames = append(templateNames,
+			constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
+		)
+	}
+	return templateNames
+}
+
+func appendAzureNonSecretTemplateNames(templateNames []string) []string {
+	templateNames = append(templateNames, azureNonSecretTemplateNames()...)
+	if !config.AKSEnabled() {
+		templateNames = append(templateNames, constants.SnapshotControllerTemplateNames...)
+	}
+	if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		templateNames = append(templateNames,
+			constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
+		)
+	}
+	return templateNames
+}
+
+func appendHetznerNonSecretTemplateNames(templateNames []string) []string {
+	if config.UsingHCloud() {
+		templateNames = append(templateNames, constants.HCloudCCMNonSecretTemplateNames...)
+	}
+	if config.UsingHetznerBareMetal() {
+		templateNames = append(templateNames, constants.HetznerCCMNonSecretTemplateNames...)
+		templateNames = append(templateNames, constants.HetznerBareMetalSpecificNonSecretTemplateNames...)
+		templateNames = appendHetznerBareMetalRookCephTemplateNames(templateNames)
+		templateNames = appendHetznerFailoverIPTemplateNames(templateNames)
+	}
+	if config.UsingHCloud() {
+		templateNames = append(templateNames, constants.HCloudSpecificNonSecretTemplateNames...)
+	}
+	return templateNames
+}
+
+func appendHetznerBareMetalRookCephTemplateNames(templateNames []string) []string {
+	if !config.RookCephEnabled() {
+		return templateNames
+	}
+	templateNames = append(templateNames, constants.RookCephTemplateNames...)
+	return append(templateNames, constants.SnapshotControllerTemplateNames...)
+}
+
+func appendHetznerFailoverIPTemplateNames(templateNames []string) []string {
+	if !config.ControlPlaneInHetznerBareMetal() ||
+		!config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+		return templateNames
+	}
+	return append(templateNames,
+		"argocd-apps/templates/hetzner-robot.yaml.tmpl",
+		"argocd-apps/values-hetzner-robot.yaml.tmpl",
+	)
 }
 
 // acmeDNS01Enabled reports whether the cluster's ClusterIssuer uses a

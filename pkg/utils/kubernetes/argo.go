@@ -564,30 +564,8 @@ func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
 				return err
 			}
 		}
-
-		if config.UsingHetznerBareMetal() {
-			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
-
-			// Rook Ceph needs at least constants.RookCephMinNodes bare-metal worker
-			// nodes to form a healthy cluster (mon quorum + replica-3 / host failure
-			// domain; Ceph can't schedule on the tainted control-plane nodes), so on
-			// smaller clusters we skip it — see config.RookCephEnabled.
-			if config.RookCephEnabled() {
-				// The snapshot-controller App installs the VolumeSnapshot CRDs that
-				// Rook Ceph's VolumeSnapshotClasses need, so it syncs first.
-				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppSnapshotController, noResources); err != nil {
-					return err
-				}
-				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
-					return err
-				}
-			} else {
-				slog.InfoContext(ctx,
-					"Skipping Rook Ceph sync: insufficient bare-metal worker nodes for a healthy cluster",
-					slog.Int("bare-metal-worker-nodes", config.HetznerBareMetalWorkerNodeCount()),
-					slog.Int("required", constants.RookCephMinNodes),
-				)
-			}
+		if err := m.syncHetznerBareMetalCSIDriverApps(ctx); err != nil {
+			return err
 		}
 
 	case constants.CloudProviderBareMetal:
@@ -597,6 +575,27 @@ func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (m *ArgoCDAppManager) syncHetznerBareMetalCSIDriverApps(ctx context.Context) error {
+	if !config.UsingHetznerBareMetal() {
+		return nil
+	}
+
+	// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
+	if !config.RookCephEnabled() {
+		slog.InfoContext(ctx,
+			"Skipping Rook Ceph sync: insufficient bare-metal worker nodes for a healthy cluster",
+			slog.Int("bare-metal-worker-nodes", config.HetznerBareMetalWorkerNodeCount()),
+			slog.Int("required", constants.RookCephMinNodes),
+		)
+		return nil
+	}
+
+	if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppSnapshotController, noResources); err != nil {
+		return err
+	}
+	return m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources)
 }
 
 // argoCDAppListContains reports whether apps contains an Application
