@@ -143,6 +143,29 @@ func TestUseOutputsHome(t *testing.T) {
 	}
 }
 
+// Mutates the constants temporary-workspace vars; not parallel.
+func TestConfigureWorkspaceDirectory(t *testing.T) {
+	originalTempDirectory := constants.TempDirectory
+	originalKnownHostsPath := constants.OutputPathKnownHostsFile
+	t.Cleanup(func() {
+		constants.UseTemporaryDirectory(originalTempDirectory)
+		constants.OutputPathKnownHostsFile = originalKnownHostsPath
+	})
+
+	home := filepath.Join(t.TempDir(), "cluster")
+	configureWorkspaceDirectory(home)
+
+	wantWorkspace := filepath.Join(home, "workspace")
+	if constants.TempDirectory != wantWorkspace {
+		t.Errorf("TempDirectory = %q, want %q", constants.TempDirectory, wantWorkspace)
+	}
+
+	wantKnownHosts := filepath.Join(wantWorkspace, "known_hosts")
+	if constants.OutputPathKnownHostsFile != wantKnownHosts {
+		t.Errorf("OutputPathKnownHostsFile = %q, want %q", constants.OutputPathKnownHostsFile, wantKnownHosts)
+	}
+}
+
 // Mutates globals and parsed config; not parallel. XDG_CONFIG_HOME is
 // pointed at a temp dir so clusterdir resolves under the test's control.
 func TestOutputsHome(t *testing.T) {

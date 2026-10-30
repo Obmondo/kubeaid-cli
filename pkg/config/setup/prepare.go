@@ -49,6 +49,7 @@ func Prepare(ctx context.Context) error {
 		return err
 	}
 	constants.UseOutputsHome(home)
+	configureWorkspaceDirectory(home)
 
 	// The post-parse decision is the last word on where outputs live, the
 	// log included: wherever the pre-parse guess opened it, the log now
@@ -57,6 +58,14 @@ func Prepare(ctx context.Context) error {
 	RelocateLogFile(ctx, constants.OutputLogsDirectory)
 
 	return nil
+}
+
+// configureWorkspaceDirectory keeps every repository checkout below the
+// operator-selected output home. Besides isolating concurrent cluster runs,
+// this makes the paths visible to Docker installations confined by Snap,
+// which cannot bind-mount the CLI's former /tmp workspace.
+func configureWorkspaceDirectory(home string) {
+	constants.UseTemporaryDirectory(filepath.Join(home, "workspace"))
 }
 
 // outputsHome returns the directory every output of this run lands in.
