@@ -162,10 +162,22 @@ func printStaleCacheHint(w io.Writer, expectedIP string) {
 		"  1. The records aren't yet propagated, or are typo'd in your DNS provider.\n"+
 		"  2. Your local resolver has a stale NXDOMAIN cached. Flush it:\n"+
 		"       Linux (systemd-resolved):  sudo resolvectl flush-caches\n"+
-		"       macOS:                     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder\n"+
-		"\n"+
+		"       macOS:                     sudo dscacheutil -flushcache && sudo killall -HUP mDNSResponder\n",
+		expectedIP)
+
+	// Resolvers with DNS-rebinding protection (dnsmasq stop-dns-rebind,
+	// Pi-hole, many home routers) drop private addresses from public
+	// answers, so a correct record for the control-plane LB's private IP
+	// never shows up.
+	if ip := net.ParseIP(expectedIP); ip != nil && ip.IsPrivate() {
+		_, _ = fmt.Fprint(w,
+			"  3. Your resolver drops private addresses from public answers (DNS-rebinding\n"+
+				"     protection). Compare with a public resolver: dig +short <record> @1.1.1.1\n")
+	}
+
+	_, _ = fmt.Fprint(w, "\n"+
 		"Fix DNS, then re-run `kubeaid-cli cluster bootstrap`.\n"+
-		"\n", expectedIP)
+		"\n")
 }
 
 // buildDNSWaitBlock returns the per-tick render — the header line

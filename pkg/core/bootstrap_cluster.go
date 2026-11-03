@@ -282,6 +282,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 				hetznerCloudProvider.DisableControlPlaneLBPublicInterface(ctx),
 				"Failed disabling control-plane LB public interface",
 			)
+
+			// The public IP is gone: the operator reaches the hostname's
+			// private IP over the NetBird mesh from now on.
+			assert.AssertErrNil(
+				ctx,
+				kubernetes.PointMainClusterKubeconfigAtHostname(ctx),
+				"Failed pointing the main cluster's kubeconfig at the control-plane hostname",
+			)
 		}
 	}
 

@@ -263,10 +263,9 @@ func (h *Hetzner) shouldPreCreateControlPlaneLB() bool {
 
 // preCreateControlPlaneLB creates the control-plane LB and populates
 // globals.ControlPlaneLB* used by template rendering. When the
-// loadBalancer endpoint hostname is configured, the LB has a public IP
-// and we wait for the operator's DNS A record to land on it before
-// returning — without that wait, ACME HTTP-01 fails as soon as
-// Keycloak's Ingress syncs and recovery is messy.
+// loadBalancer endpoint hostname is configured, the LB also gets a public
+// IP for the bootstrap window, and we wait for the operator's DNS A record
+// to point the hostname at the LB's private IP.
 func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.Network) error {
 	bar := progress.FromCtx(ctx)
 	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
@@ -295,7 +294,7 @@ func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.N
 		globals.ControlPlaneLBBootstrapPublicIP = loadBalancer.PublicNet.IPv4.IP.String()
 
 		bar.Substep("Waiting for control-plane DNS")
-		if err := waitForControlPlaneDNS(ctx, globals.ControlPlaneLBBootstrapPublicIP); err != nil {
+		if err := waitForControlPlaneDNS(ctx, globals.ControlPlaneLBPrivateIP); err != nil {
 			return fmt.Errorf("waiting for control-plane DNS: %w", err)
 		}
 	}
@@ -303,9 +302,17 @@ func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.N
 }
 
 // waitForControlPlaneDNS pauses bootstrap until the operator has
-// added the A record for the control-plane LB hostname — without
-// it, kubeadm's TLS handshake against the configured endpoint fails
-// at first-boot.
+// pointed the control-plane LB hostname at the LB's private IP —
+// without it, kubeadm's TLS handshake against the configured endpoint
+// fails at first-boot.
+//
+// The private IP is the record's final value. Nodes reach it over the
+// HCloud network from first boot, and it still holds after
+// DisableControlPlaneLBPublicInterface removes the public IP, so the
+// operator sets it once. kubeaid-cli and its k3d cluster reach the
+// bootstrap public IP without DNS: the main cluster's kubeconfig keeps
+// the hostname as its TLS server name, and k3d maps the hostname
+// through hostAliases.
 //
 // Scope is intentionally JUST the control-plane hostname.
 // keycloak.dns, netbird.dns, stun.dns, turn.dns all point at a
@@ -316,7 +323,7 @@ func (h *Hetzner) preCreateControlPlaneLB(ctx context.Context, network *hcloud.N
 // the control-plane LB to make the check pass, then had to fix it
 // later anyway). Deferring those records to a post-Traefik check
 // is the correct shape — left as follow-up work.
-func waitForControlPlaneDNS(ctx context.Context, lbPublicIP string) error {
+func waitForControlPlaneDNS(ctx context.Context, lbPrivateIP string) error {
 	return WaitForDNSResolution(ctx,
-		[]string{globals.ControlPlaneHostname}, lbPublicIP)
+		[]string{globals.ControlPlaneHostname}, lbPrivateIP)
 }

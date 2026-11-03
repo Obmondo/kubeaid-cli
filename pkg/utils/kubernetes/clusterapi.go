@@ -1409,6 +1409,19 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 
 	kubeConfig := secret.Data["value"]
 
+	// The control-plane hostname resolves to the LB's private IP, which this
+	// machine can't reach before it joins the NetBird mesh. Until
+	// PointMainClusterKubeconfigAtHostname runs, dial the LB's bootstrap
+	// public IP and verify the apiserver certificate against the hostname.
+	if globals.ControlPlaneHostname != "" && globals.ControlPlaneLBBootstrapPublicIP != "" {
+		var err error
+		kubeConfig, err = kubeconfigDialingThroughIP(kubeConfig,
+			globals.ControlPlaneHostname, globals.ControlPlaneLBBootstrapPublicIP)
+		if err != nil {
+			return fmt.Errorf("failed pointing the kubeconfig at the LB's bootstrap public IP: %w", err)
+		}
+	}
+
 	outputPath := mainClusterKubeconfigPath()
 	if err := utils.CreateIntermediateDirsForFile(outputPath); err != nil {
 		return fmt.Errorf("failed creating directories for the kubeconfig: %w", err)

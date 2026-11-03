@@ -313,6 +313,27 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 				return u
 			}(),
 		},
+		{
+			name: "TLS server name set returns the hostname endpoint",
+			loadKubeConfig: func(_ string) (*clientcmdapi.Config, error) {
+				return &clientcmdapi.Config{
+					Clusters: map[string]*clientcmdapi.Cluster{
+						testClusterName: {Server: testServerURL, TLSServerName: "api.vpn.example.com"},
+					},
+				}, nil
+			},
+			createKubernetesClient: func(_ context.Context, _ string) (client.Client, error) {
+				return crFake.NewClientBuilder().WithScheme(newTestScheme(t)).Build(), nil
+			},
+			pingKubernetesCluster: func(_ context.Context, _ client.Client) error {
+				return nil
+			},
+			clusterName: testClusterName,
+			want: func() *url.URL {
+				u, _ := url.Parse("https://api.vpn.example.com:6443")
+				return u
+			}(),
+		},
 	}
 
 	for _, tc := range tests {

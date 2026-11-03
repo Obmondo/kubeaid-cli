@@ -187,6 +187,13 @@ func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
 		return nil, fmt.Errorf("failed parsing main cluster's API server endpoint %q: %w", mainCluster.Server, err)
 	}
 
+	// While a VPN cluster bootstraps, the kubeconfig dials the LB's public IP
+	// and keeps the control-plane hostname as the TLS server name. The
+	// endpoint is still the hostname.
+	if mainCluster.TLSServerName != "" {
+		endpoint.Host = hostPort(mainCluster.TLSServerName, endpoint.Port())
+	}
+
 	// Ping the K8s API server once.
 
 	clusterClient, err := createKubernetesClientFn(ctx, constants.OutputPathMainClusterKubeconfig)

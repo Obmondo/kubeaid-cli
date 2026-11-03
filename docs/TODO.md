@@ -59,38 +59,6 @@ rotation isn't acceptable long-term. Two options:
 Pair (1) into the operator-token gate's chart overlay; pursue (2)
 in parallel and drop the CronJob when it lands.
 
-### Cilium components must reach kube-apiserver without DNS
-
-Bug seen on the `netbird-obmondo-com` bootstrap: after
-`DisableControlPlaneLBPublicInterface` runs, every Cilium component
-(both operator Deployment and agent DaemonSet) crashloops because
-its `KUBERNETES_SERVICE_HOST` is the public hostname
-(`api.vpn.<cluster>`), which resolves to the now-blackholed public
-LB IP via the host's `/etc/resolv.conf` (hostNetwork pods skip
-CoreDNS — `dnsPolicy: ClusterFirst` is silently downgraded to
-`Default`). Go's HTTP client tries the first IP in the resolution
-list and hangs on the TCP blackhole for the full kernel retry
-window (~75–127s), so fallback to the LB private IP never fires
-within the operator's startup deadline.
-
-Two layered fixes:
-
-1. **In-cluster `KUBERNETES_SERVICE_HOST`** — overlay the cilium
-   values to pin `k8sServiceHost` to `{{ .ControlPlaneLBPrivateIP }}`
-   instead of the hostname. Bypasses DNS entirely. Simplest, but
-   loses the symbolic reference to the cluster endpoint.
-
-2. **`hostAliases` via upstream chart PR** — keep
-   `k8sServiceHost: api.vpn.<cluster>` and inject a hostAliases
-   entry mapping that hostname to the LB private IP, so
-   kubelet-managed `/etc/hosts` resolves it correctly even for
-   hostNetwork pods. Requires upstream Cilium PR for
-   `extraHostAliases` / `operator.extraHostAliases` values (draft
-   prepared in this session's chat, not yet filed).
-
-Pursue (2) upstream; ship (1) as the immediate kubeaid-cli fix in
-`values-cilium.yaml.tmpl`. Drop (1) when (2) is released.
-
 ### CoreDNS hosts block leaves the disabled public IP
 
 `pkg/core/templates/k8s-configs/coredns.configmap.yaml.tmpl`

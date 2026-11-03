@@ -19,6 +19,7 @@ import (
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/clientcmd"
 	kubeadmConstants "k8s.io/kubernetes/cmd/kubeadm/app/constants"
 	"k8s.io/utils/ptr"
 	kubeadmControlPlaneV1Beta1 "sigs.k8s.io/cluster-api/api/controlplane/kubeadm/v1beta1"
@@ -1306,16 +1307,37 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 	scheme := newClusterAPITestScheme(t)
 
 	kubeconfigData := []byte("apiVersion: v1\nkind: Config\n")
+	hostnameKubeconfigData := []byte("apiVersion: v1\nkind: Config\nclusters:\n" +
+		"- name: " + testClusterName + "\n  cluster:\n    server: https://api.vpn.example.com:6443\n")
 
 	tests := []struct {
-		name         string
-		secret       *coreV1.Secret
-		interceptGet func(callCount *atomic.Int32, realClient client.Client) interceptor.Funcs
-		outputPath   func(t *testing.T) string
-		ctxTimeout   time.Duration
-		wantErr      bool
-		wantContent  []byte
+		name                 string
+		secret               *coreV1.Secret
+		interceptGet         func(callCount *atomic.Int32, realClient client.Client) interceptor.Funcs
+		outputPath           func(t *testing.T) string
+		controlPlaneHostname string
+		bootstrapPublicIP    string
+		ctxTimeout           time.Duration
+		wantErr              bool
+		wantContent          []byte
+		wantServer           string
+		wantTLSServerName    string
 	}{
+		{
+			name: "dials the LB's bootstrap public IP when the control plane has a hostname",
+			secret: &coreV1.Secret{
+				ObjectMeta: metaV1.ObjectMeta{
+					Name:      fmt.Sprintf("%s-kubeconfig", testClusterName),
+					Namespace: testCapiClusterNamespace,
+				},
+				Data: map[string][]byte{"value": hostnameKubeconfigData},
+			},
+			controlPlaneHostname: "api.vpn.example.com",
+			bootstrapPublicIP:    "203.0.113.10",
+			ctxTimeout:           5 * time.Second,
+			wantServer:           "https://203.0.113.10:6443",
+			wantTLSServerName:    "api.vpn.example.com",
+		},
 		{
 			name: "writes kubeconfig when secret exists",
 			secret: &coreV1.Secret{
@@ -1387,23 +1409,30 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 	}
 
 	// Mutates saveKubeconfigPollInterval, outputPathMainClusterKubeconfig,
-	// and config.ParsedGeneralConfig — sequential only.
+	// config.ParsedGeneralConfig and the control-plane LB globals —
+	// sequential only.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			origInterval := saveKubeconfigPollInterval
 			origOutputPath := outputPathMainClusterKubeconfig
 			origName := config.ParsedGeneralConfig.Cluster.Name
 			origObmondo := config.ParsedGeneralConfig.Obmondo
+			origHostname := globals.ControlPlaneHostname
+			origBootstrapIP := globals.ControlPlaneLBBootstrapPublicIP
 			t.Cleanup(func() {
 				saveKubeconfigPollInterval = origInterval
 				outputPathMainClusterKubeconfig = origOutputPath
 				config.ParsedGeneralConfig.Cluster.Name = origName
 				config.ParsedGeneralConfig.Obmondo = origObmondo
+				globals.ControlPlaneHostname = origHostname
+				globals.ControlPlaneLBBootstrapPublicIP = origBootstrapIP
 			})
 
 			saveKubeconfigPollInterval = time.Millisecond
 			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			config.ParsedGeneralConfig.Obmondo = nil
+			globals.ControlPlaneHostname = tc.controlPlaneHostname
+			globals.ControlPlaneLBBootstrapPublicIP = tc.bootstrapPublicIP
 
 			// Nested under a directory that does not exist yet: under the
 			// per-cluster layout <home>/kubeconfigs/ is never pre-created,
@@ -1450,6 +1479,15 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 				got, readErr := os.ReadFile(outPath)
 				require.NoError(t, readErr)
 				assert.Equal(t, tc.wantContent, got)
+			}
+
+			if tc.wantServer != "" {
+				written, loadErr := clientcmd.LoadFromFile(outPath)
+				require.NoError(t, loadErr)
+				cluster := written.Clusters[testClusterName]
+				require.NotNil(t, cluster)
+				assert.Equal(t, tc.wantServer, cluster.Server)
+				assert.Equal(t, tc.wantTLSServerName, cluster.TLSServerName)
 			}
 		})
 	}
