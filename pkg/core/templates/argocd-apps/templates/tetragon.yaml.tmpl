@@ -1,6 +1,9 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
+  annotations:
+    # the TracingPolicy CRD adds defaults, without this the app never shows Synced
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   labels:
     kubeaid.io/version: {{ .KubeaidFork.Version }}
     kubeaid.io/managed-by: kubeaid
