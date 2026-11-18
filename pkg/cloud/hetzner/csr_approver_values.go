@@ -29,17 +29,18 @@ import (
 // deleted (CAPH's native CSR validator is structurally tighter than
 // postfinance's IP-prefix allow-list).
 func (h *Hetzner) GetHetznerBareMetalHostPublicIPs(ctx context.Context) (map[string]string, error) {
-	if !config.UsingHetznerBareMetal() {
+	general := h.cfg.General
+	if !general.UsingHetznerBareMetal() {
 		return map[string]string{}, nil
 	}
 
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerConfig := general.Cloud.Hetzner
 	if hetznerConfig.BareMetal == nil || hetznerConfig.BareMetal.VSwitch == nil {
 		return map[string]string{}, nil
 	}
 
 	var hosts []*config.HetznerBareMetalHost
-	if config.ControlPlaneInHetznerBareMetal() {
+	if general.ControlPlaneInHetznerBareMetal() {
 		hosts = append(hosts, hetznerConfig.ControlPlane.BareMetal.BareMetalHosts...)
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {

@@ -5,6 +5,8 @@ package git
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"path"
 	"strings"
@@ -14,10 +16,8 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gossh "github.com/go-git/go-git/v5/plumbing/transport/ssh"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
@@ -96,31 +96,28 @@ func originShortName(repo *goGit.Repository) string {
 // operator's own config repo (head == base repo), so we never need
 // the cross-fork URL form.
 //
-// Panics on internal errors (origin remote unreadable, malformed URL).
-// In practice these are unreachable: callers always invoke this after
-// successfully pushing to origin, so origin must be readable and well-
-// formed. A panic surfaces the bug fast instead of silently degrading
-// to an empty URL the operator can't click.
+// Fails when the origin remote is unreadable or its URL is malformed.
+// Callers invoke this after pushing to origin, so in practice neither happens.
 //
 // (Aside: some forges support push options like
 // `git push -o merge_request.create` (GitLab) to open the PR
 // automatically, but GitHub doesn't, so we just print the URL and let
 // the operator click it.)
-func BuildPRCompareURL(repo *goGit.Repository, defaultBranch, featureBranch string) string {
+func BuildPRCompareURL(repo *goGit.Repository, defaultBranch, featureBranch string) (string, error) {
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
 	if err != nil {
-		panic("BuildPRCompareURL: get origin remote: " + err.Error())
+		return "", fmt.Errorf("getting the origin remote: %w", err)
 	}
 	if len(remote.Config().URLs) == 0 {
-		panic("BuildPRCompareURL: origin remote has no URLs")
+		return "", errors.New("the origin remote has no URLs")
 	}
 	originURL := remote.Config().URLs[0]
 	parsed, err := repourl.Parse(originURL)
 	if err != nil {
-		panic("BuildPRCompareURL: parse origin URL " + originURL + ": " + err.Error())
+		return "", fmt.Errorf("parsing the origin URL %s: %w", originURL, err)
 	}
 	base := strings.TrimSuffix(parsed.AsHTTPsURL(), ".git")
-	return base + "/compare/" + defaultBranch + "..." + featureBranch
+	return base + "/compare/" + defaultBranch + "..." + featureBranch, nil
 }
 
 // ParseURL is a thin wrapper over repourl.NewURL, kept here so callers
@@ -146,19 +143,21 @@ func ParseURL(url string) (*repourl.Parsed, error) {
 // another. Each successful network fallback writes the cache, so a
 // pre-eager-write legacy clone pays one list-refs touch on first call
 // and zero thereafter.
-func GetDefaultBranchName(ctx context.Context,
+func (c *Client) GetDefaultBranchName(ctx context.Context,
 	authMethod transport.AuthMethod,
 	repo *goGit.Repository,
-) string {
+) (string, error) {
 	if ref, err := repo.Reference(plumbing.ReferenceName(remoteHEADRefName), false); err == nil {
 		target := ref.Target().String()
 		if strings.HasPrefix(target, remoteBranchPrefix) {
-			return strings.TrimPrefix(target, remoteBranchPrefix)
+			return strings.TrimPrefix(target, remoteBranchPrefix), nil
 		}
 	}
 
 	remote, err := repo.Remote(goGit.DefaultRemoteName)
-	assert.AssertErrNil(ctx, err, "Failed getting repo 'origin' remote")
+	if err != nil {
+		return "", fail("Failed getting repo 'origin' remote", err)
+	}
 
 	releaseListTouch := requestTouchIfAuth(ctx,
 		"look up default branch on "+originShortName(repo), authMethod,
@@ -169,19 +168,23 @@ func GetDefaultBranchName(ctx context.Context,
 		func() ([]*plumbing.Reference, error) {
 			return remote.ListContext(ctx, &goGit.ListOptions{
 				Auth:     authMethod,
-				CABundle: config.ParsedGeneralConfig.Git.CABundle,
+				CABundle: c.caBundle(),
 			})
 		},
 	)
 	releaseListTouch()
-	assert.AssertErrNil(ctx, err, "Failed listing refs for 'origin' remote")
+	if err != nil {
+		return "", fail("Failed listing refs for 'origin' remote", err)
+	}
 
 	for _, ref := range refs {
 		if ref.Name() != plumbing.HEAD {
 			continue
 		}
-		target := ref.Target().String()
-		defaultBranchName := target[11:] // strip "refs/heads/"
+		defaultBranchName, isBranch := strings.CutPrefix(ref.Target().String(), "refs/heads/")
+		if !isBranch {
+			continue
+		}
 
 		slog.InfoContext(ctx,
 			"Detected default branch name",
@@ -189,10 +192,11 @@ func GetDefaultBranchName(ctx context.Context,
 		)
 
 		SetRemoteHEADRef(ctx, repo, defaultBranchName)
-		return defaultBranchName
+		return defaultBranchName, nil
 	}
 
-	panic("Failed detecting default branch name")
+	return "", fail("Failed detecting default branch name",
+		errors.New("the 'origin' remote lists no HEAD reference to a branch"))
 }
 
 // SetRemoteHEADRef writes refs/remotes/origin/HEAD as a symbolic ref

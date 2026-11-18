@@ -70,15 +70,21 @@ func PrettyPrint(s *StoragePlan) {
 var templates embed.FS
 
 // Executes the storage plan, by running necessary shell commands.
-func Execute(ctx context.Context, s *StoragePlan, commandExecutor commandexecutor.CommandExecutor) {
+func Execute(ctx context.Context, s *StoragePlan, commandExecutor commandexecutor.CommandExecutor) error {
 	// Generate the shell commands to execute the storage plan.
 
 	storagePlanExecutorTemplateValues := &StoragePlanExecutorTemplateValues{StoragePlan: s}
 
-	storagePlanExecutorAsBytes := templateUtils.ParseAndExecuteTemplate(ctx,
+	storagePlanExecutorAsBytes, err := templateUtils.ParseAndExecuteTemplate(
 		&templates, constants.TemplateNameStoragePlanExecutor, storagePlanExecutorTemplateValues)
+	if err != nil {
+		return fmt.Errorf("generating the storage plan executor script: %w", err)
+	}
 
 	// Run those shell commands.
-	commandExecutor.MustExecute(ctx, string(storagePlanExecutorAsBytes))
+	if _, err := commandExecutor.Execute(ctx, string(storagePlanExecutorAsBytes)); err != nil {
+		return fmt.Errorf("running the storage plan executor script: %w", err)
+	}
 	slog.InfoContext(ctx, "Executed storage plan")
+	return nil
 }

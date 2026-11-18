@@ -14,7 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 )
 
@@ -91,15 +90,7 @@ func TestPersistApprovedZFSSize(t *testing.T) {
 			path := filepath.Join(dir, "general.yaml")
 			require.NoError(t, os.WriteFile(path, []byte(tc.generalYAML), 0o600))
 
-			// persistApprovedZFSSize keys off
-			// config.GetGeneralConfigFilePath, which reads
-			// globals.ConfigsDirectory. Point that at our temp dir
-			// for the duration of the test.
-			orig := globals.ConfigsDirectory
-			t.Cleanup(func() { globals.ConfigsDirectory = orig })
-			globals.ConfigsDirectory = dir
-
-			require.NoError(t, persistApprovedZFSSize(t.Context(), tc.size))
+			require.NoError(t, persistApprovedZFSSize(t.Context(), path, tc.size))
 
 			out, err := os.ReadFile(path)
 			require.NoError(t, err)
@@ -161,11 +152,7 @@ func TestPersistApprovedZFSSizeMirrorsAllPositions(t *testing.T) {
 	path := filepath.Join(dir, "general.yaml")
 	require.NoError(t, os.WriteFile(path, []byte(generalYAML), 0o600))
 
-	orig := globals.ConfigsDirectory
-	t.Cleanup(func() { globals.ConfigsDirectory = orig })
-	globals.ConfigsDirectory = dir
-
-	require.NoError(t, persistApprovedZFSSize(t.Context(), 220))
+	require.NoError(t, persistApprovedZFSSize(t.Context(), path, 220))
 
 	out, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -214,11 +201,7 @@ func TestPersistApprovedZFSSizeHCloudOnlyConfig(t *testing.T) {
         - name: workers
 `), 0o600))
 
-	orig := globals.ConfigsDirectory
-	t.Cleanup(func() { globals.ConfigsDirectory = orig })
-	globals.ConfigsDirectory = dir
-
-	require.NoError(t, persistApprovedZFSSize(t.Context(), 220))
+	require.NoError(t, persistApprovedZFSSize(t.Context(), path, 220))
 
 	out, err := os.ReadFile(path)
 	require.NoError(t, err)
@@ -241,11 +224,7 @@ func TestPersistApprovedZFSSizeMissingBareMetal(t *testing.T) {
       regions: [hel1]
 `), 0o600))
 
-	orig := globals.ConfigsDirectory
-	t.Cleanup(func() { globals.ConfigsDirectory = orig })
-	globals.ConfigsDirectory = dir
-
-	err := persistApprovedZFSSize(t.Context(), 220)
+	err := persistApprovedZFSSize(t.Context(), path, 220)
 	require.Error(t, err)
 	assert.True(t, strings.Contains(err.Error(), "bareMetal not found"),
 		"error should name the missing path; got %q", err.Error())

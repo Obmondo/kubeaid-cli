@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
 	"testing"
@@ -62,11 +62,7 @@ func TestHetznerControlPlaneCertSANs(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			withFreshGeneralConfig(t, func() {
-				config.ParsedGeneralConfig.Cluster.NetBird = tc.netbird
-
-				assert.Equal(t, tc.want, hetznerControlPlaneCertSANs(tc.hetzner))
-			})
+			assert.Equal(t, tc.want, hetznerControlPlaneCertSANs(tc.hetzner))
 		})
 	}
 }

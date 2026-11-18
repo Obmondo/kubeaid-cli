@@ -224,19 +224,17 @@ func TestWaitForControllerHealthy_TimesOutOnGenerationDrift(t *testing.T) {
 	require.Error(t, err, "should time out when ObservedGeneration is behind Generation")
 }
 
-// withReinstallStub temporarily replaces reinstallSealedSecretsFn so
+// newClusterWithReinstallStub returns a Cluster whose recovery step is stub, so
 // EnsureSealedSecretsHealthy can be exercised without running an
 // actual Helm install.
-func withReinstallStub(t *testing.T, stub func(ctx context.Context) error) {
-	t.Helper()
-	orig := reinstallSealedSecretsFn
-	reinstallSealedSecretsFn = stub
-	t.Cleanup(func() { reinstallSealedSecretsFn = orig })
+func newClusterWithReinstallStub(stub func(ctx context.Context) error) *Cluster {
+	cluster := newTestCluster("")
+	cluster.reinstallSealedSecretsFn = stub
+	return cluster
 }
 
-// EnsureSealedSecretsHealthy tests mutate reinstallSealedSecretsFn
-// (a package-level var) and healthPollTimeoutForTest — they can't run
-// in parallel against each other.
+// EnsureSealedSecretsHealthy tests mutate healthPollTimeoutForTest
+// (a package-level var) — they can't run in parallel against each other.
 
 func TestEnsureSealedSecretsHealthy_HappyPath(t *testing.T) {
 	mgmtKey := makeSealedSecretsKey("sealed-secrets-keyabc", map[string][]byte{"tls.key": []byte("a")})
@@ -246,12 +244,12 @@ func TestEnsureSealedSecretsHealthy_HappyPath(t *testing.T) {
 	mgmt := newFakeClient(t, mgmtKey)
 	main := newFakeClient(t, mainKey, dep)
 
-	withReinstallStub(t, func(_ context.Context) error {
+	cluster := newClusterWithReinstallStub(func(_ context.Context) error {
 		t.Fatal("reinstall should not be called on the happy path")
 		return nil
 	})
 
-	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+	require.NoError(t, cluster.EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
 }
 
 func TestEnsureSealedSecretsHealthy_KeyMismatch_TriggersRecopy(t *testing.T) {
@@ -264,12 +262,12 @@ func TestEnsureSealedSecretsHealthy_KeyMismatch_TriggersRecopy(t *testing.T) {
 	mgmt := newFakeClient(t, mgmtKey1, mgmtKey2)
 	main := newFakeClient(t, mainKey1, dep)
 
-	withReinstallStub(t, func(_ context.Context) error {
+	cluster := newClusterWithReinstallStub(func(_ context.Context) error {
 		t.Fatal("reinstall should not be called when only keys are mismatched")
 		return nil
 	})
 
-	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+	require.NoError(t, cluster.EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
 
 	// After recovery, main must have both keys.
 	var allMain coreV1.SecretList
@@ -292,7 +290,7 @@ func TestEnsureSealedSecretsHealthy_UnhealthyDeployment_TriggersReinstall(t *tes
 	main := newFakeClient(t, mainKey, unhealthy)
 
 	reinstallCalled := 0
-	withReinstallStub(t, func(_ context.Context) error {
+	cluster := newClusterWithReinstallStub(func(_ context.Context) error {
 		reinstallCalled++
 		// Simulate a successful reinstall by patching the Deployment to healthy.
 		var dep appsV1.Deployment
@@ -313,7 +311,7 @@ func TestEnsureSealedSecretsHealthy_UnhealthyDeployment_TriggersReinstall(t *tes
 	healthPollTimeoutForTest = 500 * time.Millisecond
 	t.Cleanup(func() { healthPollTimeoutForTest = origTimeout })
 
-	require.NoError(t, EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
+	require.NoError(t, cluster.EnsureSealedSecretsHealthy(context.Background(), mgmt, main))
 	assert.Equal(t, 1, reinstallCalled, "reinstall should have been called exactly once")
 }
 
@@ -326,7 +324,7 @@ func TestEnsureSealedSecretsHealthy_ReinstallFailsToFix_ReturnsDiagnostic(t *tes
 	mgmt := newFakeClient(t, mgmtKey)
 	main := newFakeClient(t, mainKey)
 
-	withReinstallStub(t, func(_ context.Context) error {
+	cluster := newClusterWithReinstallStub(func(_ context.Context) error {
 		return nil // reinstall "succeeds" but doesn't actually fix anything
 	})
 
@@ -334,7 +332,7 @@ func TestEnsureSealedSecretsHealthy_ReinstallFailsToFix_ReturnsDiagnostic(t *tes
 	healthPollTimeoutForTest = 200 * time.Millisecond
 	t.Cleanup(func() { healthPollTimeoutForTest = origTimeout })
 
-	err := EnsureSealedSecretsHealthy(context.Background(), mgmt, main)
+	err := cluster.EnsureSealedSecretsHealthy(context.Background(), mgmt, main)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not Ready after reinstall")
 	assert.Contains(t, err.Error(), "NOT FOUND",

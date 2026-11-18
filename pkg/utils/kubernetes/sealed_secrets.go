@@ -64,7 +64,7 @@ var (
 // InstallSealedSecrets performs a minimal installation of Sealed Secrets in the underlying
 // Kubernetes cluster. Honours the standard skip-if-deployed fast path —
 // re-runs against a healthy install are cheap no-ops.
-func InstallSealedSecrets(ctx context.Context) error {
+func (c *Cluster) InstallSealedSecrets(ctx context.Context) error {
 	settings := cli.New()
 	actionConfig := &action.Configuration{}
 	err := actionConfig.Init(
@@ -77,7 +77,7 @@ func InstallSealedSecrets(ctx context.Context) error {
 		return fmt.Errorf("failed initializing helm action config: %w", err)
 	}
 
-	if err := installSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
+	if err := c.installSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
 		return fmt.Errorf("failed installing sealed secrets helm chart: %w", err)
 	}
 	return nil
@@ -95,7 +95,7 @@ func InstallSealedSecrets(ctx context.Context) error {
 // pkg/action/install.go::availableName), so it can't recover a
 // release stuck in "deployed" with missing resources. Upgrade has no
 // such restriction.
-func ReinstallSealedSecrets(ctx context.Context) error {
+func (c *Cluster) ReinstallSealedSecrets(ctx context.Context) error {
 	settings := cli.New()
 	actionConfig := &action.Configuration{}
 	err := actionConfig.Init(
@@ -108,7 +108,7 @@ func ReinstallSealedSecrets(ctx context.Context) error {
 		return fmt.Errorf("failed initializing helm action config: %w", err)
 	}
 
-	if err := upgradeSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
+	if err := c.upgradeSealedSecretsWithFactory(ctx, &realHelmFactory{cfg: actionConfig}); err != nil {
 		return fmt.Errorf("failed upgrading sealed secrets helm chart: %w", err)
 	}
 	return nil
@@ -116,9 +116,14 @@ func ReinstallSealedSecrets(ctx context.Context) error {
 
 // sealedSecretsHelmArgs centralises the chart path + namespace +
 // values so install and upgrade entry points stay in sync.
-func sealedSecretsHelmArgs() *HelmInstallArgs {
+func (c *Cluster) sealedSecretsHelmArgs() (*HelmInstallArgs, error) {
+	kubeAidDir, err := utils.KubeAidDir(&c.cfg.General.Forks)
+	if err != nil {
+		return nil, err
+	}
+
 	return &HelmInstallArgs{
-		ChartPath:   path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/sealed-secrets"),
+		ChartPath:   path.Join(kubeAidDir, "argocd-helm-charts/sealed-secrets"),
 		Namespace:   constants.NamespaceSealedSecrets,
 		ReleaseName: constants.ReleaseNameSealedSecrets,
 		Values: &values.Options{
@@ -130,15 +135,18 @@ func sealedSecretsHelmArgs() *HelmInstallArgs {
 				"backup=null",
 			},
 		},
-	}
+	}, nil
 }
 
 // installSealedSecretsWithFactory is the testable core of InstallSealedSecrets.
 // A prior run can leave the release "failed" (install Wait timed out before the
 // controller went Ready); recover such releases via helm upgrade.
-func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
-	args := sealedSecretsHelmArgs()
-	err := helmInstallWithFactory(ctx, factory, args)
+func (c *Cluster) installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
+	args, err := c.sealedSecretsHelmArgs()
+	if err != nil {
+		return err
+	}
+	err = helmInstallWithFactory(ctx, factory, args)
 
 	var existsErr *ErrReleaseExistsNonDeployed
 	if errors.As(err, &existsErr) && existsErr.RecoverableByUpgrade() {
@@ -150,8 +158,12 @@ func installSealedSecretsWithFactory(ctx context.Context, factory HelmActionFact
 }
 
 // upgradeSealedSecretsWithFactory is the testable core of ReinstallSealedSecrets.
-func upgradeSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
-	return helmUpgradeWithFactory(ctx, factory, sealedSecretsHelmArgs())
+func (c *Cluster) upgradeSealedSecretsWithFactory(ctx context.Context, factory HelmActionFactory) error {
+	args, err := c.sealedSecretsHelmArgs()
+	if err != nil {
+		return err
+	}
+	return helmUpgradeWithFactory(ctx, factory, args)
 }
 
 // GenerateSealedSecret takes the path to a Kubernetes Secret file. It replaces the contents of

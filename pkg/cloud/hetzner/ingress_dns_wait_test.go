@@ -16,14 +16,9 @@ import (
 // behaviour: when a multi-CP HCloud VPN cluster has a Coturn Floating IP,
 // stun/turn move OUT of the Traefik-LB FQDN set (they must resolve to the
 // Floating IP instead); without a Floating IP they stay on the LB.
-//
-// Mutates config.ParsedGeneralConfig — sequential only.
 func TestIngressLBFQDNsCoturnFloatingIPSplit(t *testing.T) {
-	setup := func(t *testing.T, cfg *config.GeneralConfig) {
-		t.Helper()
-		saved := config.ParsedGeneralConfig
-		t.Cleanup(func() { config.ParsedGeneralConfig = saved })
-		config.ParsedGeneralConfig = cfg
+	newHetzner := func(general *config.GeneralConfig) *Hetzner {
+		return &Hetzner{cfg: &config.Config{General: general}}
 	}
 
 	vpnHCloudCfg := func(cpReplicas uint) *config.GeneralConfig {
@@ -49,9 +44,9 @@ func TestIngressLBFQDNsCoturnFloatingIPSplit(t *testing.T) {
 	}
 
 	t.Run("multi-CP (FIP): stun/turn split out of the LB set onto the Floating IP", func(t *testing.T) {
-		setup(t, vpnHCloudCfg(3))
+		h := newHetzner(vpnHCloudCfg(3))
 
-		lbFQDNs := ingressLBFQDNs()
+		lbFQDNs := h.ingressLBFQDNs()
 		assert.Contains(t, lbFQDNs, "keycloak.vpn.acme.com")
 		assert.Contains(t, lbFQDNs, "netbird.vpn.acme.com")
 		assert.NotContains(t, lbFQDNs, "stun.vpn.acme.com")
@@ -59,17 +54,17 @@ func TestIngressLBFQDNsCoturnFloatingIPSplit(t *testing.T) {
 
 		assert.Equal(t,
 			[]string{"stun.vpn.acme.com", "turn.vpn.acme.com"},
-			coturnFloatingIPFQDNs(),
+			h.coturnFloatingIPFQDNs(),
 		)
 	})
 
 	t.Run("single-CP (no FIP): stun/turn stay on the Traefik LB", func(t *testing.T) {
-		setup(t, vpnHCloudCfg(1))
+		h := newHetzner(vpnHCloudCfg(1))
 
-		lbFQDNs := ingressLBFQDNs()
+		lbFQDNs := h.ingressLBFQDNs()
 		assert.Contains(t, lbFQDNs, "stun.vpn.acme.com")
 		assert.Contains(t, lbFQDNs, "turn.vpn.acme.com")
 
-		assert.Nil(t, coturnFloatingIPFQDNs())
+		assert.Nil(t, h.coturnFloatingIPFQDNs())
 	})
 }

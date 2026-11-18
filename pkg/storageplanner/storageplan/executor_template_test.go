@@ -4,10 +4,10 @@
 package storageplan
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	templateUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
@@ -34,12 +34,13 @@ func TestStoragePlanExecutorTemplate_BlankDiskGuard(t *testing.T) {
 		ZFS:      []*Disk{osDisk},
 	}
 
-	script := string(templateUtils.ParseAndExecuteTemplate(
-		context.Background(),
+	rendered, err := templateUtils.ParseAndExecuteTemplate(
 		&templates,
 		constants.TemplateNameStoragePlanExecutor,
 		&StoragePlanExecutorTemplateValues{StoragePlan: plan},
-	))
+	)
+	require.NoError(t, err)
+	script := string(rendered)
 
 	// The guard renders for every disk: read the live PTTYPE into a variable,
 	// then create a GPT label only when it is empty.

@@ -30,7 +30,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 func newTestScheme(t *testing.T) *runtime.Scheme {
@@ -320,15 +319,17 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 			origLoadFn := loadKubeConfigFromFileFn
 			origCreateFn := createKubernetesClientFn
 			origPingFn := pingKubernetesClusterFn
-			origConfig := *config.ParsedGeneralConfig
 			t.Cleanup(func() {
 				loadKubeConfigFromFileFn = origLoadFn
 				createKubernetesClientFn = origCreateFn
 				pingKubernetesClusterFn = origPingFn
-				*config.ParsedGeneralConfig = origConfig
 			})
 
-			loadKubeConfigFromFileFn = tc.loadKubeConfig
+			var loadedPath string
+			loadKubeConfigFromFileFn = func(path string) (*clientcmdapi.Config, error) {
+				loadedPath = path
+				return tc.loadKubeConfig(path)
+			}
 
 			if tc.createKubernetesClient != nil {
 				createKubernetesClientFn = tc.createKubernetesClient
@@ -337,11 +338,13 @@ func TestGetMainClusterEndpoint(t *testing.T) {
 				pingKubernetesClusterFn = tc.pingKubernetesCluster
 			}
 
+			cluster := newTestCluster("")
 			if tc.clusterName != "" {
-				config.ParsedGeneralConfig.Cluster.Name = tc.clusterName
+				cluster.cfg.General.Cluster.Name = tc.clusterName
 			}
 
-			got, err := GetMainClusterEndpoint(context.Background())
+			got, err := cluster.GetMainClusterEndpoint(context.Background(), "/demo/kubeconfigs/main.yaml")
+			assert.Equal(t, "/demo/kubeconfigs/main.yaml", loadedPath)
 			if tc.wantErr {
 				require.Error(t, err)
 				if tc.wantErrSubstr != "" {
@@ -714,14 +717,14 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 	tests := []struct {
 		name          string
 		cloudProvider string
-		setupConfig   func()
+		setupConfig   func(general *config.GeneralConfig)
 		want          bool
 	}{
 		{
 			name:          "AWS with no node groups returns true",
 			cloudProvider: constants.CloudProviderAWS,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.AWS = &config.AWSConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.AWS = &config.AWSConfig{
 					NodeGroups: nil,
 				}
 			},
@@ -730,8 +733,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "AWS with node groups returns false",
 			cloudProvider: constants.CloudProviderAWS,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.AWS = &config.AWSConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.AWS = &config.AWSConfig{
 					NodeGroups: []config.AWSAutoScalableNodeGroup{{}},
 				}
 			},
@@ -740,8 +743,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "Azure with no node groups returns true",
 			cloudProvider: constants.CloudProviderAzure,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.Azure = &config.AzureConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.Azure = &config.AzureConfig{
 					NodeGroups: nil,
 				}
 			},
@@ -750,8 +753,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "Azure with node groups returns false",
 			cloudProvider: constants.CloudProviderAzure,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.Azure = &config.AzureConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.Azure = &config.AzureConfig{
 					NodeGroups: []config.AzureAutoScalableNodeGroup{{}},
 				}
 			},
@@ -760,8 +763,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "BareMetal with no node groups returns true",
 			cloudProvider: constants.CloudProviderBareMetal,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.BareMetal = &config.BareMetalConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.BareMetal = &config.BareMetalConfig{
 					NodeGroups: nil,
 				}
 			},
@@ -770,8 +773,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "BareMetal with node groups returns false",
 			cloudProvider: constants.CloudProviderBareMetal,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.BareMetal = &config.BareMetalConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.BareMetal = &config.BareMetalConfig{
 					NodeGroups: []config.BareMetalNodeGroup{{}},
 				}
 			},
@@ -780,8 +783,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "Hetzner with no HCloud and no BareMetal node groups returns true",
 			cloudProvider: constants.CloudProviderHetzner,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.Hetzner = &config.HetznerConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.Hetzner = &config.HetznerConfig{
 					NodeGroups: config.HetznerNodeGroups{
 						HCloud:    nil,
 						BareMetal: nil,
@@ -793,8 +796,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "Hetzner with HCloud node groups returns false",
 			cloudProvider: constants.CloudProviderHetzner,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.Hetzner = &config.HetznerConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.Hetzner = &config.HetznerConfig{
 					NodeGroups: config.HetznerNodeGroups{
 						HCloud:    []config.HCloudAutoScalableNodeGroup{{}},
 						BareMetal: nil,
@@ -806,8 +809,8 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "Hetzner with BareMetal node groups returns false",
 			cloudProvider: constants.CloudProviderHetzner,
-			setupConfig: func() {
-				config.ParsedGeneralConfig.Cloud.Hetzner = &config.HetznerConfig{
+			setupConfig: func(general *config.GeneralConfig) {
+				general.Cloud.Hetzner = &config.HetznerConfig{
 					NodeGroups: config.HetznerNodeGroups{
 						HCloud:    nil,
 						BareMetal: []*config.HetznerBareMetalNodeGroup{{}},
@@ -819,24 +822,17 @@ func TestIsNodeGroupCountZero(t *testing.T) {
 		{
 			name:          "unknown cloud provider returns false",
 			cloudProvider: "unknown-cloud",
-			setupConfig:   func() {},
+			setupConfig:   func(*config.GeneralConfig) {},
 			want:          false,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			originalProvider := globals.CloudProviderName
-			originalConfig := *config.ParsedGeneralConfig
-			t.Cleanup(func() {
-				globals.CloudProviderName = originalProvider
-				*config.ParsedGeneralConfig = originalConfig
-			})
+			cluster := newTestCluster(tc.cloudProvider)
+			tc.setupConfig(cluster.cfg.General)
 
-			globals.CloudProviderName = tc.cloudProvider
-			tc.setupConfig()
-
-			got := IsNodeGroupCountZero(context.Background())
+			got := cluster.IsNodeGroupCountZero(context.Background())
 			assert.Equal(t, tc.want, got)
 		})
 	}

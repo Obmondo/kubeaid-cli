@@ -5,6 +5,7 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	argoCDV1Alpha1 "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
@@ -13,12 +14,21 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws/services"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 var getAccountIDFunc = GetAccountID
 
-var syncArgoCDApp = kubernetes.SyncArgoCDApp
+// syncArgoCDApp syncs through the CLI's cluster.
+var syncArgoCDApp = func(ctx context.Context,
+	name string,
+	resources []*argoCDV1Alpha1.SyncOperationResource,
+) error {
+	if globals.Cluster == nil {
+		return errors.New("no cluster to sync ArgoCD apps through")
+	}
+	return globals.Cluster.SyncArgoCDApp(ctx, name, resources)
+}
 
 // SetupDisasterRecovery sets up the provisioned cluster for Disaster Recovery.
 // NOTE: Picks up AWS credentials from the environment.

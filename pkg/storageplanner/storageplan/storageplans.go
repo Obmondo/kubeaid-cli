@@ -6,8 +6,8 @@ package storageplan
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"slices"
 	"sort"
@@ -16,9 +16,15 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
+
+// ErrNotApproved is returned by StoragePlans.GetApproval when the operator declines the plans.
+var ErrNotApproved = errors.New("storage plans not approved")
+
+// ErrReadingApproval is returned by StoragePlans.GetApproval when the operator's answer can't be
+// read, from a closed stdin for instance.
+var ErrReadingApproval = errors.New("reading user input")
 
 type (
 	NodeGroupName = string
@@ -547,19 +553,18 @@ func padLeft(s string, width int) string {
 	return s
 }
 
-func (s *StoragePlans) GetApproval(ctx context.Context) {
+// GetApproval prints the plans and asks the operator on stdin whether to proceed. It returns
+// ErrNotApproved when the operator answers "no".
+func (s *StoragePlans) GetApproval(ctx context.Context) error {
 	// Pause the bar around the print + prompt. The bar's 100ms auto-
 	// render goroutine otherwise re-paints "<spinner> [elapsed] " at
 	// column 0 on top of our box and (worse) on top of the "Proceed
 	// with the above storage plans?" prompt — the operator sees the
 	// prompt with its first few characters clipped. Same pattern as
 	// dns_wait.go.
-	//
-	// No defer for Resume because the "no" branch calls os.Exit(1)
-	// directly, after which deferred funcs would not run. Explicit
-	// Resume at both exit points keeps the lifecycle obvious.
 	bar := progress.FromCtx(ctx)
 	bar.Pause()
+	defer bar.Resume()
 
 	s.PrettyPrint()
 
@@ -567,17 +572,16 @@ func (s *StoragePlans) GetApproval(ctx context.Context) {
 		fmt.Print(lipgloss.NewStyle().Render("Proceed with the above storage plans? (yes/no): "))
 
 		response, err := bufio.NewReader(os.Stdin).ReadString('\n')
-		assert.AssertErrNil(ctx, err, "Failed reading user input")
+		if err != nil {
+			return fmt.Errorf("%w: %w", ErrReadingApproval, err)
+		}
 
 		switch strings.TrimSpace(strings.ToLower(response)) {
 		case "yes":
-			bar.Resume()
-			return
+			return nil
 
 		case "no":
-			slog.ErrorContext(ctx, "Storage plans not approved")
-			bar.Resume()
-			os.Exit(1)
+			return ErrNotApproved
 		}
 	}
 }

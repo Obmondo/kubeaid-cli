@@ -5,6 +5,7 @@ package utils
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -57,6 +58,15 @@ func CreateIntermediateDirsForFile(filePath string) error {
 // Returns path to the directory where the KubeAid repository is cloned.
 func GetKubeAidDir() string {
 	return git.GetRepoDir(config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL)
+}
+
+// KubeAidDir returns the directory where the KubeAid repository named by forks is cloned.
+// forks.KubeaidFork.ParsedURL must be set.
+func KubeAidDir(forks *config.ForksConfig) (string, error) {
+	if forks == nil || forks.KubeaidFork.ParsedURL == nil {
+		return "", errors.New("the KubeAid fork URL has not been parsed")
+	}
+	return git.GetRepoDir(forks.KubeaidFork.ParsedURL), nil
 }
 
 // Returns path to the directory where the KubeAid Config repository is cloned.

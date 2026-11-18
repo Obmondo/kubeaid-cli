@@ -29,13 +29,19 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 const (
 	testClusterName          = "test-cluster"
 	testCapiClusterNamespace = "capi-cluster"
 )
+
+// newClusterAPITestCluster returns a Cluster for testClusterName on the given cloud provider.
+func newClusterAPITestCluster(cloudProviderName string) *Cluster {
+	cfg := testConfig(cloudProviderName)
+	cfg.General.Cluster.Name = testClusterName
+	return &Cluster{cfg: cfg}
+}
 
 // newClusterAPITestScheme builds a scheme that includes coreV1,
 // cluster-api types, and CAPH types. CAPH is included so summarizeCAPIStatus
@@ -87,47 +93,72 @@ func TestUsingClusterAPI(t *testing.T) {
 		},
 	}
 
-	// Mutates globals.CloudProviderName — sequential only.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			original := globals.CloudProviderName
-			t.Cleanup(func() { globals.CloudProviderName = original })
-			globals.CloudProviderName = tc.cloudProvider
-
-			got := UsingClusterAPI()
+			got := newTestCluster(tc.cloudProvider).UsingClusterAPI()
 			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
-func TestGetCapiClusterNamespace(t *testing.T) {
-	// Result is constant — the customerid suffix was removed because the
-	// management cluster is throwaway and each workload cluster's CAPI
-	// is single-tenant. Test guards against accidental reintroduction.
+func TestCAPINamespace(t *testing.T) {
+	// The default is constant — the customerid suffix was removed because the management cluster
+	// is throwaway and each workload cluster's CAPI is single-tenant. A caller can still pick
+	// another namespace. Test guards against accidental reintroduction of a customer suffix.
 	tests := []struct {
 		name    string
 		obmondo *config.ObmondoConfig
+		set     string
+		want    string
 	}{
-		{"no Obmondo config", nil},
-		{"Obmondo config with empty CustomerID", &config.ObmondoConfig{CustomerID: ""}},
-		{"Obmondo config with CustomerID", &config.ObmondoConfig{CustomerID: "acme"}},
-		{"CustomerID with hyphens", &config.ObmondoConfig{CustomerID: "my-company-123"}},
+		{"no Obmondo config", nil, "", testCapiClusterNamespace},
+		{"Obmondo config with empty CustomerID", &config.ObmondoConfig{CustomerID: ""}, "", testCapiClusterNamespace},
+		{"Obmondo config with CustomerID", &config.ObmondoConfig{CustomerID: "democust01"}, "", testCapiClusterNamespace},
+		{"namespace set by the caller", nil, "capi-cluster-democust01", "capi-cluster-democust01"},
 	}
 
-	// Mutates ParsedGeneralConfig — sequential only.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			original := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() { config.ParsedGeneralConfig.Obmondo = original })
-			config.ParsedGeneralConfig.Obmondo = tc.obmondo
+			cfg := testConfig("")
+			cfg.General.Obmondo = tc.obmondo
+			cfg.CAPIClusterNamespace = tc.set
 
-			assert.Equal(t, testCapiClusterNamespace, GetCapiClusterNamespace())
+			assert.Equal(t, tc.want, cfg.CAPINamespace())
 		})
 	}
 }
 
+func TestClusterUsesTheConfiguredNamespace(t *testing.T) {
+	const namespace = "capi-cluster-democust01"
+
+	cfg := testConfig(constants.CloudProviderHetzner)
+	cfg.General.Cluster.Name = testClusterName
+	cfg.CAPIClusterNamespace = namespace
+
+	fakeClient := crFake.NewClientBuilder().
+		WithScheme(newClusterAPITestScheme(t)).
+		WithRuntimeObjects(
+			&clusterAPIV1Beta1.Cluster{
+				ObjectMeta: metaV1.ObjectMeta{Name: testClusterName, Namespace: namespace},
+			},
+			&clusterAPIV1Beta1.Cluster{
+				ObjectMeta: metaV1.ObjectMeta{Name: testClusterName, Namespace: testCapiClusterNamespace},
+				Status:     clusterAPIV1Beta1.ClusterStatus{Phase: "from-the-default-namespace"},
+			},
+		).
+		Build()
+
+	cluster, err := NewCluster(cfg)
+	require.NoError(t, err)
+
+	got, err := cluster.GetClusterResource(context.Background(), fakeClient)
+
+	require.NoError(t, err)
+	assert.Equal(t, namespace, got.Namespace)
+	assert.Empty(t, got.Status.Phase)
+}
+
 func TestGetClusterResource(t *testing.T) {
-	// Mutates ParsedGeneralConfig.Cluster.Name and Obmondo — sequential only.
 	scheme := newClusterAPITestScheme(t)
 
 	tests := []struct {
@@ -161,25 +192,13 @@ func TestGetClusterResource(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// GetClusterResource reads config.ParsedGeneralConfig.Cluster.Name
-			// and GetCapiClusterNamespace() (which reads Obmondo config).
-			// We set these to fixed values for the test.
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
-			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
-
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithStatusSubresource(&clusterAPIV1Beta1.Cluster{}).
 				WithRuntimeObjects(tc.preExist...).
 				Build()
 
-			got, err := GetClusterResource(context.Background(), fakeClient)
+			got, err := newClusterAPITestCluster("").GetClusterResource(context.Background(), fakeClient)
 
 			if tc.wantErr {
 				require.Error(t, err)
@@ -285,18 +304,12 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
 			origPoll := capiWaitPollInterval
 			origTotal := capiWaitTotalTimeout
 			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
 				capiWaitPollInterval = origPoll
 				capiWaitTotalTimeout = origTotal
 			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
 			// Sub-second polling + tight total so the test exercises
 			// both the success-on-first-tick path and the timeout path
 			// without sleeping for minutes.
@@ -311,7 +324,7 @@ func TestWaitForMainClusterToBeProvisioned(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
 			defer cancel()
 
-			err := WaitForMainClusterToBeProvisioned(ctx, fakeClient)
+			err := newClusterAPITestCluster("").WaitForMainClusterToBeProvisioned(ctx, fakeClient)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -869,27 +882,13 @@ func TestSummarizeCAPIStatus(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
-			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
-
-			if tc.cloudProvider != "" {
-				origCloud := globals.CloudProviderName
-				t.Cleanup(func() { globals.CloudProviderName = origCloud })
-				globals.CloudProviderName = tc.cloudProvider
-			}
-
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithRuntimeObjects(tc.preExist...).
 				Build()
 
-			rows, ready, err := summarizeCAPIStatus(context.Background(), fakeClient)
+			rows, ready, err := newClusterAPITestCluster(tc.cloudProvider).
+				summarizeCAPIStatus(context.Background(), fakeClient)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantReady, ready)
 			require.Len(t, rows, tc.wantRowCount)
@@ -1031,21 +1030,13 @@ func TestSummarizeMachinesForPivot(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
-			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
-
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithRuntimeObjects(tc.preExist...).
 				Build()
 
-			rows, ready, err := summarizeMachinesForPivot(context.Background(), fakeClient)
+			rows, ready, err := newClusterAPITestCluster("").
+				summarizeMachinesForPivot(context.Background(), fakeClient)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantReady, ready)
 			require.Len(t, rows, tc.wantRowCount)
@@ -1128,18 +1119,12 @@ func TestWaitForAllMachinesRunning(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
 			origPoll := capiWaitPollInterval
 			origTotal := capiWaitTotalTimeout
 			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
 				capiWaitPollInterval = origPoll
 				capiWaitTotalTimeout = origTotal
 			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
 			// Same shaved poll cadence as TestWaitForMainClusterToBeProvisioned
 			// — exercises both the first-tick-success path and the
 			// timeout path in sub-second wall time.
@@ -1154,7 +1139,7 @@ func TestWaitForAllMachinesRunning(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
 			defer cancel()
 
-			err := WaitForAllMachinesRunning(ctx, fakeClient, fakeClient)
+			err := newClusterAPITestCluster("").WaitForAllMachinesRunning(ctx, fakeClient, fakeClient)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -1386,24 +1371,13 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 		},
 	}
 
-	// Mutates saveKubeconfigPollInterval, outputPathMainClusterKubeconfig,
-	// and config.ParsedGeneralConfig — sequential only.
+	// Mutates saveKubeconfigPollInterval — sequential only.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			origInterval := saveKubeconfigPollInterval
-			origOutputPath := outputPathMainClusterKubeconfig
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() {
-				saveKubeconfigPollInterval = origInterval
-				outputPathMainClusterKubeconfig = origOutputPath
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
-			})
+			t.Cleanup(func() { saveKubeconfigPollInterval = origInterval })
 
 			saveKubeconfigPollInterval = time.Millisecond
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
 
 			// Nested under a directory that does not exist yet: under the
 			// per-cluster layout <home>/kubeconfigs/ is never pre-created,
@@ -1412,7 +1386,6 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 			if tc.outputPath != nil {
 				outPath = tc.outputPath(t)
 			}
-			outputPathMainClusterKubeconfig = outPath
 
 			var objs []client.Object
 			if tc.secret != nil {
@@ -1439,7 +1412,7 @@ func TestSaveProvisionedClusterKubeconfig(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), tc.ctxTimeout)
 			defer cancel()
 
-			err := SaveProvisionedClusterKubeconfig(ctx, finalClient)
+			err := newClusterAPITestCluster("").SaveProvisionedClusterKubeconfig(ctx, finalClient, outPath)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -1459,29 +1432,27 @@ func TestIsClusterctlMoveExecuted(t *testing.T) {
 	scheme := newClusterAPITestScheme(t)
 
 	tests := []struct {
-		name           string
-		createClientFn func(ctx context.Context, kubeconfigPath string) (client.Client, error)
-		want           bool
+		name              string
+		mainClusterClient func() client.Client
+		want              bool
 	}{
 		{
-			name: "returns false when client creation fails",
-			createClientFn: func(_ context.Context, _ string) (client.Client, error) {
-				return nil, fmt.Errorf("kubeconfig not found")
-			},
-			want: false,
+			name:              "returns false when the main cluster isn't reachable",
+			mainClusterClient: func() client.Client { return nil },
+			want:              false,
 		},
 		{
 			name: "returns false when cluster resource does not exist",
-			createClientFn: func(_ context.Context, _ string) (client.Client, error) {
+			mainClusterClient: func() client.Client {
 				return crFake.NewClientBuilder().
 					WithScheme(scheme).
-					Build(), nil
+					Build()
 			},
 			want: false,
 		},
 		{
 			name: "returns true when cluster resource exists",
-			createClientFn: func(_ context.Context, _ string) (client.Client, error) {
+			mainClusterClient: func() client.Client {
 				return crFake.NewClientBuilder().
 					WithScheme(scheme).
 					WithObjects(&clusterAPIV1Beta1.Cluster{
@@ -1490,33 +1461,17 @@ func TestIsClusterctlMoveExecuted(t *testing.T) {
 							Namespace: testCapiClusterNamespace,
 						},
 					}).
-					Build(), nil
+					Build()
 			},
 			want: true,
 		},
 	}
 
-	// Mutates createKubernetesClientFn, outputPathMainClusterKubeconfig,
-	// and config.ParsedGeneralConfig — sequential only.
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origFn := createKubernetesClientFn
-			origPath := outputPathMainClusterKubeconfig
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			origObmondo := config.ParsedGeneralConfig.Obmondo
-			t.Cleanup(func() {
-				createKubernetesClientFn = origFn
-				outputPathMainClusterKubeconfig = origPath
-				config.ParsedGeneralConfig.Cluster.Name = origName
-				config.ParsedGeneralConfig.Obmondo = origObmondo
-			})
-
-			createKubernetesClientFn = tc.createClientFn
-			outputPathMainClusterKubeconfig = filepath.Join(t.TempDir(), "kubeconfig.yaml")
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-			config.ParsedGeneralConfig.Obmondo = nil
-
-			got := IsClusterctlMoveExecuted(context.Background())
+			got := newClusterAPITestCluster("").IsClusterctlMoveExecuted(
+				context.Background(), tc.mainClusterClient(),
+			)
 			assert.Equal(t, tc.want, got)
 		})
 	}
@@ -1999,16 +1954,13 @@ func TestSummarizeControlPlaneRollout(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
-			t.Cleanup(func() { config.ParsedGeneralConfig.Cluster.Name = origName })
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
-
 			fakeClient := crFake.NewClientBuilder().
 				WithScheme(scheme).
 				WithRuntimeObjects(tc.preExist...).
 				Build()
 
-			rows, ready, err := summarizeControlPlaneRollout(context.Background(), fakeClient)
+			rows, ready, err := newClusterAPITestCluster("").
+				summarizeControlPlaneRollout(context.Background(), fakeClient)
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantReady, ready)
 			assert.Len(t, rows, tc.wantRowCount)
@@ -2052,15 +2004,12 @@ func TestWaitForControlPlaneRolloutComplete(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			origName := config.ParsedGeneralConfig.Cluster.Name
 			origPoll := capiWaitPollInterval
 			origTotal := capiWaitTotalTimeout
 			t.Cleanup(func() {
-				config.ParsedGeneralConfig.Cluster.Name = origName
 				capiWaitPollInterval = origPoll
 				capiWaitTotalTimeout = origTotal
 			})
-			config.ParsedGeneralConfig.Cluster.Name = testClusterName
 			capiWaitPollInterval = 50 * time.Millisecond
 			capiWaitTotalTimeout = 1 * time.Second
 
@@ -2072,7 +2021,7 @@ func TestWaitForControlPlaneRolloutComplete(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			err := WaitForControlPlaneRolloutComplete(ctx, fakeClient)
+			err := newClusterAPITestCluster("").WaitForControlPlaneRolloutComplete(ctx, fakeClient)
 			if tc.wantErr {
 				require.Error(t, err)
 				return
@@ -2088,9 +2037,6 @@ func TestWaitForControlPlaneRolloutComplete(t *testing.T) {
 // present → skip", which would let an install race an in-flight roll.
 func TestSummarizeControlPlaneRolloutTransientError(t *testing.T) {
 	scheme := newClusterAPITestScheme(t)
-	origName := config.ParsedGeneralConfig.Cluster.Name
-	t.Cleanup(func() { config.ParsedGeneralConfig.Cluster.Name = origName })
-	config.ParsedGeneralConfig.Cluster.Name = testClusterName
 
 	fakeClient := crFake.NewClientBuilder().
 		WithScheme(scheme).
@@ -2101,46 +2047,9 @@ func TestSummarizeControlPlaneRolloutTransientError(t *testing.T) {
 		}).
 		Build()
 
-	rows, ready, err := summarizeControlPlaneRollout(context.Background(), fakeClient)
+	rows, ready, err := newClusterAPITestCluster("").
+		summarizeControlPlaneRollout(context.Background(), fakeClient)
 	require.Error(t, err)
 	assert.False(t, ready)
 	assert.Nil(t, rows)
-}
-
-// Mutates outputPathMainClusterKubeconfig and the constants output paths;
-// not parallel.
-func TestMainClusterKubeconfigPath(t *testing.T) {
-	origOverride := outputPathMainClusterKubeconfig
-	constantPaths := []*string{
-		&constants.OutputsDirectory,
-		&constants.OutputLogsDirectory,
-		&constants.OutputPathManagementClusterK3DConfig,
-		&constants.OutputPathManagementClusterHostKubeconfig,
-		&constants.OutputPathManagementClusterContainerKubeconfig,
-		&constants.OutputPathMainClusterKubeconfig,
-		&constants.OutputPathJWKSDocument,
-	}
-	origValues := make([]string, len(constantPaths))
-	for i, p := range constantPaths {
-		origValues[i] = *p
-	}
-	t.Cleanup(func() {
-		outputPathMainClusterKubeconfig = origOverride
-		for i, p := range constantPaths {
-			*p = origValues[i]
-		}
-	})
-
-	outputPathMainClusterKubeconfig = ""
-
-	// The constant must be read at call time: setup.Prepare re-roots the
-	// output paths long after this package is initialized, so an init-time
-	// copy would hand client-go the stale working-directory path.
-	home := t.TempDir()
-	constants.UseOutputsHome(home)
-	assert.Equal(t, filepath.Join(home, "kubeconfigs/main.yaml"), mainClusterKubeconfigPath())
-
-	// The test override wins over the constant.
-	outputPathMainClusterKubeconfig = filepath.Join(t.TempDir(), "override.yaml")
-	assert.Equal(t, outputPathMainClusterKubeconfig, mainClusterKubeconfigPath())
 }

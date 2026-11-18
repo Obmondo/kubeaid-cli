@@ -20,7 +20,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
@@ -43,7 +42,7 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	//
 	// If 'clusterctl move' wasn't executed, then we need to communicate with the management
 	// cluster instead.
-	if !kubernetes.IsClusterctlMoveExecuted(ctx) {
+	if !isClusterctlMoveExecuted(ctx) {
 		mgmtKubeconfig, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 		assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
 		utils.MustSetEnv(constants.EnvNameKubeconfig, mgmtKubeconfig)
@@ -60,13 +59,11 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 	assert.AssertErrNil(ctx, err, "Failed constructing clusterctl client")
 
 	{
-		// Port-forward ArgoCD and create ArgoCD client.
-		argoCDClient, argoCDErr := kubernetes.NewArgoCDClient(ctx, clusterClient)
+		// Port-forward ArgoCD and create the ArgoCD client and its application client.
+		argoCDErr := kubeCluster().ConnectArgoCD(ctx, clusterClient)
 		assert.AssertErrNil(ctx, argoCDErr, "Failed creating ArgoCD client")
 
-		// Create ArgoCD application client.
-		globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
-		defer globals.ArgoCDApplicationClientCloser.Close()
+		defer kubeCluster().CloseArgoCD(ctx)
 	}
 
 	// (1) Upgrading the Control Plane.
@@ -104,15 +101,18 @@ func UpgradeCluster(ctx context.Context, args UpgradeClusterArgs) {
 // Once the change get merged to the default branch, we'll trigger the actual rollout process.
 func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) {
 	// Detect git authentication method.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod, err := gitClient().GetGitAuthMethod(ctx)
+	assertGit(ctx, err)
 
 	// Clone the KubeAid Config repository locally, if it's not already there.
-	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	repo, err := gitClient().CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	assertGit(ctx, err)
 
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")
 
-	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
+	defaultBranchName, err := gitClient().GetDefaultBranchName(ctx, gitAuthMethod, repo)
+	assertGit(ctx, err)
 
 	/*
 		Decide the branch, where we want to do the changes :
@@ -131,7 +131,8 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 			config.ParsedGeneralConfig.Cluster.Name,
 			time.Now().Unix(),
 		)
-		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+		err = gitClient().CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+		assertGit(ctx, err)
 
 		targetBranchName = newBranchName
 	}
@@ -169,7 +170,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 	commitMessage := fmt.Sprintf("(cluster/%s) : updated values-capi-cluster.yaml",
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
-	commitHash := git.AddCommitAndPushChanges(ctx,
+	commitHash, err := gitClient().AddCommitAndPushChanges(ctx,
 		repo,
 		workTree,
 		targetBranchName,
@@ -178,6 +179,7 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 		commitMessage,
 		defaultBranchName,
 	)
+	assertGit(ctx, err)
 
 	if !args.SkipPRWorkflow {
 		/*
@@ -189,13 +191,14 @@ func updateCapiClusterValuesFile(ctx context.Context, args *UpgradeClusterArgs) 
 		*/
 
 		// Wait until the user creates a PR and merges it to the default branch.
-		git.WaitUntilPRMerged(ctx,
+		err = gitClient().WaitUntilPRMerged(ctx,
 			repo,
 			defaultBranchName,
 			commitHash,
 			gitAuthMethod,
 			targetBranchName,
 		)
+		assertGit(ctx, err)
 	}
 }
 
@@ -225,7 +228,7 @@ func upgradeControlPlane(ctx context.Context,
 	// update the Kubernetes version in the KubeadmControlPlane resource.
 	// We'll do this, by syncing it specifically, in the capi-cluster ArgoCD App.
 	if len(args.NewKubernetesVersion) > 0 {
-		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		syncErr := kubeCluster().SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
 					Group: "controlplane.cluster.x-k8s.io",
@@ -240,7 +243,7 @@ func upgradeControlPlane(ctx context.Context,
 	// Rollout the control-plane, immediately
 
 	rolloutErr := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
-		Namespace: kubernetes.GetCapiClusterNamespace(),
+		Namespace: cliConfig().CAPINamespace(),
 		Resources: []string{
 			fmt.Sprintf("kubeadmcontrolplane/%s", kubeadmControlPlaneName),
 		},
@@ -288,7 +291,7 @@ func upgradeNodeGroup(ctx context.Context,
 		       replica count.
 	*/
 	if len(args.NewKubernetesVersion) > 0 {
-		syncErr := kubernetes.SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
+		syncErr := kubeCluster().SyncArgoCDApp(ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Aplha1.SyncOperationResource{
 				{
 					Group: "bootstrap.cluster.x-k8s.io",
@@ -307,7 +310,7 @@ func upgradeNodeGroup(ctx context.Context,
 
 	// Rollout the node-group, immediately.
 	rolloutErr := clusterctlClient.RolloutRestart(ctx, clusterctlClientLib.RolloutRestartOptions{
-		Namespace: kubernetes.GetCapiClusterNamespace(),
+		Namespace: cliConfig().CAPINamespace(),
 		Resources: []string{
 			fmt.Sprintf("machinedeployment/%s", machineDeploymentName),
 		},

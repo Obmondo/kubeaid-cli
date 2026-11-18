@@ -19,7 +19,6 @@ import (
 	kubeonessh "k8c.io/kubeone/pkg/ssh"
 	"k8s.io/utils/ptr"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
@@ -47,8 +46,8 @@ func (h *Hetzner) GetHCloudServerIDsForCluster(ctx context.Context, name string)
 }
 
 func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-	clusterName := config.ParsedGeneralConfig.Cluster.Name
+	hetznerConfig := h.cfg.General.Cloud.Hetzner
+	clusterName := h.cfg.General.Cluster.Name
 	serverName := fmt.Sprintf("%s-nat-gateway", clusterName)
 
 	server, err := h.findOrCreateNATGatewayServer(ctx, serverName, networkID)
@@ -114,8 +113,8 @@ func (h *Hetzner) CreateNATGateway(ctx context.Context, networkID int) error {
 // v4. Cost-optimized types can have uneven per-datacenter stock, so try each
 // location in constants.HCloudNATGatewayLocations before giving up.
 func (h *Hetzner) findOrCreateNATGatewayServer(ctx context.Context, serverName string, networkID int) (*hcloud.Server, error) {
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-	clusterName := config.ParsedGeneralConfig.Cluster.Name
+	hetznerConfig := h.cfg.General.Cloud.Hetzner
+	clusterName := h.cfg.General.Cluster.Name
 
 	server, response, err := h.serverClient.GetByName(ctx, serverName)
 	if err != nil {

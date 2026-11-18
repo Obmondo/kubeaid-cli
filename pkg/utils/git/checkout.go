@@ -7,15 +7,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"os"
 
 	goGit "github.com/go-git/go-git/v5"
 	gitConfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -41,14 +38,19 @@ import (
 // CreateAndCheckoutToBranch deliberately does NOT call this — callers
 // there go through CloneRepo first, so the fetch has already happened;
 // double-fetching back-to-back would just burn a YubiKey touch.
-func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
+func (c *Client) CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	authMethod transport.AuthMethod,
-) {
-	checkoutDefaultBranch(ctx, repo, workTree, authMethod)
+) error {
+	if err := c.checkoutDefaultBranch(ctx, repo, workTree, authMethod); err != nil {
+		return err
+	}
 
-	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
+	defaultBranchName, err := c.GetDefaultBranchName(ctx, authMethod, repo)
+	if err != nil {
+		return err
+	}
 	defaultBranchRefSpec := gitConfig.RefSpec(
 		"+refs/heads/" + defaultBranchName + ":refs/heads/" + defaultBranchName,
 	)
@@ -56,18 +58,20 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 	releaseFetchTouch := requestTouchIfAuth(ctx,
 		"fetch updates from "+originShortName(repo), authMethod,
 	)
-	err := retryGitOperation(ctx, "fetch latest changes", func() error {
+	err = retryGitOperation(ctx, "fetch latest changes", func() error {
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
-			CABundle: config.ParsedGeneralConfig.Git.CABundle,
+			CABundle: c.caBundle(),
 			RefSpecs: []gitConfig.RefSpec{defaultBranchRefSpec},
 		})
 	})
 	releaseFetchTouch()
 	if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
-		assert.AssertErrNil(ctx, err, "Failed fetching latest changes")
+		return fail("Failed fetching latest changes", err)
 	}
 	slog.InfoContext(ctx, "Fetched latest changes")
+
+	return nil
 }
 
 // checkoutDefaultBranch removes unstaged changes and checks out the
@@ -75,44 +79,55 @@ func CheckoutToDefaultBranchAndFetchUpdates(ctx context.Context,
 // when the caller knows the repo was just fetched (e.g., immediately
 // after CloneRepo's re-run path) so a second fetch would be redundant
 // and would burn a YubiKey touch for nothing.
-func checkoutDefaultBranch(ctx context.Context,
+func (c *Client) checkoutDefaultBranch(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	authMethod transport.AuthMethod,
-) {
-	removeUnstagedChanges(ctx, repo, workTree)
+) error {
+	if err := removeUnstagedChanges(repo, workTree); err != nil {
+		return err
+	}
 
-	defaultBranchName := GetDefaultBranchName(ctx, authMethod, repo)
-	err := workTree.Checkout(&goGit.CheckoutOptions{
+	defaultBranchName, err := c.GetDefaultBranchName(ctx, authMethod, repo)
+	if err != nil {
+		return err
+	}
+
+	err = workTree.Checkout(&goGit.CheckoutOptions{
 		Branch: plumbing.ReferenceName("refs/heads/" + defaultBranchName),
 		Keep:   false,
 	})
-	assert.AssertErrNil(ctx, err, "Failed checking out to default branch first")
+	if err != nil {
+		return fail("Failed checking out to default branch first", err)
+	}
 	slog.InfoContext(ctx, "Checked out to the default branch")
+
+	return nil
 }
 
 // Discards all the changes in the current branch and checks out to the default branch first. Then,
 // checks out to a new branhc with the given name.
-// If a branch with that name already exists, then panics.
-func CreateAndCheckoutToBranch(ctx context.Context,
+// If a branch with that name already exists, then returns ErrBranchExists.
+func (c *Client) CreateAndCheckoutToBranch(ctx context.Context,
 	repo *goGit.Repository,
 	branch string,
 	workTree *goGit.Worktree,
 	authMethod transport.AuthMethod,
-) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("branch", branch),
-	})
+) (err error) {
+	logAttrs := []slog.Attr{slog.String("branch", branch)}
+	ctx = logger.AppendSlogAttributesToCtx(ctx, logAttrs)
+	defer annotate(&err, logAttrs...)
 
 	// Checkout to default branch (no fetch — CloneRepo's re-run path
 	// already fetched). All changes in the current branch get discarded.
-	checkoutDefaultBranch(ctx, repo, workTree, authMethod)
+	if err := c.checkoutDefaultBranch(ctx, repo, workTree, authMethod); err != nil {
+		return err
+	}
 
 	// Error out if the branch already exists.
 	branchRef, err := repo.Reference(plumbing.ReferenceName("refs/heads/"+branch), true)
 	if err == nil && branchRef != nil {
-		slog.ErrorContext(ctx, "Branch already exists")
-		os.Exit(1)
+		return fail("Branch already exists", ErrBranchExists)
 	}
 
 	err = workTree.Checkout(&goGit.CheckoutOptions{
@@ -120,21 +135,31 @@ func CreateAndCheckoutToBranch(ctx context.Context,
 		Keep:   false,
 		Create: true,
 	})
-	assert.AssertErrNil(ctx, err, "Failed creating and checking out to branch")
+	if err != nil {
+		return fail("Failed creating and checking out to branch", err)
+	}
 
 	slog.InfoContext(ctx, "Created and checked out to new branch")
+
+	return nil
 }
 
 // Removes any unstaged changes in the current branch, by hard resetting to the latest commit in
 // that branch.
 // Otherwise, we'll get error when checking out to a new branch.
-func removeUnstagedChanges(ctx context.Context, repo *goGit.Repository, workTree *goGit.Worktree) {
+func removeUnstagedChanges(repo *goGit.Repository, workTree *goGit.Worktree) error {
 	headRef, err := repo.Head()
-	assert.AssertErrNil(ctx, err, "Failed getting head ref")
+	if err != nil {
+		return fail("Failed getting head ref", err)
+	}
 
 	err = workTree.Reset(&goGit.ResetOptions{
 		Commit: headRef.Hash(),
 		Mode:   goGit.HardReset,
 	})
-	assert.AssertErrNil(ctx, err, "Failed hard resetting to latest commit")
+	if err != nil {
+		return fail("Failed hard resetting to latest commit", err)
+	}
+
+	return nil
 }

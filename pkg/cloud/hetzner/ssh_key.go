@@ -43,7 +43,7 @@ func (h *Hetzner) CreateHCloudSSHKey(ctx context.Context, name string, sshKeyPai
 					slog.String("existing-name", sshKey.Name),
 					slog.String("fingerprint", sshKeyPair.Fingerprint),
 				)
-				config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name = sshKey.Name
+				h.cfg.General.Cloud.Hetzner.SSHKeyPair.Name = sshKey.Name
 				return nil
 			}
 
@@ -125,7 +125,7 @@ func (h *Hetzner) CreateHetznerBareMetalSSHKey(
 						slog.String("existing-name", key.Name),
 						slog.String("fingerprint", sshKeyPair.Fingerprint),
 					)
-					config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name = key.Name
+					h.cfg.General.Cloud.Hetzner.SSHKeyPair.Name = key.Name
 					return nil
 				}
 

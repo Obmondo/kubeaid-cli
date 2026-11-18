@@ -26,7 +26,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
@@ -53,8 +52,10 @@ func UpgradeClusterUsingKubeOne(ctx context.Context, args UpgradeKubeOneClusterA
 
 	// Clone (or reuse) the KubeAid Config repository - the currently rendered KubeOne manifest
 	// in there doubles as the fallback source of the cluster's current Kubernetes version.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
-	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	gitAuthMethod, gitErr := gitClient().GetGitAuthMethod(ctx)
+	assertGit(ctx, gitErr)
+	repo, gitErr := gitClient().CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	assertGit(ctx, gitErr)
 	bar.Substep("Cloned kubeaid-config repo")
 
 	// (1) Pre-flight.
@@ -446,7 +447,8 @@ func pushKubeOneManifestChanges(ctx context.Context,
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting kubeaid-config repo worktree")
 
-	defaultBranchName := git.GetDefaultBranchName(ctx, gitAuthMethod, repo)
+	defaultBranchName, err := gitClient().GetDefaultBranchName(ctx, gitAuthMethod, repo)
+	assertGit(ctx, err)
 
 	targetBranchName := defaultBranchName
 	if !skipPRWorkflow {
@@ -455,7 +457,8 @@ func pushKubeOneManifestChanges(ctx context.Context,
 			config.ParsedGeneralConfig.Cluster.Name,
 			time.Now().Unix(),
 		)
-		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+		err = gitClient().CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, gitAuthMethod)
+		assertGit(ctx, err)
 
 		targetBranchName = newBranchName
 	}
@@ -467,7 +470,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 	createOrUpdateGeneralConfigFile(ctx, templateValues, utils.GetClusterDir())
 	bar.Substep("Rendered kubeone-cluster.yaml and kubeaid-cli.general.yaml")
 
-	commitHash := git.AddCommitAndPushChanges(
+	commitHash, err := gitClient().AddCommitAndPushChanges(
 		ctx,
 		repo,
 		workTree,
@@ -477,6 +480,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 		commitMessage,
 		defaultBranchName,
 	)
+	assertGit(ctx, err)
 	if commitHash.IsZero() {
 		bar.Substep("KubeOne manifest already up to date in kubeaid-config")
 
@@ -486,7 +490,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 
 	if !skipPRWorkflow {
 		releasePRWait := bar.InProgress("Waiting for you to merge the PR")
-		git.WaitUntilPRMerged(
+		err = gitClient().WaitUntilPRMerged(
 			ctx,
 			repo,
 			defaultBranchName,
@@ -494,6 +498,7 @@ func pushKubeOneManifestChanges(ctx context.Context,
 			gitAuthMethod,
 			targetBranchName,
 		)
+		assertGit(ctx, err)
 		releasePRWait()
 		bar.Substep("Confirmed PR merged")
 	}

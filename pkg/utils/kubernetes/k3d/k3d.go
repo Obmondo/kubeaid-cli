@@ -142,7 +142,7 @@ func createK3DClusterWithParams(ctx context.Context, name string, params *create
 	})
 
 	// Generate the K3D cluster config file.
-	if err := generateK3DClusterConfigFile(ctx, name, params.ConfigPath); err != nil {
+	if err := generateK3DClusterConfigFile(name, params.ConfigPath); err != nil {
 		return fmt.Errorf("generating k3d cluster config file: %w", err)
 	}
 
@@ -236,7 +236,7 @@ func fixControlPlaneNodeLabels(ctx context.Context, kubeconfigPath string) error
 	return nil
 }
 
-func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath string) error {
+func generateK3DClusterConfigFile(clusterName, configPath string) error {
 	k3sVersion, err := getK3sVersion()
 	if err != nil {
 		return fmt.Errorf("getting k3s version: %w", err)
@@ -278,9 +278,12 @@ func generateK3DClusterConfigFile(ctx context.Context, clusterName, configPath s
 		}
 	}
 
-	k3dConfigAsBytes := templateUtils.ParseAndExecuteTemplate(ctx,
+	k3dConfigAsBytes, err := templateUtils.ParseAndExecuteTemplate(
 		&templates, constants.TemplateNameK3DConfig, k3dConfigTemplateValues,
 	)
+	if err != nil {
+		return fmt.Errorf("generating k3d config: %w", err)
+	}
 
 	k3dConfigFile, err := os.OpenFile(configPath,
 		os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600,

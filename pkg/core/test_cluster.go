@@ -62,13 +62,17 @@ func runCiliumNetworkConnectivityTests(ctx context.Context, clusterClient client
 	assert.AssertErrNil(ctx, clusterClient.Update(ctx, ns), "Failed labeling cilium-test namespace")
 
 	// Run minimal Cilium network connectivity tests.
-	commandexecutor.NewLocalCommandExecutor(true).MustExecute(ctx, `
+	const ciliumConnectivityTestCommand = `
     cilium-cli connectivity test \
       --namespace cilium \
       --test-namespace cilium-test \
       --test ! \
       --timeout 5m
-  `)
+  `
+	_, err = commandexecutor.NewLocalCommandExecutor(true).Execute(ctx, ciliumConnectivityTestCommand)
+	assert.AssertErrNil(ctx, err, "Command execution failed",
+		slog.String("command", ciliumConnectivityTestCommand),
+	)
 	slog.InfoContext(ctx, "Cilium connectivity tests passed")
 
 	// Cleanup resources created during the Cilium network connectivity tests.

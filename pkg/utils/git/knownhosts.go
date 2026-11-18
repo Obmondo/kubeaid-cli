@@ -4,14 +4,11 @@
 package git
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"strings"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 
 	_ "embed"
 )
@@ -23,26 +20,29 @@ import (
 var CommonKnownHosts string
 
 // Creates the known hosts file to be used by Go Git.
-func createKnownHostsFile(ctx context.Context) {
-	knownHosts := getKnownHosts()
+func (c *Client) createKnownHostsFile() error {
+	knownHosts := c.getKnownHosts()
 
 	knownHostsFile, err := os.Create(constants.OutputPathKnownHostsFile)
-	assert.AssertErrNil(ctx, err,
-		"Failed creating known hosts file",
-		slog.String("path", constants.OutputPathKnownHostsFile),
-	)
+	if err != nil {
+		return fail("Failed creating known hosts file", err,
+			slog.String("path", constants.OutputPathKnownHostsFile))
+	}
 	defer knownHostsFile.Close()
 
 	_, err = knownHostsFile.WriteString(strings.Join(knownHosts, "\n") + "\n")
-	assert.AssertErrNil(ctx, err, "Failed writing entries to known hosts file",
-		slog.String("path", constants.OutputPathKnownHostsFile),
-	)
+	if err != nil {
+		return fail("Failed writing entries to known hosts file", err,
+			slog.String("path", constants.OutputPathKnownHostsFile))
+	}
+
+	return nil
 }
 
 // Returns a list of known hosts containing :
 // known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.), and
 // any extra known hosts specified by the user.
-func getKnownHosts() []string {
+func (c *Client) getKnownHosts() []string {
 	knownHosts := []string{}
 
 	// Add known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.).
@@ -56,7 +56,7 @@ func getKnownHosts() []string {
 	}
 
 	// Add extra known hosts provided by the user.
-	knownHosts = append(knownHosts, config.ParsedGeneralConfig.Git.KnownHosts...)
+	knownHosts = append(knownHosts, c.general().Git.KnownHosts...)
 
 	return knownHosts
 }

@@ -9,9 +9,4 @@ type CommandExecutor interface {
 	// Executes shell commands.
 	// Returns the stdout contents.
 	Execute(ctx context.Context, command string) (string, error)
-
-	// Executes shell commands.
-	// Returns the stdout contents.
-	// Panics, on failure.
-	MustExecute(ctx context.Context, command string) string
 }

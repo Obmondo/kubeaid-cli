@@ -32,9 +32,7 @@ import (
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -45,24 +43,14 @@ var (
 	newClientFn              = client.New
 )
 
-// GetManagementClusterKubeconfigPath returns the management cluster kubeconfig
-// file path on the host.
+// GetManagementClusterKubeconfigPath returns where the CLI keeps the management cluster's
+// kubeconfig on the host. Library callers bring their own management cluster client instead.
 func GetManagementClusterKubeconfigPath(_ context.Context) (string, error) {
 	return constants.OutputPathManagementClusterHostKubeconfig, nil
 }
 
-// Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
-// Returns the Kubernetes Go client.
-func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.Client, error) {
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("kubeconfig", kubeconfigPath),
-	})
-
-	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed building config from kubeconfig file: %w", err)
-	}
-
+// NewScheme returns the scheme holding every resource type this package works with.
+func NewScheme() (*runtime.Scheme, error) {
 	scheme := runtime.NewScheme()
 
 	for _, addScheme := range []struct {
@@ -84,6 +72,36 @@ func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.
 		if err := addScheme.fn(scheme); err != nil {
 			return nil, fmt.Errorf("failed adding %s scheme: %w", addScheme.name, err)
 		}
+	}
+
+	return scheme, nil
+}
+
+// Tries to create a Kubernetes Go client using the Kubeconfig file present at the given path.
+// Returns the Kubernetes Go client.
+func CreateKubernetesClient(ctx context.Context, kubeconfigPath string) (client.Client, error) {
+	if kubeconfigPath == "" {
+		return nil, errors.New("a kubeconfig path is required")
+	}
+
+	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
+		slog.String("kubeconfig", kubeconfigPath),
+	})
+
+	kubeconfig, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed building config from kubeconfig file: %w", err)
+	}
+
+	return CreateKubernetesClientFromConfig(ctx, kubeconfig)
+}
+
+// CreateKubernetesClientFromConfig tries to create a Kubernetes Go client for the cluster the
+// given REST config points to (a kubeconfig's contents, or the in-cluster config).
+func CreateKubernetesClientFromConfig(ctx context.Context, kubeconfig *restclient.Config) (client.Client, error) {
+	scheme, err := NewScheme()
+	if err != nil {
+		return nil, err
 	}
 
 	clusterClient, err := newClientFn(kubeconfig, client.Options{
@@ -166,8 +184,16 @@ func pingKubernetesCluster(ctx context.Context, clusterClient client.Client) err
 	return nil
 }
 
-func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
-	kubeConfig, err := loadKubeConfigFromFileFn(constants.OutputPathMainClusterKubeconfig)
+// GetMainClusterEndpoint returns the API server endpoint of the main cluster, whose kubeconfig is
+// at kubeconfigPath. It returns nil, without error, while the main cluster hasn't been
+// provisioned yet: no kubeconfig file, no entry for the cluster in it, or a cluster that doesn't
+// answer.
+func (c *Cluster) GetMainClusterEndpoint(ctx context.Context, kubeconfigPath string) (*url.URL, error) {
+	if kubeconfigPath == "" {
+		return nil, errors.New("a kubeconfig path is required")
+	}
+
+	kubeConfig, err := loadKubeConfigFromFileFn(kubeconfigPath)
 	if errors.Is(err, os.ErrNotExist) {
 		// The kubeconfig file doesn't exist,
 		// which means the main cluster hasn't been provisioned yet.
@@ -177,7 +203,7 @@ func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
 		return nil, fmt.Errorf("failed reading main cluster's kubeconfig file: %w", err)
 	}
 
-	mainCluster, ok := kubeConfig.Clusters[config.ParsedGeneralConfig.Cluster.Name]
+	mainCluster, ok := kubeConfig.Clusters[c.cfg.General.Cluster.Name]
 	if !ok {
 		return nil, nil
 	}
@@ -189,7 +215,7 @@ func GetMainClusterEndpoint(ctx context.Context) (*url.URL, error) {
 
 	// Ping the K8s API server once.
 
-	clusterClient, err := createKubernetesClientFn(ctx, constants.OutputPathMainClusterKubeconfig)
+	clusterClient, err := createKubernetesClientFn(ctx, kubeconfigPath)
 	if err != nil {
 		return nil, nil
 	}
@@ -279,20 +305,25 @@ func TriggerCRONJob(ctx context.Context, objectKey client.ObjectKey, clusterClie
 // Returns whether there are zero node-groups or not.
 // If yes, then we need to remove taints from the control-plane nodes right after the main cluster
 // is provisioned.
-func IsNodeGroupCountZero(ctx context.Context) bool {
-	switch globals.CloudProviderName {
+func (c *Cluster) IsNodeGroupCountZero(ctx context.Context) bool {
+	cloud := c.cfg.General.Cloud
+
+	switch c.cfg.CloudProviderName {
 	case constants.CloudProviderAWS:
-		return len(config.ParsedGeneralConfig.Cloud.AWS.NodeGroups) == 0
+		return cloud.AWS != nil && len(cloud.AWS.NodeGroups) == 0
 
 	case constants.CloudProviderAzure:
-		return len(config.ParsedGeneralConfig.Cloud.Azure.NodeGroups) == 0
+		return cloud.Azure != nil && len(cloud.Azure.NodeGroups) == 0
 
 	case constants.CloudProviderHetzner:
-		nodeGroups := config.ParsedGeneralConfig.Cloud.Hetzner.NodeGroups
+		if cloud.Hetzner == nil {
+			return false
+		}
+		nodeGroups := cloud.Hetzner.NodeGroups
 		return (len(nodeGroups.HCloud) + len(nodeGroups.BareMetal)) == 0
 
 	case constants.CloudProviderBareMetal:
-		return len(config.ParsedGeneralConfig.Cloud.BareMetal.NodeGroups) == 0
+		return cloud.BareMetal != nil && len(cloud.BareMetal.NodeGroups) == 0
 	}
 
 	return false

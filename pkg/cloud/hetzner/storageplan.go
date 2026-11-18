@@ -14,7 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner"
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
@@ -26,7 +25,7 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 
-	if config.ControlPlaneInHetznerBareMetal() {
+	if h.cfg.General.ControlPlaneInHetznerBareMetal() {
 		nodeGroupCtx := logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
 			slog.String("node-group", "control-plane"),
 		})
@@ -105,14 +104,24 @@ func (h *Hetzner) GenerateStoragePlans(ctx context.Context, hetznerConfig *confi
 		nodeGroup.StoragePlan = *storagePlans[0]
 	}
 
-	allStoragePlans.GetApproval(ctx)
+	if h.approveStoragePlans == nil {
+		return errNoStoragePlanApprover
+	}
+	if err := h.approveStoragePlans(ctx, allStoragePlans); err != nil {
+		return fmt.Errorf("approving the storage plans: %w", err)
+	}
+
+	if h.generalConfigPath == "" {
+		return nil
+	}
 
 	// Persist the operator-approved ZFS pool size into general.yaml so
 	// the file ends up self-describing — a subsequent re-run sees the
 	// explicit `cloud.hetzner.bareMetal.zfs.size: <N>` rather than
 	// relying on the struct's default:"220" tag to refill it. Idempotent:
 	// if the key is already there, it's overwritten with the same value.
-	if err := persistApprovedZFSSize(ctx, hetznerConfig.BareMetal.ZFS.Size); err != nil {
+	err := persistApprovedZFSSize(ctx, h.generalConfigPath, hetznerConfig.BareMetal.ZFS.Size)
+	if err != nil {
 		return fmt.Errorf("persisting approved ZFS pool size to general.yaml: %w", err)
 	}
 	return nil
@@ -157,12 +166,11 @@ func collectAndSortWWNs(disks []*storageplan.Disk) []string {
 // `# Robot main IP: …` annotations alongside each bareMetalHost — and
 // the operator's key ordering.
 //
-// Called once after `allStoragePlans.GetApproval(ctx)` returns "yes",
-// so the value is whatever the operator confirmed in the storage-plan
-// box (the same value the struct carried via default:"220", or any
-// explicit override the operator pre-set in general.yaml).
-func persistApprovedZFSSize(ctx context.Context, size int) error {
-	path := globals.GeneralConfigFilePath()
+// Called once after the storage plans are approved, so the value is
+// whatever the operator confirmed in the storage-plan box (the same
+// value the struct carried via default:"220", or any explicit override
+// the operator pre-set in general.yaml).
+func persistApprovedZFSSize(ctx context.Context, path string, size int) error {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", path, err)

@@ -5,6 +5,7 @@ package core
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -25,9 +26,9 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
@@ -63,17 +64,33 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 		assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
 
-		assert.AssertErrNil(
-			ctx,
-			hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx),
-			"Failed provisioning prerequisite Hetzner infrastructure",
-		)
+		provisionErr := hetznerCloudProvider.ProvisionPrerequisiteInfrastructure(ctx)
+		switch {
+		case errors.Is(provisionErr, storageplan.ErrNotApproved):
+			assert.Assert(ctx, false, "Storage plans not approved")
+
+		case errors.Is(provisionErr, storageplan.ErrReadingApproval):
+			assert.AssertErrNil(ctx, provisionErr, "Failed reading user input")
+
+		case errors.Is(provisionErr, hetzner.ErrControlPlaneHostnameWithoutPublicIP):
+			assert.AssertErrNil(ctx, provisionErr,
+				"Control-plane LB hostname requires a bootstrap public LB IP, but the LB has no public IPv4",
+			)
+		}
+		assert.AssertErrNil(ctx, provisionErr, "Failed provisioning prerequisite Hetzner infrastructure")
+
+		// The K3d management cluster resolves the control-plane hostname to the LB's bootstrap
+		// public IP.
+		provisioned := cliConfig().Provisioned
+		globals.ControlPlaneHostname = provisioned.ControlPlaneHostname
+		globals.ControlPlaneLBBootstrapPublicIP = provisioned.ControlPlaneLBBootstrapPublicIP
 	}
 
 	// Detect git authentication method. Fast (no network), so no
 	// separate spinner step — folded into "Creating management
 	// cluster" which is the first step that actually uses it.
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
+	gitAuthMethod, gitAuthErr := gitClient().GetGitAuthMethod(ctx)
+	assertGit(ctx, gitAuthErr)
 
 	// Create and setup the management cluster. The capi-cluster sync
 	// is folded into SetupCluster so it runs before the
@@ -163,7 +180,10 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 		orderedApps = append(orderedApps, kubernetes.AppSyncStep{
 			Name: constants.ArgoCDAppTraefik,
 			AfterSync: func(ctx context.Context) error {
-				return hetzner.WaitForIngressLBDNS(ctx, mainClusterClient)
+				hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
+				assert.Assert(ctx, ok, "Failed type-casting globals.CloudProvider to *hetzner.Hetzner")
+
+				return hetznerCloudProvider.WaitForIngressLBDNS(ctx, mainClusterClient)
 			},
 		})
 	}
@@ -195,7 +215,7 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			AfterSync: netbirdAfterSync(mainClusterClient),
 		})
 	}
-	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
+	err = kubeCluster().SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 
 	// When we have setup Disaster Recovery,
@@ -351,7 +371,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		provisionMainClusterUsingClusterAPI(ctx)
 
 		// Close management cluster's ArgoCD application client.
-		_ = globals.ArgoCDApplicationClientCloser.Close()
+		kubeCluster().CloseArgoCD(ctx)
 	}
 
 	// Update the KUBECONFIG environment variable's value to the provisioned cluster's kubeconfig.
@@ -397,7 +417,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	bar.Substep("Main cluster provisioned 🎉")
 
 	// Ensure that application workloads can be scheduled.
-	switch kubernetes.IsNodeGroupCountZero(ctx) {
+	switch kubeCluster().IsNodeGroupCountZero(ctx) {
 	// When there are 0 node-groups, then we need to remove the NoSchedule taint from the master
 	// nodes.
 	case true:
@@ -413,11 +433,11 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// Gate the workload installs below on a settled control plane: a re-run
 	// can land mid control-plane rollout, and installing during that
 	// apiserver/etcd churn can leave a Helm release stuck "failed".
-	if kubernetes.UsingClusterAPI() {
+	if kubeCluster().UsingClusterAPI() {
 		// KCP lives in the management cluster pre-pivot, the provisioned
 		// cluster after clusterctl move (mgmt k3d may be gone by then).
 		kcpOwnerClient := provisionedClusterClient
-		if !kubernetes.IsClusterctlMoveExecuted(ctx) {
+		if !isClusterctlMoveExecuted(ctx) {
 			mgmtKubeconfigPath, mgmtErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 			assert.AssertErrNil(ctx, mgmtErr, "Failed getting management cluster kubeconfig path")
 
@@ -428,7 +448,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 			kcpOwnerClient = mgmtClient
 		}
 
-		err = kubernetes.WaitForControlPlaneRolloutComplete(ctx, kcpOwnerClient)
+		err = kubeCluster().WaitForControlPlaneRolloutComplete(ctx, kcpOwnerClient)
 		assert.AssertErrNil(ctx, err, "Failed waiting for control-plane rollout to settle")
 		bar.Substep("Control-plane rollout settled")
 	}
@@ -450,7 +470,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		GitAuthMethod:    args.GitAuthMethod,
 	})
 
-	if !kubernetes.UsingClusterAPI() {
+	if !kubeCluster().UsingClusterAPI() {
 		return
 	}
 
@@ -459,7 +479,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 
 	// Pivot ClusterAPI (the provisioned cluster will manage itself),
 	// if enabled by the user and not alredy done.
-	if !args.SkipClusterctlMove && !kubernetes.IsClusterctlMoveExecuted(ctx) {
+	if !args.SkipClusterctlMove && !isClusterctlMoveExecuted(ctx) {
 		pivotCluster(ctx, provisionedClusterClient)
 	}
 
@@ -472,7 +492,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 		(globals.CloudProviderName == constants.CloudProviderAWS ||
 			globals.CloudProviderName == constants.CloudProviderAzure) {
 		releaseAuto := bar.InProgress("Syncing cluster-autoscaler ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(
+		err = kubeCluster().SyncArgoCDApp(
 			ctx, constants.ArgoCDAppClusterAutoscaler,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
@@ -487,7 +507,7 @@ func provisionAndSetupMainCluster(ctx context.Context, args ProvisionAndSetupMai
 	// the snapshot controller with its managed CSI drivers).
 	if globals.CloudProviderName != constants.CloudProviderHetzner && !config.AKSEnabled() {
 		releaseSnap := bar.InProgress("Syncing external-snapshotter ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(
+		err = kubeCluster().SyncArgoCDApp(
 			ctx, constants.ArgoCDExternalSnapshotter,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
@@ -502,8 +522,7 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 
 	// Determine whether 'clusterctl move' has been executed or not.
 	// If yes, then we don't need to do anything.
-	isClusterctlMoveExecuted := kubernetes.IsClusterctlMoveExecuted(ctx)
-	if isClusterctlMoveExecuted {
+	if isClusterctlMoveExecuted(ctx) {
 		return
 	}
 
@@ -523,7 +542,8 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 			hetznerCloudProvider, ok := globals.CloudProvider.(*hetzner.Hetzner)
 			assert.Assert(ctx, ok, "Failed casting CloudProvider to Hetzner cloud-provider")
 
-			assert.AssertErrNil(ctx, hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx),
+			assert.AssertErrNil(ctx,
+				hetznerCloudProvider.PointFailoverIPToInitMasterNode(ctx, managementClusterClient),
 				"Failed pointing failover IP to the init master node")
 		}
 	}
@@ -532,7 +552,7 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	// owns the screen for its duration — pauses our spinner, renders a
 	// live status table, leaves the final tick in scrollback as the
 	// audit trail. So no bar.InProgress wrap here.
-	if err := kubernetes.WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
+	if err := kubeCluster().WaitForMainClusterToBeProvisioned(ctx, managementClusterClient); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed waiting for the main cluster to be provisioned")
 	}
 	// Predicate inside WaitForMainClusterToBeProvisioned now requires
@@ -544,7 +564,9 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 	bar.Substep("Main cluster reachable (CP + worker Machine joined)")
 
 	// Save kubeconfig locally.
-	if err := kubernetes.SaveProvisionedClusterKubeconfig(ctx, managementClusterClient); err != nil {
+	if err := kubeCluster().SaveProvisionedClusterKubeconfig(ctx,
+		managementClusterClient, constants.OutputPathMainClusterKubeconfig,
+	); err != nil {
 		assert.AssertErrNil(ctx, err, "Failed saving provisioned cluster kubeconfig")
 	}
 	bar.Substep("Saved provisioned cluster kubeconfig")
@@ -563,7 +585,7 @@ func provisionMainClusterUsingClusterAPI(ctx context.Context) {
 // move walks the management cluster via clusterctlClient.
 func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	bar := progress.FromCtx(ctx)
-	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
+	capiClusterNamespace := cliConfig().CAPINamespace()
 
 	pivotMgmtKubeconfig, pivotErr := kubernetes.GetManagementClusterKubeconfigPath(ctx)
 	assert.AssertErrNil(ctx, pivotErr, "Failed getting management cluster kubeconfig path")
@@ -610,7 +632,7 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 	// On success the wait swaps its live Machine-status table for a
 	// `kubectl get nodes`-style table from mainClusterClient — the
 	// operator's pre-pivot audit trail.
-	waitErr := kubernetes.WaitForAllMachinesRunning(ctx, managementClusterClient, mainClusterClient)
+	waitErr := kubeCluster().WaitForAllMachinesRunning(ctx, managementClusterClient, mainClusterClient)
 	assert.AssertErrNil(ctx, waitErr,
 		"Timed out waiting for Machines to be Running before clusterctl move")
 
@@ -657,7 +679,7 @@ func pivotCluster(ctx context.Context, mainClusterClient client.Client) {
 // auto-detection, which AKS's windows-kube-proxy-initializer DaemonSet
 // confuses.
 func installCiliumOnManagedCluster(ctx context.Context) {
-	endpoint, err := kubernetes.GetMainClusterEndpoint(ctx)
+	endpoint, err := kubeCluster().GetMainClusterEndpoint(ctx, constants.OutputPathMainClusterKubeconfig)
 	assert.AssertErrNil(ctx, err, "Failed getting main cluster endpoint")
 	assert.AssertNotNil(ctx, endpoint, "Main cluster kubeconfig has no endpoint — cannot install Cilium")
 

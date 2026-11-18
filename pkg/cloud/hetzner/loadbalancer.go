@@ -14,7 +14,6 @@ import (
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"k8s.io/utils/ptr"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 )
 
@@ -334,8 +333,8 @@ func (h *Hetzner) SetControlPlaneLBPublicInterface(
 // public IP is the operator's only entry point to kube-apiserver,
 // and disabling it would lock them out of their own cluster.
 func (h *Hetzner) DisableControlPlaneLBPublicInterface(ctx context.Context) error {
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
-	cluster := config.ParsedGeneralConfig.Cluster
+	hetznerConfig := h.cfg.General.Cloud.Hetzner
+	cluster := h.cfg.General.Cluster
 
 	preCreatedLB := cluster.Type == constants.ClusterTypeVPN ||
 		hetznerConfig.HCloudVPNCluster != nil

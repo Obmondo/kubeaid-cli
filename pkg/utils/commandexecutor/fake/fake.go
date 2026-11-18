@@ -39,11 +39,3 @@ func (e *Executor) Execute(_ context.Context, command string) (string, error) {
 	response := e.Responses[responseIndex]
 	return response.Output, response.Err
 }
-
-func (e *Executor) MustExecute(ctx context.Context, command string) string {
-	output, err := e.Execute(ctx, command)
-	if err != nil {
-		panic(err)
-	}
-	return output
-}

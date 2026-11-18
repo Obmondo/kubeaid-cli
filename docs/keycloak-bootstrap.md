@@ -315,8 +315,8 @@ The plan is implemented entirely in this repo (`kubeaid-cli`); the `kubeaid` cha
 |---|---|
 | `pkg/keycloak/` (new package) | gocloak-driven idempotent reconciler. One file per resource type — `realm.go`, `client_resource.go`, `scope.go`, `mapper.go`, `role.go` — plus top-level entry points `netbird.go` and `kubernetes.go`. |
 | `pkg/config/parser/keycloak.go` | `hydrateKeycloakDefaults()` (publicsuffix-based realm derivation) + `validateKeycloakConfig()` (`mode=managed` requires `cluster.type=vpn`). |
-| `pkg/core/templates/argocd-apps/templates/keycloakx.yaml.tmpl` | Conditional ArgoCD Application gated on `cluster.type=vpn AND cluster.keycloak.mode=managed`. |
-| `pkg/core/templates/argocd-apps/values-keycloakx.yaml.tmpl` | Per-cluster values (DNS, ingress, admin Secret name). |
+| `pkg/templates/templates/argocd-apps/templates/keycloakx.yaml.tmpl` | Conditional ArgoCD Application gated on `cluster.type=vpn AND cluster.keycloak.mode=managed`. |
+| `pkg/templates/templates/argocd-apps/values-keycloakx.yaml.tmpl` | Per-cluster values (DNS, ingress, admin Secret name). |
 
 ### Modified code
 

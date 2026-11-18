@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
@@ -41,7 +42,7 @@ func (*Azure) UpdateMachineTemplate(ctx context.Context,
 	azureMachineTemplate := &capzV1Beta1.AzureMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
-			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Namespace: constants.DefaultCAPIClusterNamespace,
 		},
 	}
 	err := kubernetes.GetKubernetesResource(ctx, clusterClient, azureMachineTemplate)

@@ -19,9 +19,11 @@ import (
 // Composite Resource Definitions (XRDs) and the Compositions. The ordering between those is
 // expressed by the chart itself, with ArgoCD sync waves inside the one App : ArgoCD holds back
 // the ProviderConfig and XRDs until the Provider packages report healthy.
-func InstallAndSetupCrossplane(ctx context.Context) error {
-	mgr := newGlobalArgoCDAppManager()
-	return mgr.installAndSetupCrossplane(ctx)
+func (c *Cluster) InstallAndSetupCrossplane(ctx context.Context) error {
+	if c.argoCD.client == nil {
+		return errNoArgoCDSession
+	}
+	return c.newArgoCDAppManager().installAndSetupCrossplane(ctx)
 }
 
 // installAndSetupCrossplane is the testable core of InstallAndSetupCrossplane.

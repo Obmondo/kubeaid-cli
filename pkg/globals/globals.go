@@ -7,9 +7,9 @@ import (
 	"io"
 	"path"
 
-	"github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
-
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
+	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 var (
@@ -29,23 +29,20 @@ var (
 	CloudProviderName string
 	CloudProvider cloud.CloudProvider
 
-	// When using a VPN cluster, we pre-provision the HCloud control-plane LB.
-	// Without a configured hostname, its private IP is rendered as the control-plane endpoint.
-	// With a configured hostname, the hostname is rendered as the endpoint and temporarily
-	// resolves to this LB's public IP during bootstrap, then to this private IP afterward.
-	ControlPlaneLBPrivateIP         string
+	// Config is the explicit config of the cluster the CLI parsed, which the CLI hands to the
+	// library packages. Set by the config parser.
+	Config *config.Config
+
+	// Cluster runs the Kubernetes-side provisioning steps for Config, and owns the ArgoCD
+	// application client they share. Set by the config parser.
+	Cluster *kubernetes.Cluster
+
+	// The control-plane endpoint hostname of the pre-provisioned HCloud control-plane LB (VPN
+	// clusters), and the LB's public IP that the hostname resolves to during bootstrap. Mirrored
+	// from Config.Provisioned after prerequisite infrastructure is provisioned, for the K3d
+	// management cluster's host aliases.
 	ControlPlaneHostname            string
 	ControlPlaneLBBootstrapPublicIP string
-
-	// CoturnFloatingIPs holds the HCloud Floating IP(s) kubeaid-cli
-	// provisions for NetBird Coturn (STUN/TURN) HA on a multi-CP HCloud
-	// VPN cluster. Set during prerequisite-infra (CreateCoturnFloatingIP)
-	// and rendered into the capi-cluster chart's controlPlane.hcloud
-	// .floatingIPs so each CP binds it via netplan. Empty otherwise.
-	CoturnFloatingIPs []string
-
-	ArgoCDApplicationClientCloser io.Closer
-	ArgoCDApplicationClient       application.ApplicationServiceClient
 
 	// Azure specific.
 	CAPIUAMIClientID,

@@ -28,6 +28,7 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	gitUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
@@ -91,7 +92,7 @@ func lockdownDecision(ld *bool) (run, skipConfirm bool) {
 // (info-logged); any actual failure is warn-logged and bootstrap continues —
 // the cluster is already provisioned.
 func lockdownInBootstrap(ctx context.Context, clusterClient client.Client, gitAuthMethod transport.AuthMethod) {
-	if !config.UsingHetznerBareMetal() || !kubernetes.IsClusterctlMoveExecuted(ctx) {
+	if !config.UsingHetznerBareMetal() || !isClusterctlMoveExecuted(ctx) {
 		return
 	}
 
@@ -418,9 +419,11 @@ func raiseLockdownPR(ctx context.Context, authMethod transport.AuthMethod, acces
 		return fmt.Errorf("getting kubeaid-config worktree: %w", err)
 	}
 
-	defaultBranch := gitUtils.GetDefaultBranchName(ctx, authMethod, repo)
+	defaultBranch, err := gitClient().GetDefaultBranchName(ctx, authMethod, repo)
+	assertGit(ctx, err)
 	branchName := "enable-host-firewall-" + clusterName
-	gitUtils.CreateAndCheckoutToBranch(ctx, repo, branchName, workTree, authMethod)
+	err = gitClient().CreateAndCheckoutToBranch(ctx, repo, branchName, workTree, authMethod)
+	assertGit(ctx, err)
 
 	ciliumValuesPath := path.Join(
 		utils.GetClusterDir(),
@@ -444,10 +447,11 @@ func raiseLockdownPR(ctx context.Context, authMethod transport.AuthMethod, acces
 			"Host firewall CCNP applied live to the cluster before this commit.",
 		clusterName)
 
-	commitHash := gitUtils.AddCommitAndPushChanges(
+	commitHash, err := gitClient().AddCommitAndPushChanges(
 		ctx, repo, workTree, branchName, authMethod,
 		clusterName, commitMsg, defaultBranch,
 	)
+	assertGit(ctx, err)
 
 	if commitHash.IsZero() {
 		slog.WarnContext(ctx,
@@ -455,7 +459,8 @@ func raiseLockdownPR(ctx context.Context, authMethod transport.AuthMethod, acces
 		return nil
 	}
 
-	prURL := gitUtils.BuildPRCompareURL(repo, defaultBranch, branchName)
+	prURL, err := gitUtils.BuildPRCompareURL(repo, defaultBranch, branchName)
+	assert.AssertErrNil(ctx, err, "Failed building the PR compare URL")
 	slog.InfoContext(ctx, "Lockdown PR branch pushed",
 		slog.String("branch", branchName),
 		slog.String("pr_url", prURL))

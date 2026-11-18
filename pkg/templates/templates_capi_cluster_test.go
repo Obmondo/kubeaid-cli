@@ -1,10 +1,9 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
-	"context"
 	"regexp"
 	"testing"
 
@@ -14,7 +13,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 // capiClusterTV returns a TemplateValues for an HCloud VPN cluster with a
@@ -117,12 +115,7 @@ func TestCapiClusterValuesNoTrailingWhitespace(t *testing.T) {
 		}},
 	}
 
-	out := templates.ParseAndExecuteTemplate(
-		context.Background(),
-		&KubeaidConfigFileTemplates,
-		"templates/argocd-apps/values-capi-cluster.yaml.tmpl",
-		tv,
-	)
+	out := renderEmbeddedPath(t, "templates/argocd-apps/values-capi-cluster.yaml.tmpl", tv)
 
 	assert.Empty(t, regexp.MustCompile(`(?m)[ \t]+$`).FindAllString(string(out), -1),
 		"rendered values-capi-cluster.yaml:\n%s", out)

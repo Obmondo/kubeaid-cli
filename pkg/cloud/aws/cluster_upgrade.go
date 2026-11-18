@@ -13,6 +13,7 @@ import (
 	capaV1Beta2 "sigs.k8s.io/cluster-api-provider-aws/v2/api/v1beta2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
@@ -33,7 +34,7 @@ func (*AWS) UpdateMachineTemplate(ctx context.Context,
 	awsMachineTemplate := &capaV1Beta2.AWSMachineTemplate{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      name,
-			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Namespace: constants.DefaultCAPIClusterNamespace,
 		},
 	}
 	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, awsMachineTemplate); err != nil {

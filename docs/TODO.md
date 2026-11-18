@@ -93,7 +93,7 @@ Pursue (2) upstream; ship (1) as the immediate kubeaid-cli fix in
 
 ### CoreDNS hosts block leaves the disabled public IP
 
-`pkg/core/templates/k8s-configs/coredns.configmap.yaml.tmpl`
+`pkg/templates/templates/k8s-configs/coredns.configmap.yaml.tmpl`
 emits both the LB's bootstrap public IP and the steady-state
 private IP, with the public IP first. After
 `DisableControlPlaneLBPublicInterface` runs, the public entry
@@ -135,7 +135,7 @@ shipping standalone if that wider work slips.
 `Makefile:1` injects `VERSION = $(git describe --tags --always --dirty)`
 into `cmd/kubeaid-core/root/version.Version`, so a local `make build`
 run produces a string like `v0.23.0-54-g0d24247-dirty`. The gate in
-`pkg/core/templates.go:255` (`storagectlVersion`) only treats `""` and
+`pkg/templates/templates.go` (`storagectlVersion`) only treats `""` and
 `"dev"` as dev, so any Makefile-built kubeaid-cli pins that describe
 string into `global.kubeaidStoragectl.version` of the rendered
 `values-capi-cluster.yaml`. Result: every commit on main produces a

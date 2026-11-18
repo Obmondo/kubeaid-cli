@@ -33,7 +33,6 @@ import (
 	repoApiclient "github.com/argoproj/argo-cd/v3/reposerver/apiclient"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
 type fakeArgoCDAppClient struct {
@@ -459,40 +458,38 @@ func (f *fakeFullApplicationServiceClient) ListResourceLinks(context.Context, *a
 	return nil, nil
 }
 
-func TestNewGlobalArgoCDAppManager(t *testing.T) {
-	// Mutates globals.ArgoCDApplicationClient — sequential only.
-
+func TestClusterNewArgoCDAppManager(t *testing.T) {
 	fakeClient := &fakeFullApplicationServiceClient{}
 
 	tests := []struct {
 		name          string
-		globalClient  application.ApplicationServiceClient
+		sessionClient application.ApplicationServiceClient
 		wantNilClient bool
 	}{
 		{
-			name:          "nil global client yields nil manager client",
-			globalClient:  nil,
+			name:          "no ArgoCD connection yields nil manager client",
+			sessionClient: nil,
 			wantNilClient: true,
 		},
 		{
-			name:         "non-nil global client is forwarded to manager",
-			globalClient: fakeClient,
+			name:          "the ArgoCD connection's client is forwarded to the manager",
+			sessionClient: fakeClient,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			orig := globals.ArgoCDApplicationClient
-			t.Cleanup(func() { globals.ArgoCDApplicationClient = orig })
-			globals.ArgoCDApplicationClient = tc.globalClient
+			c := newTestCluster(constants.CloudProviderHetzner)
+			c.argoCD.client = tc.sessionClient
 
-			mgr := newGlobalArgoCDAppManager()
+			mgr := c.newArgoCDAppManager()
 
 			if tc.wantNilClient {
 				assert.Nil(t, mgr.client)
 			} else {
-				assert.Equal(t, tc.globalClient, mgr.client)
+				assert.Equal(t, tc.sessionClient, mgr.client)
 			}
+			assert.Same(t, c.cfg, mgr.cfg)
 			assert.NotNil(t, mgr.reconnect)
 		})
 	}
@@ -531,18 +528,12 @@ func TestSyncAllArgoCDApps(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.cloudProvider != "" {
-				orig := globals.CloudProviderName
-				t.Cleanup(func() { globals.CloudProviderName = orig })
-				globals.CloudProviderName = tc.cloudProvider
-			}
-
 			fakeClient := &fakeArgoCDAppClient{
 				listResponse: tc.listResponse,
 				listErr:      tc.listErr,
 				getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
 			}
-			mgr := NewArgoCDAppManager(fakeClient, nil)
+			mgr := NewArgoCDAppManager(testConfig(tc.cloudProvider), fakeClient, nil)
 
 			err := mgr.syncAllArgoCDApps(context.Background(), true, nil)
 			if tc.wantErr {
@@ -574,7 +565,7 @@ func TestSyncAllArgoCDAppsOrderedSteps(t *testing.T) {
 		// at its skip-check (one Get per App) — no Sync calls, no poll.
 		getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
 	}
-	mgr := NewArgoCDAppManager(client, nil)
+	mgr := NewArgoCDAppManager(testConfig(""), client, nil)
 
 	var hookOrder []string
 	var appsSyncedAtTraefikHook []string
@@ -654,7 +645,7 @@ func TestSyncArgoCDApp(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mgr := NewArgoCDAppManager(tc.client, nil)
+			mgr := NewArgoCDAppManager(testConfig(""), tc.client, nil)
 			err := mgr.syncArgoCDApp(context.Background(), tc.appName, nil)
 			if tc.wantErr {
 				require.Error(t, err)
@@ -714,7 +705,7 @@ func TestSyncArgoCDAppReissuesSync(t *testing.T) {
 				syncResponse: &argoCDV1Alpha1.Application{},
 				getResponses: tc.getResponses,
 			}
-			mgr := NewArgoCDAppManager(client, nil)
+			mgr := NewArgoCDAppManager(testConfig(""), client, nil)
 
 			err := mgr.syncArgoCDApp(context.Background(), "my-app", nil)
 			require.NoError(t, err)
@@ -827,7 +818,7 @@ func TestSyncArgoCDAppRetriesOnPortForwardFailure(t *testing.T) {
 			},
 		}
 		reconnectCalls := 0
-		mgr := NewArgoCDAppManager(client, func(_ context.Context) {
+		mgr := NewArgoCDAppManager(testConfig(""), client, func(_ context.Context) {
 			reconnectCalls++
 		})
 
@@ -849,7 +840,7 @@ func TestSyncArgoCDAppRetriesOnPortForwardFailure(t *testing.T) {
 			},
 			syncResponses: []fakeSyncResponse{{err: portForwardErr}},
 		}
-		mgr := NewArgoCDAppManager(client, func(_ context.Context) {})
+		mgr := NewArgoCDAppManager(testConfig(""), client, func(_ context.Context) {})
 
 		err := mgr.syncArgoCDApp(context.Background(), constants.ArgoCDAppArgoCD, nil)
 		require.Error(t, err)
@@ -868,7 +859,7 @@ func TestSyncArgoCDAppRetriesOnPortForwardFailure(t *testing.T) {
 			},
 			syncResponses: []fakeSyncResponse{{err: portForwardErr}},
 		}
-		mgr := NewArgoCDAppManager(client, nil)
+		mgr := NewArgoCDAppManager(testConfig(""), client, nil)
 
 		err := mgr.syncArgoCDApp(context.Background(), "my-app", nil)
 		require.Error(t, err)
@@ -1036,7 +1027,7 @@ func TestIsArgoCDAppSynced(t *testing.T) {
 					getResponses: []fakeGetResponse{{app: syncedApp(), err: nil}},
 				}
 				reconnectCalled := 0
-				mgr := NewArgoCDAppManager(failClient, nil)
+				mgr := NewArgoCDAppManager(testConfig(""), failClient, nil)
 				mgr.reconnect = func(_ context.Context) {
 					reconnectCalled++
 					mgr.client = successClient
@@ -1050,7 +1041,7 @@ func TestIsArgoCDAppSynced(t *testing.T) {
 			fakeClient := &fakeArgoCDAppClient{
 				getResponses: []fakeGetResponse{{app: tc.getResponse, err: nil}},
 			}
-			mgr := NewArgoCDAppManager(fakeClient, nil)
+			mgr := NewArgoCDAppManager(testConfig(""), fakeClient, nil)
 			got := mgr.isArgoCDAppSynced(context.Background(), tc.appName, tc.resources)
 			assert.Equal(t, tc.wantSynced, got)
 		})
@@ -1281,8 +1272,6 @@ func TestSyncResourceAppNames(t *testing.T) {
 // children (6 mgmt, 7 workload-only, plus root itself) of which only
 // the 6 mgmt Apps were ever asked to be created; without this filter
 // the wait loops on the 7 ghost Apps until the 3-minute deadline.
-//
-// Sequential rather than t.Parallel(): stubs globals.ArgoCDApplicationClient.
 func TestRootAppReadyForChildSyncRespectsExpected(t *testing.T) {
 	rootWithDeclaredChildren := func(declared ...string) *argoCDV1Alpha1.Application {
 		resources := make([]argoCDV1Alpha1.ResourceStatus, 0, len(declared))
@@ -1355,16 +1344,14 @@ func TestRootAppReadyForChildSyncRespectsExpected(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			orig := globals.ArgoCDApplicationClient
-			t.Cleanup(func() { globals.ArgoCDApplicationClient = orig })
-			globals.ArgoCDApplicationClient = &fakeFullApplicationServiceClient{
+			mgr := NewArgoCDAppManager(testConfig(""), &fakeFullApplicationServiceClient{
 				fakeArgoCDAppClient: fakeArgoCDAppClient{
 					getResponses: []fakeGetResponse{{app: tc.root}},
 					listResponse: tc.existing,
 				},
-			}
+			}, nil)
 
-			reconciled, declared, missing, err := rootAppReadyForChildSync(context.Background(), tc.expected)
+			reconciled, declared, missing, err := mgr.rootAppReadyForChildSync(context.Background(), tc.expected)
 			require.NoError(t, err)
 			assert.True(t, reconciled, "OutOfSync should count as reconciled here")
 			assert.Equal(t, tc.wantDeclared, declared)

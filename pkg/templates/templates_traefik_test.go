@@ -1,10 +1,9 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 // renderTemplateToMap renders a template via the production pipeline and
@@ -21,9 +19,7 @@ import (
 func renderTemplateToMap(t *testing.T, path string, tv *TemplateValues) map[string]any {
 	t.Helper()
 
-	rendered := templates.ParseAndExecuteTemplate(
-		context.Background(), &KubeaidConfigFileTemplates, path, tv,
-	)
+	rendered := renderEmbeddedPath(t, path, tv)
 
 	var parsed map[string]any
 	require.NoError(t, yaml.Unmarshal(rendered, &parsed),
@@ -86,8 +82,7 @@ func TestTraefikInternalApp(t *testing.T) {
 	t.Run("apiKey empty: both render empty", func(t *testing.T) {
 		tv := forkTV("")
 		for _, p := range []string{appTmpl, valuesTmpl} {
-			rendered := templates.ParseAndExecuteTemplate(
-				context.Background(), &KubeaidConfigFileTemplates, p, tv)
+			rendered := renderEmbeddedPath(t, p, tv)
 			assert.Empty(t, strings.TrimSpace(string(rendered)),
 				"%s must render empty without netbird.apiKey", p)
 		}

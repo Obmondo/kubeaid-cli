@@ -47,7 +47,7 @@ reaching the apiserver under a NetBird-mesh hostname hits an x509 name mismatch
 
 - **`extraCertSANs` made mode-agnostic** — operator-supplied extra SANs work on
   every provider/mode, not just the hcloud LoadBalancer path it lives on today.
-- `pkg/core/templates.go` builds the SAN list = `[kubernetes.<dnsZone>]` +
+- `pkg/templates/templates.go` builds the SAN list = `[kubernetes.<dnsZone>]` +
   `extraCertSANs`, emitted for all modes in `values-capi-cluster.yaml.tmpl`.
 - kubeaid chart `KubeadmControlPlane.yaml`: **de-gate the `certSANs` block** so it
   renders whenever any SAN exists (today it only renders when `endpoint.host` is

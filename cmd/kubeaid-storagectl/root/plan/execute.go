@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/commandexecutor"
 )
 
@@ -21,6 +22,7 @@ var ExecuteCommand = &cobra.Command{
 		commandExecutor := commandexecutor.NewLocalCommandExecutor(false)
 
 		storagePlan := generateAndPrintStoragePlan(ctx, commandExecutor)
-		storageplan.Execute(ctx, storagePlan, commandExecutor)
+		err := storageplan.Execute(ctx, storagePlan, commandExecutor)
+		assert.AssertErrNil(ctx, err, "Command execution failed")
 	},
 }

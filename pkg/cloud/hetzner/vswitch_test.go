@@ -21,30 +21,22 @@ import (
 
 const robotVSwitchPath = "/vswitch"
 
-// Mutates vSwitchID and config.ParsedGeneralConfig — sequential only.
 func TestCreateVSwitch(t *testing.T) {
-	setupVSwitchConfig := func(t *testing.T) {
-		t.Helper()
-		savedConfig := config.ParsedGeneralConfig
-		savedVSwitchID := vSwitchID
-		t.Cleanup(func() {
-			config.ParsedGeneralConfig = savedConfig
-			vSwitchID = savedVSwitchID
-		})
-
-		config.ParsedGeneralConfig = &config.GeneralConfig{
-			Cloud: config.CloudConfig{
-				Hetzner: &config.HetznerConfig{
-					BareMetal: &config.HetznerBareMetalConfig{
-						VSwitch: &config.VSwitchConfig{
-							Name:   "test-vswitch",
-							VLANID: 4000,
+	vSwitchTestConfig := func() *config.Config {
+		return &config.Config{
+			General: &config.GeneralConfig{
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{
+						BareMetal: &config.HetznerBareMetalConfig{
+							VSwitch: &config.VSwitchConfig{
+								Name:   "test-vswitch",
+								VLANID: 4000,
+							},
 						},
 					},
 				},
 			},
 		}
-		vSwitchID = 0
 	}
 
 	tests := []struct {
@@ -184,10 +176,9 @@ func TestCreateVSwitch(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			setupVSwitchConfig(t)
-
 			h, server := newTestHetznerWithRobotServer(tc.handler)
 			defer server.Close()
+			h.cfg = vSwitchTestConfig()
 
 			got, err := h.CreateVSwitch(context.Background())
 			if tc.wantErr {
@@ -197,6 +188,7 @@ func TestCreateVSwitch(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.wantID, got)
+			assert.Equal(t, tc.wantID, h.vSwitchID, "the ID is remembered for ConnectVSwitchWithHetznerNetwork")
 		})
 	}
 }

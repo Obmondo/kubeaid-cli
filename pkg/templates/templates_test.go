@@ -1,58 +1,42 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	templateUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
-// withFreshGeneralConfig swaps ParsedGeneralConfig for the duration of fn
-// so the test never leaks the package-level config state to other tests.
-func withFreshGeneralConfig(t *testing.T, fn func()) {
+// renderEmbeddedPath renders the embedded template at path — as it is named in
+// KubeaidConfigFileTemplates, such as "templates/argocd-apps/values-capi-cluster.yaml.tmpl" —
+// against values.
+func renderEmbeddedPath(t *testing.T, path string, values any) []byte {
 	t.Helper()
 
-	orig := config.ParsedGeneralConfig
-	config.ParsedGeneralConfig = &config.GeneralConfig{}
-
-	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
-
-	fn()
+	rendered, err := templateUtils.ParseAndExecuteTemplate(&KubeaidConfigFileTemplates, path, values)
+	require.NoError(t, err)
+	return rendered
 }
 
-// withFreshGlobals snapshots and clears the package-level globals for
-// the duration of fn — used by tests that exercise predicates depending
-// on globals.ControlPlaneLB* state.
-func withFreshGlobals(t *testing.T, fn func()) {
-	t.Helper()
-
-	origPrivIP := globals.ControlPlaneLBPrivateIP
-	origPubIP := globals.ControlPlaneLBBootstrapPublicIP
-	origHostname := globals.ControlPlaneHostname
-
-	globals.ControlPlaneLBPrivateIP = ""
-	globals.ControlPlaneLBBootstrapPublicIP = ""
-	globals.ControlPlaneHostname = ""
-
-	t.Cleanup(func() {
-		globals.ControlPlaneLBPrivateIP = origPrivIP
-		globals.ControlPlaneLBBootstrapPublicIP = origPubIP
-		globals.ControlPlaneHostname = origHostname
-	})
-
-	fn()
+// newTestConfig returns a config.Config over a general config whose Hetzner block is hetzner.
+func newTestConfig(hetzner *config.HetznerConfig) *config.Config {
+	return &config.Config{
+		General: &config.GeneralConfig{Cloud: config.CloudConfig{Hetzner: hetzner}},
+		Secrets: &config.SecretsConfig{},
+	}
 }
 
 func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 	tests := []struct {
 		name    string
 		hetzner *config.HetznerConfig
-		lbIP    string // populated to globals.ControlPlaneLBPrivateIP
+		lbIP    string // populated to Config.Provisioned.ControlPlaneLBPrivateIP
 		want    bool
 	}{
 		{
@@ -106,13 +90,10 @@ func TestHCloudControlPlaneEndpointSet(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			withFreshGeneralConfig(t, func() {
-				withFreshGlobals(t, func() {
-					config.ParsedGeneralConfig.Cloud.Hetzner = tc.hetzner
-					globals.ControlPlaneLBPrivateIP = tc.lbIP
-					assert.Equal(t, tc.want, hcloudControlPlaneEndpointSet())
-				})
-			})
+			cfg := newTestConfig(tc.hetzner)
+			cfg.Provisioned.ControlPlaneLBPrivateIP = tc.lbIP
+
+			assert.Equal(t, tc.want, hcloudControlPlaneEndpointSet(cfg))
 		})
 	}
 }

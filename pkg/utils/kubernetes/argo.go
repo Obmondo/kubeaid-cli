@@ -5,6 +5,7 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -36,7 +37,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
@@ -82,21 +82,42 @@ var (
 )
 
 type ArgoCDAppManager struct {
+	cfg       *config.Config
 	client    ArgoCDAppClient
 	reconnect func(ctx context.Context)
 }
 
-func NewArgoCDAppManager(appClient ArgoCDAppClient, reconnect func(ctx context.Context)) *ArgoCDAppManager {
+func NewArgoCDAppManager(cfg *config.Config,
+	appClient ArgoCDAppClient,
+	reconnect func(ctx context.Context),
+) *ArgoCDAppManager {
 	return &ArgoCDAppManager{
+		cfg:       cfg,
 		client:    appClient,
 		reconnect: reconnect,
 	}
 }
 
+// reconnectArgoCD re-establishes the ArgoCD connection, when the manager has a way to.
+func (m *ArgoCDAppManager) reconnectArgoCD(ctx context.Context) {
+	if m.reconnect != nil {
+		m.reconnect(ctx)
+	}
+}
+
 // Installs the ArgoCD Helm chart and creates the root ArgoCD App.
-// Then creates and returns an ArgoCD Application client.
-func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient client.Client) error {
+// Then connects the Cluster to ArgoCD: the ArgoCD operations that follow use that connection.
+func (c *Cluster) InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient client.Client) error {
 	slog.InfoContext(ctx, "Installing and setting up ArgoCD")
+
+	general := c.cfg.General
+	kubeAidDir, err := utils.KubeAidDir(&general.Forks)
+	if err != nil {
+		return err
+	}
+	if len(general.Git.CABundle) > 0 && general.Forks.KubeaidConfigFork.ParsedURL == nil {
+		return errors.New("the KubeAid Config fork URL has not been parsed")
+	}
 
 	/*
 	   Install the ArgoCD AppProject CRD.
@@ -123,8 +144,8 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// configs.ssh.knownHosts payload that the argocd Application will use
 	// on self-sync — keeping argocd-ssh-known-hosts-cm populated before
 	// the first root-app clone of a private git server.
-	err := HelmInstallOrUpgrade(ctx, &HelmInstallArgs{
-		ChartPath: path.Join(utils.GetKubeAidDir(), "argocd-helm-charts/argo-cd"),
+	err = HelmInstallOrUpgrade(ctx, &HelmInstallArgs{
+		ChartPath: path.Join(kubeAidDir, "argocd-helm-charts/argo-cd"),
 
 		Namespace:   constants.NamespaceArgoCD,
 		ReleaseName: constants.ReleaseNameArgoCD,
@@ -143,7 +164,7 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	// Create the Kubernetes Secrets containing deploy keys,
 	// which ArgoCD will use to access the KubeAid and KubeAid Config Git repositories.
 
-	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
+	if general.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
 		repoKubeaidSecretPath := path.Join(clusterDir, "sealed-secrets/argocd/repo-kubeaid.yaml")
 		if err := ApplyManifestFromFile(ctx, clusterClient, repoKubeaidSecretPath); err != nil {
 			return fmt.Errorf("failed applying repo-kubeaid secret: %w", err)
@@ -156,17 +177,20 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	}
 
 	// Add CA bundle for accessing customer's git server to ArgoCD.
-	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
-		certClientCloser, certClient := argoCDClient.NewCertClientOrDie()
+	if len(general.Git.CABundle) > 0 {
+		certClientCloser, certClient, err := argoCDClient.NewCertClient()
+		if err != nil {
+			return fmt.Errorf("failed creating ArgoCD certificate client: %w", err)
+		}
 		defer certClientCloser.Close()
 
-		_, err := certClient.CreateCertificate(ctx, &certificate.RepositoryCertificateCreateRequest{
+		_, err = certClient.CreateCertificate(ctx, &certificate.RepositoryCertificateCreateRequest{
 			Upsert: true,
 			Certificates: &argoCDV1Aplha1.RepositoryCertificateList{
 				Items: []argoCDV1Aplha1.RepositoryCertificate{{
-					ServerName: config.ParsedGeneralConfig.Forks.KubeaidConfigFork.ParsedURL.HostName(),
+					ServerName: general.Forks.KubeaidConfigFork.ParsedURL.HostName(),
 					CertType:   "https",
-					CertData:   config.ParsedGeneralConfig.Git.CABundle,
+					CertData:   general.Git.CABundle,
 				}},
 			},
 		})
@@ -180,7 +204,9 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 	}
 
 	// Create ArgoCD Application client.
-	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
+	if err := c.openArgoCDApplicationClient(ctx, argoCDClient, clusterClient); err != nil {
+		return err
+	}
 
 	// Create the root ArgoCD App.
 	rootArgoCDAppPath := path.Join(clusterDir, "argocd-apps/templates/root.yaml")
@@ -191,10 +217,11 @@ func InstallAndSetupArgoCD(ctx context.Context, clusterDir string, clusterClient
 
 	// When the user is an Obmondo customer, KubeAid Agent will get deployed to the cluster.
 	// We need to setup the ArgoCD account created for KubeAid Agent.
-	if (config.ParsedGeneralConfig.Obmondo != nil) &&
-		(config.ParsedGeneralConfig.Obmondo.Monitoring) {
-
-		projectClientCloser, projectClient := argoCDClient.NewProjectClientOrDie()
+	if (general.Obmondo != nil) && (general.Obmondo.Monitoring) {
+		projectClientCloser, projectClient, err := argoCDClient.NewProjectClient()
+		if err != nil {
+			return fmt.Errorf("failed creating ArgoCD project client: %w", err)
+		}
 		defer projectClientCloser.Close()
 
 		if err := setupKubeAgentArgoCDProjectRole(ctx, projectClient, clusterClient); err != nil {
@@ -225,7 +252,10 @@ func NewArgoCDClient(ctx context.Context, clusterClient client.Client) (apiclien
 
 		GRPCWeb: false,
 	}
-	argoCDClient := apiclient.NewClientOrDie(argoCDClientOpts)
+	argoCDClient, err := apiclient.NewClient(argoCDClientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating ArgoCD client: %w", err)
+	}
 
 	// Create a session using that ArgoCD client.
 	argoCDClientSessionCloser, argoCDClientSession, err := argoCDClient.NewSessionClient()
@@ -251,7 +281,10 @@ func NewArgoCDClient(ctx context.Context, clusterClient client.Client) (apiclien
 
 	// Recreate ArgoCD client, with auth token.
 	argoCDClientOpts.AuthToken = response.Token
-	argoCDClient = apiclient.NewClientOrDie(argoCDClientOpts)
+	argoCDClient, err = apiclient.NewClient(argoCDClientOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed recreating ArgoCD client with the auth token: %w", err)
+	}
 
 	return argoCDClient, nil
 }
@@ -313,41 +346,15 @@ func CreateArgoCDProject(ctx context.Context, argoCDProjectClient project.Projec
 	return nil
 }
 
-// Recreates the ArgoCD Application client by port-forwarding the ArgoCD server.
-// If the clusterClient is not provided (is nil), then it picks up the KUBECONFIG envionment
-// variable and constructs the cluster client by itself.
-func RecreateArgoCDApplicationClient(ctx context.Context, clusterClient client.Client) error {
-	// Construct the cluster client, if not provided.
-	if clusterClient == nil {
-		kubeconfigPath := os.Getenv(constants.EnvNameKubeconfig)
-		var err error
-		clusterClient, err = CreateKubernetesClient(ctx, kubeconfigPath)
-		if err != nil {
-			return fmt.Errorf(
-				"failed constructing Kubernetes cluster client (kubeconfig=%s): %w",
-				kubeconfigPath,
-				err,
-			)
-		}
-	}
-
-	// Port-forward ArgoCD and create ArgoCD client.
-	argoCDClient, err := NewArgoCDClient(ctx, clusterClient)
-	if err != nil {
-		return fmt.Errorf("failed creating ArgoCD client: %w", err)
-	}
-
-	// Create ArgoCD Application client.
-	globals.ArgoCDApplicationClientCloser, globals.ArgoCDApplicationClient = argoCDClient.NewApplicationClientOrDie()
-	return nil
-}
-
-func newGlobalArgoCDAppManager() *ArgoCDAppManager {
-	mgr := &ArgoCDAppManager{
-		client: globals.ArgoCDApplicationClient,
+// newArgoCDAppManager returns an ArgoCDAppManager on the Cluster's ArgoCD connection. When a call
+// fails on the transport, the manager reconnects through the Cluster.
+func (c *Cluster) newArgoCDAppManager() *ArgoCDAppManager {
+	mgr := &ArgoCDAppManager{cfg: c.cfg}
+	if c.argoCD.client != nil {
+		mgr.client = c.argoCD.client
 	}
 	mgr.reconnect = func(ctx context.Context) {
-		if err := RecreateArgoCDApplicationClient(ctx, nil); err != nil {
+		if err := c.ConnectArgoCD(ctx, nil); err != nil {
 			slog.ErrorContext(ctx, "Failed recreating ArgoCD application client during reconnect",
 				logger.Error(err),
 			)
@@ -355,10 +362,10 @@ func newGlobalArgoCDAppManager() *ArgoCDAppManager {
 		}
 		// Point the manager at the freshly-created application client.
 		// Without this, every Sync/Get after a reconnect keeps hitting
-		// the old (now-dead) port-forward — RecreateArgoCDApplicationClient
-		// replaces the global, but mgr.client still holds the previous
+		// the old (now-dead) port-forward — ConnectArgoCD replaces the
+		// Cluster's client, but mgr.client still holds the previous
 		// interface value, so the retry loops above wouldn't make progress.
-		mgr.client = globals.ArgoCDApplicationClient
+		mgr.client = c.argoCD.client
 	}
 	return mgr
 }
@@ -391,12 +398,14 @@ type AppSyncStep struct {
 // followed by its AfterSync hook (if any). Every other App is then
 // synced in a generic loop. A step whose App isn't present in the
 // cluster is skipped.
-func SyncAllArgoCDApps(ctx context.Context,
+func (c *Cluster) SyncAllArgoCDApps(ctx context.Context,
 	skipMonitoringSetup bool,
 	orderedApps []AppSyncStep,
 ) error {
-	mgr := newGlobalArgoCDAppManager()
-	return mgr.syncAllArgoCDApps(ctx, skipMonitoringSetup, orderedApps)
+	if c.argoCD.client == nil {
+		return errNoArgoCDSession
+	}
+	return c.newArgoCDAppManager().syncAllArgoCDApps(ctx, skipMonitoringSetup, orderedApps)
 }
 
 // WaitForArgoCDAppHealthy blocks until the named ArgoCD App
@@ -404,8 +413,11 @@ func SyncAllArgoCDApps(ctx context.Context,
 // that need to do follow-on work against the underlying
 // application (e.g. talk to Keycloak admin API once the
 // keycloakx App is fully up).
-func WaitForArgoCDAppHealthy(ctx context.Context, name string) error {
-	mgr := newGlobalArgoCDAppManager()
+func (c *Cluster) WaitForArgoCDAppHealthy(ctx context.Context, name string) error {
+	if c.argoCD.client == nil {
+		return errNoArgoCDSession
+	}
+	mgr := c.newArgoCDAppManager()
 	for {
 		select {
 		case <-ctx.Done():
@@ -548,7 +560,9 @@ func (m *ArgoCDAppManager) syncAllArgoCDApps(ctx context.Context,
 // sync. No-op for AWS (the EBS CSI App + values templates aren't wired
 // up yet).
 func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
-	switch globals.CloudProviderName {
+	general := m.cfg.General
+
+	switch m.cfg.CloudProviderName {
 	case constants.CloudProviderAWS:
 		// TODO : Sync the AWS EBS CSI Driver ArgoCD App.
 		//        We need to add the corresponding ArgoCD App and values file templates first.
@@ -559,27 +573,27 @@ func (m *ArgoCDAppManager) syncCSIDriverApps(ctx context.Context) error {
 		}
 
 	case constants.CloudProviderHetzner:
-		if config.UsingHCloud() {
+		if general.UsingHCloud() {
 			if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppHCloudCSIDriver, noResources); err != nil {
 				return err
 			}
 		}
 
-		if config.UsingHetznerBareMetal() {
+		if general.UsingHetznerBareMetal() {
 			// TODO : Sync the OpenEBS ZFS LocalPV ArgoCD App.
 
 			// Rook Ceph needs at least constants.RookCephMinNodes bare-metal worker
 			// nodes to form a healthy cluster (mon quorum + replica-3 / host failure
 			// domain; Ceph can't schedule on the tainted control-plane nodes), so on
 			// smaller clusters we skip it — see config.RookCephEnabled.
-			if config.RookCephEnabled() {
+			if general.RookCephEnabled() {
 				if err := m.syncArgoCDAppWithProgress(ctx, constants.ArgoCDAppRookCeph, noResources); err != nil {
 					return err
 				}
 			} else {
 				slog.InfoContext(ctx,
 					"Skipping Rook Ceph sync: insufficient bare-metal worker nodes for a healthy cluster",
-					slog.Int("bare-metal-worker-nodes", config.HetznerBareMetalWorkerNodeCount()),
+					slog.Int("bare-metal-worker-nodes", general.HetznerBareMetalWorkerNodeCount()),
 					slog.Int("required", constants.RookCephMinNodes),
 				)
 			}
@@ -675,9 +689,14 @@ func (m *ArgoCDAppManager) syncArgoCDAppWithProgress(
 	return nil
 }
 
-func SyncArgoCDApp(ctx context.Context, name string, resources []*argoCDV1Aplha1.SyncOperationResource) error {
-	mgr := newGlobalArgoCDAppManager()
-	return mgr.syncArgoCDApp(ctx, name, resources)
+func (c *Cluster) SyncArgoCDApp(ctx context.Context,
+	name string,
+	resources []*argoCDV1Aplha1.SyncOperationResource,
+) error {
+	if c.argoCD.client == nil {
+		return errNoArgoCDSession
+	}
+	return c.newArgoCDAppManager().syncArgoCDApp(ctx, name, resources)
 }
 
 // syncArgoCDApp is the testable implementation of SyncArgoCDApp.
@@ -768,7 +787,7 @@ For now, please restart them manually. Later, we'll make KubeAid CLI do it.
 		// ccm-hetzner, kube-prometheus, ...) that the filter
 		// deliberately excluded.
 		if name == constants.ArgoCDAppRoot {
-			return waitForRootArgoCDChildren(ctx, syncResourceAppNames(resources))
+			return m.waitForRootArgoCDChildren(ctx, syncResourceAppNames(resources))
 		}
 
 		// isArgoCDAppSynced hard-refreshes the App, so this both checks the
@@ -912,10 +931,10 @@ func (m *ArgoCDAppManager) classifyAndHandleSyncError(
 //     so the wait stays in sync with whatever the source repo declares.
 //
 // Errors on context cancellation or 3-minute deadline.
-func waitForRootArgoCDChildren(ctx context.Context, expected []string) error {
+func (m *ArgoCDAppManager) waitForRootArgoCDChildren(ctx context.Context, expected []string) error {
 	deadline := time.Now().Add(3 * time.Minute)
 	for {
-		reconciled, declared, missing, err := rootAppReadyForChildSync(ctx, expected)
+		reconciled, declared, missing, err := m.rootAppReadyForChildSync(ctx, expected)
 		if err != nil {
 			slog.WarnContext(ctx,
 				"Failed querying root ArgoCD app",
@@ -973,19 +992,15 @@ func waitForRootArgoCDChildren(ctx context.Context, expected []string) error {
 // SyncOperationResource.Name list). When empty/nil, falls back to every
 // kind:Application listed under root.status.resources — appropriate
 // for an un-narrowed sync on the main cluster.
-func rootAppReadyForChildSync(ctx context.Context, expected []string) (bool, int, []string, error) {
+func (m *ArgoCDAppManager) rootAppReadyForChildSync(ctx context.Context, expected []string) (bool, int, []string, error) {
 	rootName := constants.ArgoCDAppRoot
-	rootApp, err := globals.ArgoCDApplicationClient.Get(ctx, &application.ApplicationQuery{
+	rootApp, err := m.client.Get(ctx, &application.ApplicationQuery{
 		Name:         &rootName,
 		Project:      []string{constants.ArgoCDProjectKubeAid},
 		AppNamespace: ptr.To(constants.NamespaceArgoCD),
 	})
 	if err != nil {
-		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
-			slog.WarnContext(ctx, "Failed reconnecting ArgoCD application client",
-				logger.Error(reconnectErr),
-			)
-		}
+		m.reconnectArgoCD(ctx)
 		return false, 0, nil, fmt.Errorf("getting root ArgoCD app: %w", err)
 	}
 
@@ -1008,15 +1023,11 @@ func rootAppReadyForChildSync(ctx context.Context, expected []string) (bool, int
 		return reconciled, 0, nil, nil
 	}
 
-	list, err := globals.ArgoCDApplicationClient.List(ctx, &application.ApplicationQuery{
+	list, err := m.client.List(ctx, &application.ApplicationQuery{
 		AppNamespace: ptr.To(constants.NamespaceArgoCD),
 	})
 	if err != nil {
-		if reconnectErr := RecreateArgoCDApplicationClient(ctx, nil); reconnectErr != nil {
-			slog.WarnContext(ctx, "Failed reconnecting ArgoCD application client",
-				logger.Error(reconnectErr),
-			)
-		}
+		m.reconnectArgoCD(ctx)
 		return reconciled, len(watchSet), nil, fmt.Errorf("listing ArgoCD apps: %w", err)
 	}
 

@@ -13,15 +13,14 @@ import (
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
 // CreateNetwork creates the Hetzner Network, if it doesn't already exist.
 func (h *Hetzner) CreateNetwork(ctx context.Context) (*hcloud.Network, error) {
-	clusterName := config.ParsedGeneralConfig.Cluster.Name
+	clusterName := h.cfg.General.Cluster.Name
 
-	hetznerNetwork := config.ParsedGeneralConfig.Cloud.Hetzner.HCloud.HetznerNetwork
+	hetznerNetwork := h.cfg.General.Cloud.Hetzner.HCloud.HetznerNetwork
 
 	_, parsedHetznerNetworkCIDR, err := net.ParseCIDR(hetznerNetwork.CIDR)
 	if err != nil {

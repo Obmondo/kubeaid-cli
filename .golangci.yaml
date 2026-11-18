@@ -122,6 +122,9 @@ linters:
     # inspects source code for security problems.
     - gosec
 
+    # restricts which packages may be imported where.
+    - depguard
+
   exclusions:
     rules:
       - linters: [staticcheck]
@@ -130,6 +133,28 @@ linters:
   # All settings can be found here :
   # https://github.com/golangci/golangci-lint/blob/HEAD/.golangci.reference.yml
   settings:
+    depguard:
+      rules:
+        # pkg/utils/assert exits the process. Only the code that owns the process may use it :
+        # the commands, and pkg/core which they run. Everything else returns errors, so that a
+        # long-running host (the kubeaid operator) can import the library packages.
+        no-assert-in-library-code:
+          list-mode: lax
+          files:
+            - $all
+            - "!**/cmd/**"
+            - "!**/pkg/core/**"
+            # Parses the CLI's own config files and exits on a bad one; the library packages
+            # take an already built config.Config instead.
+            - "!**/pkg/config/parser/**"
+            # MustGetEnv / MustSetEnv : fatal by name, for commands.
+            - "!**/pkg/utils/others.go"
+            # Build-time generators, not library code.
+            - "!**/tools/**"
+          deny:
+            - pkg: github.com/Obmondo/kubeaid-cli/pkg/utils/assert
+              desc: exits the process; return an error and let cmd/ or pkg/core/ assert on it
+
     errcheck:
       exclude-functions:
         - (*github.com/spf13/cobra.Command).MarkFlagRequired

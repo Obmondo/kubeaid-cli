@@ -36,7 +36,7 @@ type (
 	}
 )
 
-func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
+func (h *Hetzner) UpdateMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
 	name string,
 	updates any,
@@ -46,14 +46,17 @@ func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
 		return fmt.Errorf("wrong type of MachineTemplateUpdates object passed")
 	}
 
-	var infrastructureRefKind string
+	var (
+		infrastructureRefKind string
+		namespace             = h.cfg.CAPINamespace()
+	)
 
 	switch strings.Contains(name, "control-plane") {
 	case true:
 		kubeadmControlPlane := &kubeadmControlPlaneV1Beta1.KubeadmControlPlane{
 			ObjectMeta: metaV1.ObjectMeta{
 				Name:      name,
-				Namespace: kubernetes.GetCapiClusterNamespace(),
+				Namespace: namespace,
 			},
 		}
 		if err := kubernetes.GetKubernetesResource(ctx, clusterClient, kubeadmControlPlane); err != nil {
@@ -66,7 +69,7 @@ func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
 		machineDeployment := &clusterAPIV1Beta1.MachineDeployment{
 			ObjectMeta: metaV1.ObjectMeta{
 				Name:      name,
-				Namespace: kubernetes.GetCapiClusterNamespace(),
+				Namespace: namespace,
 			},
 		}
 		if err := kubernetes.GetKubernetesResource(ctx, clusterClient, machineDeployment); err != nil {
@@ -78,10 +81,12 @@ func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
 
 	switch infrastructureRefKind {
 	case "HCloudMachineTemplate":
-		return updateHCloudMachineTemplate(ctx, clusterClient, name, parsedUpdates.HCloudMachineTemplateUpdates)
+		return updateHCloudMachineTemplate(ctx, clusterClient, namespace, name,
+			parsedUpdates.HCloudMachineTemplateUpdates,
+		)
 
 	case "HetznerBareMetalMachineTemplate":
-		return updateHetznerBareMetalMachineTemplate(ctx, clusterClient, name,
+		return updateHetznerBareMetalMachineTemplate(ctx, clusterClient, namespace, name,
 			parsedUpdates.HetznerBareMetalMachineTemplateUpdates,
 		)
 
@@ -92,13 +97,13 @@ func (*Hetzner) UpdateMachineTemplate(ctx context.Context,
 
 func updateHCloudMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
-	name string,
+	namespace, name string,
 	updates HCloudMachineTemplateUpdates,
 ) error {
 	hcloudMachineTemplate := &caphV1Beta1.HCloudMachineTemplate{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      name,
-			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Namespace: namespace,
 		},
 	}
 	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, hcloudMachineTemplate); err != nil {
@@ -122,13 +127,13 @@ func updateHCloudMachineTemplate(ctx context.Context,
 
 func updateHetznerBareMetalMachineTemplate(ctx context.Context,
 	clusterClient client.Client,
-	name string,
+	namespace, name string,
 	updates HetznerBareMetalMachineTemplateUpdates,
 ) error {
 	hetznerBareMetalMachineTemplate := &caphV1Beta1.HetznerBareMetalMachineTemplate{
 		ObjectMeta: metaV1.ObjectMeta{
 			Name:      name,
-			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Namespace: namespace,
 		},
 	}
 	if err := kubernetes.GetKubernetesResource(ctx, clusterClient, hetznerBareMetalMachineTemplate); err != nil {

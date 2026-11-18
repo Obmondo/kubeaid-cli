@@ -11,8 +11,6 @@ import (
 
 	"github.com/go-cmd/cmd"
 	"golang.org/x/sync/errgroup"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 type LocalCommandExecutor struct {
@@ -108,13 +106,4 @@ func (l *LocalCommandExecutor) Execute(ctx context.Context, command string) (str
 		return stdoutOutput, fmt.Errorf("command exited %d: %s",
 			commandExecutionStatus.Exit, stderrTrimmed)
 	}
-}
-
-func (l *LocalCommandExecutor) MustExecute(ctx context.Context, command string) string {
-	output, err := l.Execute(ctx, command)
-	assert.AssertErrNil(ctx, err, "Command execution failed",
-		slog.String("command", command),
-	)
-
-	return output
 }

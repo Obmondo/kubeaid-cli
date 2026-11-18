@@ -13,7 +13,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	gitUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes/k3d"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
@@ -40,7 +39,8 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	}
 
 	// Detect git authentication method.
-	gitAuthMethod := gitUtils.GetGitAuthMethod(ctx)
+	gitAuthMethod, err := gitClient().GetGitAuthMethod(ctx)
+	assertGit(ctx, err)
 
 	// Any cloud specific tasks.
 	switch globals.CloudProviderName {
@@ -53,7 +53,8 @@ func CreateDevEnv(ctx context.Context, args *CreateDevEnvArgs) {
 	}
 
 	// Ensure that the KubeAid Config repo is cloned locally.
-	_ = gitUtils.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	_, err = gitClient().CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	assertGit(ctx, err)
 	bar.Substep("Cloned kubeaid-config repo")
 
 	// When using the Bare Metal provider, no management cluster is needed.

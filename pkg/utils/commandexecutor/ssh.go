@@ -7,8 +7,6 @@ import (
 	"context"
 
 	"k8c.io/kubeone/pkg/executor"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 type SSHCommandExecutor struct {
@@ -22,11 +20,4 @@ func NewSSHCommandExecutor(connection executor.Interface) CommandExecutor {
 func (s *SSHCommandExecutor) Execute(ctx context.Context, command string) (string, error) {
 	stdout, _, _, err := s.connection.Exec(command)
 	return stdout, err
-}
-
-func (s *SSHCommandExecutor) MustExecute(ctx context.Context, command string) string {
-	output, err := s.Execute(ctx, command)
-	assert.AssertErrNil(ctx, err, "Command execution failed")
-
-	return output
 }

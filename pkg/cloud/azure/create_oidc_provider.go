@@ -80,13 +80,16 @@ func (a *Azure) CreateOIDCProvider(ctx context.Context) error {
 		// Generate the OIDC provider discovery document.
 		// You can read more about OIDC provider discovery document here :
 		// https://openid.net/specs/openid-connect-discovery-1_0.html.
-		openIDConfig := templateUtils.ParseAndExecuteTemplate(ctx,
+		openIDConfig, err := templateUtils.ParseAndExecuteTemplate(
 			&templates, constants.TemplateNameOpenIDConfig,
 			&TemplateArgs{
 				StorageAccountName: storageAccountName,
 				BlobContainerName:  constants.BlobContainerNameOIDCProvider,
 			},
 		)
+		if err != nil {
+			return fmt.Errorf("generating openid-configuration.json: %w", err)
+		}
 
 		/*
 			Upload the OIDC provider discovery document to the Azure Storage Container,

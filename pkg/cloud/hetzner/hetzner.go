@@ -5,6 +5,7 @@ package hetzner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,7 +17,10 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 )
+
+var _ cloud.CloudProvider = (*Hetzner)(nil)
 
 type serverTypeClient interface {
 	GetByName(ctx context.Context, name string) (*hcloud.ServerType, *hcloud.Response, error)
@@ -58,7 +62,13 @@ type floatingIPClient interface {
 	ChangeProtection(ctx context.Context, floatingIP *hcloud.FloatingIP, opts hcloud.FloatingIPChangeProtectionOpts) (*hcloud.Action, *hcloud.Response, error)
 }
 
+// Hetzner provisions the Hetzner infrastructure of one cluster, the one cfg describes. It is not
+// safe for concurrent use; build one per cluster.
 type Hetzner struct {
+	// cfg is the cluster being provisioned. Provisioning records what it created in
+	// cfg.Provisioned and hydrates cfg.General in place.
+	cfg *config.Config
+
 	hcloudClient *hcloud.Client
 	robotClient  *resty.Client
 	// robotNoRetryClient is the same Robot API with retries off and a
@@ -86,18 +96,75 @@ type Hetzner struct {
 	// constants.HRobotFailoverMaxWaitTime; tests shrink it so the
 	// give-up path doesn't cost five real minutes.
 	failoverMaxWait time.Duration
+
+	// vSwitchID is the Robot vSwitch CreateVSwitch created or found, for
+	// ConnectVSwitchWithHetznerNetwork to attach to the Hetzner Network.
+	vSwitchID int
+
+	// approveStoragePlans decides whether the generated storage plans may be applied; see
+	// WithStoragePlanApprover. Nil rejects them.
+	approveStoragePlans StoragePlanApprover
+
+	// generalConfigPath is where the approved ZFS pool size is written back to; see
+	// WithGeneralConfigPath. Empty skips the write.
+	generalConfigPath string
 }
 
-func NewHetznerCloudProvider() cloud.CloudProvider {
+// StoragePlanApprover decides whether the storage plans generated for the bare-metal servers may
+// be applied. Returning an error rejects them.
+type StoragePlanApprover func(ctx context.Context, plans storageplan.StoragePlans) error
+
+// Option customises the Hetzner built by NewHetznerCloudProvider.
+type Option func(*Hetzner)
+
+// errNoStoragePlanApprover is returned when bare-metal servers are to be provisioned, and no
+// StoragePlanApprover was set.
+var errNoStoragePlanApprover = errors.New(
+	"the storage plans need an explicit approval: build the provisioner with WithStoragePlanApprover",
+)
+
+// WithStoragePlanApprover sets who approves the bare-metal storage plans. Without it,
+// ProvisionPrerequisiteInfrastructure fails for a bare-metal cluster before touching any server:
+// the plans decide which disks get partitioned, so approval must be explicit.
+func WithStoragePlanApprover(approver StoragePlanApprover) Option {
+	return func(h *Hetzner) { h.approveStoragePlans = approver }
+}
+
+// WithGeneralConfigPath makes provisioning write the approved ZFS pool size back into the
+// general.yaml at path, so that the file stays self-describing. Without it, nothing is written.
+func WithGeneralConfigPath(path string) Option {
+	return func(h *Hetzner) { h.generalConfigPath = path }
+}
+
+// NewHetznerCloudProvider returns the Hetzner provisioner for cfg, with HCloud and Robot clients
+// for the credentials in cfg.Secrets that cfg.General's Hetzner mode needs.
+func NewHetznerCloudProvider(cfg *config.Config, opts ...Option) (*Hetzner, error) {
+	if cfg == nil || cfg.General == nil || cfg.Secrets == nil {
+		return nil, errors.New("a config with general and secrets configs is required")
+	}
+	if cfg.General.Cloud.Hetzner == nil {
+		return nil, errors.New("cloud.hetzner is required")
+	}
+
 	hetznerClient := &Hetzner{
+		cfg:       cfg,
 		sleepFunc: time.Sleep,
 		sshPool:   newSSHConnPool(),
 	}
+	for _, opt := range opts {
+		opt(hetznerClient)
+	}
+
+	hetznerSecrets := cfg.Secrets.Hetzner
 
 	// Construct HCloud client, if we're using HCloud.
-	if config.UsingHCloud() {
+	if cfg.General.UsingHCloud() {
+		if hetznerSecrets == nil {
+			return nil, errors.New("secrets.hetzner is required when using HCloud")
+		}
+
 		hcloudClient := hcloud.NewClient(
-			hcloud.WithToken(config.ParsedSecretsConfig.Hetzner.APIToken),
+			hcloud.WithToken(hetznerSecrets.APIToken),
 		)
 
 		hetznerClient.hcloudClient = hcloudClient
@@ -109,8 +176,12 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 	}
 
 	// Construct Hetzner Robot HTTP client, if we're using Hetzner Bare Metal.
-	if config.UsingHetznerBareMetal() {
-		robotWebServiceUserCredentials := config.ParsedSecretsConfig.Hetzner.Robot
+	if cfg.General.UsingHetznerBareMetal() {
+		if hetznerSecrets == nil || hetznerSecrets.Robot == nil {
+			return nil, errors.New("secrets.hetzner.robot is required when using Hetzner Bare Metal")
+		}
+
+		robotWebServiceUserCredentials := hetznerSecrets.Robot
 		hetznerClient.robotClient = newRobotRestyClient(
 			robotWebServiceUserCredentials.User,
 			robotWebServiceUserCredentials.Password,
@@ -121,7 +192,11 @@ func NewHetznerCloudProvider() cloud.CloudProvider {
 		)
 	}
 
-	return hetznerClient
+	if hetznerClient.hcloudClient == nil && hetznerClient.robotClient == nil {
+		return nil, fmt.Errorf("unsupported cloud.hetzner.mode %q", cfg.General.Cloud.Hetzner.Mode)
+	}
+
+	return hetznerClient, nil
 }
 
 // newRobotRestyClient builds the resty client for the Hetzner Robot web service:

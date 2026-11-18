@@ -24,13 +24,12 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/templates"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 type SetupKubeAidConfigArgs struct {
@@ -81,7 +80,8 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 	workTree, err := repo.Worktree()
 	assert.AssertErrNil(ctx, err, "Failed getting worktree")
 
-	defaultBranchName := git.GetDefaultBranchName(ctx, args.GitAuthMethod, repo)
+	defaultBranchName, err := gitClient().GetDefaultBranchName(ctx, args.GitAuthMethod, repo)
+	assertGit(ctx, err)
 
 	/*
 		Decide the branch, where we want to do the changes :
@@ -101,13 +101,16 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 			config.ParsedGeneralConfig.Cluster.Name,
 			time.Now().Unix(),
 		)
-		git.CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, args.GitAuthMethod)
+		err := gitClient().CreateAndCheckoutToBranch(ctx, repo, newBranchName, workTree, args.GitAuthMethod)
+		assertGit(ctx, err)
 
 		targetBranchName = newBranchName
 	}
 
 	// Determine whether the main cluster has already been provisioned.
-	mainClusterEndpoint, endpointErr := kubernetes.GetMainClusterEndpoint(ctx)
+	mainClusterEndpoint, endpointErr := kubeCluster().GetMainClusterEndpoint(ctx,
+		constants.OutputPathMainClusterKubeconfig,
+	)
 	assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
 	mainClusterProvisioned := (mainClusterEndpoint != nil)
 
@@ -154,7 +157,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		"(cluster/%s) : created / updated KubeAid config files",
 		config.ParsedGeneralConfig.Cluster.Name,
 	)
-	commitHash := git.AddCommitAndPushChanges(
+	commitHash, err := gitClient().AddCommitAndPushChanges(
 		ctx,
 		repo,
 		workTree,
@@ -164,6 +167,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		commitMessage,
 		defaultBranchName,
 	)
+	assertGit(ctx, err)
 
 	// AddCommitAndPushChanges returns ZeroHash when the worktree was
 	// already clean — kubeaid-config is up to date, nothing to push,
@@ -186,7 +190,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 		*/
 
 		// Wait until the user creates a PR and merges it to the default branch.
-		git.WaitUntilPRMerged(
+		err := gitClient().WaitUntilPRMerged(
 			ctx,
 			repo,
 			defaultBranchName,
@@ -194,6 +198,7 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 			args.GitAuthMethod,
 			targetBranchName,
 		)
+		assertGit(ctx, err)
 		bar.Substep("Confirmed kubeaid-config PR merged")
 	}
 }
@@ -201,12 +206,12 @@ func SetupKubeAidConfig(ctx context.Context, args SetupKubeAidConfigArgs) {
 // Creates / updates all non-secret files for the given cluster, in the user's KubeAid config
 // repository.
 func createOrUpdateNonSecretFiles(ctx context.Context,
-	templateValues *TemplateValues,
+	templateValues *templates.TemplateValues,
 	clusterDir string,
 	skipMonitoringSetup bool,
 ) {
 	// Get non Secret templates.
-	embeddedTemplateNames := getEmbeddedNonSecretTemplateNames()
+	embeddedTemplateNames := embeddedNonSecretTemplateNames()
 
 	// Add the KubePrometheus ArgoCD App template name to the
 	// render list — buildKubePrometheus depends on this file
@@ -242,7 +247,7 @@ func createOrUpdateNonSecretFiles(ctx context.Context,
 
 // Creates / updates the KubeOne config file used to provision the main cluster, when using the
 // Bare Metal provider.
-func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
+func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *templates.TemplateValues, clusterDir string) {
 	destinationFilePath := path.Join(
 		clusterDir,
 		strings.TrimSuffix(constants.KubeOneConfigTemlateName, ".tmpl"),
@@ -253,7 +258,7 @@ func createOrUpdateKubeOneConfigFile(ctx context.Context, templateValues *Templa
 // Creates / updates the cluster's kubeaid-cli.general.yaml copy in the KubeAid Config
 // repository - the source of truth the KubeOne manifest derives from, kept next to it so a
 // day-2 PR always carries both.
-func createOrUpdateGeneralConfigFile(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
+func createOrUpdateGeneralConfigFile(ctx context.Context, templateValues *templates.TemplateValues, clusterDir string) {
 	destinationFilePath := path.Join(
 		clusterDir,
 		strings.TrimSuffix(constants.TemplateNameGeneralConfig, ".tmpl"),
@@ -271,8 +276,8 @@ func createOrUpdateGeneralConfigFile(ctx context.Context, templateValues *Templa
 // encryption (fresh AES key + nonce per Secret), so without the cache every
 // re-run produces fresh ciphertext and a noisy PR full of identical-by-meaning
 // sealed-secret diffs.
-func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *TemplateValues, clusterDir string) {
-	embeddedTemplateNames := getEmbeddedSecretTemplateNames()
+func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *templates.TemplateValues, clusterDir string) {
+	embeddedTemplateNames := embeddedSecretTemplateNames()
 
 	for _, embeddedTemplateName := range embeddedTemplateNames {
 		destinationFilePath := path.Join(
@@ -290,12 +295,8 @@ func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *Templa
 			"Failed creating intermediate dirs",
 		)
 
-		plaintextBytes := templates.ParseAndExecuteTemplate(
-			ctxWithPath,
-			&KubeaidConfigFileTemplates,
-			path.Join("templates/", embeddedTemplateName),
-			templateValues,
-		)
+		plaintextBytes, err := templates.Render(embeddedTemplateName, templateValues)
+		assertTemplate(ctxWithPath, err)
 
 		if err := kubernetes.SealIfPlaintextChanged(ctxWithPath, destinationFilePath, plaintextBytes); err != nil {
 			assert.AssertErrNil(ctxWithPath, err, "Failed generating sealed secret")
@@ -307,7 +308,7 @@ func createOrUpdateSealedSecretFiles(ctx context.Context, templateValues *Templa
 func createFileFromTemplate(ctx context.Context,
 	destinationFilePath,
 	embeddedTemplateName string,
-	templateValues *TemplateValues,
+	templateValues *templates.TemplateValues,
 ) {
 	err := utils.CreateIntermediateDirsForFile(destinationFilePath)
 	assert.AssertErrNil(
@@ -331,12 +332,8 @@ func createFileFromTemplate(ctx context.Context,
 
 	// Execute the corresponding template with the template values. Then write the execution result
 	// to that file.
-	content := templates.ParseAndExecuteTemplate(
-		ctx,
-		&KubeaidConfigFileTemplates,
-		path.Join("templates/", embeddedTemplateName),
-		templateValues,
-	)
+	content, err := templates.Render(embeddedTemplateName, templateValues)
+	assertTemplate(ctx, err)
 	_, err = destinationFile.Write(content)
 	assert.AssertErrNil(ctx, err, "Failed writing template execution result to file")
 
@@ -366,7 +363,7 @@ func createFileFromTemplate(ctx context.Context,
 //
 // User: --user <hostUid>:<hostGid> so files written into clusterDir
 // end up owned by the operator on the host, not by root.
-func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *TemplateValues) {
+func buildKubePrometheus(ctx context.Context, clusterDir string, templateValues *templates.TemplateValues) {
 	// Create the jsonnet vars file.
 	jsonnetVarsFilePath := fmt.Sprintf(
 		"%s/%s-vars.jsonnet",

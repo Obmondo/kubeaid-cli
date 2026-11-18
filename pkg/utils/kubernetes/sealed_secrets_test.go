@@ -22,18 +22,15 @@ import (
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
 )
 
 // ── installSealedSecretsWithFactory ──────────────────────────────────────────
 
-// Mutates config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL -- sequential only.
 func TestInstallSealedSecretsWithFactory(t *testing.T) {
-	orig := config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL
-	t.Cleanup(func() { config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = orig })
-	config.ParsedGeneralConfig.Forks.KubeaidFork.ParsedURL = &repourl.Parsed{
+	cluster := newTestCluster("")
+	cluster.cfg.General.Forks.KubeaidFork.ParsedURL = &repourl.Parsed{
 		Host:       "github.com",
 		Owner:      "Obmondo",
 		Repository: "KubeAid",
@@ -137,7 +134,7 @@ func TestInstallSealedSecretsWithFactory(t *testing.T) {
 				chartErr:    tc.chartErr,
 			}
 
-			err := installSealedSecretsWithFactory(context.Background(), factory)
+			err := cluster.installSealedSecretsWithFactory(context.Background(), factory)
 
 			if tc.wantErr {
 				require.Error(t, err)

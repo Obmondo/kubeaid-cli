@@ -1,28 +1,32 @@
 // Copyright 2025 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+// Package templates renders a cluster's KubeAid Config files — the capi-cluster Helm values, the
+// ArgoCD Apps and their values, the Sealed Secret sources — from the embedded template tree and
+// a config.Config. It does no I/O: whatever the templates need that the config doesn't hold, the
+// caller looks up and passes in Inputs.
+package templates
 
 import (
-	"context"
 	"embed"
-	"log/slog"
-	"os"
+	"errors"
+	"net/url"
+	"path"
+	"slices"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/cert"
-	"github.com/Obmondo/kubeaid-cli/pkg/cloud/aws"
-	"github.com/Obmondo/kubeaid-cli/pkg/cloud/azure"
-	"github.com/Obmondo/kubeaid-cli/pkg/cloud/hetzner"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	corenetbird "github.com/Obmondo/kubeaid-cli/pkg/core/netbird"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
+	templateUtils "github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 //go:embed templates/*
 var KubeaidConfigFileTemplates embed.FS
+
+// Render executes the embedded template called name — its path under templates/, such as
+// "argocd-apps/values-capi-cluster.yaml.tmpl" — against values.
+func Render(name string, values any) ([]byte, error) {
+	return templateUtils.ParseAndExecuteTemplate(&KubeaidConfigFileTemplates, path.Join("templates/", name), values)
+}
 
 type TemplateValues struct {
 	GeneralConfigFileContents string
@@ -211,7 +215,7 @@ type TemplateValues struct {
 	// KubeaidStoragectlVersion is the pinned kubeaid-storagectl release
 	// tag rendered into global.kubeaidStoragectl.version in the
 	// capi-cluster Helm values. Empty for dev/local builds so the chart
-	// falls back to its own `latest` logic; set to globals.KubeaidCLIVersion
+	// falls back to its own `latest` logic; set to Inputs.CLIVersion
 	// for release builds so each bare-metal node downloads the storagectl
 	// binary that matches the kubeaid-cli release that bootstrapped it.
 	KubeaidStoragectlVersion string
@@ -223,13 +227,73 @@ type TemplateValues struct {
 	HetznerBareMetalFirewallEnabled bool
 }
 
+// Inputs is what rendering needs beyond the config: facts the caller looks up from the cloud, the
+// cluster or the file-system. Each field is read only by the clusters it concerns, and ignored by
+// the rest.
+type Inputs struct {
+	// GeneralConfigFileContents is the cluster's raw general.yaml, kept in its KubeAid Config
+	// copy.
+	GeneralConfigFileContents []byte
+
+	// CLIVersion is the release of the binary doing the provisioning. Empty or "dev" means an
+	// unreleased build.
+	CLIVersion string
+
+	AWS AWSInputs
+
+	Azure AzureInputs
+
+	// HetznerBareMetalHostPublicIPs maps each HetznerBareMetalHost ServerID to its Robot main IP;
+	// see Hetzner.GetHetznerBareMetalHostPublicIPs. Needed by Hetzner bare-metal clusters.
+	HetznerBareMetalHostPublicIPs map[string]string
+
+	// ObmondoCert is the Obmondo-issued mTLS certificate and key. Required when
+	// GeneralConfig.ObmondoIntegrationEnabled.
+	ObmondoCert *ObmondoCert
+
+	// NetBirdPostgresDSN is the DSN CNPG generated for NetBird's Postgres, read back from the
+	// cluster. Empty until CNPG has generated it.
+	NetBirdPostgresDSN string
+
+	// MainClusterEndpoint is the main cluster's API server endpoint, once it is provisioned.
+	// Needed by clusters whose endpoint the config doesn't spell out (local, AWS, Azure).
+	MainClusterEndpoint *url.URL
+}
+
+// AWSInputs are the AWS facts rendering needs.
+type AWSInputs struct {
+	AccountID string
+
+	// B64EncodedCredentials is the clusterawsadm-encoded credentials CAPA runs with.
+	B64EncodedCredentials string
+}
+
+// AzureInputs are the Azure facts rendering needs, known once the workload-identity
+// infrastructure is provisioned.
+type AzureInputs struct {
+	CAPIUAMIClientID,
+	VeleroUAMIClientID,
+	StorageAccountAccessKey,
+	ServiceAccountIssuerURL string
+}
+
+// ObmondoCert is the Obmondo-issued mTLS certificate and key of a cluster pushing to Obmondo.
+type ObmondoCert struct {
+	// CN is the Subject CN of the certificate.
+	CN string
+
+	// CertFileContents and KeyFileContents are the PEM files, as they are on disk.
+	CertFileContents string
+	KeyFileContents  string
+}
+
 // operatorStoragectlVersionOverride returns the operator-set value of
 // general.yaml's `kubeaidStoragectl.version`, or "" when the block is
 // omitted entirely. Nil-safe by design — most general.yaml files don't
 // carry the block, and reaching through the pointer chain unguarded
 // would panic on a perfectly valid config.
-func operatorStoragectlVersionOverride() string {
-	cfg := config.ParsedGeneralConfig.KubeaidStoragectl
+func operatorStoragectlVersionOverride(general *config.GeneralConfig) string {
+	cfg := general.KubeaidStoragectl
 	if cfg == nil {
 		return ""
 	}
@@ -244,7 +308,7 @@ func operatorStoragectlVersionOverride() string {
 //     lets an operator pin against a tag newer/older than kubeaid-cli
 //     for testing a fix, roll back without re-releasing kubeaid-cli,
 //     or point at an unreleased dev build during `go run` bootstrap.
-//  2. kubeaid-cli's own KubeaidCLIVersion. The default and almost-
+//  2. kubeaid-cli's own version. The default and almost-
 //     always-right answer — every node downloads the storagectl that
 //     ships with the release that bootstrapped it.
 //  3. Empty string when neither is meaningful (dev builds with no
@@ -260,106 +324,88 @@ func storagectlVersion(operatorOverride, cliVersion string) string {
 	return cliVersion
 }
 
-func getTemplateValues(ctx context.Context) *TemplateValues {
+// NewTemplateValues returns the values the templates render against for the cluster cfg
+// describes, with the lookups of in folded in.
+func NewTemplateValues(cfg *config.Config, in Inputs) (*TemplateValues, error) {
+	if cfg == nil || cfg.General == nil || cfg.Secrets == nil {
+		return nil, errors.New("a config with general and secrets configs is required")
+	}
+	general, secrets := cfg.General, cfg.Secrets
+
 	// Precompute netbird-operator overlay flags so the values template
 	// stays nil-safe (see values-netbird-operator.yaml.tmpl).
-	netbirdCfg := config.ParsedGeneralConfig.Cluster.NetBird
-	netbirdMgmtURL := corenetbird.ManagementURL()
-	netbirdProxyEnabled := corenetbird.ClusterProxyEnabled()
+	netbirdCfg := general.Cluster.NetBird
 	// Router (+ traefik-internal resource) needs the mesh DNS zone the chart
 	// requires; only render it when cluster.netbird.dnsZone is set.
 	netbirdRouterEnabled := netbirdCfg != nil && netbirdCfg.DNSZone != ""
 
 	templateValues := &TemplateValues{
-		GeneralConfigFileContents: string(config.GeneralConfigFileContents),
+		GeneralConfigFileContents: string(in.GeneralConfigFileContents),
 
-		GitConfig:   config.ParsedGeneralConfig.Git,
-		ForksConfig: config.ParsedGeneralConfig.Forks,
+		GitConfig:   general.Git,
+		ForksConfig: general.Forks,
 
-		ClusterConfig:        config.ParsedGeneralConfig.Cluster,
-		KubePrometheusConfig: config.ParsedGeneralConfig.KubePrometheus,
-		CAPIClusterNamespace: kubernetes.GetCapiClusterNamespace(),
+		ClusterConfig:        general.Cluster,
+		KubePrometheusConfig: general.KubePrometheus,
+		CAPIClusterNamespace: cfg.CAPINamespace(),
 
-		AWSConfig:      config.ParsedGeneralConfig.Cloud.AWS,
-		AWSCredentials: config.ParsedSecretsConfig.AWS,
+		AWSConfig:                general.Cloud.AWS,
+		AWSCredentials:           secrets.AWS,
+		AWSB64EncodedCredentials: in.AWS.B64EncodedCredentials,
+		AWSAccountID:             in.AWS.AccountID,
 
-		AzureConfig:                  config.ParsedGeneralConfig.Cloud.Azure,
-		AzureCredentials:             config.ParsedSecretsConfig.Azure,
-		CAPIUAMIClientID:             globals.CAPIUAMIClientID,
-		VeleroUAMIClientID:           globals.VeleroUAMIClientID,
-		AzureStorageAccountAccessKey: globals.AzureStorageAccountAccessKey,
+		AzureConfig:                  general.Cloud.Azure,
+		AzureCredentials:             secrets.Azure,
+		CAPIUAMIClientID:             in.Azure.CAPIUAMIClientID,
+		VeleroUAMIClientID:           in.Azure.VeleroUAMIClientID,
+		AzureStorageAccountAccessKey: in.Azure.StorageAccountAccessKey,
+		ServiceAccountIssuerURL:      in.Azure.ServiceAccountIssuerURL,
 
-		HetznerConfig:          sanitizedHetznerConfigForChart(config.ParsedGeneralConfig.Cloud.Hetzner),
-		HetznerCredentials:     config.ParsedSecretsConfig.Hetzner,
-		HCloudSingleNodePublic: config.HCloudSingleNodePublic(),
+		HetznerConfig:                 sanitizedHetznerConfigForChart(general.Cloud.Hetzner),
+		HetznerCredentials:            secrets.Hetzner,
+		HCloudSingleNodePublic:        general.HCloudSingleNodePublic(),
+		HetznerBareMetalHostPublicIPs: in.HetznerBareMetalHostPublicIPs,
 
-		BareMetalConfig: config.ParsedGeneralConfig.Cloud.BareMetal,
+		BareMetalConfig: general.Cloud.BareMetal,
 
-		DisasterRecoveryConfig: config.ParsedGeneralConfig.Cloud.DisasterRecovery,
+		DisasterRecoveryConfig: general.Cloud.DisasterRecovery,
 
-		ObmondoConfig: config.ParsedGeneralConfig.Obmondo,
+		ObmondoConfig: general.Obmondo,
 
-		ExtraKnownHosts: config.ParsedGeneralConfig.Git.KnownHosts,
+		ExtraKnownHosts: general.Git.KnownHosts,
 
-		NetBirdManagementURL: netbirdMgmtURL,
-		NetBirdAPIKey:        corenetbird.APIKey(),
+		NetBirdManagementURL: general.NetBirdManagementURL(),
+		NetBirdAPIKey:        secrets.NetBirdAPIKey(),
 
 		NetBird:                    netbirdCfg,
-		NetBirdClusterProxyEnabled: netbirdProxyEnabled,
-		NetBirdOperatorEnabled:     corenetbird.OperatorEnabled(),
+		NetBirdClusterProxyEnabled: general.NetBirdClusterProxyEnabled(),
+		NetBirdOperatorEnabled:     general.NetBirdOperatorEnabled(),
 		NetBirdRouterEnabled:       netbirdRouterEnabled,
 
-		CloudflareAPIToken: cloudflareAPIToken(),
+		CloudflareAPIToken: cloudflareAPIToken(secrets),
 
 		KubeaidStoragectlVersion: storagectlVersion(
-			operatorStoragectlVersionOverride(),
-			globals.KubeaidCLIVersion,
+			operatorStoragectlVersionOverride(general),
+			in.CLIVersion,
 		),
 
-		HetznerBareMetalFirewallEnabled: hetznerBareMetalFirewallEnabled(),
+		HetznerBareMetalFirewallEnabled: hetznerBareMetalFirewallEnabled(general),
 	}
 
-	// Populate Hetzner bare-metal host public IPs via Robot API for the
-	// kubelet-csr-approver values template. Empty map for non-Hetzner
-	// or non-bare-metal setups (the values template guards on the map
-	// being non-empty before rendering its per-host /32 entries).
-	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		if hetznerProvider, ok := globals.CloudProvider.(*hetzner.Hetzner); ok {
-			publicIPs, err := hetznerProvider.GetHetznerBareMetalHostPublicIPs(ctx)
-			assert.AssertErrNil(ctx, err,
-				"Failed fetching Hetzner bare-metal host public IPs from Robot API")
-			templateValues.HetznerBareMetalHostPublicIPs = publicIPs
+	// The Subject CN of the Obmondo mTLS cert is required by kube-prometheus's common-template,
+	// which fails hard if certname is missing. The cert and key contents feed the
+	// obmondo-clientcert sealed-secret templates.
+	if general.ObmondoIntegrationEnabled() {
+		if in.ObmondoCert == nil {
+			return nil, errors.New("the Obmondo certificate is required, since obmondo.monitoring is on")
 		}
+
+		templateValues.ObmondoCertCN = in.ObmondoCert.CN
+		templateValues.ObmondoCertFileContents = in.ObmondoCert.CertFileContents
+		templateValues.ObmondoKeyFileContents = in.ObmondoCert.KeyFileContents
 	}
 
-	// Extract the Subject CN from the Obmondo mTLS cert when monitoring is on.
-	// kube-prometheus's common-template fails hard if certname is missing.
-	// Also load the cert + key file contents so the obmondo-clientcert
-	// sealed-secret templates can base64-encode them. Paths are validated by
-	// validateConfigs — re-read here to fail with context if they became
-	// unreadable between parse and render.
-	if config.ObmondoIntegrationEnabled() {
-		obmondo := config.ParsedGeneralConfig.Obmondo
-
-		cn, certErr := cert.ReadCN(obmondo.CertPath)
-		assert.AssertErrNil(ctx, certErr, "Failed reading Obmondo cert CN",
-			slog.String("path", obmondo.CertPath))
-		templateValues.ObmondoCertCN = cn
-
-		certData, err := os.ReadFile(obmondo.CertPath)
-		assert.AssertErrNil(ctx, err,
-			"Failed reading Obmondo cert file",
-			slog.String("path", obmondo.CertPath))
-		templateValues.ObmondoCertFileContents = string(certData)
-
-		key, err := os.ReadFile(obmondo.KeyPath)
-		assert.AssertErrNil(ctx, err,
-			"Failed reading Obmondo key file",
-			slog.String("path", obmondo.KeyPath))
-		templateValues.ObmondoKeyFileContents = string(key)
-	}
-
-	if config.VPNClusterEnabled() {
+	if general.VPNClusterEnabled() {
 		// All NetBird random secrets come from secrets.yaml (auto-
 		// generated on first run by parser.FillMissingSecrets, then
 		// stable across re-runs). Replaces the prior
@@ -367,29 +413,24 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		// SealedSecret diffs whenever the cluster Get failed (timing
 		// window before the SealedSecret reconciled, or kubeconfig
 		// transiently unreachable).
-		netbirdCreds := config.ParsedSecretsConfig.NetBird
+		netbirdCreds := secrets.NetBird
+		if netbirdCreds == nil {
+			return nil, errors.New("secrets.netbird is required on a VPN cluster")
+		}
 		templateValues.NetBirdDatastoreKey = netbirdCreds.DatastoreEncryptionKey
 		templateValues.NetBirdRelayPassword = netbirdCreds.RelayPassword
 		templateValues.NetBirdTurnPassword = netbirdCreds.TurnPassword
 
 		// postgresDSN is CNPG-generated and only available in-cluster
 		// after the netbird-pgsql Cluster CR is reconciled. On the
-		// first kubeaid-cli run the Secret doesn't have the key yet
-		// → render an empty string; bootstrap_cluster.go's
-		// netbird.WaitAndPatchPostgresDSN step fills it in post-sync. On
-		// re-runs the patched value is read back here so the
+		// first run the Secret doesn't have the key yet → the caller
+		// passes an empty string; the DSN is patched into the Secret
+		// post-sync. On re-runs the patched value is read back so the
 		// SealedSecret in git stays in sync. This is the only field
-		// that genuinely needs a cluster read — kubeaid-cli has no
-		// way to know CNPG's randomly-generated password ahead of
-		// the cluster being up.
-		clusterClient, _ := kubernetes.CreateKubernetesClient(ctx,
-			constants.OutputPathMainClusterKubeconfig,
-		)
-		templateValues.NetBirdPostgresDSN = readSecretValueOrEmpty(ctx, clusterClient,
-			constants.NamespaceNetBird,
-			constants.SecretNameNetBird,
-			constants.SecretKeyNetBirdPostgresDSN,
-		)
+		// that genuinely needs a cluster read — we have no way to
+		// know CNPG's randomly-generated password ahead of the
+		// cluster being up.
+		templateValues.NetBirdPostgresDSN = in.NetBirdPostgresDSN
 
 		templateValues.NetBirdClientID = constants.NetBirdClientID
 		templateValues.NetBirdBackendClientID = constants.NetBirdBackendClientID
@@ -404,43 +445,29 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		//   external:  the operator pre-creates the client in their
 		//              external Keycloak and supplies the secret.
 		// Either way: one value, one source, no drift.
-		if config.ParsedSecretsConfig.Keycloak != nil {
-			templateValues.NetBirdBackendClientSecret = config.ParsedSecretsConfig.Keycloak.NetBirdBackendClientSecret
+		if secrets.Keycloak != nil {
+			templateValues.NetBirdBackendClientSecret = secrets.Keycloak.NetBirdBackendClientSecret
 		}
 	}
 
-	if config.ManagedKeycloakEnabled() {
+	if general.ManagedKeycloakEnabled() {
 		// Same shape as NetBird above — KeycloakAdminPassword is
 		// auto-generated into secrets.yaml on first run and read
 		// directly thereafter.
-		templateValues.KeycloakAdminPassword = config.ParsedSecretsConfig.Keycloak.AdminPassword
-	}
-
-	// Set cloud provider specific values.
-	switch globals.CloudProviderName {
-	case constants.CloudProviderAWS:
-		accountID, accountErr := aws.GetAccountID(ctx)
-		assert.AssertErrNil(ctx, accountErr, "Failed getting AWS account ID")
-
-		templateValues.AWSAccountID = accountID
-		templateValues.AWSB64EncodedCredentials = os.Getenv(
-			constants.EnvNameAWSB64EcodedCredentials,
-		)
-
-	case constants.CloudProviderAzure:
-		// AKS clusters have no operator-hosted OIDC provider — the issuer URL
-		// derives from the storage account, which AKS configs don't carry.
-		if !config.AKSEnabled() {
-			saIssuerURL, saErr := azure.GetServiceAccountIssuerURL()
-			assert.AssertErrNil(ctx, saErr, "Failed getting Azure ServiceAccount issuer URL")
-			templateValues.ServiceAccountIssuerURL = saIssuerURL
+		if secrets.Keycloak == nil {
+			return nil, errors.New("secrets.keycloak is required on a VPN cluster with managed Keycloak")
 		}
+		templateValues.KeycloakAdminPassword = secrets.Keycloak.AdminPassword
 	}
 
 	hetznerConfig := templateValues.HetznerConfig
 
+	if err := requireControlPlaneBlocks(cfg); err != nil {
+		return nil, err
+	}
+
 	// Set the control-plane endpoint.
-	switch globals.CloudProviderName {
+	switch cfg.CloudProviderName {
 	case constants.CloudProviderHetzner:
 		switch {
 		// Hetzner Bare Metal cluster; the user specifies it.
@@ -449,8 +476,8 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 		// Single-node public control-plane: no LB — the endpoint is the
 		// operator's api DNS name (validated non-empty).
-		case config.HCloudSingleNodePublic():
-			templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint
+		case general.HCloudSingleNodePublic():
+			templateValues.ControlPlaneEndpoint = general.Cloud.Hetzner.ControlPlane.HCloud.LoadBalancer.Endpoint
 
 		// HCloud / Hetzner hybrid clusters where kubeaid-cli pre-
 		// provisions the control-plane LB. Endpoint is the hostname
@@ -462,19 +489,21 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		//     private LB sitting behind NetBird.
 		// Workload clusters not on a VPN don't pre-provision and
 		// fall through (CAPI handles their LB lifecycle on its own).
-		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned()):
-			templateValues.ControlPlaneLBPrivateIP = globals.ControlPlaneLBPrivateIP
-			templateValues.ControlPlaneLBBootstrapPublicIP = globals.ControlPlaneLBBootstrapPublicIP
+		case (((hetznerConfig.Mode == constants.HetznerModeHCloud) || (hetznerConfig.Mode == constants.HetznerModeHybrid)) && hetznerControlPlaneLBPreProvisioned(general)):
+			provisioned := cfg.Provisioned
+
+			templateValues.ControlPlaneLBPrivateIP = provisioned.ControlPlaneLBPrivateIP
+			templateValues.ControlPlaneLBBootstrapPublicIP = provisioned.ControlPlaneLBBootstrapPublicIP
 
 			// Coturn Floating IP(s) provisioned in prerequisite-infra for
 			// a multi-CP VPN cluster; the chart binds them on each CP via
 			// netplan. Empty for every other cluster.
-			templateValues.CoturnFloatingIPs = globals.CoturnFloatingIPs
-			if globals.ControlPlaneHostname != "" {
-				templateValues.ControlPlaneEndpoint = globals.ControlPlaneHostname
+			templateValues.CoturnFloatingIPs = provisioned.CoturnFloatingIPs
+			if provisioned.ControlPlaneHostname != "" {
+				templateValues.ControlPlaneEndpoint = provisioned.ControlPlaneHostname
 				break
 			}
-			templateValues.ControlPlaneEndpoint = globals.ControlPlaneLBPrivateIP
+			templateValues.ControlPlaneEndpoint = provisioned.ControlPlaneLBPrivateIP
 		}
 
 		// Apiserver cert SANs for every Hetzner mode: operator-supplied
@@ -483,13 +512,11 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 
 	// Bare Metal cluster; the user specifies it.
 	case constants.CloudProviderBareMetal:
-		templateValues.ControlPlaneEndpoint = config.ParsedGeneralConfig.Cloud.BareMetal.ControlPlane.Endpoint.Host
+		templateValues.ControlPlaneEndpoint = general.Cloud.BareMetal.ControlPlane.Endpoint.Host
 
 	default:
 		// For local/dev clusters, the main cluster endpoint may not be available yet.
-		endpoint, endpointErr := kubernetes.GetMainClusterEndpoint(ctx)
-		assert.AssertErrNil(ctx, endpointErr, "Failed getting main cluster endpoint")
-		if endpoint != nil {
+		if endpoint := in.MainClusterEndpoint; endpoint != nil {
 			templateValues.ControlPlaneEndpoint = endpoint.Hostname()
 			templateValues.ControlPlaneEndpointPort = endpoint.Port()
 		}
@@ -501,7 +528,7 @@ func getTemplateValues(ctx context.Context) *TemplateValues {
 		templateValues.ControlPlaneEndpointPort = "6443"
 	}
 
-	return templateValues
+	return templateValues, nil
 }
 
 // hetznerControlPlaneCertSANs returns the operator-supplied extraCertSANs for
@@ -530,8 +557,8 @@ func sanitizedHetznerConfigForChart(hetznerConfig *config.HetznerConfig) *config
 
 // awsNonSecretTemplateNames returns the AWS addon template set — the EKS one
 // when the cluster runs a managed control plane.
-func awsNonSecretTemplateNames() []string {
-	if config.EKSEnabled() {
+func awsNonSecretTemplateNames(general *config.GeneralConfig) []string {
+	if general.EKSEnabled() {
 		return constants.AWSEKSSpecificNonSecretTemplateNames
 	}
 	return constants.AWSSpecificNonSecretTemplateNames
@@ -539,15 +566,49 @@ func awsNonSecretTemplateNames() []string {
 
 // azureNonSecretTemplateNames returns the Azure addon template set — the AKS
 // one when the cluster runs a managed control plane.
-func azureNonSecretTemplateNames() []string {
-	if config.AKSEnabled() {
+func azureNonSecretTemplateNames(general *config.GeneralConfig) []string {
+	if general.AKSEnabled() {
 		return constants.AzureAKSSpecificNonSecretTemplateNames
 	}
 	return constants.AzureSpecificNonSecretTemplateNames
 }
 
-// Returns the list of embedded (non Secret) template names based on the underlying cloud provider.
-func getEmbeddedNonSecretTemplateNames() []string {
+// requireControlPlaneBlocks fails when the config block that the control-plane endpoint of the
+// cloud provider cfg names comes from is not set.
+func requireControlPlaneBlocks(cfg *config.Config) error {
+	cloud := cfg.General.Cloud
+
+	switch cfg.CloudProviderName {
+	case constants.CloudProviderHetzner:
+		if cloud.Hetzner == nil {
+			return errors.New("cloud.hetzner is required for the Hetzner cloud provider")
+		}
+		if cloud.Hetzner.Mode == constants.HetznerModeBareMetal && cloud.Hetzner.ControlPlane.BareMetal == nil {
+			return errors.New("cloud.hetzner.controlPlane.bareMetal is required in the bare-metal mode")
+		}
+
+	case constants.CloudProviderBareMetal:
+		if cloud.BareMetal == nil {
+			return errors.New("cloud.bare-metal is required for the BareMetal cloud provider")
+		}
+	}
+
+	return nil
+}
+
+func hasGeneralConfig(cfg *config.Config) bool {
+	return cfg != nil && cfg.General != nil
+}
+
+// NonSecretTemplateNames returns the names of the embedded (non Secret) templates to render for
+// the cluster cfg describes, based on its cloud provider and features. The result is the
+// caller's to modify. It is nil for a config without a general config.
+func NonSecretTemplateNames(cfg *config.Config) []string {
+	if !hasGeneralConfig(cfg) {
+		return nil
+	}
+	general := cfg.General
+
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := append(constants.CommonNonSecretTemplateNames,
 		constants.CommonCloudSpecificNonSecretTemplateNames...,
@@ -558,12 +619,12 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	//
 	// trivy-operator and version-checker render together: the chart's
 	// ImageOutdatedAndVulnerable alert joins a metric from each.
-	if config.VulnerabilityScanningEnabled() {
+	if general.VulnerabilityScanningEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.VulnerabilityScanningTemplateNames...,
 		)
 	}
-	if config.RuntimeDetectionEnabled() {
+	if general.RuntimeDetectionEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.RuntimeDetectionTemplateNames...,
 		)
@@ -571,7 +632,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	// If the user has provided a CA bundle for accessing his / her Git repository,
 	// then we need to provide that CA bundle to ArgoCD via a ConfigMap.
-	if len(config.ParsedGeneralConfig.Git.CABundle) > 0 {
+	if len(general.Git.CABundle) > 0 {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			"argocd-apps/templates/k8s-configs.yaml.tmpl",
 			"k8s-configs/argocd-tls-certs-cm.configmap.yaml.tmpl",
@@ -583,7 +644,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// to the LB's IPs. ArgoCD owns the ConfigMap; CoreDNS reload
 	// picks up edits. Re-adding the k8s-configs App template is
 	// safe — duplicate-render is a no-op.
-	if hcloudControlPlaneEndpointSet() {
+	if hcloudControlPlaneEndpointSet(cfg) {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			"argocd-apps/templates/k8s-configs.yaml.tmpl",
 			"k8s-configs/coredns.configmap.yaml.tmpl",
@@ -591,23 +652,23 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	}
 
 	// Add cloud provider specific templates.
-	switch globals.CloudProviderName {
+	switch cfg.CloudProviderName {
 	case constants.CloudProviderAWS:
-		embeddedTemplateNames = append(embeddedTemplateNames, awsNonSecretTemplateNames()...)
+		embeddedTemplateNames = append(embeddedTemplateNames, awsNonSecretTemplateNames(general)...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster recovery.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		if general.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AWSDisasterRecoverySpecificNonSecretTemplateNames...,
 			)
 		}
 
 	case constants.CloudProviderAzure:
-		embeddedTemplateNames = append(embeddedTemplateNames, azureNonSecretTemplateNames()...)
+		embeddedTemplateNames = append(embeddedTemplateNames, azureNonSecretTemplateNames(general)...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster
 		// recovery. Validation rejects the DR block for AKS clusters.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		if general.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificNonSecretTemplateNames...,
 			)
@@ -619,18 +680,18 @@ func getEmbeddedNonSecretTemplateNames() []string {
 		//   hcloud    → ccm-hcloud only (networking=true, robot=false, owns LBs + routes)
 		//   bare-metal → ccm-hetzner only (robot=true, no networking)
 		//   hybrid    → both (ccm-hcloud for HCloud nodes + LBs, ccm-hetzner for Robot nodes)
-		if config.UsingHCloud() {
+		if general.UsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudCCMNonSecretTemplateNames...,
 			)
 		}
-		if config.UsingHetznerBareMetal() {
+		if general.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerCCMNonSecretTemplateNames...,
 			)
 		}
 
-		if config.UsingHetznerBareMetal() {
+		if general.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificNonSecretTemplateNames...,
 			)
@@ -644,7 +705,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			// automatically (no automated / prune sync policy), but an operator who
 			// then deletes it must pass --cascade=false to avoid destroying live
 			// Ceph data.
-			if config.RookCephEnabled() {
+			if general.RookCephEnabled() {
 				embeddedTemplateNames = append(embeddedTemplateNames,
 					constants.RookCephTemplateNames...,
 				)
@@ -653,8 +714,8 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			// When the control-plane is in Hetzner Bare Metal, and we're using a Failover IP,
 			// we need the hetzner-robot ArgoCD App. It'll be responsible for switching the Failover IP
 			// to a healthy master node, in a failover scenario.
-			if config.ControlPlaneInHetznerBareMetal() &&
-				config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
+			if general.ControlPlaneInHetznerBareMetal() &&
+				general.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.IsFailoverIP {
 
 				embeddedTemplateNames = append(embeddedTemplateNames,
 					"argocd-apps/templates/hetzner-robot.yaml.tmpl",
@@ -663,7 +724,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 			}
 		}
 
-		if config.UsingHCloud() {
+		if general.UsingHCloud() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HCloudSpecificNonSecretTemplateNames...,
 			)
@@ -684,7 +745,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// Relay + Dashboard + Coturn themselves. cnpg also backs
 	// keycloak-pgsql in managed mode; rendering it here keeps cnpg
 	// syncing once regardless of mode.
-	if config.VPNClusterEnabled() {
+	if general.VPNClusterEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.TraefikTemplateNames...,
 		)
@@ -709,7 +770,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// clusters"). Until then the operator pod runs with chart
 	// defaults; CRDs are registered and an operator can apply
 	// hand-rolled CRs.
-	if corenetbird.OperatorEnabled() {
+	if general.NetBirdOperatorEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorTemplateNames...,
 		)
@@ -718,7 +779,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// hcloud-fip-controller — multi-CP HCloud VPN cluster only (a Coturn
 	// Floating IP was provisioned). Keeps that Floating IP on the active
 	// control-plane node so host-network Coturn survives CP failover.
-	if config.CoturnFloatingIPEnabled() {
+	if general.CoturnFloatingIPEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.HCloudFIPControllerTemplateNames...,
 		)
@@ -728,7 +789,7 @@ func getEmbeddedNonSecretTemplateNames() []string {
 	// chart on this cluster and runs the gocloak realm reconciler
 	// post-sync. External-mode VPN clusters skip this — the
 	// operator's existing Keycloak handles it.
-	if config.ManagedKeycloakEnabled() {
+	if general.ManagedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedNonSecretTemplateNames...,
 		)
@@ -736,27 +797,27 @@ func getEmbeddedNonSecretTemplateNames() []string {
 
 	// Obmondo customer: include the KubeAid Agent ArgoCD Application
 	// templates when monitoring is requested.
-	if config.ObmondoIntegrationEnabled() {
+	if general.ObmondoIntegrationEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KubeAidAgentNonSecretTemplateNames...,
 		)
 	}
 
-	return embeddedTemplateNames
+	return slices.Clone(embeddedTemplateNames)
 }
 
 // acmeDNS01Enabled reports whether the cluster's ClusterIssuer uses a
 // DNS-01 solver — the cluster.acmeDNS01 block is the single switch
 // (parser validation guarantees acmeEmail + the provider token exist
 // alongside it).
-func acmeDNS01Enabled() bool {
-	return config.ParsedGeneralConfig.Cluster.ACMEDNS01 != nil
+func acmeDNS01Enabled(general *config.GeneralConfig) bool {
+	return general.Cluster.ACMEDNS01 != nil
 }
 
 // cloudflareAPIToken returns secrets.yaml's acme.cloudflareApiToken,
 // nil-safe — the acme block only exists on clusters using DNS-01.
-func cloudflareAPIToken() string {
-	creds := config.ParsedSecretsConfig.ACME
+func cloudflareAPIToken(secrets *config.SecretsConfig) string {
+	creds := secrets.ACME
 	if creds == nil {
 		return ""
 	}
@@ -770,8 +831,8 @@ func cloudflareAPIToken() string {
 //   - firewall.enabled is nil (default true) or explicitly true
 //
 // Nil-safe: returns false for any non-Hetzner-bare-metal configuration.
-func hetznerBareMetalFirewallEnabled() bool {
-	h := config.ParsedGeneralConfig.Cloud.Hetzner
+func hetznerBareMetalFirewallEnabled(general *config.GeneralConfig) bool {
+	h := general.Cloud.Hetzner
 	if h == nil || h.BareMetal == nil {
 		return false
 	}
@@ -783,52 +844,59 @@ func hetznerBareMetalFirewallEnabled() bool {
 // render the cluster-side coredns-custom ConfigMap for resolving
 // the apiserver endpoint. True only when the operator configured
 // loadBalancer.endpoint AND the LB has been pre-provisioned (i.e.,
-// globals.ControlPlaneLBPrivateIP is populated). Without the IP, the
+// cfg.Provisioned.ControlPlaneLBPrivateIP is populated). Without the IP, the
 // hosts block would render empty and is useless.
-func hcloudControlPlaneEndpointSet() bool {
-	h := config.ParsedGeneralConfig.Cloud.Hetzner
+func hcloudControlPlaneEndpointSet(cfg *config.Config) bool {
+	h := cfg.General.Cloud.Hetzner
 	if h == nil || h.ControlPlane.HCloud == nil {
 		return false
 	}
 	if h.ControlPlane.HCloud.LoadBalancer.Endpoint == "" {
 		return false
 	}
-	return globals.ControlPlaneLBPrivateIP != ""
+	return cfg.Provisioned.ControlPlaneLBPrivateIP != ""
 }
 
 // hetznerControlPlaneLBPreProvisioned reports whether kubeaid-cli
-// pre-creates the HCloud control-plane LB (so globals.ControlPlaneLB*
-// are populated by template-render time). Mirrors the Hetzner-side
+// pre-creates the HCloud control-plane LB (so cfg.Provisioned's
+// control-plane LB fields are populated by template-render time). Mirrors the Hetzner-side
 // gate in prerequisite_infrastructure.go's shouldPreCreateControlPlaneLB:
 //
 //	cluster.type=vpn        — this cluster IS the VPN (public LB).
 //	HCloudVPNCluster set    — workload connecting to VPN (private LB).
 //
-// Used in getTemplateValues to decide whether to populate
-// ControlPlaneEndpoint / ControlPlaneLB* from globals vs. fall through
+// Used in NewTemplateValues to decide whether to populate
+// ControlPlaneEndpoint / ControlPlaneLB* from cfg.Provisioned vs. fall through
 // to the default (CAPI-managed) path.
-func hetznerControlPlaneLBPreProvisioned() bool {
-	cluster := config.ParsedGeneralConfig.Cluster
-	h := config.ParsedGeneralConfig.Cloud.Hetzner
+func hetznerControlPlaneLBPreProvisioned(general *config.GeneralConfig) bool {
+	cluster := general.Cluster
+	h := general.Cloud.Hetzner
 	if h == nil {
 		return false
 	}
 	return cluster.Type == constants.ClusterTypeVPN || h.HCloudVPNCluster != nil
 }
 
-// Returns the list of embedded Secret template names based on the underlying cloud provider.
-func getEmbeddedSecretTemplateNames() []string {
+// SecretTemplateNames returns the names of the embedded Secret templates to render for the
+// cluster cfg describes, based on its cloud provider and features. The result is the caller's to
+// modify. It is nil for a config without a general or a secrets config.
+func SecretTemplateNames(cfg *config.Config) []string {
+	if cfg == nil || cfg.General == nil || cfg.Secrets == nil {
+		return nil
+	}
+	general, secrets := cfg.General, cfg.Secrets
+
 	// Templates common for all cloud providers.
 	embeddedTemplateNames := constants.CommonSecretTemplateNames
 
-	if config.ParsedGeneralConfig.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
+	if general.Cluster.ArgoCD.DeployKeys.Kubeaid != nil {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KubeaidDeployKeySecretTemplateName,
 		)
 	}
 
 	// Add cloud provider specific templates, if required.
-	switch globals.CloudProviderName {
+	switch cfg.CloudProviderName {
 	case constants.CloudProviderAWS:
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.AWSSpecificSecretTemplateNames...,
@@ -836,14 +904,14 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	case constants.CloudProviderAzure:
 		azureSecretTemplateNames := constants.AzureSpecificSecretTemplateNames
-		if config.AKSEnabled() {
+		if general.AKSEnabled() {
 			azureSecretTemplateNames = constants.AzureAKSSpecificSecretTemplateNames
 		}
 		embeddedTemplateNames = append(embeddedTemplateNames, azureSecretTemplateNames...)
 
 		// Add Disaster Recovery related templates, if the user wants disaster
 		// recovery. Validation rejects the DR block for AKS clusters.
-		if config.ParsedGeneralConfig.Cloud.DisasterRecovery != nil {
+		if general.Cloud.DisasterRecovery != nil {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.AzureDisasterRecoverySpecificSecretTemplateNames...,
 			)
@@ -854,7 +922,7 @@ func getEmbeddedSecretTemplateNames() []string {
 			constants.CommonHetznerSpecificSecretTemplateNames...,
 		)
 
-		if config.UsingHetznerBareMetal() {
+		if general.UsingHetznerBareMetal() {
 			embeddedTemplateNames = append(embeddedTemplateNames,
 				constants.HetznerBareMetalSpecificSecretTemplateNames...,
 			)
@@ -864,7 +932,7 @@ func getEmbeddedSecretTemplateNames() []string {
 		// No additional provider-specific secret templates needed.
 	}
 
-	if config.ObmondoIntegrationEnabled() {
+	if general.ObmondoIntegrationEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.ObmondoClientCertSecretTemplateNames...,
 		)
@@ -877,14 +945,14 @@ func getEmbeddedSecretTemplateNames() []string {
 	// SealedSecrets always. The OIDC client secret inside the
 	// netbird Secret is generated by kubeaid-cli when managed,
 	// supplied by the operator via secrets.yaml when external.
-	if config.VPNClusterEnabled() {
+	if general.VPNClusterEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdSecretTemplateNames...,
 		)
 	}
 
 	// Managed Keycloak only: keycloak-admin SealedSecret.
-	if config.ManagedKeycloakEnabled() {
+	if general.ManagedKeycloakEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.KeycloakManagedSecretTemplateNames...,
 		)
@@ -896,7 +964,7 @@ func getEmbeddedSecretTemplateNames() []string {
 	// bootstrap with create-it-manually instructions instead of
 	// sealing an empty value (which would let the operator pod
 	// schedule and then fail at runtime).
-	if corenetbird.OperatorEnabled() && corenetbird.APIKey() != "" {
+	if general.NetBirdOperatorEnabled() && secrets.NetBirdAPIKey() != "" {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.NetBirdOperatorAPIKeySecretTemplateName,
 		)
@@ -904,7 +972,7 @@ func getEmbeddedSecretTemplateNames() []string {
 
 	// hcloud-fip-controller token — the HCLOUD_API_TOKEN Secret the
 	// controller reads via envFrom. Only when the controller is rendered.
-	if config.CoturnFloatingIPEnabled() {
+	if general.CoturnFloatingIPEnabled() {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.HCloudFIPControllerTokenSecretTemplateName,
 		)
@@ -913,11 +981,11 @@ func getEmbeddedSecretTemplateNames() []string {
 	// Cloudflare API token for the DNS-01 ClusterIssuer — gated on the
 	// cluster.acmeDNS01 block (parser validation already guarantees the
 	// token exists alongside it).
-	if acmeDNS01Enabled() {
+	if acmeDNS01Enabled(general) {
 		embeddedTemplateNames = append(embeddedTemplateNames,
 			constants.CertManagerCloudflareAPITokenSecretTemplateName,
 		)
 	}
 
-	return embeddedTemplateNames
+	return slices.Clone(embeddedTemplateNames)
 }

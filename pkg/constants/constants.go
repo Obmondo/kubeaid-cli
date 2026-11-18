@@ -412,6 +412,10 @@ const (
 	NamespaceKubeSystem    = "kube-system"
 	NamespaceCertManager   = "cert-manager"
 
+	// DefaultCAPIClusterNamespace is the management-cluster namespace that holds a cluster's
+	// Cluster API resources and its cloud-credentials Secret, unless config.Config overrides it.
+	DefaultCAPIClusterNamespace = "capi-cluster"
+
 	// SecretNameCloudCredentials is the Secret the HCloud Cloud
 	// Controller Manager, HCloud CSI driver, and Cluster Autoscaler
 	// all read for their Hetzner API token. kubeaid-cli pre-creates it

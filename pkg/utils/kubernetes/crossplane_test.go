@@ -70,7 +70,7 @@ func TestInstallAndSetupCrossplane(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mgr := NewArgoCDAppManager(tc.client, nil)
+			mgr := NewArgoCDAppManager(testConfig(""), tc.client, nil)
 
 			err := mgr.installAndSetupCrossplane(context.Background())
 			if tc.wantErr {

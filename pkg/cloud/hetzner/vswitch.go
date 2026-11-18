@@ -17,12 +17,9 @@ import (
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
-
-var vSwitchID int
 
 type ListVSwitchResponseBody = []struct {
 	ID int `json:"id"`
@@ -47,7 +44,7 @@ type CreateVSwitchResponseBody struct {
 // This function is responsible for creating that VSwitch, if it doesn't already exist.
 // The VSwitch ID gets returned.
 func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
-	vSwitchConfig := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.VSwitch
+	vSwitchConfig := h.cfg.General.Cloud.Hetzner.BareMetal.VSwitch
 
 	response, err := h.robotClient.NewRequest().Get("/vswitch")
 	if err != nil {
@@ -77,10 +74,10 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
 			return 0, fmt.Errorf("vswitch exists but is being deleted (cancelled)")
 		}
 
-		vSwitchID = vSwitch.ID
+		h.vSwitchID = vSwitch.ID
 
-		slog.InfoContext(ctx, "VSwitch already exists", slog.Int("id", vSwitchID))
-		return vSwitchID, nil
+		slog.InfoContext(ctx, "VSwitch already exists", slog.Int("id", h.vSwitchID))
+		return h.vSwitchID, nil
 	}
 
 	response, err = h.robotClient.NewRequest().
@@ -102,12 +99,12 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("unmarshalling create VSwitch response body: %w", err)
 	}
 
-	vSwitchID = createVSwitchResponseBody.ID
+	h.vSwitchID = createVSwitchResponseBody.ID
 
-	slog.InfoContext(ctx, "Created VSwitch", slog.Int("id", vSwitchID))
+	slog.InfoContext(ctx, "Created VSwitch", slog.Int("id", h.vSwitchID))
 	slog.WarnContext(ctx, "VSwitch deletion protection must be enabled manually in the Hetzner Robot console — Robot API does not support programmatic protection")
 
-	return vSwitchID, nil
+	return h.vSwitchID, nil
 }
 
 // When using Hetzner Bare Metal, we need to establish private connectivity between them and the
@@ -115,7 +112,7 @@ func (h *Hetzner) CreateVSwitch(ctx context.Context) (int, error) {
 func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network *hcloud.Network) error {
 	for _, subnet := range network.Subnets {
 		if subnet.Type == hcloud.NetworkSubnetTypeVSwitch {
-			if subnet.VSwitchID != vSwitchID {
+			if subnet.VSwitchID != h.vSwitchID {
 				return fmt.Errorf("an unexpected VSwitch (id=%d) is already connected to the Hetzner Network", subnet.VSwitchID)
 			}
 
@@ -124,7 +121,7 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 		}
 	}
 
-	vSwitchSubnetCIDR := config.ParsedGeneralConfig.Cloud.Hetzner.BareMetal.VSwitch.SubnetCIDRBlock
+	vSwitchSubnetCIDR := h.cfg.General.Cloud.Hetzner.BareMetal.VSwitch.SubnetCIDRBlock
 
 	gatewayIP, subnetCIDR, err := net.ParseCIDR(vSwitchSubnetCIDR)
 	if err != nil {
@@ -137,7 +134,7 @@ func (h *Hetzner) ConnectVSwitchWithHetznerNetwork(ctx context.Context, network 
 			IPRange:     subnetCIDR,
 			NetworkZone: hcloud.NetworkZoneEUCentral,
 			Gateway:     gatewayIP,
-			VSwitchID:   vSwitchID,
+			VSwitchID:   h.vSwitchID,
 		},
 	})
 	if err != nil {

@@ -13,9 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
@@ -45,8 +43,8 @@ const (
 //
 // No-op when no FQDNs are configured (workload clusters, or VPN
 // clusters with no Keycloak/NetBird DNS set).
-func WaitForIngressLBDNS(ctx context.Context, clusterClient client.Client) error {
-	if fqdns := ingressLBFQDNs(); len(fqdns) > 0 {
+func (h *Hetzner) WaitForIngressLBDNS(ctx context.Context, clusterClient client.Client) error {
+	if fqdns := h.ingressLBFQDNs(); len(fqdns) > 0 {
 		bar := progress.FromCtx(ctx)
 		bar.Substep("Waiting for Traefik LB to be assigned a public IP")
 		lbIP, err := waitForTraefikLBIP(ctx, clusterClient)
@@ -66,15 +64,15 @@ func WaitForIngressLBDNS(ctx context.Context, clusterClient client.Client) error
 	// instead. Gate bootstrap on the operator having re-pointed those
 	// records, so a forgotten DNS change surfaces here rather than as
 	// silently broken STUN/TURN later.
-	return waitForCoturnFloatingIPDNS(ctx)
+	return h.waitForCoturnFloatingIPDNS(ctx)
 }
 
 // ingressLBFQDNs returns the FQDNs that should resolve to the
 // Traefik LB's public IP. Pulled out for testability and to keep
 // the spec close to its source — anything new that fronts on
 // Traefik (whoami, future apps) extends this list.
-func ingressLBFQDNs() []string {
-	cluster := config.ParsedGeneralConfig.Cluster
+func (h *Hetzner) ingressLBFQDNs() []string {
+	cluster := h.cfg.General.Cluster
 	var fqdns []string
 	if cluster.Keycloak != nil && cluster.Keycloak.DNS != "" {
 		fqdns = append(fqdns, cluster.Keycloak.DNS)
@@ -86,8 +84,8 @@ func ingressLBFQDNs() []string {
 	// Floating IP; with one they resolve to that IP instead (see
 	// coturnFloatingIPFQDNs / waitForCoturnFloatingIPDNS), since
 	// host-network Coturn answers on the Floating IP, not the HTTP LB.
-	if !config.CoturnFloatingIPEnabled() {
-		fqdns = append(fqdns, netbirdStunTurnFQDNs()...)
+	if !h.cfg.General.CoturnFloatingIPEnabled() {
+		fqdns = append(fqdns, h.netbirdStunTurnFQDNs()...)
 	}
 	return fqdns
 }
@@ -95,19 +93,19 @@ func ingressLBFQDNs() []string {
 // coturnFloatingIPFQDNs returns the NetBird stun/turn FQDNs that, on a
 // cluster with a Coturn Floating IP, must resolve to that Floating IP
 // rather than the Traefik LB — or nil when there is no Floating IP.
-func coturnFloatingIPFQDNs() []string {
-	if !config.CoturnFloatingIPEnabled() {
+func (h *Hetzner) coturnFloatingIPFQDNs() []string {
+	if !h.cfg.General.CoturnFloatingIPEnabled() {
 		return nil
 	}
-	return netbirdStunTurnFQDNs()
+	return h.netbirdStunTurnFQDNs()
 }
 
 // netbirdStunTurnFQDNs returns the configured NetBird stun/turn FQDNs
 // (whichever are set). Depending on CoturnFloatingIPEnabled they front on
 // either the Traefik LB (ingressLBFQDNs) or the Coturn Floating IP
 // (coturnFloatingIPFQDNs).
-func netbirdStunTurnFQDNs() []string {
-	cluster := config.ParsedGeneralConfig.Cluster
+func (h *Hetzner) netbirdStunTurnFQDNs() []string {
+	cluster := h.cfg.General.Cluster
 	if cluster.NetBird == nil {
 		return nil
 	}
@@ -123,15 +121,16 @@ func netbirdStunTurnFQDNs() []string {
 
 // waitForCoturnFloatingIPDNS gates bootstrap until stun.dns / turn.dns
 // resolve to the Coturn Floating IP. No-op on any cluster without one.
-func waitForCoturnFloatingIPDNS(ctx context.Context) error {
-	fqdns := coturnFloatingIPFQDNs()
-	if len(fqdns) == 0 || len(globals.CoturnFloatingIPs) == 0 {
+func (h *Hetzner) waitForCoturnFloatingIPDNS(ctx context.Context) error {
+	fqdns := h.coturnFloatingIPFQDNs()
+	floatingIPs := h.cfg.Provisioned.CoturnFloatingIPs
+	if len(fqdns) == 0 || len(floatingIPs) == 0 {
 		return nil
 	}
 	progress.FromCtx(ctx).Substep(
 		"Waiting for stun/turn DNS to point at the Coturn Floating IP",
 	)
-	return WaitForDNSResolution(ctx, fqdns, globals.CoturnFloatingIPs[0])
+	return WaitForDNSResolution(ctx, fqdns, floatingIPs[0])
 }
 
 // waitForTraefikLBIP polls the traefik namespace for a Service of

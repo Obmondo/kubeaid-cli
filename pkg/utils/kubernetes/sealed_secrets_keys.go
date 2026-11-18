@@ -142,11 +142,15 @@ func CopySealedSecretsKeysFromManagement(ctx context.Context, mgmt, main client.
 	return nil
 }
 
-// reinstallSealedSecretsFn is the test seam for EnsureSealedSecretsHealthy's
-// recovery path. Production wires this to ReinstallSealedSecrets in
-// sealed_secrets.go; tests substitute a function variable to assert
-// the recovery branch was taken without standing up Helm.
-var reinstallSealedSecretsFn = ReinstallSealedSecrets
+// reinstallSealedSecrets is EnsureSealedSecretsHealthy's recovery step: ReinstallSealedSecrets,
+// unless a test substituted Cluster.reinstallSealedSecretsFn to assert the recovery branch was
+// taken without standing up Helm.
+func (c *Cluster) reinstallSealedSecrets(ctx context.Context) error {
+	if c.reinstallSealedSecretsFn != nil {
+		return c.reinstallSealedSecretsFn(ctx)
+	}
+	return c.ReinstallSealedSecrets(ctx)
+}
 
 // healthPollInterval / healthPollTimeoutForTest cap the time
 // EnsureSealedSecretsHealthy spends waiting for the controller
@@ -195,7 +199,7 @@ var healthPollTimeoutForTest = 60 * time.Second
 // afterward, return a rich diagnostic so the operator knows whether
 // it's a taint, an image pull, a crashing container, etc. — not just
 // "Sealed Secrets controller not Ready".
-func EnsureSealedSecretsHealthy(ctx context.Context, mgmt, main client.Client) error {
+func (c *Cluster) EnsureSealedSecretsHealthy(ctx context.Context, mgmt, main client.Client) error {
 	// CHECK 1: key parity.
 	if err := ensureSealedSecretsKeysReplicated(ctx, mgmt, main); err != nil {
 		return fmt.Errorf("ensuring sealed-secrets key parity: %w", err)
@@ -210,7 +214,7 @@ func EnsureSealedSecretsHealthy(ctx context.Context, mgmt, main client.Client) e
 	slog.WarnContext(ctx,
 		"Sealed-secrets controller not Ready — running ReinstallSealedSecrets (Install.Replace=true) and retrying once",
 	)
-	if err := reinstallSealedSecretsFn(ctx); err != nil {
+	if err := c.reinstallSealedSecrets(ctx); err != nil {
 		return fmt.Errorf("reinstalling sealed-secrets after unhealthy controller: %w", err)
 	}
 

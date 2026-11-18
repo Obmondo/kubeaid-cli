@@ -26,16 +26,12 @@ import (
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
 const (
-	defaultCapiClusterNamespace = "capi-cluster"
-
 	// statusReady / statusUnknown are the operator-facing Node STATUS
 	// strings, also reused for the Cluster status-detail column.
 	statusReady   = "Ready"
@@ -59,10 +55,6 @@ var (
 	waitForProvisioningPollInterval = time.Minute
 	saveKubeconfigPollInterval      = 2 * time.Second
 
-	// outputPathMainClusterKubeconfig is a test override. Read it via
-	// mainClusterKubeconfigPath, never directly.
-	outputPathMainClusterKubeconfig = ""
-
 	// capiWaitPollInterval is how often the live-status loop re-reads
 	// Cluster + Machine + HCloudMachine from the management cluster.
 	// 15s is fine-grained enough that operators see HCloud state
@@ -79,8 +71,8 @@ var (
 )
 
 // Returns whether we're using Clusterapi or not.
-func UsingClusterAPI() (usingClusterAPI bool) {
-	switch globals.CloudProviderName {
+func (c *Cluster) UsingClusterAPI() (usingClusterAPI bool) {
+	switch c.cfg.CloudProviderName {
 	case constants.CloudProviderBareMetal, constants.CloudProviderLocal:
 		usingClusterAPI = false
 
@@ -88,21 +80,6 @@ func UsingClusterAPI() (usingClusterAPI bool) {
 		usingClusterAPI = true
 	}
 	return usingClusterAPI
-}
-
-// GetCapiClusterNamespace returns the namespace where the cloud-credentials
-// Secret lives and where CAPI watches Cluster / Machine resources.
-//
-// Always "capi-cluster". Earlier revisions appended the Obmondo customer ID
-// (e.g. capi-cluster-enableit) under the assumption that one management
-// cluster would host multiple customers; in practice the management cluster
-// is throw-away and each workload cluster's CAPI is single-tenant, so the
-// suffix added complexity without isolating anything real. Existing clusters
-// running CAPI under the old per-customer namespace need a one-time
-// migration (kubectl get + replace + apply) or to opt back into the old
-// behaviour via the chart's global.capiClusterNamespace values key.
-func GetCapiClusterNamespace() string {
-	return defaultCapiClusterNamespace
 }
 
 // capiStatusRow is one row of the live status table — a single
@@ -158,12 +135,12 @@ type capiStatusRow struct {
 //
 // The stricter all-Machines-Running gate (every CP + every worker) runs
 // separately in WaitForAllMachinesRunning, just before clusterctl move.
-func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
+func (c *Cluster) WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterClient client.Client) error {
 	if err := waitForCAPIStableState(ctx,
 		"Waiting for main cluster (CP + worker Machine to join)",
 		"main cluster did not reach Provisioned with one CP + one worker Machine Running",
-		func(c context.Context) ([]capiStatusRow, bool, error) {
-			return summarizeCAPIStatus(c, managementClusterClient)
+		func(pollCtx context.Context) ([]capiStatusRow, bool, error) {
+			return c.summarizeCAPIStatus(pollCtx, managementClusterClient)
 		},
 		nil,
 	); err != nil {
@@ -183,7 +160,7 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 	// Cancellation: the goroutine returns when ctx is Done, which the
 	// parent bootstrap cancels on success or abort. No explicit cleanup
 	// hook needed.
-	go logMachineProgressInBackground(ctx, managementClusterClient)
+	go c.logMachineProgressInBackground(ctx, managementClusterClient)
 	return nil
 }
 
@@ -211,14 +188,14 @@ func WaitForMainClusterToBeProvisioned(ctx context.Context, managementClusterCli
 // as not-ready (a freshly scaled-to-zero cluster wouldn't be a sensible
 // thing to clusterctl-move anyway, and treating it as ready would hide
 // a misconfiguration).
-func WaitForAllMachinesRunning(ctx context.Context,
+func (c *Cluster) WaitForAllMachinesRunning(ctx context.Context,
 	managementClusterClient, mainClusterClient client.Client,
 ) error {
 	return waitForCAPIStableState(ctx,
 		"Verifying control plane is ready for pivot",
 		"not all Machines reached Phase=Running with status.nodeRef populated",
-		func(c context.Context) ([]capiStatusRow, bool, error) {
-			return summarizeMachinesForPivot(c, managementClusterClient)
+		func(pollCtx context.Context) ([]capiStatusRow, bool, error) {
+			return c.summarizeMachinesForPivot(pollCtx, managementClusterClient)
 		},
 		func() string {
 			return renderMainClusterNodesTable(ctx, mainClusterClient)
@@ -235,12 +212,12 @@ func WaitForAllMachinesRunning(ctx context.Context,
 // clusterClient must own the KubeadmControlPlane: the management cluster
 // pre-pivot, the provisioned cluster after `clusterctl move`. Returns nil
 // when no KCP is present.
-func WaitForControlPlaneRolloutComplete(ctx context.Context, clusterClient client.Client) error {
+func (c *Cluster) WaitForControlPlaneRolloutComplete(ctx context.Context, clusterClient client.Client) error {
 	return waitForCAPIStableState(ctx,
 		"Waiting for control-plane rollout to settle",
 		"control-plane rollout did not settle (KubeadmControlPlane still rolling)",
-		func(c context.Context) ([]capiStatusRow, bool, error) {
-			return summarizeControlPlaneRollout(c, clusterClient)
+		func(pollCtx context.Context) ([]capiStatusRow, bool, error) {
+			return c.summarizeControlPlaneRollout(pollCtx, clusterClient)
 		},
 		nil,
 	)
@@ -256,11 +233,13 @@ func WaitForControlPlaneRolloutComplete(ctx context.Context, clusterClient clien
 // counts as settled so first-time bring-up isn't blocked. An absent KCP
 // (NotFound / no-kind-match) is treated as ready; other Get errors are
 // returned so the wait loop retries.
-func summarizeControlPlaneRollout(ctx context.Context, clusterClient client.Client) ([]capiStatusRow, bool, error) {
+func (c *Cluster) summarizeControlPlaneRollout(ctx context.Context,
+	clusterClient client.Client,
+) ([]capiStatusRow, bool, error) {
 	kcp := &kubeadmControlPlaneV1Beta1.KubeadmControlPlane{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-control-plane", config.ParsedGeneralConfig.Cluster.Name),
-			Namespace: GetCapiClusterNamespace(),
+			Name:      fmt.Sprintf("%s-control-plane", c.cfg.General.Cluster.Name),
+			Namespace: c.cfg.CAPINamespace(),
 		},
 	}
 	err := GetKubernetesResource(ctx, clusterClient, kcp)
@@ -347,7 +326,7 @@ func snapshotMachines(items []clusterAPIV1Beta1.Machine) map[string]machineSnaps
 // transient management-cluster API blips during downstream chart
 // installs are expected and recoverable. The watcher just resumes
 // on the next tick.
-func logMachineProgressInBackground(ctx context.Context, mgmtClient client.Client) {
+func (c *Cluster) logMachineProgressInBackground(ctx context.Context, mgmtClient client.Client) {
 	var prev map[string]machineSnapshot
 
 	for {
@@ -358,7 +337,7 @@ func logMachineProgressInBackground(ctx context.Context, mgmtClient client.Clien
 		}
 
 		machines := &clusterAPIV1Beta1.MachineList{}
-		if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+		if err := mgmtClient.List(ctx, machines, client.InNamespace(c.cfg.CAPINamespace())); err != nil {
 			slog.WarnContext(ctx,
 				"Background Machine watcher: list failed, will retry on next tick",
 				slog.Any("error", err),
@@ -551,16 +530,16 @@ func waitForCAPIStableState(ctx context.Context,
 // log; the wait loop treats it as transient and renders what it has.
 //
 //nolint:gocognit
-func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
+func (c *Cluster) summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
 	var firstErr error
 
-	cluster, err := GetClusterResource(ctx, mgmtClient)
+	cluster, err := c.GetClusterResource(ctx, mgmtClient)
 	if err != nil {
 		firstErr = err
 	}
 
 	machines := &clusterAPIV1Beta1.MachineList{}
-	if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+	if err := mgmtClient.List(ctx, machines, client.InNamespace(c.cfg.CAPINamespace())); err != nil {
 		if firstErr == nil {
 			firstErr = err
 		}
@@ -577,8 +556,8 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	// CAPH's current state without waiting for Machine to catch up. List
 	// failure is logged + non-fatal: we fall back to machineStatusDetail.
 	var hbmmOverrides map[string]string
-	if globals.CloudProviderName == constants.CloudProviderHetzner {
-		if msgs, hbmmErr := hbmmStatusMessages(ctx, mgmtClient); hbmmErr == nil {
+	if c.cfg.CloudProviderName == constants.CloudProviderHetzner {
+		if msgs, hbmmErr := c.hbmmStatusMessages(ctx, mgmtClient); hbmmErr == nil {
 			hbmmOverrides = msgs
 		} else {
 			slog.WarnContext(ctx,
@@ -688,7 +667,7 @@ func summarizeCAPIStatus(ctx context.Context, mgmtClient client.Client) ([]capiS
 	// least one worker Machine Running with a registered Node. AKS agent
 	// pools are MachinePools and create no Machine objects, so there the
 	// Cluster conditions carry the gate alone.
-	if config.ManagedControlPlaneEnabled() {
+	if c.cfg.General.ManagedControlPlaneEnabled() {
 		return rows, clusterReady && (workerTotal == 0 || workerJoined > 0), firstErr
 	}
 	return rows, clusterReady && cpRunning > 0 && (workerTotal == 0 || workerRunning > 0), firstErr
@@ -744,9 +723,9 @@ func isMachineV1Beta2Ready(m *clusterAPIV1Beta1.Machine) bool {
 //
 // Empty map (no error) when no HBMMs exist yet — typical very early in
 // bootstrap before kubeadm-control-plane has rolled the first Machine.
-func hbmmStatusMessages(ctx context.Context, mgmtClient client.Client) (map[string]string, error) {
+func (c *Cluster) hbmmStatusMessages(ctx context.Context, mgmtClient client.Client) (map[string]string, error) {
 	hbmms := &caphV1Beta1.HetznerBareMetalMachineList{}
-	if err := mgmtClient.List(ctx, hbmms, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+	if err := mgmtClient.List(ctx, hbmms, client.InNamespace(c.cfg.CAPINamespace())); err != nil {
 		return nil, err
 	}
 
@@ -809,9 +788,9 @@ func hbmmLiveMessage(hbmm *caphV1Beta1.HetznerBareMetalMachine) string {
 //
 // Row shape mirrors summarizeCAPIStatus so the same renderCAPIStatusTable
 // produces a consistent UX across both wait phases.
-func summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
+func (c *Cluster) summarizeMachinesForPivot(ctx context.Context, mgmtClient client.Client) ([]capiStatusRow, bool, error) {
 	machines := &clusterAPIV1Beta1.MachineList{}
-	if err := mgmtClient.List(ctx, machines, client.InNamespace(GetCapiClusterNamespace())); err != nil {
+	if err := mgmtClient.List(ctx, machines, client.InNamespace(c.cfg.CAPINamespace())); err != nil {
 		return nil, false, err
 	}
 
@@ -1383,16 +1362,18 @@ func WaitForMainClusterToBeReady(ctx context.Context, kubeClient client.Client) 
 	}
 }
 
-// SaveProvisionedClusterKubeconfig saves kubeconfig of the provisioned cluster locally.
-func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Client) error {
+// ProvisionedClusterKubeconfig returns the kubeconfig of the provisioned cluster, which Cluster API
+// publishes in a Secret of the management cluster kubeClient talks to. It waits for that Secret to
+// show up, until ctx is done.
+func (c *Cluster) ProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Client) ([]byte, error) {
 	secret := &coreV1.Secret{}
 	// Seldom, after the cluster has been provisioned, Cluster API takes some time to create the
 	// Kubernetes secret containing the kubeconfig.
 	for {
 		err := kubeClient.Get(ctx,
 			types.NamespacedName{
-				Name:      fmt.Sprintf("%s-kubeconfig", config.ParsedGeneralConfig.Cluster.Name),
-				Namespace: GetCapiClusterNamespace(),
+				Name:      fmt.Sprintf("%s-kubeconfig", c.cfg.General.Cluster.Name),
+				Namespace: c.cfg.CAPINamespace(),
 			},
 			secret,
 		)
@@ -1402,14 +1383,24 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return nil, ctx.Err()
 		case <-time.After(saveKubeconfigPollInterval):
 		}
 	}
 
-	kubeConfig := secret.Data["value"]
+	return secret.Data["value"], nil
+}
 
-	outputPath := mainClusterKubeconfigPath()
+// SaveProvisionedClusterKubeconfig saves kubeconfig of the provisioned cluster at outputPath.
+func (c *Cluster) SaveProvisionedClusterKubeconfig(ctx context.Context,
+	kubeClient client.Client,
+	outputPath string,
+) error {
+	kubeConfig, err := c.ProvisionedClusterKubeconfig(ctx, kubeClient)
+	if err != nil {
+		return err
+	}
+
 	if err := utils.CreateIntermediateDirsForFile(outputPath); err != nil {
 		return fmt.Errorf("failed creating directories for the kubeconfig: %w", err)
 	}
@@ -1422,13 +1413,13 @@ func SaveProvisionedClusterKubeconfig(ctx context.Context, kubeClient client.Cli
 }
 
 // Looks for and returns the Cluster resource in the given Kubernetes cluster.
-func GetClusterResource(ctx context.Context,
+func (c *Cluster) GetClusterResource(ctx context.Context,
 	clusterClient client.Client,
 ) (*clusterAPIV1Beta1.Cluster, error) {
 	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: metaV1.ObjectMeta{
-			Name:      config.ParsedGeneralConfig.Cluster.Name,
-			Namespace: GetCapiClusterNamespace(),
+			Name:      c.cfg.General.Cluster.Name,
+			Namespace: c.cfg.CAPINamespace(),
 		},
 	}
 
@@ -1438,31 +1429,18 @@ func GetClusterResource(ctx context.Context,
 	return cluster, nil
 }
 
-// mainClusterKubeconfigPath is the one way to read where the main cluster's
-// kubeconfig lives: the test override when set, else the constant at call
-// time (re-rooted after config parse, so never copied at init). The raw
-// variable must not reach client-go — an empty path silently falls back to
-// $KUBECONFIG / ~/.kube/config.
-func mainClusterKubeconfigPath() string {
-	if outputPathMainClusterKubeconfig != "" {
-		return outputPathMainClusterKubeconfig
-	}
-	return constants.OutputPathMainClusterKubeconfig
-}
-
-// Returns whether the 'clusterctl move' command has already been executed or not.
-func IsClusterctlMoveExecuted(ctx context.Context) bool {
-	mainClusterClient, err := createKubernetesClientFn(ctx,
-		mainClusterKubeconfigPath(),
-	)
+// IsClusterctlMoveExecuted returns whether the 'clusterctl move' command has already been
+// executed. mainClusterClient talks to the main cluster; nil (the main cluster isn't reachable)
+// means it hasn't been.
+func (c *Cluster) IsClusterctlMoveExecuted(ctx context.Context, mainClusterClient client.Client) bool {
 	// Main cluster isn't reachable,
 	// which means 'clusterctl move' hasn't been executed.
-	if err != nil {
+	if mainClusterClient == nil {
 		return false
 	}
 
 	// If the Cluster resource is found in the main cluster,
 	// that means 'clusterctl move' has been executed.
-	_, err = GetClusterResource(ctx, mainClusterClient)
+	_, err := c.GetClusterResource(ctx, mainClusterClient)
 	return err == nil
 }

@@ -55,7 +55,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// against this fixed version, never walks default-branch
 		// history. One narrow fetch instead of pulling every ref + tag
 		// per re-run.
-		kubeAidRepo := gitUtils.CloneRepo(
+		kubeAidRepo, err := gitClient().CloneRepo(
 			ctx,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.URL,
 			args.GitAuthMethod,
@@ -63,13 +63,15 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 				PinnedRef: config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
 			},
 		)
+		assertGit(ctx, err)
 
 		// Hard reset to the KubeAid git ref (tag / branch) from the general config.
-		gitUtils.HardResetRepoToRef(
+		err = gitUtils.HardResetRepoToRef(
 			ctx,
 			kubeAidRepo,
 			config.ParsedGeneralConfig.Forks.KubeaidFork.Version,
 		)
+		assertGit(ctx, err)
 	}
 
 	// Create required namespaces before syncing all the ArgoCD Apps.
@@ -187,7 +189,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// Install Sealed Secrets. Helm install brings up the controller,
 	// which discovers any keys we pre-seeded above and uses them as-is.
 	releaseSS := bar.InProgress("Installing Sealed Secrets controller")
-	if err := kubernetes.InstallSealedSecrets(ctx); err != nil {
+	if err := kubeCluster().InstallSealedSecrets(ctx); err != nil {
 		releaseSS()
 		assert.AssertErrNil(ctx, err, "Failed installing Sealed Secrets")
 	}
@@ -221,7 +223,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	releaseHealth := bar.InProgress("Verifying Sealed Secrets controller health")
-	if err := kubernetes.EnsureSealedSecretsHealthy(
+	if err := kubeCluster().EnsureSealedSecretsHealthy(
 		ctx,
 		mgmtClientForHealthCheck, args.ClusterClient,
 	); err != nil {
@@ -238,7 +240,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 
 	// Install and setup ArgoCD.
 	releaseArgoCD := bar.InProgress("Installing and configuring ArgoCD")
-	err := kubernetes.InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
+	err := kubeCluster().InstallAndSetupArgoCD(ctx, utils.GetClusterDir(), args.ClusterClient)
 	releaseArgoCD()
 	assert.AssertErrNil(ctx, err, "Failed installing and setting up ArgoCD")
 	bar.Substep("Installed and configured ArgoCD")
@@ -247,9 +249,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// Kubernetes Secret will get created.
 	// Not needed for the local provider, since there is no CAPI cluster.
 	if globals.CloudProviderName != constants.CloudProviderLocal {
-		err := kubernetes.CreateNamespace(ctx, kubernetes.GetCapiClusterNamespace(), args.ClusterClient)
+		capiClusterNamespace := cliConfig().CAPINamespace()
+		err := kubernetes.CreateNamespace(ctx, capiClusterNamespace, args.ClusterClient)
 		assert.AssertErrNil(ctx, err, "Failed creating namespace",
-			slog.String("namespace", kubernetes.GetCapiClusterNamespace()))
+			slog.String("namespace", capiClusterNamespace))
 	}
 
 	// Pre-create the netbird namespace when the netbird-operator is
@@ -305,7 +308,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		}
 
 		release := bar.InProgress(fmt.Sprintf("Syncing %s ArgoCD app", argoCDApp))
-		err = kubernetes.SyncArgoCDApp(ctx, argoCDApp, syncResources)
+		err = kubeCluster().SyncArgoCDApp(ctx, argoCDApp, syncResources)
 		release()
 		assert.AssertErrNil(ctx, err, "Failed syncing ArgoCD app",
 			slog.String("app", argoCDApp))
@@ -326,7 +329,7 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 		// Install CrossPlane.
 		// Then set it up, by installing required Providers, Functions, Compositions and
 		// Composite Resource Definitions (XRDs).
-		err = kubernetes.InstallAndSetupCrossplane(ctx)
+		err = kubeCluster().InstallAndSetupCrossplane(ctx)
 		assert.AssertErrNil(ctx, err, "Failed installing and setting up Crossplane")
 
 		// Doing the following once (i.e., while being in the management cluster) is enough.
@@ -356,10 +359,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	}
 
 	// When using ClusterAPI to provision the main cluster.
-	if kubernetes.UsingClusterAPI() {
+	if kubeCluster().UsingClusterAPI() {
 		// Sync ClusterAPI Operator ArgoCD App.
 		releaseCAPIOp := bar.InProgress("Syncing cluster-api-operator ArgoCD app")
-		err = kubernetes.SyncArgoCDApp(
+		err = kubeCluster().SyncArgoCDApp(
 			ctx, "cluster-api-operator",
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
@@ -388,10 +391,10 @@ func SetupCluster(ctx context.Context, args SetupClusterArgs) {
 	// belongs above it. Skipped on the main cluster (post-pivot the
 	// resources are already there) and on bare-metal (no CAPI).
 	if args.ClusterType == constants.ClusterTypeManagement &&
-		kubernetes.UsingClusterAPI() &&
-		!kubernetes.IsClusterctlMoveExecuted(ctx) {
+		kubeCluster().UsingClusterAPI() &&
+		!isClusterctlMoveExecuted(ctx) {
 		releaseSync := bar.InProgress("Syncing capi-cluster ArgoCD app")
-		err := kubernetes.SyncArgoCDApp(
+		err := kubeCluster().SyncArgoCDApp(
 			ctx, constants.ArgoCDAppCapiCluster,
 			[]*argoCDV1Alpha1.SyncOperationResource{},
 		)
@@ -426,12 +429,12 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel()
 	go logInfrastructureProviderConditions(watchCtx, clusterClient,
-		getInfrastructureProviderName(), kubernetes.GetCapiClusterNamespace())
+		getInfrastructureProviderName(), cliConfig().CAPINamespace())
 
 	releaseSync := bar.InProgress(
 		fmt.Sprintf("Syncing %s infrastructure-provider component", providerName),
 	)
-	err := kubernetes.SyncArgoCDApp(
+	err := kubeCluster().SyncArgoCDApp(
 		ctx, constants.ArgoCDAppCapiCluster,
 		[]*argoCDV1Alpha1.SyncOperationResource{
 			{
@@ -448,7 +451,7 @@ func syncInfrastructureProvider(ctx context.Context, clusterClient client.Client
 		fmt.Sprintf("Synced %s infrastructure-provider component", providerName),
 	)
 
-	capiClusterNamespace := kubernetes.GetCapiClusterNamespace()
+	capiClusterNamespace := cliConfig().CAPINamespace()
 
 	// Wait for the infrastructure specific CRDs to be installed and infrastructure provider component
 	// pod to be running. This is the slow part — kubeaid-cli has

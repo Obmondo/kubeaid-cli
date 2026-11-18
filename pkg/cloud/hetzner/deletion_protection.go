@@ -11,14 +11,12 @@ import (
 
 	"github.com/hetznercloud/hcloud-go/hcloud"
 	"k8s.io/utils/ptr"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 )
 
 // DisableDeletionProtection disables deletion protection on the KubeAPI LB and
 // NAT Gateway server so that CAPH can delete them during cluster teardown.
 func (h *Hetzner) DisableDeletionProtection(ctx context.Context) error {
-	clusterName := config.ParsedGeneralConfig.Cluster.Name
+	clusterName := h.cfg.General.Cluster.Name
 
 	// Disable deletion protection on the KubeAPI LB.
 	lb, response, err := h.loadBalancerClient.Get(ctx, clusterName)

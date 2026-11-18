@@ -5,6 +5,7 @@ package azure
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -12,10 +13,19 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 )
 
-var syncArgoCDAppFn = kubernetes.SyncArgoCDApp
+// syncArgoCDAppFn syncs through the CLI's cluster.
+var syncArgoCDAppFn = func(ctx context.Context,
+	name string,
+	resources []*argoCDV1Alpha1.SyncOperationResource,
+) error {
+	if globals.Cluster == nil {
+		return errors.New("no cluster to sync ArgoCD apps through")
+	}
+	return globals.Cluster.SyncArgoCDApp(ctx, name, resources)
+}
 
 // SetupDisasterRecovery sets up the provisioned cluster for Disaster Recovery.
 func (a *Azure) SetupDisasterRecovery(ctx context.Context) error {

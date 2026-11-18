@@ -191,17 +191,12 @@ func TestCreateHetznerBareMetalSSHKey(t *testing.T) {
 
 // TestCreateHetznerBareMetalSSHKey_ReusesExistingByFingerprint covers
 // the same-fingerprint-different-name idempotency path separately
-// because it has to mutate the package-level config.ParsedGeneralConfig
-// — running in the same parallel group as the rest would race that
-// global. The reuse path is the common case for operators sharing one
-// SSH key (yubikey, or a hand-onboarded entry from a prior cluster)
-// across multiple Robot accounts / clusters.
+// because it has to assert on the config the provisioner rewrites. The reuse path is the common
+// case for operators sharing one SSH key (yubikey, or a hand-onboarded entry from a prior
+// cluster) across multiple Robot accounts / clusters.
 func TestCreateHetznerBareMetalSSHKey_ReusesExistingByFingerprint(t *testing.T) {
-	orig := config.ParsedGeneralConfig
-	t.Cleanup(func() { config.ParsedGeneralConfig = orig })
-
 	const existingName = "operator-key"
-	config.ParsedGeneralConfig = &config.GeneralConfig{
+	general := &config.GeneralConfig{
 		Cloud: config.CloudConfig{
 			Hetzner: &config.HetznerConfig{
 				SSHKeyPair: config.HetznerSSHKeyPair{Name: "my-key"},
@@ -223,12 +218,13 @@ func TestCreateHetznerBareMetalSSHKey_ReusesExistingByFingerprint(t *testing.T) 
 
 	h, server := newTestHetznerWithRobotServer(handler)
 	defer server.Close()
+	h.cfg = &config.Config{General: general}
 
 	err := h.CreateHetznerBareMetalSSHKey(context.Background(), "my-key", config.SSHKeyPairConfig{
 		Fingerprint: "aa:bb:cc:dd",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, existingName,
-		config.ParsedGeneralConfig.Cloud.Hetzner.SSHKeyPair.Name,
+		general.Cloud.Hetzner.SSHKeyPair.Name,
 		"cfg.SSHKeyPair.Name must be rewritten to the Robot entry's name")
 }

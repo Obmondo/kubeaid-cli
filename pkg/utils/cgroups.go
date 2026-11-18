@@ -4,22 +4,22 @@
 package utils
 
 import (
-	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
-
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 // Returns whether the CGroup version on the host machine is 2.
-func IsCGroupV2() bool {
+func IsCGroupV2() (bool, error) {
 	_, err := os.Stat("/sys/fs/cgroup/cgroup.controllers")
 	if errors.Is(err, os.ErrNotExist) {
 		slog.Info("Detected CGroup legacy v1")
-		return false
+		return false, nil
 	}
-	assert.AssertErrNil(context.Background(), err, "Failed determining CGroup version")
+	if err != nil {
+		return false, fmt.Errorf("determining CGroup version: %w", err)
+	}
 
-	return true
+	return true, nil
 }

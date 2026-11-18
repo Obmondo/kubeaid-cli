@@ -14,9 +14,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	repourl "github.com/Obmondo/kubeaid-cli/pkg/repository/url"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
@@ -46,7 +44,11 @@ type CloneRepoOptions struct {
 // Pass CloneRepoOptions to override the re-run fetch behavior — see
 // CloneRepoOptions doc. Variadic parameter for backward compat with
 // existing callers that don't need the override.
-func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod, opts ...CloneRepoOptions) *goGit.Repository {
+func (c *Client) CloneRepo(ctx context.Context,
+	url string,
+	authMethod transport.AuthMethod,
+	opts ...CloneRepoOptions,
+) (repo *goGit.Repository, err error) {
 	var cloneOpts CloneRepoOptions
 	if len(opts) > 0 {
 		cloneOpts = opts[0]
@@ -54,12 +56,14 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 
 	// Determine the path, where this repository will be / is cloned.
 	parsed, err := ParseURL(url)
-	assert.AssertErrNil(ctx, err, "Failed parsing Git repository URL", slog.String("url", url))
+	if err != nil {
+		return nil, fail("Failed parsing Git repository URL", err, slog.String("url", url))
+	}
 	path := GetRepoDir(parsed)
 
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("repo", url), slog.String("path", path),
-	})
+	logAttrs := []slog.Attr{slog.String("repo", url), slog.String("path", path)}
+	ctx = logger.AppendSlogAttributesToCtx(ctx, logAttrs)
+	defer annotate(&err, logAttrs...)
 
 	// For HTTPs URLs, no auth is needed (public repos only).
 	// If the clone fails, the repo is likely private and requires an SSH URL.
@@ -69,29 +73,7 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 
 	// When the repo is already cloned.
 	if _, err := os.ReadDir(path); err == nil {
-		repo, err := goGit.PlainOpen(path)
-		if err != nil && errors.Is(err, goGit.ErrRepositoryNotExists) {
-			assert.AssertErrNil(ctx, err, "Failed opening existing git repo")
-		}
-
-		workTree, err := repo.Worktree()
-		assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
-
-		if cloneOpts.PinnedRef != "" {
-			// Read-only consumer (kubeaid-fork): fetch only the pinned
-			// ref. Skip CheckoutToDefaultBranchAndFetchUpdates' default-
-			// branch dance — HardResetRepoToRef immediately after will
-			// land us on the pinned ref anyway, and the caller doesn't
-			// walk history past that ref.
-			refreshPinnedRef(ctx, repo, workTree, cloneOpts.PinnedRef, authMethod)
-			return repo
-		}
-
-		// Default path (kubeaid-config): checkout default branch + fetch
-		// just that branch. All changes in the current branch get discarded.
-		CheckoutToDefaultBranchAndFetchUpdates(ctx, repo, workTree, authMethod)
-
-		return repo
+		return c.refreshClonedRepo(ctx, path, cloneOpts, authMethod)
 	}
 
 	// Clone the repo.
@@ -100,13 +82,12 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 	releaseTouch := requestTouchIfAuth(ctx, "clone "+parsed.Owner+"/"+parsed.Repository, authMethod)
 	defer releaseTouch()
 
-	var repo *goGit.Repository
 	if cloneOpts.PinnedRef != "" {
 		// Read-only consumer (kubeaid-fork): shallow-clone just the
 		// pinned ref. Avoids pulling the entire repo + every tag on
 		// first run — which for kubeaid is a large repo, multiple
 		// minutes of network on slow links.
-		repo, err = clonePinnedRef(ctx, path, url, cloneOpts.PinnedRef, authMethod)
+		repo, err = c.clonePinnedRef(ctx, path, url, cloneOpts.PinnedRef, authMethod)
 	} else {
 		// Default path (kubeaid-config): full clone, all branches,
 		// all tags. We push feature branches to this repo and walk
@@ -116,36 +97,30 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 			return goGit.PlainCloneContext(ctx, path, false, &goGit.CloneOptions{
 				URL:      url,
 				Auth:     authMethod,
-				CABundle: config.ParsedGeneralConfig.Git.CABundle,
+				CABundle: c.caBundle(),
 			})
 		})
 	}
 
 	if repourl.UsingHTTPBasedProtocol(url) &&
 		(errors.Is(err, transport.ErrAuthenticationRequired) || errors.Is(err, transport.ErrAuthorizationFailed)) {
-		slog.ErrorContext(ctx,
-			"HTTPS clone failed: private repo detected, switch to SSH URL",
-			slog.String("url", url),
-		)
-		// os.Exit skips the deferred releaseTouch, so erase the
-		// YubiKey-touch line explicitly before exiting.
-		releaseTouch()
-		os.Exit(1) //nolint:gocritic // exitAfterDefer: releaseTouch (the only defer) is invoked above; os.Exit matches this package's fatal-exit style.
+		return nil, fail("HTTPS clone failed: private repo detected, switch to SSH URL", err)
 	}
 
-	if errors.Is(err, transport.ErrEmptyRemoteRepository) &&
-		(url == config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL) {
+	kubeaidConfigForkURL := c.general().Forks.KubeaidConfigFork.URL
+	switch {
+	case errors.Is(err, transport.ErrEmptyRemoteRepository) && (url == kubeaidConfigForkURL):
 		// Remote KubeAid Config repository is empty.
 		// So, we need to initialize the repository locally,
 		// add the remote repository as 'origin',
 		// and create and push an empty commit.
-		repo = initRepo(ctx,
-			path,
-			config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL,
-			authMethod,
-		)
-	} else {
-		assert.AssertErrNil(ctx, err, "Failed cloning repo")
+		repo, err = c.initRepo(ctx, path, kubeaidConfigForkURL, authMethod)
+		if err != nil {
+			return nil, err
+		}
+
+	case err != nil:
+		return nil, fail("Failed cloning repo", err)
 	}
 
 	// Cache the upstream default branch as a local symbolic ref for
@@ -165,7 +140,44 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 		}
 	}
 
-	return repo
+	return repo, nil
+}
+
+// refreshClonedRepo brings the repo already cloned at path up to date, per cloneOpts.
+func (c *Client) refreshClonedRepo(ctx context.Context,
+	path string,
+	cloneOpts CloneRepoOptions,
+	authMethod transport.AuthMethod,
+) (*goGit.Repository, error) {
+	repo, err := goGit.PlainOpen(path)
+	if err != nil {
+		return nil, fail("Failed opening existing git repo", err)
+	}
+
+	workTree, err := repo.Worktree()
+	if err != nil {
+		return nil, fail("Failed getting repo worktree", err)
+	}
+
+	if cloneOpts.PinnedRef != "" {
+		// Read-only consumer (kubeaid-fork): fetch only the pinned
+		// ref. Skip CheckoutToDefaultBranchAndFetchUpdates' default-
+		// branch dance — HardResetRepoToRef immediately after will
+		// land us on the pinned ref anyway, and the caller doesn't
+		// walk history past that ref.
+		if err := c.refreshPinnedRef(ctx, repo, workTree, cloneOpts.PinnedRef, authMethod); err != nil {
+			return nil, err
+		}
+		return repo, nil
+	}
+
+	// Default path (kubeaid-config): checkout default branch + fetch
+	// just that branch. All changes in the current branch get discarded.
+	if err := c.CheckoutToDefaultBranchAndFetchUpdates(ctx, repo, workTree, authMethod); err != nil {
+		return nil, err
+	}
+
+	return repo, nil
 }
 
 // clonePinnedRef shallow-clones url at pinnedRef into path and returns
@@ -177,11 +189,11 @@ func CloneRepo(ctx context.Context, url string, authMethod transport.AuthMethod,
 // minimal — kubeaid-cli only HardResetRepoToRef against pinnedRef and
 // never walks the broader history, so there's nothing extra to gain
 // from a fuller clone.
-func clonePinnedRef(ctx context.Context,
+func (c *Client) clonePinnedRef(ctx context.Context,
 	path, url, pinnedRef string,
 	authMethod transport.AuthMethod,
 ) (*goGit.Repository, error) {
-	repo, err := tryShallowClone(ctx, path, url,
+	repo, err := c.tryShallowClone(ctx, path, url,
 		plumbing.NewTagReferenceName(pinnedRef), authMethod)
 	if err == nil {
 		return repo, nil
@@ -198,11 +210,11 @@ func clonePinnedRef(ctx context.Context,
 	if rmErr := os.RemoveAll(path); rmErr != nil {
 		return nil, rmErr
 	}
-	return tryShallowClone(ctx, path, url,
+	return c.tryShallowClone(ctx, path, url,
 		plumbing.NewBranchReferenceName(pinnedRef), authMethod)
 }
 
-func tryShallowClone(ctx context.Context,
+func (c *Client) tryShallowClone(ctx context.Context,
 	path, url string,
 	refName plumbing.ReferenceName,
 	authMethod transport.AuthMethod,
@@ -211,7 +223,7 @@ func tryShallowClone(ctx context.Context,
 		return goGit.PlainCloneContext(ctx, path, false, &goGit.CloneOptions{
 			URL:           url,
 			Auth:          authMethod,
-			CABundle:      config.ParsedGeneralConfig.Git.CABundle,
+			CABundle:      c.caBundle(),
 			ReferenceName: refName,
 			SingleBranch:  true,
 			Depth:         1,
@@ -235,33 +247,37 @@ func tryShallowClone(ctx context.Context,
 // bumped pinnedRef to something the local repo's never seen — we try
 // the most-likely refspec, fall back to the other on
 // NoMatchingRefSpecError.
-func refreshPinnedRef(ctx context.Context,
+func (c *Client) refreshPinnedRef(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	pinnedRef string,
 	authMethod transport.AuthMethod,
-) {
-	removeUnstagedChanges(ctx, repo, workTree)
+) error {
+	if err := removeUnstagedChanges(repo, workTree); err != nil {
+		return err
+	}
 
 	primary, fallback := pinnedRefSpecs(repo, pinnedRef)
 
-	err := fetchPinnedRefSpec(ctx, repo, pinnedRef, primary, authMethod)
+	err := c.fetchPinnedRefSpec(ctx, repo, pinnedRef, primary, authMethod)
 	if err == nil {
-		return
+		return nil
 	}
 
 	var noMatch goGit.NoMatchingRefSpecError
 	if !errors.As(err, &noMatch) {
-		assert.AssertErrNil(ctx, err, "Failed fetching pinned ref",
-			slog.String("ref", pinnedRef))
+		return fail("Failed fetching pinned ref", err, slog.String("ref", pinnedRef))
 	}
 
 	// Primary refspec didn't match remotely — pinnedRef must be the
 	// other kind of ref. Fall back.
-	err = fetchPinnedRefSpec(ctx, repo, pinnedRef, fallback, authMethod)
-	assert.AssertErrNil(ctx, err,
-		"Failed fetching pinned ref (tried both tag and branch)",
-		slog.String("ref", pinnedRef))
+	err = c.fetchPinnedRefSpec(ctx, repo, pinnedRef, fallback, authMethod)
+	if err != nil {
+		return fail("Failed fetching pinned ref (tried both tag and branch)", err,
+			slog.String("ref", pinnedRef))
+	}
+
+	return nil
 }
 
 // pinnedRefSpecs returns the (most-likely, fallback) pair of refspecs
@@ -287,7 +303,7 @@ func pinnedRefSpecs(repo *goGit.Repository, pinnedRef string) (primary, fallback
 	return tagSpec, branchSpec
 }
 
-func fetchPinnedRefSpec(ctx context.Context,
+func (c *Client) fetchPinnedRefSpec(ctx context.Context,
 	repo *goGit.Repository,
 	pinnedRef string,
 	refSpec goGitConfig.RefSpec,
@@ -301,7 +317,7 @@ func fetchPinnedRefSpec(ctx context.Context,
 	err := retryGitOperation(ctx, "fetch pinned ref", func() error {
 		return repo.FetchContext(ctx, &goGit.FetchOptions{
 			Auth:     authMethod,
-			CABundle: config.ParsedGeneralConfig.Git.CABundle,
+			CABundle: c.caBundle(),
 			RefSpecs: []goGitConfig.RefSpec{refSpec},
 		})
 	})
@@ -318,11 +334,11 @@ func fetchPinnedRefSpec(ctx context.Context,
 // Initializes a repository locally, at the given path.
 // Adds the given remote repository as 'origin'.
 // Then creates and pushes an empty commit.
-func initRepo(ctx context.Context,
+func (c *Client) initRepo(ctx context.Context,
 	dirPath,
 	originURL string,
 	authMethod transport.AuthMethod,
-) *goGit.Repository {
+) (*goGit.Repository, error) {
 	slog.InfoContext(ctx, "Detected remote repository is empty! Initializing repo locally")
 
 	// Initialize repository locally.
@@ -331,19 +347,25 @@ func initRepo(ctx context.Context,
 			DefaultBranch: plumbing.Main,
 		},
 	})
-	assert.AssertErrNil(ctx, err, "Failed to initialize repo locally")
+	if err != nil {
+		return nil, fail("Failed to initialize repo locally", err)
+	}
 
 	// Add remote repository as 'origin'.
 	_, err = repo.CreateRemote(&goGitConfig.RemoteConfig{
 		Name: goGit.DefaultRemoteName,
 		URLs: []string{originURL},
 	})
-	assert.AssertErrNil(ctx, err, "Failed adding 'origin' remote to the initilized local repo")
+	if err != nil {
+		return nil, fail("Failed adding 'origin' remote to the initilized local repo", err)
+	}
 
 	// Create and push an empty commit.
 
 	workTree, err := repo.Worktree()
-	assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
+	if err != nil {
+		return nil, fail("Failed getting repo worktree", err)
+	}
 
 	author, attributedMessage := OperatorAttribution("chore : init")
 	_, err = workTree.Commit(attributedMessage, &goGit.CommitOptions{
@@ -351,7 +373,9 @@ func initRepo(ctx context.Context,
 		Signer:            CommitSigner(ctx),
 		AllowEmptyCommits: true,
 	})
-	assert.AssertErrNil(ctx, err, "Failed creating init git commit")
+	if err != nil {
+		return nil, fail("Failed creating init git commit", err)
+	}
 
 	releasePushTouch := requestTouchIfAuth(ctx,
 		"push init commit to "+originShortName(repo), authMethod,
@@ -360,11 +384,13 @@ func initRepo(ctx context.Context,
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: goGit.DefaultRemoteName,
 			Auth:       authMethod,
-			CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+			CABundle:   c.caBundle(),
 		})
 	})
 	releasePushTouch()
-	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
+	if err != nil {
+		return nil, fail("Failed pushing commit to upstream", err)
+	}
 
-	return repo
+	return repo, nil
 }

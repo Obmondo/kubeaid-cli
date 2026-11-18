@@ -20,14 +20,17 @@ import (
 	clusterAPIV1Beta1 "sigs.k8s.io/cluster-api/api/core/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
-func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) error {
+// PointFailoverIPToInitMasterNode makes the control-plane Failover IP point to the 'init master
+// node': the first control-plane machine, found in the management cluster that
+// managementClusterClient talks to.
+func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context,
+	managementClusterClient client.Client,
+) error {
 	/*
 		A Failover IP is an additional IP that you can switch from one server to another. You can order
 		it for any Hetzner dedicated root server, and you can switch it to any other Hetzner dedicated
@@ -41,7 +44,7 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) error {
 		https://robot.hetzner.com/doc/webservice/en.html#failover.
 	*/
 
-	failoverIP := config.ParsedGeneralConfig.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.Host
+	failoverIP := h.cfg.General.Cloud.Hetzner.ControlPlane.BareMetal.Endpoint.Host
 
 	activeServerIP, err := h.getActiveServerIP(ctx, failoverIP)
 	if err != nil {
@@ -52,7 +55,7 @@ func (h *Hetzner) PointFailoverIPToInitMasterNode(ctx context.Context) error {
 		slog.String("ip", activeServerIP),
 	)
 
-	initMasterNodeIP, err := getInitMasterNodeIP(ctx)
+	initMasterNodeIP, err := h.getInitMasterNodeIP(ctx, managementClusterClient)
 	if err != nil {
 		return fmt.Errorf("detecting init master node IP: %w", err)
 	}
@@ -97,20 +100,14 @@ func (h *Hetzner) getActiveServerIP(ctx context.Context, failoverIP string) (str
 	return unmarshalledResponse.Failover.ActiveServerIP, nil
 }
 
-func getInitMasterNodeIP(ctx context.Context) (string, error) {
-	kubeconfig := utils.MustGetEnv(constants.EnvNameKubeconfig)
-	clusterClient, err := kubernetes.CreateKubernetesClient(ctx, kubeconfig)
-	if err != nil {
-		return "", fmt.Errorf("constructing Kubernetes cluster client: %w", err)
-	}
-
+func (h *Hetzner) getInitMasterNodeIP(ctx context.Context, clusterClient client.Client) (string, error) {
 	var initMasterNodeIP string
 
 	pollErr := wait.PollUntilContextCancel(ctx, 5*time.Second, false,
 		func(ctx context.Context) (bool, error) {
 			hetznerBareMetalMachines := &caphV1Beta1.HetznerBareMetalMachineList{}
 			if err := clusterClient.List(ctx, hetznerBareMetalMachines, &client.ListOptions{
-				Namespace: kubernetes.GetCapiClusterNamespace(),
+				Namespace: h.cfg.CAPINamespace(),
 			}); err != nil {
 				return false, fmt.Errorf("listing HetznerBareMetalMachines: %w", err)
 			}

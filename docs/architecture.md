@@ -153,7 +153,7 @@ flowchart LR
     psg["Parsed{General,Secrets}Config"]
   end
 
-  subgraph RENDER["pkg/core/templates"]
+  subgraph RENDER["pkg/templates"]
     tpl["Go templates (embed.FS)"]
     out["kubeaid-config clone: k8s/<cluster>/*.yaml"]
   end
@@ -436,12 +436,12 @@ Their *credentials* come from the static keys exported alongside it. Worth knowi
 
 ## 7. Template engine
 
-Go templates live in two trees. [`pkg/core/templates`](../pkg/core/templates) embeds every KubeAid Config manifest (CAPI cluster, ArgoCD apps, Sealed Secrets, KubeOne) - rendered with `ParsedGeneralConfig` as their data context and written into the local clone of the KubeAid Config repo (under `/tmp/kubeaid-core/`), from where they are committed and pushed. [`pkg/render/templates`](../pkg/render/templates) embeds just `general.yaml.tmpl` and `secrets.yaml.tmpl` - rendered by `config generate` from the interactive prompt's answers.
+Go templates live in two trees. [`pkg/templates`](../pkg/templates/templates) embeds every KubeAid Config manifest (CAPI cluster, ArgoCD apps, Sealed Secrets, KubeOne) - rendered with `TemplateValues`, built from the cluster's `config.Config`, as their data context and written into the local clone of the KubeAid Config repo (under `/tmp/kubeaid-core/`), from where they are committed and pushed. [`pkg/render/templates`](../pkg/render/templates) embeds just `general.yaml.tmpl` and `secrets.yaml.tmpl` - rendered by `config generate` from the interactive prompt's answers.
 
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
 flowchart LR
-  embed[("embed.FS: pkg/core/templates/*.yaml")] --> render
+  embed[("embed.FS: pkg/templates/templates/*.yaml")] --> render
   cfg["ParsedGeneralConfig"] --> render
   render["text/template render"] --> files["kubeaid-config clone: k8s/<cluster>/*.yaml"]
   files --> commit["git add / commit / push"]
@@ -520,7 +520,7 @@ flowchart LR
 
   subgraph CORE["kubeaid-core (in-process)"]
     parse["pkg/config → ParsedSecretsConfig"]
-    render["pkg/core/templates → SealedSecret CRs"]
+    render["pkg/templates → SealedSecret CRs"]
     kubeseal["kubeseal (via controller pubkey)"]
   end
 

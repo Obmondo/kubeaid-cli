@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
 	"bytes"
@@ -92,10 +92,9 @@ func TestHetznerBareMetalFirewallEnabled(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			withFreshGeneralConfig(t, func() {
-				config.ParsedGeneralConfig.Cloud.Hetzner = tc.hetzner
-				assert.Equal(t, tc.want, hetznerBareMetalFirewallEnabled())
-			})
+			general := &config.GeneralConfig{Cloud: config.CloudConfig{Hetzner: tc.hetzner}}
+
+			assert.Equal(t, tc.want, hetznerBareMetalFirewallEnabled(general))
 		})
 	}
 }

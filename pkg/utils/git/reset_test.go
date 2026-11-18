@@ -5,6 +5,7 @@ package git
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"testing"
@@ -23,11 +24,19 @@ func TestHardResetRepoToRef(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, featureCommitHash, headRef.Hash())
 
-	HardResetRepoToRef(context.Background(), repo, "v1.2.3")
+	require.NoError(t, HardResetRepoToRef(context.Background(), repo, "v1.2.3"))
 
 	headRef, err = repo.Head()
 	require.NoError(t, err)
 	assert.Equal(t, baseCommitHash, headRef.Hash())
+}
+
+func TestHardResetRepoToRefFailureNamesTheRef(t *testing.T) {
+	repo, _, _ := createTestRepoWithTagAndBranch(t)
+
+	err := HardResetRepoToRef(context.Background(), repo, "v9.9.9")
+
+	assertGitFailure(t, err, "Failed resolving provided git ref", slog.String("ref", "v9.9.9"))
 }
 
 func TestResolveGitRefToCommitHash(t *testing.T) {

@@ -91,20 +91,18 @@ func (f *fakeServerClient) ChangeProtection(ctx context.Context, server *hcloud.
 	return nil, &hcloud.Response{Response: &http.Response{StatusCode: http.StatusOK}}, nil
 }
 
-// Mutates config.ParsedGeneralConfig — sequential only.
 func TestCreateNetwork(t *testing.T) {
-	setupConfig := func(t *testing.T) {
-		t.Helper()
-		saved := config.ParsedGeneralConfig
-		t.Cleanup(func() { config.ParsedGeneralConfig = saved })
-		config.ParsedGeneralConfig = &config.GeneralConfig{
-			Cluster: config.ClusterConfig{Name: "test-cluster"},
-			Cloud: config.CloudConfig{
-				Hetzner: &config.HetznerConfig{
-					HCloud: &config.HCloudConfig{
-						HetznerNetwork: config.HetznerNetworkConfig{
-							CIDR:                    "10.0.0.0/16",
-							HCloudServersSubnetCIDR: "10.0.1.0/24",
+	networkTestConfig := func() *config.Config {
+		return &config.Config{
+			General: &config.GeneralConfig{
+				Cluster: config.ClusterConfig{Name: "test-cluster"},
+				Cloud: config.CloudConfig{
+					Hetzner: &config.HetznerConfig{
+						HCloud: &config.HCloudConfig{
+							HetznerNetwork: config.HetznerNetworkConfig{
+								CIDR:                    "10.0.0.0/16",
+								HCloudServersSubnetCIDR: "10.0.1.0/24",
+							},
 						},
 					},
 				},
@@ -192,9 +190,8 @@ func TestCreateNetwork(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			setupConfig(t)
-
 			h := &Hetzner{
+				cfg:           networkTestConfig(),
 				networkClient: tc.netClient,
 			}
 

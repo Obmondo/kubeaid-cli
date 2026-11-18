@@ -203,6 +203,7 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 **Architecture and background**
 
 - [Architecture](docs/architecture.md) — how the CLI is put together
+- [Packages as a library](docs/library-packages.md) — importing the provisioning packages into a long-running program
 - [NetBird VPN architecture](docs/netbird-vpn-architecture.md) — the NetBird mesh around the clusters
 - [Hetzner HCloud VPN cluster](docs/hetzner-hcloud-vpn-cluster.md) — the HCloud VPN-cluster topology
 - [Bare-metal provisioning](docs/bare-metal-provisioning.md) — how a Hetzner bare-metal node gets provisioned end to end

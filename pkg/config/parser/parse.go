@@ -23,8 +23,10 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/globals"
+	"github.com/Obmondo/kubeaid-cli/pkg/storageplanner/storageplan"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 // ConfigFilesExist checks whether both general.yaml and secrets.yaml exist at the given path.
@@ -130,6 +132,14 @@ func ParseConfigFiles(ctx context.Context, configsDirectory string) {
 		assert.AssertErrNil(ctx, err, "Failed filling missing secrets in secrets.yaml")
 	}
 
+	// Build the explicit config the library packages read, and the cluster operations on it.
+	cfg, err := config.New(config.ParsedGeneralConfig, config.ParsedSecretsConfig)
+	assert.AssertErrNil(ctx, err, "Failed building the cluster config")
+	globals.Config = cfg
+
+	globals.Cluster, err = kubernetes.NewCluster(cfg)
+	assert.AssertErrNil(ctx, err, "Failed building the cluster operations")
+
 	// Set globals.CloudProvider based on the underlying cloud-provider being used.
 	setCloudProvider(ctx)
 
@@ -227,26 +237,13 @@ func hydrateKubePrometheusVersion(ctx context.Context) error {
 // Based on the parsed config, detects the underlying cloud-provider name.
 // And sets the value of globals.CloudProviderName.
 func detectCloudProviderName() {
-	switch {
-	case config.ParsedGeneralConfig.Cloud.AWS != nil:
-		globals.CloudProviderName = constants.CloudProviderAWS
-
-	case config.ParsedGeneralConfig.Cloud.Azure != nil:
-		globals.CloudProviderName = constants.CloudProviderAzure
-
-	case config.ParsedGeneralConfig.Cloud.Hetzner != nil:
-		globals.CloudProviderName = constants.CloudProviderHetzner
-
-	case config.ParsedGeneralConfig.Cloud.BareMetal != nil:
-		globals.CloudProviderName = constants.CloudProviderBareMetal
-
-	case config.ParsedGeneralConfig.Cloud.Local != nil:
-		globals.CloudProviderName = constants.CloudProviderLocal
-
-	default:
+	providerName := config.ParsedGeneralConfig.Cloud.ProviderName()
+	if providerName == "" {
 		slog.Error("No cloud-provider specific details provided")
 		os.Exit(1)
 	}
+
+	globals.CloudProviderName = providerName
 }
 
 // Based on the cloud-provider we're using, sets the value of globals.CloudProvider.
@@ -263,7 +260,18 @@ func setCloudProvider(ctx context.Context) {
 		globals.CloudProvider = provider
 
 	case constants.CloudProviderHetzner:
-		globals.CloudProvider = hetzner.NewHetznerCloudProvider()
+		provider, err := hetzner.NewHetznerCloudProvider(globals.Config,
+			// Bare-metal storage plans are approved on the terminal, and the approved ZFS pool size
+			// is written back into general.yaml.
+			hetzner.WithStoragePlanApprover(
+				func(ctx context.Context, plans storageplan.StoragePlans) error {
+					return plans.GetApproval(ctx)
+				},
+			),
+			hetzner.WithGeneralConfigPath(globals.GeneralConfigFilePath()),
+		)
+		assert.AssertErrNil(ctx, err, "Failed creating Hetzner cloud provider")
+		globals.CloudProvider = provider
 	}
 }
 

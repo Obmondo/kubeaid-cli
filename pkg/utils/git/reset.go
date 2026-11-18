@@ -10,28 +10,29 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/logger"
 )
 
-func HardResetRepoToRef(ctx context.Context, repo *git.Repository, ref string) {
+func HardResetRepoToRef(ctx context.Context, repo *git.Repository, ref string) (err error) {
 	if ref == "" || ref == plumbing.HEAD.String() {
-		return
+		return nil
 	}
 
-	ctx = logger.AppendSlogAttributesToCtx(ctx, []slog.Attr{
-		slog.String("ref", ref),
-	})
+	logAttrs := []slog.Attr{slog.String("ref", ref)}
+	ctx = logger.AppendSlogAttributesToCtx(ctx, logAttrs)
+	defer annotate(&err, logAttrs...)
 
 	slog.InfoContext(ctx, "Hard resetting repo to git ref")
 
 	workTree, err := repo.Worktree()
-	assert.AssertErrNil(ctx, err, "Failed getting repo worktree")
+	if err != nil {
+		return fail("Failed getting repo worktree", err)
+	}
 
 	targetCommitHash, err := resolveGitRefToCommitHash(repo, ref)
-	assert.AssertErrNil(ctx, err,
-		"Failed resolving provided git ref",
-	)
+	if err != nil {
+		return fail("Failed resolving provided git ref", err)
+	}
 
 	/*
 		workTree.Reset errors out when we try to checkout to tag 20.1.1 for Obmondo's KubeAid, with
@@ -45,7 +46,11 @@ func HardResetRepoToRef(ctx context.Context, repo *git.Repository, ref string) {
 		Force: true,
 		Keep:  false,
 	})
-	assert.AssertErrNil(ctx, err, "Failed hard resetting to git ref")
+	if err != nil {
+		return fail("Failed hard resetting to git ref", err)
+	}
+
+	return nil
 }
 
 func resolveGitRefToCommitHash(repo *git.Repository, ref string) (plumbing.Hash, error) {

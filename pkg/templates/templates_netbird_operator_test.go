@@ -1,10 +1,9 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 	"sigs.k8s.io/yaml"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 // renderNetBirdOperatorValues renders values-netbird-operator.yaml.tmpl via
@@ -23,9 +21,7 @@ func renderNetBirdOperatorValues(t *testing.T, tv *TemplateValues) (string, map[
 	t.Helper()
 
 	const tmplPath = "templates/argocd-apps/values-netbird-operator.yaml.tmpl"
-	rendered := templates.ParseAndExecuteTemplate(
-		context.Background(), &KubeaidConfigFileTemplates, tmplPath, tv,
-	)
+	rendered := renderEmbeddedPath(t, tmplPath, tv)
 
 	var parsed map[string]any
 	require.NoError(t, yaml.Unmarshal(rendered, &parsed),

@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"strings"
@@ -19,11 +18,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
-	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
+// AddCommitAndPushChanges commits the changes under the cluster's directory of the KubeAid Config
+// repo and pushes them to branch. It returns plumbing.ZeroHash, and no error, when there is nothing
+// to commit. When only the PR link cannot be built after a successful push, the error comes with
+// the pushed commit's hash.
+//
 // defaultBranchName is the fork's default branch (e.g. "main") — passed
 // in by the caller rather than re-discovered inside this function. The
 // caller already called GetDefaultBranchName once during its own setup
@@ -31,7 +33,7 @@ import (
 // through avoids a second remote.ListContext call right after the push,
 // which over SSH triggers a separate "look up default branch on <fork>"
 // YubiKey touch on every commit-push cycle.
-func AddCommitAndPushChanges(ctx context.Context,
+func (c *Client) AddCommitAndPushChanges(ctx context.Context,
 	repo *goGit.Repository,
 	workTree *goGit.Worktree,
 	branch string,
@@ -39,14 +41,18 @@ func AddCommitAndPushChanges(ctx context.Context,
 	clusterName string,
 	commitMessage string,
 	defaultBranchName string,
-) plumbing.Hash {
-	kubeaidConfigFork := config.ParsedGeneralConfig.Forks.KubeaidConfigFork
+) (plumbing.Hash, error) {
+	kubeaidConfigFork := c.general().Forks.KubeaidConfigFork
 
 	err := workTree.AddGlob(fmt.Sprintf("k8s/%s/*", kubeaidConfigFork.Directory))
-	assert.AssertErrNil(ctx, err, "Failed adding changes to git")
+	if err != nil {
+		return plumbing.ZeroHash, fail("Failed adding changes to git", err)
+	}
 
 	status, err := workTree.Status()
-	assert.AssertErrNil(ctx, err, "Failed determining git status")
+	if err != nil {
+		return plumbing.ZeroHash, fail("Failed determining git status", err)
+	}
 	slog.InfoContext(ctx, "Determined git status", slog.Any("git-status", status))
 
 	// Skip the whole commit-push-prompt-merge dance when nothing
@@ -59,7 +65,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 	// WaitUntilPRMerged on that.
 	if status.IsClean() {
 		slog.InfoContext(ctx, "No changes to commit; skipping push + PR merge")
-		return plumbing.ZeroHash
+		return plumbing.ZeroHash, nil
 	}
 
 	author, attributedMessage := OperatorAttribution(commitMessage)
@@ -72,10 +78,14 @@ func AddCommitAndPushChanges(ctx context.Context,
 		// disagrees on edge cases (mode-only changes, etc.).
 		AllowEmptyCommits: false,
 	})
-	assert.AssertErrNil(ctx, err, "Failed creating git commit")
+	if err != nil {
+		return plumbing.ZeroHash, fail("Failed creating git commit", err)
+	}
 
 	commitObject, err := repo.CommitObject(commit)
-	assert.AssertErrNil(ctx, err, "Failed getting commit object")
+	if err != nil {
+		return plumbing.ZeroHash, fail("Failed getting commit object", err)
+	}
 
 	releasePushTouch := requestTouchIfAuth(ctx,
 		"push branch to "+originShortName(repo), authMethod,
@@ -84,14 +94,16 @@ func AddCommitAndPushChanges(ctx context.Context,
 		return repo.PushContext(ctx, &goGit.PushOptions{
 			RemoteName: "origin",
 			Auth:       authMethod,
-			CABundle:   config.ParsedGeneralConfig.Git.CABundle,
+			CABundle:   c.caBundle(),
 			RefSpecs: []goGitConfig.RefSpec{
 				goGitConfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch),
 			},
 		})
 	})
 	releasePushTouch()
-	assert.AssertErrNil(ctx, err, "Failed pushing commit to upstream")
+	if err != nil {
+		return plumbing.ZeroHash, fail("Failed pushing commit to upstream", err)
+	}
 
 	slog.InfoContext(ctx, "Added, committed and pushed changes",
 		slog.String("commit-hash", commitObject.Hash.String()),
@@ -101,11 +113,14 @@ func AddCommitAndPushChanges(ctx context.Context,
 	// log the create-PR URL so the operator has it in their bootstrap log. WaitUntilPRMerged
 	// also surfaces it at the interactive prompt; the slog line here gives a permanent record.
 	if branch != defaultBranchName {
-		slog.InfoContext(ctx, "Create and merge PR please",
-			slog.String("URL", BuildPRCompareURL(repo, defaultBranchName, branch)))
+		prURL, err := BuildPRCompareURL(repo, defaultBranchName, branch)
+		if err != nil {
+			return commitObject.Hash, fail("Failed building the PR compare URL", err)
+		}
+		slog.InfoContext(ctx, "Create and merge PR please", slog.String("URL", prURL))
 	}
 
-	return commitObject.Hash
+	return commitObject.Hash, nil
 }
 
 // commitWithGPGRetry wraps workTree.Commit so a transient GPG signing
@@ -115,8 +130,7 @@ func AddCommitAndPushChanges(ctx context.Context,
 // a prompt with the gpg stderr, re-seats / touches the card, and
 // presses ENTER to try again. Any non-signing commit error propagates
 // straight back to the caller, so genuine configuration mistakes
-// (bad author, dirty index, etc.) still surface via the existing
-// assert path.
+// (bad author, dirty index, etc.) still surface as an error.
 //
 // Infinite retry-on-ENTER mirrors WaitUntilPRMerged's loop: the
 // operator is in control, Ctrl+C aborts. No attempt cap, because the
@@ -211,16 +225,20 @@ func renderGPGRetryBox(err error) string {
 // SkipPRWorkflow callers never reach this function — they push directly
 // to the default branch. So this function always runs in interactive
 // mode; no headless variant is needed.
-func WaitUntilPRMerged(ctx context.Context,
+func (c *Client) WaitUntilPRMerged(ctx context.Context,
 	repo *goGit.Repository,
 	defaultBranchName string,
 	commitHash plumbing.Hash,
 	auth transport.AuthMethod,
 	branchToBeMerged string,
-) {
+) error {
 	stdin := bufio.NewReader(os.Stdin)
-	prURL := BuildPRCompareURL(repo, defaultBranchName, branchToBeMerged)
+	prURL, err := BuildPRCompareURL(repo, defaultBranchName, branchToBeMerged)
+	if err != nil {
+		return fail("Failed building the PR compare URL", err)
+	}
 	bar := progress.FromCtx(ctx)
+	defer bar.Resume()
 
 	slog.InfoContext(ctx, "Waiting for PR merge",
 		slog.String("from-branch", branchToBeMerged),
@@ -239,7 +257,7 @@ func WaitUntilPRMerged(ctx context.Context,
 		fmt.Fprint(os.Stderr, "> ")
 
 		if err := readLineCtx(ctx, stdin); err != nil {
-			assert.AssertErrNil(ctx, err, "Stopped waiting for PR merge")
+			return fail("Stopped waiting for PR merge", err)
 		}
 
 		// Erase the prompt block (restore cursor + clear to end of
@@ -272,23 +290,29 @@ func WaitUntilPRMerged(ctx context.Context,
 						"+refs/heads/" + defaultBranchName + ":refs/heads/" + defaultBranchName,
 					),
 				},
-				CABundle: config.ParsedGeneralConfig.Git.CABundle,
+				CABundle: c.caBundle(),
 			})
 		})
 		releaseFetchTouch()
 		if err != nil && !errors.Is(err, goGit.NoErrAlreadyUpToDate) {
-			assert.AssertErrNil(ctx, err, "Failed determining whether branch is merged or not")
+			return fail("Failed determining whether branch is merged or not", err)
 		}
 
 		defaultBranchRef, err := repo.Reference(
 			plumbing.ReferenceName("refs/heads/"+defaultBranchName),
 			true,
 		)
-		assert.AssertErrNil(ctx, err, "Failed to get default branch ref")
+		if err != nil {
+			return fail("Failed to get default branch ref", err)
+		}
 
-		if isCommitPresentInBranch(repo, commitHash, defaultBranchRef.Hash()) {
+		present, err := isCommitPresentInBranch(repo, commitHash, defaultBranchRef.Hash())
+		if err != nil {
+			return fail("Failed git logging", err)
+		}
+		if present {
 			slog.InfoContext(ctx, "Confirmed PR merged")
-			return
+			return nil
 		}
 
 		fmt.Fprintf(os.Stderr,
@@ -316,11 +340,11 @@ func readLineCtx(ctx context.Context, r *bufio.Reader) error {
 	}
 }
 
-func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plumbing.Hash) bool {
+func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plumbing.Hash) (bool, error) {
 	// Iterate through the commit history of the branch
 	commits, err := repo.Log(&goGit.LogOptions{From: branchHash})
 	if err != nil {
-		log.Fatalf("Failed git logging : %v", err)
+		return false, err
 	}
 
 	for {
@@ -330,11 +354,11 @@ func isCommitPresentInBranch(repo *goGit.Repository, commitHash, branchHash plum
 		}
 
 		if c.Hash == commitHash {
-			return true
+			return true, nil
 		}
 	}
 
-	return false
+	return false, nil
 }
 
 // renderPRMergeBox lays the PR-merge prompt out as a lipgloss bordered

@@ -1,7 +1,7 @@
 // Copyright 2026 Obmondo
 // SPDX-License-Identifier: Apache-2.0
 
-package core
+package templates
 
 import (
 	"strings"
@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/templates"
 )
 
 // TestKubeOneTemplateRendersKubeletConfig proves cloud.bare-metal.kubelet from general.yaml
@@ -40,10 +39,7 @@ func TestKubeOneTemplateRendersKubeletConfig(t *testing.T) {
 		},
 	}
 
-	rendered := string(templates.ParseAndExecuteTemplate(
-		t.Context(), &KubeaidConfigFileTemplates,
-		"templates/kubeone/kubeone-cluster.yaml.tmpl", values,
-	))
+	rendered := string(renderEmbeddedPath(t, "templates/kubeone/kubeone-cluster.yaml.tmpl", values))
 	t.Logf("--- rendered kubeone-cluster.yaml ---\n%s", rendered)
 
 	// One kubelet block per host : 1 control-plane + 1 worker.
@@ -52,9 +48,6 @@ func TestKubeOneTemplateRendersKubeletConfig(t *testing.T) {
 	assert.Equal(t, 2, strings.Count(rendered, "memory: 256Mi"))
 
 	values.BareMetalConfig.Kubelet = nil
-	rendered = string(templates.ParseAndExecuteTemplate(
-		t.Context(), &KubeaidConfigFileTemplates,
-		"templates/kubeone/kubeone-cluster.yaml.tmpl", values,
-	))
+	rendered = string(renderEmbeddedPath(t, "templates/kubeone/kubeone-cluster.yaml.tmpl", values))
 	assert.NotContains(t, rendered, "kubelet:")
 }

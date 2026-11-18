@@ -32,13 +32,13 @@ type HRobotResetResponseBody struct {
 // hardware reset into a ramdisk Debian (1-2 min), so running the hosts in
 // parallel bounds total wall-clock time to that of the slowest single host.
 func (h *Hetzner) BootAllHBMSIntoRescue(ctx context.Context) error {
-	hetznerConfig := config.ParsedGeneralConfig.Cloud.Hetzner
+	hetznerConfig := h.cfg.General.Cloud.Hetzner
 	privateKey := hetznerConfig.SSHKeyPair.PrivateKey
 	fingerprint := hetznerConfig.SSHKeyPair.Fingerprint
 
 	var hosts []*config.HetznerBareMetalHost
 
-	if config.ControlPlaneInHetznerBareMetal() {
+	if h.cfg.General.ControlPlaneInHetznerBareMetal() {
 		hosts = append(hosts, hetznerConfig.ControlPlane.BareMetal.BareMetalHosts...)
 	}
 	for _, nodeGroup := range hetznerConfig.NodeGroups.BareMetal {

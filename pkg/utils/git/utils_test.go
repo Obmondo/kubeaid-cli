@@ -133,21 +133,20 @@ func TestBuildPRCompareURL(t *testing.T) {
 			repo := newTestRepo(t)
 			createOriginRemote(t, repo, tc.originURL)
 
-			got := BuildPRCompareURL(repo, "main", "feature/test")
+			got, err := BuildPRCompareURL(repo, "main", "feature/test")
+			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
-func TestBuildPRCompareURLPanicsWhenOriginIsMissing(t *testing.T) {
+func TestBuildPRCompareURLFailsWhenOriginIsMissing(t *testing.T) {
 	repo := newTestRepo(t)
 
-	assert.PanicsWithValue(t,
-		"BuildPRCompareURL: get origin remote: remote not found",
-		func() {
-			BuildPRCompareURL(repo, "main", "feature/test")
-		},
-	)
+	_, err := BuildPRCompareURL(repo, "main", "feature/test")
+
+	require.ErrorContains(t, err, "getting the origin remote")
+	assert.ErrorIs(t, err, goGit.ErrRemoteNotFound)
 }
 
 func TestParseURL(t *testing.T) {
@@ -197,7 +196,10 @@ func TestRemoteHEADRefCache(t *testing.T) {
 	ref, err := repo.Reference(plumbing.ReferenceName(remoteHEADRefName), false)
 	require.NoError(t, err)
 	assert.Equal(t, remoteBranchPrefix+"main", ref.Target().String())
-	assert.Equal(t, "main", GetDefaultBranchName(context.Background(), nil, repo))
+
+	got, err := New(nil).GetDefaultBranchName(context.Background(), nil, repo)
+	require.NoError(t, err)
+	assert.Equal(t, "main", got)
 }
 
 func newTestRepo(t *testing.T) *goGit.Repository {

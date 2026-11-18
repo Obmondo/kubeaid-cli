@@ -1029,15 +1029,7 @@ func TestSetControlPlaneLBPublicInterface(t *testing.T) {
 	}
 }
 
-// Mutates config.ParsedGeneralConfig — sequential only.
 func TestDisableControlPlaneLBPublicInterface(t *testing.T) {
-	setupConfig := func(t *testing.T, cfg *config.GeneralConfig) {
-		t.Helper()
-		saved := config.ParsedGeneralConfig
-		t.Cleanup(func() { config.ParsedGeneralConfig = saved })
-		config.ParsedGeneralConfig = cfg
-	}
-
 	tests := []struct {
 		name       string
 		cfg        *config.GeneralConfig
@@ -1160,9 +1152,8 @@ func TestDisableControlPlaneLBPublicInterface(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			setupConfig(t, tc.cfg)
-
 			h := &Hetzner{
+				cfg:                &config.Config{General: tc.cfg},
 				loadBalancerClient: tc.client,
 				sleepFunc:          noopSleep,
 			}

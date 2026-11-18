@@ -30,7 +30,7 @@ func DeleteCluster(ctx context.Context) {
 	cluster := &clusterAPIV1Beta1.Cluster{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      config.ParsedGeneralConfig.Cluster.Name,
-			Namespace: kubernetes.GetCapiClusterNamespace(),
+			Namespace: cliConfig().CAPINamespace(),
 		},
 	}
 
@@ -53,7 +53,7 @@ func DeleteCluster(ctx context.Context) {
 	*/
 
 	// Detect whether the 'clusterctl move' command has already been executed or not.
-	if kubernetes.IsClusterctlMoveExecuted(ctx) {
+	if isClusterctlMoveExecuted(ctx) {
 		slog.InfoContext(ctx, "Detected that the 'clusterctl move' command has been executed")
 
 		/*
@@ -81,7 +81,7 @@ func DeleteCluster(ctx context.Context) {
 					Path: mgmtKubeconfig,
 				},
 
-				Namespace: kubernetes.GetCapiClusterNamespace(),
+				Namespace: cliConfig().CAPINamespace(),
 			})
 			return err
 		})
@@ -149,7 +149,7 @@ func DeleteCluster(ctx context.Context) {
 	//                    cluster.x-k8s.io/cluster-name: <cluster-name>
 	if config.ParsedGeneralConfig.Cloud.Hetzner != nil {
 		err = managementClusterClient.DeleteAllOf(ctx, &v1beta1.HetznerBareMetalHost{},
-			client.InNamespace(kubernetes.GetCapiClusterNamespace()),
+			client.InNamespace(cliConfig().CAPINamespace()),
 		)
 		assert.AssertErrNil(ctx, err, "Failed deleting HetznerBareMetalHosts")
 

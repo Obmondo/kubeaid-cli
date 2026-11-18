@@ -18,7 +18,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/git"
 	"github.com/Obmondo/kubeaid-cli/pkg/utils/progress"
 )
 
@@ -52,15 +51,17 @@ func SyncClusterUsingKubeOne(ctx context.Context, args SyncKubeOneClusterArgs) {
 	ctx = progress.WithBar(ctx, bar)
 	bar.Describe("Syncing cluster with general.yaml")
 
-	gitAuthMethod := git.GetGitAuthMethod(ctx)
-	repo := git.CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	gitAuthMethod, err := gitClient().GetGitAuthMethod(ctx)
+	assertGit(ctx, err)
+	repo, err := gitClient().CloneRepo(ctx, config.ParsedGeneralConfig.Forks.KubeaidConfigFork.URL, gitAuthMethod)
+	assertGit(ctx, err)
 	bar.Substep("Cloned kubeaid-config repo")
 
 	// (1) Pre-flight.
 
 	currentVersion, fromLiveCluster := getCurrentBareMetalClusterK8sVersion(ctx)
 
-	err := validateK8sVersionHop(currentVersion, targetVersion)
+	err = validateK8sVersionHop(currentVersion, targetVersion)
 	switch {
 	case errors.Is(err, errK8sVersionAlreadyAtTarget):
 		// The cluster and general.yaml agree on the version - exactly what sync expects.

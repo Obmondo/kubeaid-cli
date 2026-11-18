@@ -12,7 +12,6 @@ import (
 
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/assert"
 )
 
 // gitAuthMode reports which transport-auth construction path
@@ -71,18 +70,22 @@ func gitAuthModeFor(gitConfig config.GitConfig) gitAuthMode {
 // closes that gap without storing the passphrase in general.yaml.
 //
 //nolint:godox
-func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
+func (c *Client) GetGitAuthMethod(ctx context.Context) (transport.AuthMethod, error) {
 	slog.InfoContext(ctx, "Determining Git auth method")
 
-	gitConfig := config.ParsedGeneralConfig.Git
+	gitConfig := c.general().Git
 
 	// Create the known hosts file, which contains
 	// known hosts of common Git repo hosting providers (like Azure DevOps, GitLab etc.), and
 	// any extra known hosts specified by the user.
-	createKnownHostsFile(ctx)
+	if err := c.createKnownHostsFile(); err != nil {
+		return nil, err
+	}
 
 	knownHostsCallback, err := gossh.NewKnownHostsCallback(constants.OutputPathKnownHostsFile)
-	assert.AssertErrNil(ctx, err, "Failed creating known hosts callback")
+	if err != nil {
+		return nil, fail("Failed creating known hosts callback", err)
+	}
 
 	var authMethod transport.AuthMethod
 	switch gitAuthModeFor(gitConfig) {
@@ -92,7 +95,9 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 			gitConfig.PrivateKeyFilePath,
 			"",
 		)
-		assert.AssertErrNil(ctx, err, "Failed generating SSH public key from SSH private key")
+		if err != nil {
+			return nil, fail("Failed generating SSH public key from SSH private key", err)
+		}
 
 		publicKeysAuthMethod.HostKeyCallback = knownHostsCallback
 
@@ -102,7 +107,9 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 
 	case gitAuthModeAgent:
 		sshAgentAuthMethod, err := gossh.NewSSHAgentAuth(gitConfig.SSHUsername)
-		assert.AssertErrNil(ctx, err, "SSH agent failed")
+		if err != nil {
+			return nil, fail("SSH agent failed", err)
+		}
 
 		sshAgentAuthMethod.HostKeyCallback = knownHostsCallback
 
@@ -111,5 +118,5 @@ func GetGitAuthMethod(ctx context.Context) transport.AuthMethod {
 		slog.InfoContext(ctx, "Using SSH agent")
 	}
 
-	return authMethod
+	return authMethod, nil
 }

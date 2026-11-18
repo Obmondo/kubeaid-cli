@@ -16,7 +16,6 @@ import (
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
 	"github.com/Obmondo/kubeaid-cli/pkg/constants"
 	"github.com/Obmondo/kubeaid-cli/pkg/keycloak"
-	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 // Tunables for reconcileNetBirdInKeycloak's login → reconcile retry.
@@ -47,7 +46,7 @@ var (
 // admin API can briefly race with the app going Healthy, and the
 // Reconcile* calls are idempotent, so re-running is safe.
 func reconcileNetBirdInKeycloak(ctx context.Context, clusterClient client.Client) error {
-	if err := kubernetes.WaitForArgoCDAppHealthy(ctx, constants.ArgoCDAppKeycloakx); err != nil {
+	if err := kubeCluster().WaitForArgoCDAppHealthy(ctx, constants.ArgoCDAppKeycloakx); err != nil {
 		return fmt.Errorf("waiting for keycloakx app to be Healthy: %w", err)
 	}
 
