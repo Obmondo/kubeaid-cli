@@ -103,6 +103,15 @@ func TestSecurityApps(t *testing.T) {
 			assert.Equal(t, "https://example.test/cfg.git", valuesSource["repoURL"])
 		})
 	}
+
+	t.Run("tetragon uses server-side diff", func(t *testing.T) {
+		manifest := renderTemplateToMap(t,
+			"templates/argocd-apps/templates/tetragon.yaml.tmpl", forkTV(""))
+		annotations := subMap(t, subMap(t, manifest, "metadata"), "annotations")
+		assert.Equal(t, "ServerSideDiff=true",
+			annotations["argocd.argoproj.io/compare-options"],
+			"TracingPolicy CRD defaults keep the client-side diff OutOfSync")
+	})
 }
 
 // TestSecurityAppValuesNesting guards the wrapper-chart nesting. The KubeAid
