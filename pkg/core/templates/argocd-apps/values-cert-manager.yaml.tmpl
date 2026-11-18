@@ -1,6 +1,10 @@
 cert-manager:
+  {{- /* Off at bootstrap: the ServiceMonitor CRD only arrives later with
+       kube-prometheus (and never on the k3d management cluster), and Argo CD
+       rejects the whole cert-manager sync without it. Turn it on in the
+       cluster's kubeaid-config once kube-prometheus is running. */}}
   prometheus:
-    enabled: true
+    enabled: false
 {{- if .ACMEEmail }}
 issuer:
   enabled: true
