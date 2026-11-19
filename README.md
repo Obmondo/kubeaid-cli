@@ -320,6 +320,7 @@ See [`docs/config-reference.md`](docs/config-reference.md) for the full configur
 
 **Day-to-day operator guides**
 
+- [Bootstrap flows](docs/bootstrap-flows.md) — every bootstrap step, per cluster shape, and what each wait needs
 - [Post-bootstrap checklist](docs/post-bootstrap.md) — what to do right after a cluster comes up
 - [Backup status](docs/backup-status.md) — check CNPG and Velero backup health via backup-exporter
 - [Add a bare-metal worker](docs/add-bare-metal-worker.md) — grow a Hetzner bare-metal worker pool (see also the [manual git-only flow](docs/add-bare-metal-worker-manual.md))

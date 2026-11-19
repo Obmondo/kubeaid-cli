@@ -218,6 +218,8 @@ Operators install only `kubeaid-cli`. Go, the CAPI providers, `kubectl`, `cluste
 
 `kubeaid-core cluster bootstrap` is the most important code path. It runs four phases sequentially. Entry point: [pkg/core/bootstrap_cluster.go](../pkg/core/bootstrap_cluster.go).
 
+For each step and how it differs per cluster shape (single-node, HA, VPN, VPN-joined workload, bare metal, managed control planes), see [bootstrap-flows.md](bootstrap-flows.md).
+
 ```mermaid
 %%{init: {'flowchart': {'htmlLabels': false}}}%%
 flowchart TB
