@@ -439,6 +439,11 @@ const (
 	// captured for DR.
 	SecretNameCloudCredentials = "cloud-credentials"
 
+	// AnnotationSealedSecretsManaged, set to "true" on a Secret, lets
+	// sealed-secrets-controller take ownership of a Secret it did not
+	// create.
+	AnnotationSealedSecretsManaged = "sealedsecrets.bitnami.com/managed"
+
 	// keycloakx Service inside NamespaceKeycloak. kubeaid-cli
 	// port-forwards to this Service during bootstrap to call the
 	// admin API, mirroring the existing argocd-server pattern.

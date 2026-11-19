@@ -30,10 +30,9 @@ import (
 //	→ so CCM never starts. Circular.
 //
 // We render the same SealedSecret into kubeaid-config for declarative
-// state / DR-restore purposes — sealed-secrets-controller reconciles
-// it idempotently once it's running, since the values match what we
-// write here. Mirrors the pattern used for keycloak-admin on managed
-// VPN clusters.
+// state / DR-restore purposes. The Secret carries the
+// sealedsecrets.bitnami.com/managed annotation, so
+// sealed-secrets-controller takes ownership of it once it is running.
 //
 // No-op for non-Hetzner clusters. The hcloud key is written in every
 // Hetzner mode, bare-metal included: the ccm-hetzner wrapper maps the
@@ -96,6 +95,9 @@ func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Cli
 			Labels: map[string]string{
 				"kubeaid.io/managed-by": "kubeaid",
 			},
+			Annotations: map[string]string{
+				constants.AnnotationSealedSecretsManaged: "true",
+			},
 		},
 		StringData: stringData,
 	}
@@ -122,6 +124,10 @@ func ensureHCloudCredentialsSecret(ctx context.Context, clusterClient client.Cli
 		existing.Labels = map[string]string{}
 	}
 	existing.Labels["kubeaid.io/managed-by"] = "kubeaid"
+	if existing.Annotations == nil {
+		existing.Annotations = map[string]string{}
+	}
+	existing.Annotations[constants.AnnotationSealedSecretsManaged] = "true"
 	if err := clusterClient.Update(ctx, existing); err != nil {
 		return fmt.Errorf("updating %s/%s: %w", desired.Namespace, desired.Name, err)
 	}
