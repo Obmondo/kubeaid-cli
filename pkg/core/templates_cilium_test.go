@@ -219,6 +219,28 @@ func TestCiliumValuesTemplateHostNetworkPolicy(t *testing.T) {
 			wantNotContains: []string{"k8sServiceHost:"},
 		},
 		{
+			// A private-network HCloud node has both eth0 and enp+; matching
+			// both leaves cilium unable to pick a direct routing device.
+			name: "hcloud on a private network: devices leave out eth+",
+			tmplValues: TemplateValues{
+				ControlPlaneEndpoint: "cp.acme.com",
+				HetznerConfig:        &config.HetznerConfig{},
+			},
+			wantContains:    []string{`"--devices=vswitch+,enp+,eno+"`},
+			wantNotContains: []string{"eth+"},
+		},
+		{
+			// A single public node has no private network, so eth0 is its
+			// only interface.
+			name: "hcloud single public node: devices keep eth+",
+			tmplValues: TemplateValues{
+				ControlPlaneEndpoint:   "cp.acme.com",
+				HetznerConfig:          &config.HetznerConfig{},
+				HCloudSingleNodePublic: true,
+			},
+			wantContains: []string{`"--devices=vswitch+,eth+,enp+,eno+"`},
+		},
+		{
 			name: "single allowSshFrom entry: renders exactly one CIDR line",
 			tmplValues: TemplateValues{
 				HetznerBareMetalFirewallEnabled: true,
