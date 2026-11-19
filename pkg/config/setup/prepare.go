@@ -100,10 +100,15 @@ func outputsHome(ctx context.Context) (string, error) {
 // continues into the moved file. Best-effort: a failure leaves the log
 // where it is, logged at ERROR so it reaches the terminal — WARN goes only
 // to the log file, the very artifact that failed to move.
+//
+// Prints the log's final path to the terminal on every return, moved or not:
+// outside debug mode stdout only carries ERROR, and the operator should know
+// where to follow the run.
 func RelocateLogFile(ctx context.Context, directory string) {
 	if globals.LogFilePath == "" {
 		return
 	}
+	defer func() { fmt.Fprintf(os.Stderr, "Logs : %s\n", globals.LogFilePath) }()
 
 	newPath := filepath.Join(directory, filepath.Base(globals.LogFilePath))
 	if newPath == globals.LogFilePath {
