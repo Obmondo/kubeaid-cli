@@ -128,6 +128,10 @@ func sealedSecretsHelmArgs() *HelmInstallArgs {
 					"sealed-secrets.fullnameOverride=%s", constants.SealedSecretsControllerName,
 				),
 				"backup=null",
+				// KubeAid's chart enables the ServiceMonitor, but its CRD only
+				// arrives later with kube-prometheus (via Argo CD), so creating it
+				// here fails the install. Argo CD re-enables it from KubeAid's values.
+				"sealed-secrets.metrics.serviceMonitor.enabled=false",
 			},
 		},
 	}
