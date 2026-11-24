@@ -25,23 +25,14 @@ import (
 // bootstrap. This drives the template with a realistic hybrid VPN
 // config (HCloud CP + bare-metal worker node group + vSwitch) and
 // asserts validator.Struct passes — same path bootstrap takes.
-//
-// Uses cluster.type=vpn so the LB endpoint is rendered (validator
-// tag `required,fqdn`). Workload-mode hybrid has a separate
-// pre-existing template gap where endpoint is blank.
 func TestRenderHetznerHybridVPN(t *testing.T) {
 	cfg := &PromptedConfig{
-		SSHUsername:          "git",
-		UseSSHAgent:          true,
-		KubeaidForkURL:       "https://github.com/Obmondo/kubeaid.git",
-		KubeaidVersion:       "29.0.9",
-		KubeaidConfigForkURL: "git@github.com:acme/kubeaid-config.git",
-		ClusterName:          "hybrid-acme",
-		// VPN cluster type exercises the LoadBalancer.Endpoint render
-		// path (required,fqdn). Workload mode leaves it blank — a
-		// pre-existing template gap that pre-dates the hybrid UX work
-		// and affects pure-hcloud workload renders too. Tracked
-		// separately; not in scope for this regression test.
+		SSHUsername:                "git",
+		UseSSHAgent:                true,
+		KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+		KubeaidVersion:             "29.0.9",
+		KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+		ClusterName:                "hybrid-acme",
 		ClusterType:                "vpn",
 		ControlPlaneEndpoint:       "api.hybrid.acme.com",
 		ACMEEmail:                  "ops@acme.com",

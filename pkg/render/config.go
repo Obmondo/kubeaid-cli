@@ -96,11 +96,6 @@ type PromptedConfig struct {
 	// the operator's choice. Rendered to cluster.security.runtimeDetection.
 	RuntimeDetection *bool
 
-	// HCloud-VPN control-plane endpoint FQDN — required when
-	// running a VPN cluster on Hetzner HCloud. Rendered into
-	// cloud.hetzner.controlPlane.hcloud.loadBalancer.endpoint;
-	// must resolve (post-DNS-setup) to the LB's public IP during
-	// bootstrap and to its private IP afterwards.
 	ControlPlaneEndpoint string
 
 	// Git.

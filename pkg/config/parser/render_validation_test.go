@@ -4,14 +4,27 @@
 package parser
 
 import (
+	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/creasty/defaults"
+	gogitClient "github.com/go-git/go-git/v5/plumbing/transport/client"
+	gogitHTTP "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
+	"github.com/Obmondo/kubeaid-cli/pkg/cloud"
 	"github.com/Obmondo/kubeaid-cli/pkg/config"
+	"github.com/Obmondo/kubeaid-cli/pkg/globals"
 	"github.com/Obmondo/kubeaid-cli/pkg/render"
+	"github.com/Obmondo/kubeaid-cli/pkg/utils/kubernetes"
 )
 
 // TestRenderedConfigPassesValidation closes the loop between the two halves
@@ -59,10 +72,18 @@ func TestRenderedConfigPassesValidation(t *testing.T) {
 	generalYAML, secretsYAML, err := render.Render(cfg)
 	require.NoError(t, err, "rendering must succeed before anything can be validated")
 
-	// Mirrors ParseConfigFiles: unmarshal, then apply defaults, then
-	// validate. Defaults matter — several fields carry both a default and
-	// notblank, so validating a raw unmarshal would fail on values the real
-	// parse path fills in.
+	generalConfig, secretsConfig := parseRenderedConfig(t, generalYAML, secretsYAML)
+
+	require.NoError(t, validateConfigStructTags(generalConfig, secretsConfig),
+		"rendered config must satisfy the validation the CLI applies when it reads one back")
+}
+
+// Mirrors ParseConfigFiles: unmarshal, then apply defaults. Defaults matter —
+// several fields carry both a default and notblank, so validating a raw
+// unmarshal would fail on values the real parse path fills in.
+func parseRenderedConfig(t *testing.T, generalYAML, secretsYAML []byte) (*config.GeneralConfig, *config.SecretsConfig) {
+	t.Helper()
+
 	var (
 		generalConfig config.GeneralConfig
 		secretsConfig config.SecretsConfig
@@ -76,6 +97,69 @@ func TestRenderedConfigPassesValidation(t *testing.T) {
 
 	require.NoError(t, defaults.Set(&generalConfig))
 
-	require.NoError(t, validateConfigStructTags(&generalConfig, &secretsConfig),
-		"rendered config must satisfy the validation the CLI applies when it reads one back")
+	return &generalConfig, &secretsConfig
+}
+
+type hcloudServerTypes struct {
+	cloud.CloudProvider
+}
+
+func (hcloudServerTypes) GetVMSpecs(_ context.Context, machineType string) (*cloud.VMSpec, error) {
+	if machineType != "cax21" {
+		return nil, fmt.Errorf("machine type %q not found", machineType)
+	}
+	return &cloud.VMSpec{CPU: 4, Memory: 8}, nil
+}
+
+type kubeAidTagAdvertisement string
+
+func (tag kubeAidTagAdvertisement) RoundTrip(req *http.Request) (*http.Response, error) {
+	const commit = "1111111111111111111111111111111111111111"
+	body := pktLine("# service=git-upload-pack\n") + "0000" +
+		pktLine(commit+" refs/tags/"+string(tag)+"\x00\n") + "0000"
+
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/x-git-upload-pack-advertisement"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}, nil
+}
+
+func pktLine(line string) string {
+	return fmt.Sprintf("%04x%s", len(line)+4, line)
+}
+
+func TestRenderedSingleNodeConfigsPassValidation(t *testing.T) {
+	stubK8sVersionDeps(t)
+
+	originalHTTPS := gogitClient.Protocols["https"]
+	t.Cleanup(func() { gogitClient.InstallProtocol("https", originalHTTPS) })
+	gogitClient.InstallProtocol("https", gogitHTTP.NewClient(&http.Client{Transport: kubeAidTagAdvertisement("38.1.1")}))
+
+	originalProviderName, originalProvider := globals.CloudProviderName, globals.CloudProvider
+	t.Cleanup(func() { globals.CloudProviderName, globals.CloudProvider = originalProviderName, originalProvider })
+	globals.CloudProvider = hcloudServerTypes{}
+
+	generalPaths, err := filepath.Glob(filepath.Join("..", "..", "render", "testdata", "golden", "*-single-node.general.yaml"))
+	require.NoError(t, err)
+	require.NotEmpty(t, generalPaths, "no single-node golden found")
+
+	for _, generalPath := range generalPaths {
+		golden := strings.TrimSuffix(generalPath, ".general.yaml")
+		t.Run(filepath.Base(golden), func(t *testing.T) {
+			generalYAML, err := os.ReadFile(generalPath)
+			require.NoError(t, err)
+			secretsYAML, err := os.ReadFile(golden + ".secrets.yaml")
+			require.NoError(t, err)
+
+			generalConfig, secretsConfig := parseRenderedConfig(t, generalYAML, secretsYAML)
+			withParsedConfig(t, generalConfig, secretsConfig)
+			detectCloudProviderName()
+
+			require.NoError(t, validateConfigs(t.Context()))
+			assert.True(t, kubernetes.IsNodeGroupCountZero(t.Context()),
+				"a cluster with no worker servers must get its control-plane taint removed")
+		})
+	}
 }

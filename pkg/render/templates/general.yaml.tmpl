@@ -181,11 +181,7 @@ cloud:
         loadBalancer:
           enabled: true
           region: {{ .HetznerLBRegion }}
-{{- if eq .ClusterType "vpn" }}
           endpoint: {{ .ControlPlaneEndpoint }}
-{{- else }}
-          endpoint:
-{{- end }}
       regions:
         - {{ .HetznerRegion }}
     nodeGroups:
@@ -308,6 +304,7 @@ cloud:
         - {{ . }}
 {{- end }}
     nodeGroups:
+{{- if .HetznerBMNodeGroupServerIDs }}
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
           bareMetalHosts:
@@ -315,6 +312,9 @@ cloud:
             # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
             - serverID: "{{ $id }}"
               privateIP: {{ index $.HetznerBMNodeGroupPrivateIPs $i }}
+{{- end }}
+{{- else }}
+      bareMetal: []
 {{- end }}
 {{- end }}
 {{- end }}
