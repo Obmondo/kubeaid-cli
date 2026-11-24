@@ -1,4 +1,4 @@
-{{- if .HetznerBareMetalHostPublicIPs }}
+{{- if .HetznerBareMetalHostPublicIPs -}}
 kubelet-csr-approver:
   # Per-cluster CSR allow-list: vSwitch CIDR + one /32 per
   # HetznerBareMetalHost (kubelet's serving-cert SAN list always
