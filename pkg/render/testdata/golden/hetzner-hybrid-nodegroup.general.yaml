@@ -79,6 +79,9 @@ cloud:
     nodeGroups:
       hcloud:
         - name: cloud-workers
+          labels:
+            node-role.kubernetes.io/cloud-workers: ""
+            node.cluster.x-k8s.io/nodegroup: cloud-workers
           machineType: cpx31
           minSize: 2
           maxSize: 2
@@ -86,6 +89,9 @@ cloud:
           memory: 8
       bareMetal:
         - name: workers
+          labels:
+            node-role.kubernetes.io/workers: ""
+            node.cluster.x-k8s.io/nodegroup: workers
           bareMetalHosts:
             # Robot main IP: 5.5.5.10
             - serverID: "1234570"

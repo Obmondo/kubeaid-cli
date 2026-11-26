@@ -37,6 +37,9 @@ cloud:
         - publicAddress: 192.0.2.11
     nodeGroups:
       - name: workers
+        labels:
+          node-role.kubernetes.io/workers: ""
+          node.cluster.x-k8s.io/nodegroup: workers
         hosts:
           - publicAddress: 192.0.2.20
 

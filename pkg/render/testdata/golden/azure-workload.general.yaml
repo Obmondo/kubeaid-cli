@@ -49,6 +49,9 @@ cloud:
     # annotations — keep them in sync if you change vmSize.
     nodeGroups:
       - name: default
+        labels:
+          node-role.kubernetes.io/default: ""
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4

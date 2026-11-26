@@ -80,6 +80,9 @@ cloud:
       hcloud: []
       bareMetal:
         - name: workers
+          labels:
+            node-role.kubernetes.io/workers: ""
+            node.cluster.x-k8s.io/nodegroup: workers
           bareMetalHosts:
             # Robot main IP: 5.5.5.10
             - serverID: "1234570"

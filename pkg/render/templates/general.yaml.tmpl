@@ -79,6 +79,9 @@ cloud:
     # annotations — keep them in sync if you change instanceType.
     nodeGroups:
       - name: default
+        labels:
+          node-role.kubernetes.io/default: ""
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4
@@ -100,6 +103,9 @@ cloud:
     # architecture (control plane and workers may differ).
     nodeGroups:
       - name: default
+        labels:
+          node-role.kubernetes.io/default: ""
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4
@@ -122,6 +128,10 @@ cloud:
     # cluster autoscaler scales each pool between minSize and maxSize.
     nodeGroups:
       - name: default
+        # AKS reserves the kubernetes.io/ label prefix, so the node-role label
+        # is left out here.
+        labels:
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4
@@ -149,6 +159,9 @@ cloud:
     # annotations — keep them in sync if you change vmSize.
     nodeGroups:
       - name: default
+        labels:
+          node-role.kubernetes.io/default: ""
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4
@@ -193,6 +206,9 @@ cloud:
       hcloud:
 {{- range .HetznerNodeGroups }}
         - name: {{ .Name }}
+          labels:
+            node-role.kubernetes.io/{{ .Name }}: ""
+            node.cluster.x-k8s.io/nodegroup: {{ .Name }}
           machineType: {{ .MachineType }}
           minSize: {{ .MinSize }}
           maxSize: {{ .MaxSize }}
@@ -251,6 +267,9 @@ cloud:
       hcloud:
 {{- range .HetznerNodeGroups }}
         - name: {{ .Name }}
+          labels:
+            node-role.kubernetes.io/{{ .Name }}: ""
+            node.cluster.x-k8s.io/nodegroup: {{ .Name }}
           machineType: {{ .MachineType }}
           minSize: {{ .MinSize }}
           maxSize: {{ .MaxSize }}
@@ -262,6 +281,9 @@ cloud:
 {{- end }}
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
+          labels:
+            node-role.kubernetes.io/{{ .HetznerBMNodeGroupName }}: ""
+            node.cluster.x-k8s.io/nodegroup: {{ .HetznerBMNodeGroupName }}
           bareMetalHosts:
 {{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
             # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
@@ -310,6 +332,9 @@ cloud:
     nodeGroups:
       bareMetal:
         - name: {{ .HetznerBMNodeGroupName }}
+          labels:
+            node-role.kubernetes.io/{{ .HetznerBMNodeGroupName }}: ""
+            node.cluster.x-k8s.io/nodegroup: {{ .HetznerBMNodeGroupName }}
           bareMetalHosts:
 {{- range $i, $id := .HetznerBMNodeGroupServerIDs }}
             # Robot main IP: {{ index $.HetznerBMServerPublicIPs $id }}
@@ -333,6 +358,9 @@ cloud:
 {{- if .BareMetalWorkerHosts }}
     nodeGroups:
       - name: {{ .BareMetalNodeGroupName }}
+        labels:
+          node-role.kubernetes.io/{{ .BareMetalNodeGroupName }}: ""
+          node.cluster.x-k8s.io/nodegroup: {{ .BareMetalNodeGroupName }}
         hosts:
 {{- range .BareMetalWorkerHosts }}
           - publicAddress: {{ . }}
