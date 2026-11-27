@@ -1,0 +1,51 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 38.1.1
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory:
+
+cluster:
+  type: workload
+  name: hcloud-single
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  hetzner:
+    mode: hcloud
+    sshKeyPair:
+      name: hcloud-single
+      useSSHAgent: true
+    hcloud:
+      zone: eu-central
+      imageName: ubuntu-26.04
+      hetznerNetwork:
+        cidr: "10.0.0.0/16"
+        hcloudServersSubnetCIDR: "10.0.0.0/24"
+    controlPlane:
+      hcloud:
+        machineType: cax21
+        replicas: 1
+        loadBalancer:
+          enabled: true
+          region: hel1
+          endpoint: api.hcloud-single.acme.com
+      regions:
+        - hel1
+    nodeGroups:
+      hcloud: []
+

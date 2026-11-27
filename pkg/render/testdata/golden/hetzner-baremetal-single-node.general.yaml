@@ -1,0 +1,68 @@
+git:
+  sshUsername: git
+  useSSHAgent: true
+
+forkURLs:
+  kubeaid:
+    url: https://github.com/Obmondo/kubeaid.git
+    version: 38.1.1
+  kubeaidConfig:
+    url: git@github.com:acme/kubeaid-config.git
+    directory:
+
+cluster:
+  type: workload
+  name: bm-single
+  k8sVersion: v1.35.6
+  enableAuditLogging: false
+  apiServer:
+    extraArgs: {}
+    extraVolumes: []
+    files: []
+  argoCD:
+    deployKeys:
+      kubeaidConfig:
+        privateKeyFilePath: /tmp/ssh-priv
+
+cloud:
+  hetzner:
+    mode: bare-metal
+    sshKeyPair:
+      name: bm-single
+      useSSHAgent: true
+    bareMetal:
+      wipeDisks: false
+      installImage:
+        imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
+        vg0:
+          size: 80
+          rootVolumeSize: 50
+      vSwitch:
+        name: bm-single-vswitch
+        vlanID: 4010
+        subnetCIDRBlock: "10.0.1.0/24"
+      # Cilium host firewall (CiliumClusterwideNetworkPolicy) on each node's
+      # public NIC. enabled gates whether the policy is rendered; allowSshFrom
+      # restricts SSH (empty = from anywhere, IPv4/CIDR only). 80/443 are
+      # world-public; 6443 is reachable only from the node public IPs, not the
+      # world. allowPublic is a legacy no-op (ignored, warns if set) — set extra
+      # world ports via the cilium chart's hostNetworkPolicy.publicPorts. See
+      # docs/hetzner-bare-metal-network-surface.md.
+      firewall:
+        enabled: true
+        allowSshFrom: []
+        allowPublic: []
+    controlPlane:
+      bareMetal:
+        endpoint:
+          isFailoverIP: false
+          host: 5.5.5.1
+        bareMetalHosts:
+          # Robot main IP: 5.5.5.1
+          - serverID: "1234567"
+            privateIP: 10.0.1.2
+      regions:
+        - fsn1
+    nodeGroups:
+      bareMetal: []
+

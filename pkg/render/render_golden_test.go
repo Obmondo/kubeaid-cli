@@ -32,8 +32,7 @@ type goldenCase struct {
 // goldenCases covers every {{if eq .CloudProvider ...}} and
 // {{if eq .HetznerMode ...}} branch in general.yaml.tmpl and
 // secrets.yaml.tmpl, plus the vpn/workload split and the optional Obmondo
-// block — one representative config per provider, as required by the
-// add-cluster design's renderer-parity test.
+// block, as required by the add-cluster design's renderer-parity test.
 func goldenCases() []goldenCase {
 	hcloudWorkloadLockdown := false
 
@@ -205,6 +204,31 @@ func goldenCases() []goldenCase {
 			},
 		},
 		{
+			name: "hetzner-hcloud-single-node",
+			cfg: &PromptedConfig{
+				SSHUsername:                "git",
+				UseSSHAgent:                true,
+				KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+				KubeaidVersion:             "38.1.1",
+				KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+				KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
+				ClusterName:                "hcloud-single",
+				ClusterType:                "workload",
+				K8sVersion:                 "v1.35.6",
+				ControlPlaneEndpoint:       "api.hcloud-single.acme.com",
+
+				CloudProvider:        "hetzner",
+				HetznerMode:          "hcloud",
+				HetznerSSHKeyName:    "hcloud-single",
+				HetznerHCloudZone:    "eu-central",
+				HetznerCPMachineType: "cax21",
+				HetznerCPReplicas:    "1",
+				HetznerRegion:        "hel1",
+				HetznerLBRegion:      "hel1",
+				HetznerAPIToken:      "fake-hcloud-token",
+			},
+		},
+		{
 			// Mirrors TestRenderHetznerHybridVPN in render_hybrid_test.go —
 			// HCloud control plane, bare-metal worker node group, vSwitch,
 			// managed Keycloak. Already proven valid via validator.Struct().
@@ -356,6 +380,42 @@ func goldenCases() []goldenCase {
 
 				HetznerAPIToken:      "fake-token",
 				HetznerRobotUser:     "#ws+fake-robot-user",
+				HetznerRobotPassword: "fake-pass",
+			},
+		},
+		{
+			name: "hetzner-baremetal-single-node",
+			cfg: &PromptedConfig{
+				SSHUsername:                "git",
+				UseSSHAgent:                true,
+				KubeaidForkURL:             "https://github.com/Obmondo/kubeaid.git",
+				KubeaidVersion:             "38.1.1",
+				KubeaidConfigForkURL:       "git@github.com:acme/kubeaid-config.git",
+				KubeaidConfigDeployKeyPath: "/tmp/ssh-priv",
+				ClusterName:                "bm-single",
+				ClusterType:                "workload",
+				K8sVersion:                 "v1.35.6",
+
+				CloudProvider:     "hetzner",
+				HetznerMode:       "bare-metal",
+				HetznerSSHKeyName: "bm-single",
+
+				HetznerVSwitchName:       "bm-single-vswitch",
+				HetznerVSwitchVLANID:     "4010",
+				HetznerVSwitchSubnetCIDR: "10.0.1.0/24",
+
+				HetznerBMCPServerIDs:          []string{"1234567"},
+				HetznerBMCPPrivateIPs:         []string{"10.0.1.2"},
+				HetznerBMCPRegions:            []string{"fsn1"},
+				HetznerBMNodeGroupName:        "workers",
+				HetznerBMEndpointHost:         "5.5.5.1",
+				HetznerBMEndpointIsFailoverIP: false,
+				HetznerBMServerPublicIPs: map[string]string{
+					"1234567": "5.5.5.1",
+				},
+
+				HetznerAPIToken:      "fake-token",
+				HetznerRobotUser:     "fake-user",
 				HetznerRobotPassword: "fake-pass",
 			},
 		},
