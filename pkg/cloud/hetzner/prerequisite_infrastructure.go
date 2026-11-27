@@ -92,9 +92,10 @@ func (h *Hetzner) ProvisionPrerequisiteInfrastructure(ctx context.Context) error
 		// minute provisioning NAT after they've finished pasting DNS
 		// A records.
 		//
-		// Skipped for the single-node public control-plane topology: the
-		// lone node egresses over its own public IPv4 — no NAT needed.
-		if !config.HCloudSingleNodePublic() {
+		// Skipped when every HCloud node carries its own public IPv4 and
+		// egresses through Hetzner's public gateway — see
+		// config.HCloudNATGatewayNeeded.
+		if config.HCloudNATGatewayNeeded() {
 			if err := h.CreateNATGateway(ctx, network.ID); err != nil {
 				return fmt.Errorf("creating NAT gateway: %w", err)
 			}
