@@ -1,4 +1,22 @@
 - - -
+## v0.32.0 - 2026-11-24
+#### Features
+- (**snapshot-controller**) replace external-snapshotter with KubeAid's chart - (20457d3) - Ashish Jaiswal
+#### Bug Fixes
+- (**cert-manager**) keep the ServiceMonitor off at bootstrap - (3ea3303) - mdasif
+- (**coredns**) map the apiserver endpoint to the LB private IP only - (7309dd2) - Ashish Jaiswal
+- (**csr-approver**) drop the leading blank line that fails yamllint - (9aa1f33) - iminfinity
+- (**hetzner**) let sealed-secrets adopt the pre-created cloud-credentials Secret - (ed2c77c) - shubham singh mahar
+- (**sealed-secrets**) keep the ServiceMonitor off in the Argo CD app values - (0a28c5a) - mdasif
+- (**sealed-secrets**) disable the ServiceMonitor on the bootstrap Helm install - (82f3df5) - mdasif
+- (**tetragon**) use server-side diff so the app stops showing OutOfSync - (2ad38c1) - Shivam
+- (**traefik-internal**) publish an Ingress address for Argo CD health - (78af074) - Ashish Jaiswal
+- use output workspace for Docker mounts - (310a1b2) - rishi
+#### Documentation
+- explain SSH and YubiKey bootstrap - (11fe428) - Rishi Mondal
+
+- - -
+
 ## v0.31.12 - 2026-10-13
 #### Features
 - (**azure**) install Crossplane providers from the crossplane-provider chart - (9114e0a) - Divyam Azad
