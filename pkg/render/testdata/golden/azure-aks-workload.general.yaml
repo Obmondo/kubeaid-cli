@@ -34,6 +34,10 @@ cloud:
     # cluster autoscaler scales each pool between minSize and maxSize.
     nodeGroups:
       - name: default
+        # AKS reserves the kubernetes.io/ label prefix, so the node-role label
+        # is left out here.
+        labels:
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4

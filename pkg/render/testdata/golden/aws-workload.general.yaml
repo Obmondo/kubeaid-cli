@@ -44,6 +44,9 @@ cloud:
     # architecture (control plane and workers may differ).
     nodeGroups:
       - name: default
+        labels:
+          node-role.kubernetes.io/default: ""
+          node.cluster.x-k8s.io/nodegroup: default
         minSize: 3
         maxSize: 6
         cpu: 4

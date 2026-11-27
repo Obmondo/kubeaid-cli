@@ -53,12 +53,18 @@ cloud:
     nodeGroups:
       hcloud:
         - name: workers
+          labels:
+            node-role.kubernetes.io/workers: ""
+            node.cluster.x-k8s.io/nodegroup: workers
           machineType: cpx31
           minSize: 1
           maxSize: 3
           cpu: 4
           memory: 8
         - name: batch-arm
+          labels:
+            node-role.kubernetes.io/batch-arm: ""
+            node.cluster.x-k8s.io/nodegroup: batch-arm
           machineType: cax41
           minSize: 1
           maxSize: 4
