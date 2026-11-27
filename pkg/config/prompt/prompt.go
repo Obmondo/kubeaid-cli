@@ -159,7 +159,8 @@ func resolveWriteTarget(configsDirectory, pickedClusterName, finalClusterName st
 //     for workload clusters; pre-filled by auto-derive from Keycloak DNS
 //     Step 2c — OIDC (optional) — hidden for VPN clusters
 //     Step 3 — Cloud credentials (provider-specific)
-//     Step 4 — Git/SSH (deploy key, config repo, optional Git SSH key)
+//     Step 4 — Platform source (official KubeAid or a custom source)
+//     Step 5 — Git/SSH (deploy key, config repo, optional Git SSH key)
 //   - Phase 3: Print summary; "Looks good?" confirm. Loop back to Phase 2 on No.
 //   - Phase 4: Collect optional Obmondo support details after the summary is accepted.
 func ConfigFromPrompt(configsDirectory, clusterName string) (result PromptResult, returnErr error) {
@@ -363,6 +364,10 @@ func (s *promptSession) runPromptSteps() error {
 		return err
 	}
 
+	if err := s.collectPlatformSourceIfNeeded(); err != nil {
+		return err
+	}
+
 	if err := s.collectGitSSHIfNeeded(); err != nil {
 		return err
 	}
@@ -533,6 +538,19 @@ func (s *promptSession) collectGitSSHIfNeeded() error {
 		return fmt.Errorf("collecting Git/SSH config: %w", err)
 	}
 	s.state.GitSSH = true
+
+	return nil
+}
+
+func (s *promptSession) collectPlatformSourceIfNeeded() error {
+	if s.state.PlatformSource && !missingPlatformSource(s.cfg) {
+		return nil
+	}
+
+	if err := runPlatformSourceFormFn(s.cfg, s.detected); err != nil {
+		return fmt.Errorf("collecting KubeAid platform source: %w", err)
+	}
+	s.state.PlatformSource = true
 
 	return nil
 }
@@ -1036,7 +1054,7 @@ func runGitSSHForm(cfg *PromptedConfig, detected *autoDetectedConfig) error {
 		Validate(sshGitURL))
 
 	groups := []*huh.Group{
-		huh.NewGroup(fields...).Title("Git / SSH").Description("Step 4/4"),
+		huh.NewGroup(fields...).Title("Git / SSH").Description("Step 5/5"),
 	}
 	if plan.gitKey {
 		groups = append(groups, huh.NewGroup(
@@ -1068,7 +1086,7 @@ func runObmondoSupportForm(cfg *PromptedConfig) error {
 				Affirmative("Yes").
 				Negative("No").
 				Value(&obmondoSupport),
-		).Title("Obmondo support").Description("Step 5/5"),
+		).Title("Obmondo support").Description("Step 6/6"),
 	).Run(); err != nil {
 		return err
 	}
@@ -1092,7 +1110,7 @@ func runObmondoSupportForm(cfg *PromptedConfig) error {
 				Validate(func(keyPath string) error {
 					return validateObmondoKeyPath(obmondo.CertPath, keyPath)
 				}),
-		).Title("Obmondo support details").Description("Step 5/5"),
+		).Title("Obmondo support details").Description("Step 6/6"),
 	).Run()
 }
 

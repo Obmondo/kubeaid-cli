@@ -92,14 +92,16 @@ const (
 // the Obmondo API imports it directly to enforce the same rules in the
 // browser.
 var (
-	nonEmpty      = NonEmpty
-	clusterName   = ClusterName
-	sshGitURL     = SSHGitURL
-	ipv4          = IPv4
-	cidrv4        = CIDRv4
-	hetznerVLANID = HetznerVLANID
-	ipv4InSubnet  = IPv4InSubnet
-	httpsURL      = HTTPSURL
+	nonEmpty              = NonEmpty
+	clusterName           = ClusterName
+	sshGitURL             = SSHGitURL
+	gitRepositoryURL      = GitRepositoryURL
+	platformSourceVersion = PlatformSourceVersion
+	ipv4                  = IPv4
+	cidrv4                = CIDRv4
+	hetznerVLANID         = HetznerVLANID
+	ipv4InSubnet          = IPv4InSubnet
+	httpsURL              = HTTPSURL
 )
 
 // renderTemplate executes a Go template string against data and returns the
