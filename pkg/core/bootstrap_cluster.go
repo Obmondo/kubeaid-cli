@@ -195,6 +195,14 @@ func BootstrapCluster(ctx context.Context, args BootstrapClusterArgs) {
 			AfterSync: netbirdAfterSync(mainClusterClient),
 		})
 	}
+	// security-operations creates the tenant namespaces (wazuh-<code>) the
+	// secrets App seals Wazuh credentials into, and the wazuh-<code> Apps
+	// deploy into. Syncing it as an ordered step puts it ahead of both in
+	// the generic loop below.
+	if config.SecurityOperationsEnabled() {
+		orderedApps = append(orderedApps,
+			kubernetes.AppSyncStep{Name: constants.ArgoCDAppSecurityOperations})
+	}
 	err = kubernetes.SyncAllArgoCDApps(ctx, args.SkipMonitoringSetup, orderedApps)
 	assert.AssertErrNil(ctx, err, "Failed syncing all ArgoCD apps")
 

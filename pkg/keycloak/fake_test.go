@@ -25,6 +25,10 @@ const (
 	pathSegClientScopes    = "client-scopes"
 	pathSegUsers           = "users"
 	pathSegProtocolMappers = "protocol-mappers"
+	pathSegRoles           = "roles"
+	pathSegGroups          = "groups"
+	pathSegModels          = "models"
+	pathSegFlows           = "flows"
 )
 
 // fakeKeycloak is an in-memory mock of just enough of Keycloak's
@@ -69,6 +73,36 @@ type fakeKeycloak struct {
 	// every non-GET. Tests assert it stays flat across repeated
 	// reconciliations.
 	writeCount int
+
+	// --- state for the raw-JSON SIEM endpoints (all keyed by realm) ---
+
+	// realmReps holds the realm representation served by GET and
+	// merged by PUT /admin/realms/{realm}.
+	realmReps map[string]map[string]any
+	// realmRoles: realm -> role name -> representation.
+	realmRoles map[string]map[string]map[string]any
+	// groups: realm -> group id -> representation.
+	groups map[string]map[string]map[string]any
+	// groupRealmRoles: realm -> group id -> role names.
+	groupRealmRoles map[string]map[string][]string
+	// requiredActions: realm -> alias -> representation.
+	requiredActions map[string]map[string]map[string]any
+	// flows: realm -> flow alias -> flattened execution list.
+	flows map[string]map[string][]map[string]any
+	// clientMappers: realm -> client internal id -> mappers.
+	clientMappers map[string]map[string][]map[string]any
+	// scopeMappingsRealm: realm -> client id -> realm role names.
+	scopeMappingsRealm map[string]map[string][]string
+	// scopeMappingsClient: realm -> client id -> owner client id -> role names.
+	scopeMappingsClient map[string]map[string]map[string][]string
+	// idps: realm -> alias -> representation; idpMappers alongside.
+	idps       map[string]map[string]map[string]any
+	idpMappers map[string]map[string][]map[string]any
+
+	// logins counts admin token requests; rejectNext makes the next
+	// N admin calls answer 401 (token-expiry simulation).
+	logins     int
+	rejectNext int
 }
 
 func newFakeKeycloak() *fakeKeycloak {
@@ -79,6 +113,18 @@ func newFakeKeycloak() *fakeKeycloak {
 		users:           make(map[string]map[string]*gocloak.User),
 		serviceAccounts: make(map[string]map[string]string),
 		userClientRoles: make(map[string]map[string]map[string][]string),
+
+		realmReps:           make(map[string]map[string]any),
+		realmRoles:          make(map[string]map[string]map[string]any),
+		groups:              make(map[string]map[string]map[string]any),
+		groupRealmRoles:     make(map[string]map[string][]string),
+		requiredActions:     make(map[string]map[string]map[string]any),
+		flows:               make(map[string]map[string][]map[string]any),
+		clientMappers:       make(map[string]map[string][]map[string]any),
+		scopeMappingsRealm:  make(map[string]map[string][]string),
+		scopeMappingsClient: make(map[string]map[string]map[string][]string),
+		idps:                make(map[string]map[string]map[string]any),
+		idpMappers:          make(map[string]map[string][]map[string]any),
 	}
 }
 
@@ -97,6 +143,9 @@ func (f *fakeKeycloak) handler() http.Handler {
 	// we don't validate them — the test always passes ("admin", "p")
 	// so just emit any non-empty access_token.
 	mux.HandleFunc("/realms/master/protocol/openid-connect/token", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.logins++
+		f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"access_token":       "fake-admin-token",
@@ -114,7 +163,21 @@ func (f *fakeKeycloak) handler() http.Handler {
 	mux.HandleFunc("/admin/realms", f.handleRealms)
 	mux.HandleFunc("/admin/realms/", f.handleRealmsPrefixed)
 
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/admin/") {
+			f.mu.Lock()
+			reject := f.rejectNext > 0
+			if reject {
+				f.rejectNext--
+			}
+			f.mu.Unlock()
+			if reject {
+				http.Error(w, `{"error":"HTTP 401 Unauthorized"}`, http.StatusUnauthorized)
+				return
+			}
+		}
+		mux.ServeHTTP(w, r)
+	})
 }
 
 // handleRealms handles `/admin/realms` (no realm name): only POST
@@ -135,6 +198,7 @@ func (f *fakeKeycloak) handleRealms(w http.ResponseWriter, r *http.Request) {
 		name := derefString(realm.Realm)
 		f.mu.Lock()
 		f.realms[name] = true
+		f.seedRealmState(name)
 		f.noteWrite()
 		f.mu.Unlock()
 		w.Header().Set("Location", "/admin/realms/"+name)
@@ -174,6 +238,14 @@ func (f *fakeKeycloak) handleRealmsPrefixed(w http.ResponseWriter, r *http.Reque
 		f.handleUsersList(w, r, realm)
 	case parts[1] == pathSegUsers && len(parts) >= 3:
 		f.handleUserByID(w, r, realm, parts[2:])
+	case parts[1] == pathSegRoles:
+		f.handleRealmRoles(w, r, realm, parts[2:])
+	case parts[1] == pathSegGroups:
+		f.handleGroups(w, r, realm, parts[2:])
+	case parts[1] == "authentication":
+		f.handleAuthentication(w, r, realm, parts[2:])
+	case parts[1] == "identity-provider" && len(parts) >= 3 && parts[2] == "instances":
+		f.handleIdPs(w, r, realm, parts[3:])
 	default:
 		http.NotFound(w, r)
 	}
@@ -187,14 +259,23 @@ func (f *fakeKeycloak) handleSingleRealm(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "realm not found", http.StatusNotFound)
 		return
 	}
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, f.realmReps[realm])
+	case http.MethodPut:
+		var patch map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		for k, v := range patch {
+			f.realmReps[realm][k] = v
+		}
+		f.noteWrite()
+		w.WriteHeader(http.StatusNoContent)
+	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
-	writeJSON(w, gocloak.RealmRepresentation{
-		Realm:   gocloak.StringP(realm),
-		Enabled: gocloak.BoolP(true),
-	})
 }
 
 // --- clients ---
@@ -255,10 +336,14 @@ func (f *fakeKeycloak) handleClientByID(w http.ResponseWriter, r *http.Request, 
 		f.handleClientDefaultScope(w, r, realm, clientInternalID, parts[2])
 	case len(parts) == 2 && parts[1] == "service-account-user":
 		f.handleClientServiceAccount(w, r, realm, clientInternalID)
-	case len(parts) == 2 && parts[1] == "roles":
+	case len(parts) == 2 && parts[1] == pathSegRoles:
 		f.handleClientRolesList(w, r, realm, clientInternalID)
-	case len(parts) == 3 && parts[1] == "roles":
+	case len(parts) == 3 && parts[1] == pathSegRoles:
 		f.handleClientRoleByName(w, r, realm, clientInternalID, parts[2])
+	case len(parts) >= 3 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
+		f.handleClientMappers(w, r, realm, clientInternalID, parts[3:])
+	case len(parts) >= 3 && parts[1] == "scope-mappings":
+		f.handleClientScopeMappings(w, r, realm, clientInternalID, parts[2:])
 	default:
 		http.NotFound(w, r)
 	}
@@ -284,14 +369,19 @@ func (f *fakeKeycloak) handleClientBare(w http.ResponseWriter, r *http.Request, 
 	case http.MethodGet:
 		writeJSON(w, c)
 	case http.MethodPut:
-		var update gocloak.Client
+		// Overlay the body onto the stored client: fields the body
+		// omits keep their value, like Keycloak's partial update.
+		var update map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if update.Attributes != nil {
-			c.Attributes = update.Attributes
+		merged, err := overlayJSON(c, update)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
+		*c = merged
 		f.noteWrite()
 		w.WriteHeader(http.StatusNoContent)
 	default:
@@ -477,6 +567,14 @@ var clientRolesFixture = map[string][]*gocloak.Role{
 			ID:   gocloak.StringP("role-manage-users"),
 			Name: gocloak.StringP("manage-users"),
 		},
+		{
+			ID:   gocloak.StringP("role-query-users"),
+			Name: gocloak.StringP("query-users"),
+		},
+		{
+			ID:   gocloak.StringP("role-query-groups"),
+			Name: gocloak.StringP("query-groups"),
+		},
 	},
 }
 
@@ -518,10 +616,10 @@ func (f *fakeKeycloak) handleClientScopeByID(w http.ResponseWriter, r *http.Requ
 	switch {
 	case len(parts) == 2 && parts[1] == pathSegProtocolMappers:
 		f.handleScopeProtocolMappersList(w, r, realm, scopeID)
-	case len(parts) == 3 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
+	case len(parts) == 3 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
 		// Keycloak's POST endpoint is /protocol-mappers/models
 		f.handleScopeProtocolMapperCreate(w, r, realm, scopeID)
-	case len(parts) == 4 && parts[1] == pathSegProtocolMappers && parts[2] == "models":
+	case len(parts) == 4 && parts[1] == pathSegProtocolMappers && parts[2] == pathSegModels:
 		// /protocol-mappers/models/{mapperID} — PUT updates the
 		// named mapper in-place. Matches gocloak.UpdateClientScopeProtocolMapper.
 		f.handleScopeProtocolMapperUpdate(w, r, realm, scopeID, parts[3])
@@ -790,4 +888,532 @@ func newTestReconciler(t *testing.T) (*Reconciler, *fakeKeycloak) {
 	r, err := NewReconciler(context.Background(), srv.URL, "admin", "p")
 	require.NoError(t, err)
 	return r, fake
+}
+
+// --- SIEM endpoints (raw JSON) ---
+
+// seedRealmState gives a new realm what a real Keycloak creates with
+// it: a realm representation, the CONFIGURE_TOTP required action and
+// the built-in "browser" flow. Caller holds f.mu.
+func (f *fakeKeycloak) seedRealmState(realm string) {
+	f.realmReps[realm] = map[string]any{
+		keyRealm:              realm,
+		"enabled":             true,
+		"bruteForceProtected": false,
+		"otpPolicyType":       "totp",
+		"otpPolicyAlgorithm":  "HmacSHA1",
+		"otpPolicyDigits":     float64(6),
+		"otpPolicyPeriod":     float64(30),
+		"browserFlow":         "browser",
+	}
+	f.requiredActions[realm] = map[string]map[string]any{
+		"CONFIGURE_TOTP": {keyAlias: "CONFIGURE_TOTP", keyName: "Configure OTP", "enabled": true, "defaultAction": false},
+	}
+	f.flows[realm] = map[string][]map[string]any{"browser": stockBrowserFlow(f.nextID)}
+}
+
+// stockBrowserFlow mirrors Keycloak 26's built-in browser flow.
+func stockBrowserFlow(nextID func() string) []map[string]any {
+	exec := func(name, provider, req string, level, index int, flow bool) map[string]any {
+		return map[string]any{
+			"id": nextID(), "displayName": name, "providerId": provider, "requirement": req,
+			"level": float64(level), "index": float64(index), "priority": float64(index * 10),
+			"authenticationFlow": flow,
+		}
+	}
+	return []map[string]any{
+		exec("Cookie", "auth-cookie", "ALTERNATIVE", 0, 0, false),
+		exec("Kerberos", "auth-spnego", "DISABLED", 0, 1, false),
+		exec("Identity Provider Redirector", "identity-provider-redirector", "ALTERNATIVE", 0, 2, false),
+		exec("forms", "", "ALTERNATIVE", 0, 3, true),
+		exec("Username Password Form", providerUsernamePassword, "REQUIRED", 1, 0, false),
+		exec("Browser - Conditional 2FA", "", "CONDITIONAL", 1, 1, true),
+		exec("Condition - user configured", "conditional-user-configured", "REQUIRED", 2, 0, false),
+		exec("OTP Form", providerOTPForm, "ALTERNATIVE", 2, 1, false),
+		exec("WebAuthn Authenticator", "webauthn-authenticator", "DISABLED", 2, 2, false),
+	}
+}
+
+func (f *fakeKeycloak) handleRealmRoles(w http.ResponseWriter, r *http.Request, realm string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.realmRoles[realm] == nil {
+		f.realmRoles[realm] = map[string]map[string]any{}
+	}
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		out := []map[string]any{}
+		for _, role := range f.realmRoles[realm] {
+			out = append(out, role)
+		}
+		writeJSON(w, out)
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		var role map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&role); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		name, _ := role["name"].(string)
+		if _, ok := f.realmRoles[realm][name]; ok {
+			http.Error(w, "conflict", http.StatusConflict)
+			return
+		}
+		role["id"] = f.nextID()
+		f.realmRoles[realm][name] = role
+		f.noteWrite()
+		w.WriteHeader(http.StatusCreated)
+	case len(rest) == 1:
+		role, ok := f.realmRoles[realm][rest[0]]
+		if !ok {
+			http.Error(w, "role not found", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, role)
+		case http.MethodPut:
+			var update map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			for k, v := range update {
+				role[k] = v
+			}
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (f *fakeKeycloak) handleGroups(w http.ResponseWriter, r *http.Request, realm string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.groups[realm] == nil {
+		f.groups[realm] = map[string]map[string]any{}
+		f.groupRealmRoles[realm] = map[string][]string{}
+	}
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		search := r.URL.Query().Get("search")
+		out := []map[string]any{}
+		for _, g := range f.groups[realm] {
+			if name, _ := g["name"].(string); strings.Contains(name, search) {
+				out = append(out, g)
+			}
+		}
+		writeJSON(w, out)
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		var g map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&g); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		id := f.nextID()
+		g["id"] = id
+		f.groups[realm][id] = g
+		f.noteWrite()
+		w.WriteHeader(http.StatusCreated)
+	case len(rest) == 3 && rest[1] == "role-mappings" && rest[2] == "realm":
+		gid := rest[0]
+		if _, ok := f.groups[realm][gid]; !ok {
+			http.Error(w, "group not found", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, f.roleRefs(realm, f.groupRealmRoles[realm][gid]))
+		case http.MethodPost:
+			names, err := decodeRoleNames(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			f.groupRealmRoles[realm][gid] = appendUnique(f.groupRealmRoles[realm][gid], names...)
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (f *fakeKeycloak) roleRefs(realm string, names []string) []map[string]any {
+	out := []map[string]any{}
+	for _, n := range names {
+		if role, ok := f.realmRoles[realm][n]; ok {
+			out = append(out, map[string]any{"id": role["id"], "name": n})
+		}
+	}
+	return out
+}
+
+//nolint:gocognit,gocyclo // one fake endpoint family, kept together
+func (f *fakeKeycloak) handleAuthentication(w http.ResponseWriter, r *http.Request, realm string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	flows := f.flows[realm]
+	switch {
+	case len(rest) == 2 && rest[0] == "required-actions":
+		ra, ok := f.requiredActions[realm][rest[1]]
+		if !ok {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, ra)
+		case http.MethodPut:
+			var update map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			f.requiredActions[realm][rest[1]] = update
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	case len(rest) == 1 && rest[0] == pathSegFlows && r.Method == http.MethodGet:
+		out := []map[string]any{}
+		for alias := range flows {
+			out = append(out, map[string]any{"id": "flow-" + alias, "alias": alias})
+		}
+		writeJSON(w, out)
+	case len(rest) == 3 && rest[0] == pathSegFlows && rest[2] == "copy" && r.Method == http.MethodPost:
+		src, ok := flows[rest[1]]
+		if !ok {
+			http.Error(w, "flow not found", http.StatusNotFound)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		newName, _ := body["newName"].(string)
+		cp := make([]map[string]any, 0, len(src))
+		for _, e := range src {
+			c := map[string]any{}
+			for k, v := range e {
+				c[k] = v
+			}
+			c["id"] = f.nextID()
+			if flow, _ := c["authenticationFlow"].(bool); flow {
+				c["displayName"] = newName + " " + asString(c["displayName"])
+			}
+			cp = append(cp, c)
+		}
+		flows[newName] = cp
+		f.noteWrite()
+		w.WriteHeader(http.StatusCreated)
+	case len(rest) == 3 && rest[0] == pathSegFlows && rest[2] == "executions":
+		execs, ok := flows[rest[1]]
+		if !ok {
+			http.Error(w, "flow not found", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, execs)
+		case http.MethodPut:
+			var update map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			for _, e := range execs {
+				if e["id"] == update["id"] {
+					e["requirement"] = update["requirement"]
+				}
+			}
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	case len(rest) == 3 && rest[0] == "executions" && rest[2] == "raise-priority" && r.Method == http.MethodPost:
+		for alias, execs := range flows {
+			if raised, ok := raiseExecution(execs, rest[1]); ok {
+				flows[alias] = raised
+				f.noteWrite()
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		http.Error(w, "execution not found", http.StatusNotFound)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// raiseExecution swaps a leaf execution with its previous sibling
+// (and that sibling's subtree).
+func raiseExecution(execs []map[string]any, id string) ([]map[string]any, bool) {
+	i := -1
+	for j, e := range execs {
+		if e["id"] == id {
+			i = j
+		}
+	}
+	if i < 0 {
+		return execs, false
+	}
+	lvl := asInt(execs[i]["level"])
+	prev := -1
+	for j := i - 1; j >= 0; j-- {
+		l := asInt(execs[j]["level"])
+		if l < lvl {
+			break
+		}
+		if l == lvl {
+			prev = j
+			break
+		}
+	}
+	if prev < 0 {
+		return execs, true
+	}
+	out := make([]map[string]any, 0, len(execs))
+	out = append(out, execs[:prev]...)
+	out = append(out, execs[i])
+	out = append(out, execs[prev:i]...)
+	out = append(out, execs[i+1:]...)
+	return out, true
+}
+
+func (f *fakeKeycloak) handleClientMappers(w http.ResponseWriter, r *http.Request, realm, clientID string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.clientMappers[realm] == nil {
+		f.clientMappers[realm] = map[string][]map[string]any{}
+	}
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodGet:
+		out := f.clientMappers[realm][clientID]
+		if out == nil {
+			out = []map[string]any{}
+		}
+		writeJSON(w, out)
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		var m map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		m["id"] = f.nextID()
+		f.clientMappers[realm][clientID] = append(f.clientMappers[realm][clientID], m)
+		f.noteWrite()
+		w.WriteHeader(http.StatusCreated)
+	case len(rest) == 1 && r.Method == http.MethodPut:
+		var m map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		for i, cur := range f.clientMappers[realm][clientID] {
+			if cur["id"] == rest[0] {
+				f.clientMappers[realm][clientID][i] = m
+				f.noteWrite()
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		http.Error(w, "mapper not found", http.StatusNotFound)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (f *fakeKeycloak) handleClientScopeMappings(w http.ResponseWriter, r *http.Request, realm, clientID string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.scopeMappingsRealm[realm] == nil {
+		f.scopeMappingsRealm[realm] = map[string][]string{}
+		f.scopeMappingsClient[realm] = map[string]map[string][]string{}
+	}
+	var cur *[]string
+	var refs func([]string) []map[string]any
+	switch {
+	case len(rest) == 1 && rest[0] == "realm":
+		list := f.scopeMappingsRealm[realm][clientID]
+		cur = &list
+		defer func() { f.scopeMappingsRealm[realm][clientID] = list }()
+		refs = func(n []string) []map[string]any { return f.roleRefs(realm, n) }
+	case len(rest) == 2 && rest[0] == "clients":
+		if f.scopeMappingsClient[realm][clientID] == nil {
+			f.scopeMappingsClient[realm][clientID] = map[string][]string{}
+		}
+		list := f.scopeMappingsClient[realm][clientID][rest[1]]
+		cur = &list
+		defer func() { f.scopeMappingsClient[realm][clientID][rest[1]] = list }()
+		refs = func(n []string) []map[string]any {
+			out := []map[string]any{}
+			for _, name := range n {
+				out = append(out, map[string]any{"name": name})
+			}
+			return out
+		}
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, refs(*cur))
+	case http.MethodPost:
+		names, err := decodeRoleNames(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		*cur = appendUnique(*cur, names...)
+		f.noteWrite()
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+//nolint:gocognit // one fake endpoint family, kept together
+func (f *fakeKeycloak) handleIdPs(w http.ResponseWriter, r *http.Request, realm string, rest []string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.idps[realm] == nil {
+		f.idps[realm] = map[string]map[string]any{}
+		f.idpMappers[realm] = map[string][]map[string]any{}
+	}
+	switch {
+	case len(rest) == 0 && r.Method == http.MethodPost:
+		var idp map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&idp); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		alias, _ := idp["alias"].(string)
+		// Keycloak masks the secret on read.
+		if cfg, ok := idp["config"].(map[string]any); ok && cfg["clientSecret"] != nil {
+			cfg["clientSecret"] = "**********"
+		}
+		f.idps[realm][alias] = idp
+		f.noteWrite()
+		w.WriteHeader(http.StatusCreated)
+	case len(rest) == 1:
+		idp, ok := f.idps[realm][rest[0]]
+		if !ok {
+			http.Error(w, "idp not found", http.StatusNotFound)
+			return
+		}
+		switch r.Method {
+		case http.MethodGet:
+			writeJSON(w, idp)
+		case http.MethodPut:
+			var update map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			f.idps[realm][rest[0]] = update
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	case len(rest) >= 2 && rest[1] == "mappers":
+		alias := rest[0]
+		switch {
+		case len(rest) == 2 && r.Method == http.MethodGet:
+			out := f.idpMappers[realm][alias]
+			if out == nil {
+				out = []map[string]any{}
+			}
+			writeJSON(w, out)
+		case len(rest) == 2 && r.Method == http.MethodPost:
+			var m map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			m["id"] = f.nextID()
+			f.idpMappers[realm][alias] = append(f.idpMappers[realm][alias], m)
+			f.noteWrite()
+			w.WriteHeader(http.StatusCreated)
+		case len(rest) == 3 && r.Method == http.MethodPut:
+			var m map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			for i, cur := range f.idpMappers[realm][alias] {
+				if cur["id"] == rest[2] {
+					f.idpMappers[realm][alias][i] = m
+				}
+			}
+			f.noteWrite()
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func decodeRoleNames(r *http.Request) ([]string, error) {
+	var roles []map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&roles); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(roles))
+	for _, role := range roles {
+		if n, ok := role["name"].(string); ok {
+			out = append(out, n)
+		}
+	}
+	return out, nil
+}
+
+func appendUnique(list []string, items ...string) []string {
+	for _, it := range items {
+		found := false
+		for _, l := range list {
+			if l == it {
+				found = true
+				break
+			}
+		}
+		if !found {
+			list = append(list, it)
+		}
+	}
+	return list
+}
+
+// overlayJSON returns base with every top-level key of update applied.
+func overlayJSON(base *gocloak.Client, update map[string]any) (gocloak.Client, error) {
+	raw, err := json.Marshal(base) //nolint:gosec // test fixture, no real secret
+	if err != nil {
+		return gocloak.Client{}, err
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return gocloak.Client{}, err
+	}
+	for k, v := range update {
+		m[k] = v
+	}
+	raw, err = json.Marshal(m)
+	if err != nil {
+		return gocloak.Client{}, err
+	}
+	var out gocloak.Client
+	err = json.Unmarshal(raw, &out)
+	return out, err
 }

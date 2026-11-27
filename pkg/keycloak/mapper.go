@@ -32,7 +32,7 @@ func (r *Reconciler) ReconcileProtocolMapperOnClientScope(
 	realm, clientScopeName string,
 	spec ProtocolMapperSpec,
 ) error {
-	scopes, err := r.api.GetClientScopes(ctx, r.token, realm)
+	scopes, err := r.api.GetClientScopes(ctx, r.tok(ctx), realm)
 	if err != nil {
 		return fmt.Errorf("listing client scopes in realm %q: %w", realm, err)
 	}
@@ -56,7 +56,7 @@ func (r *Reconciler) ReconcileProtocolMapperOnClientScope(
 			// "create another mapper of the same name", which the
 			// admin API rejects.
 			desired.ID = m.ID
-			if err := r.api.UpdateClientScopeProtocolMapper(ctx, r.token, realm, *scope.ID, desired); err != nil {
+			if err := r.api.UpdateClientScopeProtocolMapper(ctx, r.tok(ctx), realm, *scope.ID, desired); err != nil {
 				return fmt.Errorf(
 					"updating protocol mapper %q on client scope %q in realm %q: %w",
 					spec.Name, clientScopeName, realm, err,
@@ -66,7 +66,7 @@ func (r *Reconciler) ReconcileProtocolMapperOnClientScope(
 		}
 	}
 
-	if _, err := r.api.CreateClientScopeProtocolMapper(ctx, r.token, realm, *scope.ID, desired); err != nil {
+	if _, err := r.api.CreateClientScopeProtocolMapper(ctx, r.tok(ctx), realm, *scope.ID, desired); err != nil {
 		return fmt.Errorf(
 			"creating protocol mapper %q on client scope %q in realm %q: %w",
 			spec.Name, clientScopeName, realm, err,

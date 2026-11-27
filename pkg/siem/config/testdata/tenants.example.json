@@ -1,0 +1,192 @@
+{
+  "domain": "example.com",
+  "tenantGroupPrefix": "tenant-",
+  "keycloak": {
+    "url": "http://keycloakx-http.keycloakx.svc/auth",
+    "realm": "soc",
+    "adminUsername": "admin",
+    "adminSecretRef": {"namespace": "keycloakx", "name": "keycloak-admin", "key": "KEYCLOAK_PASSWORD"},
+    "bruteForceProtected": true,
+    "otpPolicy": {"type": "totp", "algorithm": "HmacSHA1", "digits": 6, "period": 30},
+    "requireTOTP": true,
+    "mfaFlow": {"alias": "browser-mfa", "copyFrom": "browser", "bind": true}
+  },
+  "operators": {
+    "adminRole": "administrator",
+    "analystRole": "analyst",
+    "analystGroup": "soc-analysts"
+  },
+  "tenants": [
+    {"code": "001", "name": "Tenant A", "retentionDays": 90},
+    {
+      "code": "002",
+      "name": "Tenant B",
+      "retentionDays": 180,
+      "idp": {
+        "providerId": "oidc",
+        "config": {
+          "issuer": "https://login.tenant-b.example.com",
+          "authorizationUrl": "https://login.tenant-b.example.com/authorize",
+          "tokenUrl": "https://login.tenant-b.example.com/token",
+          "clientId": "soc-keycloak",
+          "clientAuthMethod": "client_secret_post",
+          "defaultScope": "openid email profile",
+          "syncMode": "IMPORT"
+        },
+        "clientSecretRef": {"namespace": "security-operations", "name": "tenant-002-idp", "key": "clientSecret"}
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "wazuh-dashboard",
+      "name": "Wazuh dashboard",
+      "standardFlowEnabled": true,
+      "rootUrl": "https://wazuh.example.com",
+      "baseUrl": "/app/wz-home",
+      "redirectUris": ["https://wazuh.example.com/auth/openid/login"],
+      "webOrigins": ["https://wazuh.example.com"],
+      "postLogoutRedirectUris": ["https://wazuh.example.com/*", "https://wazuh.example.com"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "basic", "email"],
+      "protocolMappers": [
+        {
+          "name": "realm roles (flat)",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {"claim.name": "roles", "multivalued": "true", "jsonType.label": "String", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true", "introspection.token.claim": "true"}
+        },
+        {
+          "name": "groups",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {"claim.name": "groups", "full.path": "false", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true", "introspection.token.claim": "true"}
+        }
+      ],
+      "secretRef": {"namespace": "security-operations", "name": "wazuh-dashboard-oidc", "key": "OPENSEARCH_OIDC_CLIENT_SECRET"}
+    },
+    {
+      "clientId": "velociraptor",
+      "name": "velociraptor",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://velociraptor.example.com/auth/oidc/keycloak/callback"],
+      "defaultClientScopes": ["profile"],
+      "protocolMappers": [
+        {
+          "name": "groups",
+          "protocolMapper": "oidc-group-membership-mapper",
+          "config": {"claim.name": "groups", "full.path": "false", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true", "introspection.token.claim": "true"}
+        }
+      ],
+      "secretRef": {"namespace": "security-operations", "name": "velociraptor-oidc", "key": "oauth_client_secret"}
+    },
+    {
+      "clientId": "iris",
+      "name": "iris",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://iris.example.com/oidc-authorize"],
+      "postLogoutRedirectUris": ["https://iris.example.com/login"],
+      "secretRef": {"namespace": "security-operations", "name": "dfir-iris-oidc", "key": "OIDC_CLIENT_SECRET"}
+    },
+    {
+      "clientId": "misp",
+      "name": "misp",
+      "standardFlowEnabled": true,
+      "redirectUris": ["https://misp.example.com/users/login"],
+      "webOrigins": ["https://misp.example.com"],
+      "postLogoutRedirectUris": ["https://misp.example.com/users/login"],
+      "defaultClientScopes": ["email"],
+      "protocolMappers": [
+        {
+          "name": "realm roles",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {"claim.name": "roles", "multivalued": "true", "jsonType.label": "String", "id.token.claim": "true", "access.token.claim": "true", "userinfo.token.claim": "true", "introspection.token.claim": "true"}
+        }
+      ],
+      "secretRef": {"namespace": "security-operations", "name": "misp-oidc", "key": "password"}
+    },
+    {
+      "clientId": "iris-sync",
+      "name": "DFIR-IRIS access sync",
+      "description": "Read-only service account for the IRIS and Velociraptor Keycloak syncs",
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": false,
+      "serviceAccountClientRoles": {"realm-management": ["view-users"]},
+      "scopeMappings": {"clients": {"realm-management": ["view-users", "query-users", "query-groups"]}},
+      "secretRef": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "KEYCLOAK_CLIENT_SECRET"}
+    }
+  ],
+  "secrets": [
+    {"namespace": "security-operations", "name": "velociraptor-oidc", "keys": [{"key": "oauth_client_secret", "generator": "password"}]},
+    {"namespace": "security-operations", "name": "dfir-iris-oidc", "keys": [{"key": "OIDC_CLIENT_SECRET"}]},
+    {"namespace": "security-operations", "name": "misp-oidc", "keys": [{"key": "password"}]},
+    {"namespace": "security-operations", "name": "iris-keycloak-sync", "keys": [{"key": "KEYCLOAK_CLIENT_SECRET"}]},
+    {"namespace": "security-operations", "name": "wazuh-dashboard-oidc", "keys": [{"key": "OPENSEARCH_OIDC_CLIENT_ID", "value": "wazuh-dashboard"}, {"key": "OPENSEARCH_OIDC_CLIENT_SECRET"}, {"key": "OPENSEARCH_COOKIE_PASSWORD"}]}
+  ],
+  "secretCopies": [
+    {
+      "from": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
+      "to": {"namespace": "wazuh-001", "name": "iris-api-key", "key": "IRIS_API_KEY"}
+    },
+    {
+      "from": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
+      "to": {"namespace": "wazuh-002", "name": "iris-api-key", "key": "IRIS_API_KEY"}
+    }
+  ],
+  "components": {
+    "iris": {
+      "url": "http://dfir-iris-app:8000",
+      "apiKeySecretRef": {"namespace": "security-operations", "name": "iris-keycloak-sync", "key": "IRIS_API_KEY"},
+      "initialCustomer": "IrisInitialClient",
+      "serviceAccounts": [{"login": "svc_ai", "groups": ["Automation"]}]
+    },
+    "wazuh": [
+      {
+        "tenant": "001",
+        "url": "https://wazuh.wazuh-001.svc:55000",
+        "credSecretRef": {"namespace": "wazuh-001", "name": "wazuh-api-cred", "usernameKey": "API_USERNAME", "passwordKey": "API_PASSWORD"},
+        "insecureSkipVerify": true,
+        "adminApiRole": "administrator",
+        "analystApiRole": "readonly",
+        "tenantApiRole": "readonly"
+      },
+      {
+        "tenant": "002",
+        "url": "https://wazuh.wazuh-002.svc:55000",
+        "credSecretRef": {"namespace": "wazuh-002", "name": "wazuh-api-cred"},
+        "insecureSkipVerify": true
+      }
+    ],
+    "wazuhCentral": {
+      "url": "https://wazuh-indexer.security-operations.svc:9200",
+      "credSecretRef": {"namespace": "security-operations", "name": "wazuh-indexer-cred", "usernameKey": "INDEXER_USERNAME", "passwordKey": "INDEXER_PASSWORD"},
+      "insecureSkipVerify": true,
+      "dashboardConfigSecret": {"namespace": "security-operations", "name": "wazuh-app-config"},
+      "dashboardURL": "http://wazuh-dashboard.security-operations.svc:5601",
+      "indexPatterns": [
+        {"title": "*:wazuh-alerts-*", "default": true},
+        {"title": "*:wazuh-archives-*", "timeFieldName": "timestamp"}
+      ],
+      "remotes": [
+        {"alias": "t001", "seeds": ["wazuh-indexer-nodes.wazuh-001.svc:9300"]},
+        {"alias": "t002", "seeds": ["wazuh-indexer-nodes.wazuh-002.svc:9300"]}
+      ]
+    },
+    "velociraptor": {
+      "apiClientSecretRef": {"namespace": "security-operations", "name": "velociraptor-api-client", "key": "api_client.yaml"},
+      "serverMonitoring": [
+        {"artifact": "Custom.Server.IrisCollector"},
+        {"artifact": "Custom.Server.KeycloakSync", "parameters": {"DryRun": "N"}}
+      ]
+    }
+  },
+  "enrolment": [
+    {
+      "tenant": "001", "namespace": "wazuh-001", "name": "enrolment-bundle",
+      "managerHost": "agents-001.example.com", "registrationPort": 1515, "eventsPort": 1514,
+      "authdSecretRef": {"namespace": "wazuh-001", "name": "wazuh-authd-pass", "key": "authd.pass"}
+    },
+    {
+      "tenant": "002", "namespace": "wazuh-002", "name": "enrolment-bundle",
+      "managerHost": "agents.example.com", "registrationPort": 21025, "eventsPort": 21024,
+      "authdSecretRef": {"namespace": "wazuh-002", "name": "wazuh-authd-pass", "key": "authd.pass"}
+    }
+  ]
+}

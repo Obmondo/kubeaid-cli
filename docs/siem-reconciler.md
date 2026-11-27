@@ -1,0 +1,170 @@
+# siem-reconciler
+
+`siem-reconciler` makes the API-only state of a KubeAid SIEM stack (Keycloak,
+DFIR-IRIS, Wazuh, Velociraptor) match one input file, `tenants.json`, rendered by
+the `security-operations` Helm chart. It replaces the one-off scripts that used to
+set this up by hand, and it is safe to run repeatedly: a second run against an
+unchanged system prints only `ok` lines and `0 changes`.
+
+The chart runs it as an ArgoCD PostSync Job and as a CronJob. It can also be run
+from a workstation against a cluster (see [Running it by hand](#running-it-by-hand)).
+kubeaid-cli renders the chart's values from `cluster.securityOperations`, see
+[security-operations.md](security-operations.md).
+
+## What it manages
+
+Components run in this order; `--only` selects a subset.
+
+| Component | Objects | Rule |
+|---|---|---|
+| `secrets` | Secrets listed under `secrets` | Created with random (or literal `value`) values when missing; missing keys added; existing values never changed. A Secret owned by a SealedSecret is only checked (a missing key is an error, fix the SealedSecret). |
+| | Keys listed under `secretCopies` | Target key created or overwritten when its bytes differ from the source; other target keys kept. A missing source is an error for that copy. |
+| `enrolment` | One agent enrolment bundle Secret per `enrolment` entry | Rendered from the config and the tenant's authd password; created when missing, updated when any key differs. A missing authd Secret is an error for that bundle. Keys: `manager_host`, `registration_port`, `events_port`, `authd.pass`, `install-linux.sh`, `install-macos.sh`, `install-windows.ps1`; the `velociraptor` step adds two more (below). |
+| `keycloak` | Realm (created if missing), `bruteForceProtected`, OTP policy, `CONFIGURE_TOTP` as default required action | Only the attributes set in the config are compared. |
+| | Realm roles `operators.adminRole`, `operators.analystRole`, group `operators.analystGroup` | Created if missing. |
+| | Per tenant: realm role and group `<tenantGroupPrefix><code>`, group grants the role | Created if missing; other role mappings kept. |
+| | Clients: settings, secret, protocol mappers, default scopes, scope mappings, service-account client roles | Update on drift for managed fields only (see below). |
+| | `browser-mfa` flow | Copy `browser`, OTP sub-flow REQUIRED, its conditions DISABLED, OTP Form REQUIRED, Username Password Form first; re-read and verify; only a verified flow is bound as the realm browser flow. |
+| | Optional per-tenant identity-provider broker | Created/updated; a hardcoded-group mapper puts brokered users in the tenant group. |
+| `iris` | One customer per tenant (name = tenant name) | Created if missing. |
+| | Service accounts listed in `components.iris.serviceAccounts` | Groups and customers (all tenants + the initial customer) added; never removed. With `create: true` a missing login is added as an IRIS service account (no password). With `apiKeySecretRef` the account's API key is kept in that Secret key: a stored key IRIS still accepts is left alone, otherwise the key is renewed and stored. |
+| `wazuh` | Per tenant manager (reported as `wazuh/<code>`): rules `oidc_<adminRole>`, `oidc_<analystRole>` and `oidc_<g>` (dashes as underscores) mapping the backend roles to `adminApiRole`, `analystApiRole` and `tenantApiRole` | Created, condition corrected, linked to the existing API role. The whole manager belongs to the tenant: no per-tenant policies, roles or agent groups. |
+| `wazuhcentral` | Persistent `cluster.remote.<alias>.seeds` on the central indexer | Created or corrected; remotes not in the config are reported as `skip` and left in place. |
+| | `dashboardConfigSecret` (`wazuh.yml`) | Rendered from every manager's URL and API credentials; created or updated when it differs. Not written while any manager's credentials are unreadable. |
+| | `indexPatterns` on the central dashboard (`dashboardURL`), e.g. `*:wazuh-alerts-*` for cross-cluster search | Created (server-chosen id) when no saved index pattern has that exact title; existing patterns are never modified. Reported as kind `index-pattern`. |
+| | The dashboard's `defaultIndex` (kind `default-index`) | Set to the pattern marked `default` only when unset or pointing to a pattern that no longer exists; a valid existing default is left alone. |
+| `velociraptor` | One org per tenant (name = tenant name) | Created if missing; a duplicate name is an error. |
+| | Keys `velociraptor-client.config.yaml` and `install-velociraptor.txt` in each enrolment bundle (reported as kind `bundle`) | The tenant org's client config as the server renders it (`orgs()` column `_client_config`, the same YAML as `velociraptor config client --org <id>`: server URLs, CA, the org nonce) and a short install hint for the matching release binary. Read after the orgs step, so a new org's config lands in the same run; a dry run reports a not-yet-created org as `create`. Created or updated when either key differs; other bundle keys kept. Needs the `enrolment` entry and `components.velociraptor`. |
+| | Server monitoring table entries | Added, or their listed parameters set; unlisted parameters of that artifact are kept; other artifacts are never removed. |
+
+Client fields and how drift is handled:
+
+- Always compared: `publicClient`, `standardFlowEnabled`, `directAccessGrantsEnabled`,
+  `serviceAccountsEnabled`.
+- Compared when set: `name`, `description`, `rootUrl`, `baseUrl`, `fullScopeAllowed`,
+  the listed `attributes` keys, the listed protocol-mapper config keys.
+- Supersets (missing entries added, extra entries never removed): `redirectUris`,
+  `webOrigins`, `postLogoutRedirectUris` (the `post.logout.redirect.uris` attribute),
+  `defaultClientScopes`, scope mappings, service-account roles.
+- Secret: when `secretRef` is set Keycloak is made to match the Kubernetes Secret
+  the application reads. The values are compared, never printed.
+
+## What it never touches
+
+- Human users anywhere: Keycloak users and their group/role memberships, IRIS users
+  (owned by the dfir-iris `keycloakSync` CronJob), Velociraptor users and org grants
+  (owned by the `Custom.Server.KeycloakSync` server artifact).
+- Keycloak `default-roles-*`, built-in clients and flows (the `browser` flow is
+  copied, never edited), client scopes, and anything not named in the config.
+- Deletion of any kind. Removing a tenant from the config leaves its objects in
+  place; clean them up by hand.
+- Wazuh agents, users, roles and policies; the central indexer's remotes not in the
+  config; dashboard saved objects other than missing listed index patterns (and
+  `defaultIndex` when it is unset or dangling); Velociraptor artifacts other than
+  the ones listed under `serverMonitoring`.
+
+## Dry-run semantics
+
+`--dry-run` is the default. In dry-run mode the reconciler only issues reads
+(Kubernetes `get`, HTTP `GET`, read-only VQL) and reports what an apply would do:
+
+- `create` / `update` lines mark drift; `ok` means no change; `skip` means the
+  object is out of reach (e.g. an IRIS service account that does not exist);
+  `error` means it could not be read or reconciled.
+- Objects that depend on something the run would create first (a client in a
+  realm that does not exist yet, a role mapping for a role not yet created) are
+  reported as `create`/`update` without further checks.
+- The `browser-mfa` plan is computed on an in-memory copy of the flow, so the dry
+  run reports the same requirement changes, reorder and bind an apply would make,
+  and fails verification the same way.
+
+The last line is `N changes, M errors (...)`. Exit code 0 means no errors (drift
+is allowed); 1 means at least one object failed or the config is invalid. With
+`--exit-zero` object errors are still printed (plus a warning on stderr) but the
+exit code is 0; an invalid config or flag still exits 1.
+
+`--exit-zero` is meant for the Argo CD Sync hook: on a first install some
+components are not up yet (e.g. a Wazuh manager still starting), and a failing
+hook would block the sync that brings them up. The CronJob keeps the strict
+default, so persistent errors still show as failed Jobs.
+
+## Configuration
+
+The input schema is documented in
+[`pkg/siem/config/README.md`](../pkg/siem/config/README.md), with a full example in
+[`pkg/siem/config/testdata/tenants.example.json`](../pkg/siem/config/testdata/tenants.example.json).
+It contains Secret references only. Unknown fields are rejected.
+
+Flags:
+
+| Flag | Default | |
+|---|---|---|
+| `--config` | `/etc/siem/tenants.json` | Input file. |
+| `--dry-run` | `true` | Report only. `--dry-run=false` applies. |
+| `--only` | all | Comma-separated: `secrets,enrolment,keycloak,iris,wazuh,wazuhcentral,velociraptor`. `wazuh` selects every manager; `secrets` includes `secretCopies`. |
+| `--kubeconfig`, `--context` | in-cluster | Outside a cluster the default kubeconfig rules apply. |
+| `--timeout` | `5m` | Whole run. |
+| `--exit-zero` | `false` | Exit 0 even when objects could not be reconciled; errors are still reported. |
+
+`siem-reconciler publish-api-client --file <api_client.yaml> [--namespace ns]
+[--name velociraptor-api-client] [--key api_client.yaml]` validates a Velociraptor
+api_client config and stores it in a Secret. The Velociraptor chart runs it in an
+initContainer after `velociraptor config api_client` so the reconciler always has
+a current client certificate. This subcommand writes; it has no dry-run.
+
+## RBAC
+
+The Job's ServiceAccount needs:
+
+- `get` on the Secrets named in the config (Keycloak admin, client secrets, IRIS
+  API key, each manager's Wazuh API credentials and authd password, the indexer
+  credentials, Velociraptor api_client, copy sources). Scope it with
+  `resourceNames`; Secrets outside the release namespace (Keycloak, the tenant
+  `wazuh-<code>` namespaces) need a Role + RoleBinding in each namespace.
+- `create` on Secrets and `update` on the Secrets it writes (generated Secrets,
+  copy targets, enrolment bundles, the dashboard config) in every namespace they
+  live in. `create` cannot be limited by `resourceNames`.
+- For `publish-api-client`: `get`, `create`, `update` on the api_client Secret.
+
+API-side permissions: Keycloak master-realm admin; an IRIS API key of a
+server administrator; per manager a Wazuh API user allowed to manage security
+(`wazuh-wui`); an indexer user allowed to update cluster settings (and, with
+`indexPatterns`, to write saved objects and advanced settings in the dashboard's
+global tenant);
+a Velociraptor api_client with the `administrator` role (needs `ORG_ADMIN` for
+`org_create` and for `orgs()` to list every org with its client config, and
+`COLLECT_SERVER` for `add_server_monitoring`).
+
+## Velociraptor gRPC without generated code
+
+Velociraptor is AGPL-3.0 licensed, so this repository does not vendor its
+`.proto` files or generated stubs. `pkg/siem/velociraptor` calls the
+`proto.API/Query` streaming RPC with a raw gRPC codec and encodes the handful of
+`VQLCollectorArgs` / `VQLResponse` fields it needs with `protowire`; the field
+numbers are listed in `wire.go`. Everything else (orgs, org client configs, monitoring table) is
+done in VQL (`orgs()`, `org_create()`, `get_server_monitoring()`,
+`add_server_monitoring()`), with inputs passed as VQL environment variables rather
+than spliced into the query text. No `protoc` step is needed.
+
+## Running it by hand
+
+From a machine that reaches the component APIs (port-forwards where needed):
+
+```sh
+make build-siem-reconciler
+kubectl -n wazuh-<code> port-forward svc/wazuh 55000:55000 &
+./build/siem-reconciler --config tenants.json --context <kube-context> \
+  --only secrets,enrolment,keycloak,iris,wazuh
+```
+
+Keep the default dry run until the plan reads right, then rerun with
+`--dry-run=false`.
+
+## Build and image
+
+- `make build-siem-reconciler` builds `./build/siem-reconciler`.
+- `make docker-siem-reconciler` builds `ghcr.io/obmondo/siem-reconciler:<version>`
+  locally from `cmd/siem-reconciler/Dockerfile` (distroless static, nonroot).
+- Releases build `siem-reconciler_<Os>_<arch>` assets. The image entries in
+  `.goreleaser-github.yaml` have `skip_push: true` until the release workflow
+  logs in to ghcr.io.
