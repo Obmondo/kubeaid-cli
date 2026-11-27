@@ -36,6 +36,13 @@ cilium:
   extraArgs:
     - "--devices=vswitch+,eth+,enp+,eno+"
   {{- end }}
+
+  {{- /* Every node must name its VSwitch VLAN interface identically, or Cilium
+       picks a different node IP per node and the tunnel breaks in one direction. */ -}}
+  {{- if and .HetznerConfig .HetznerConfig.BareMetal .HetznerConfig.BareMetal.VSwitch }}
+  nodePort:
+    directRoutingDevice: vswitch.{{ .HetznerConfig.BareMetal.VSwitch.VLANID }}
+  {{- end }}
 {{- end }}
 {{- if and .HetznerBareMetalFirewallEnabled .HetznerConfig .HetznerConfig.BareMetal }}
 hostNetworkPolicy:

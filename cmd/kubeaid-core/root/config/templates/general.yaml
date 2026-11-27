@@ -338,6 +338,7 @@ cloud:
       wipeDisks: false
       installImage:
         imagePath: /root/.oldroot/nfs/images/Ubuntu-2604-resolute-amd64-base.tar.zst
+        firmware: efi
         vg0:
           size: 80
           rootVolumeSize: 50
