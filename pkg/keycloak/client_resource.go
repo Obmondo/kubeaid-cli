@@ -215,3 +215,51 @@ func (r *Reconciler) EnsureClientDeviceAuthorizationGrant(
 	}
 	return nil
 }
+
+// EnsureClientRedirectURIs adds any of uris missing from the named
+// client's Valid Redirect URIs. Existing entries, including ones an
+// operator added by hand, are kept. Idempotent — no-op when every
+// URI is already present.
+//
+// ReconcileClient only creates missing clients, so this is how a
+// redirect URI added to a ClientSpec reaches clients that already
+// exist.
+func (r *Reconciler) EnsureClientRedirectURIs(
+	ctx context.Context, realm, clientID string, uris []string,
+) error {
+	clients, err := r.api.GetClients(ctx, r.token, realm, gocloak.GetClientsParams{
+		ClientID: gocloak.StringP(clientID),
+	})
+	if err != nil {
+		return fmt.Errorf("listing clients in realm %q: %w", realm, err)
+	}
+	client := findClientByClientID(clients, clientID)
+	if client == nil {
+		return fmt.Errorf("client %q not found in realm %q", clientID, realm)
+	}
+
+	var current []string
+	if client.RedirectURIs != nil {
+		current = *client.RedirectURIs
+	}
+	have := stringSet(&current)
+	merged := append([]string(nil), current...)
+	for _, uri := range uris {
+		if have[uri] {
+			continue
+		}
+		have[uri] = true
+		merged = append(merged, uri)
+	}
+	if len(merged) == len(current) {
+		return nil
+	}
+
+	// Send the existing client back with only RedirectURIs changed,
+	// so every other setting is preserved on PUT.
+	client.RedirectURIs = &merged
+	if err := r.api.UpdateClient(ctx, r.token, realm, *client); err != nil {
+		return fmt.Errorf("updating redirect URIs on client %q: %w", clientID, err)
+	}
+	return nil
+}

@@ -141,6 +141,39 @@ func TestEnsureClientDeviceAuthorizationGrant(t *testing.T) {
 	assert.Equal(t, preWrites+1, fake.writeCount, "second call is a no-op")
 }
 
+// TestEnsureClientRedirectURIs exercises the retro-fit path for an
+// existing client: missing URIs are appended, URIs already on the
+// client (including hand-added ones) are kept, and a second run is a
+// no-op.
+func TestEnsureClientRedirectURIs(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	seedRealm(t, r, fake)
+
+	_, err := r.ReconcileClient(context.Background(), testRealm, ClientSpec{
+		ClientID:            "netbird-client",
+		PublicClient:        true,
+		StandardFlowEnabled: true,
+		RedirectURIs:        []string{"https://nb.acme.com/*", "https://manual.acme.com/*"},
+	})
+	require.NoError(t, err)
+	preWrites := fake.writeCount
+
+	want := []string{"https://nb.acme.com/*", "http://localhost:53000"}
+	require.NoError(t, r.EnsureClientRedirectURIs(context.Background(), testRealm, "netbird-client", want))
+
+	client := findClientInFake(t, fake, "netbird-client")
+	require.NotNil(t, client.RedirectURIs)
+	assert.Equal(t,
+		[]string{"https://nb.acme.com/*", "https://manual.acme.com/*", "http://localhost:53000"},
+		*client.RedirectURIs)
+	assert.Equal(t, preWrites+1, fake.writeCount, "exactly one update write")
+
+	require.NoError(t, r.EnsureClientRedirectURIs(context.Background(), testRealm, "netbird-client", want))
+	assert.Equal(t, preWrites+1, fake.writeCount, "second call is a no-op")
+}
+
 // findClientInFake fetches a stored client by clientId out of the
 // fake. Inlined helper because the existing tests cared about
 // write-count side effects, not the stored representation.

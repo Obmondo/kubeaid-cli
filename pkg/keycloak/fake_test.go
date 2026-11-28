@@ -269,8 +269,9 @@ func (f *fakeKeycloak) handleClientByID(w http.ResponseWriter, r *http.Request, 
 // matching Keycloak's UpdateClient semantics). The PUT path here
 // patches the stored Client with only the fields the body provides
 // — gocloak omits nil pointers via omitempty, so unset fields
-// preserve their prior value, which is what the production caller
-// (EnsureClientDeviceAuthorizationGrant) relies on.
+// preserve their prior value, which is what the production callers
+// (EnsureClientDeviceAuthorizationGrant, EnsureClientRedirectURIs)
+// rely on.
 func (f *fakeKeycloak) handleClientBare(w http.ResponseWriter, r *http.Request, realm, clientInternalID string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -291,6 +292,9 @@ func (f *fakeKeycloak) handleClientBare(w http.ResponseWriter, r *http.Request, 
 		}
 		if update.Attributes != nil {
 			c.Attributes = update.Attributes
+		}
+		if update.RedirectURIs != nil {
+			c.RedirectURIs = update.RedirectURIs
 		}
 		f.noteWrite()
 		w.WriteHeader(http.StatusNoContent)

@@ -111,10 +111,10 @@ netbird:
             "Audience": "{{`{{ .IDP_CLIENT_ID }}`}}",
             "TokenEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/token",
             "DeviceAuthEndpoint": "",
-            "AuthorizationEndpoint": "",
+            "AuthorizationEndpoint": "https://{{ .ClusterConfig.Keycloak.DNS }}/auth/realms/{{ .ClusterConfig.Keycloak.Realm }}/protocol/openid-connect/auth",
             "Scope": "openid profile email offline_access api",
             "UseIDToken": false,
-            "RedirectURLs": null
+            "RedirectURLs": ["http://localhost:53000"]
           }
         },
         "StoreConfig": {
