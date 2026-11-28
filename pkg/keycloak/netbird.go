@@ -78,6 +78,12 @@ const netBirdGroupsMapperName = "groups"
 // invalid JWT token audience field".
 const netBirdClientID = "netbird-client"
 
+// netBirdPKCERedirectURI is the localhost callback the NetBird mobile
+// and desktop apps listen on during the PKCE login flow. It must match
+// PKCEAuthorizationFlow.ProviderConfig.RedirectURLs in
+// values-netbird.yaml.tmpl; Keycloak rejects the login otherwise.
+const netBirdPKCERedirectURI = "http://localhost:53000"
+
 // netBirdAudienceMapperName is the human-readable name of the
 // audience ProtocolMapper attached to the api ClientScope.
 const netBirdAudienceMapperName = "Audience for NetBird Management API"
@@ -121,14 +127,18 @@ func (r *Reconciler) ReconcileNetBird(ctx context.Context, spec NetBirdSpec) err
 
 	netBirdBackendID := "netbird-backend"
 
+	netBirdRedirectURIs := []string{spec.NetBirdMgmtURL + "/*", netBirdPKCERedirectURI}
 	if _, err := r.ReconcileClient(ctx, spec.Realm, ClientSpec{
 		ClientID:                        netBirdClientID,
 		PublicClient:                    true,
 		StandardFlowEnabled:             true,
 		DeviceAuthorizationGrantEnabled: true,
-		RedirectURIs:                    []string{spec.NetBirdMgmtURL + "/*"},
+		RedirectURIs:                    netBirdRedirectURIs,
 		WebOrigins:                      []string{spec.NetBirdMgmtURL},
 	}); err != nil {
+		return err
+	}
+	if err := r.EnsureClientRedirectURIs(ctx, spec.Realm, netBirdClientID, netBirdRedirectURIs); err != nil {
 		return err
 	}
 	// Idempotent retro-fit for clusters where netbird-client already

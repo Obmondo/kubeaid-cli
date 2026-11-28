@@ -88,6 +88,39 @@ func TestReconcileNetBird_HappyPathAndIdempotent(t *testing.T) {
 		"second ReconcileNetBird must not write anything new")
 }
 
+// TestReconcileNetBird_PKCERedirectURI checks that netbird-client
+// allows the localhost callback the NetBird mobile and desktop apps
+// use for PKCE login, next to the dashboard redirect.
+func TestReconcileNetBird_PKCERedirectURI(t *testing.T) {
+	t.Parallel()
+
+	r, fake := newTestReconciler(t)
+	require.NoError(t, r.ReconcileRealm(context.Background(), "acme"))
+	_, err := r.ReconcileClient(context.Background(), "acme", ClientSpec{
+		ClientID:     realmManagementClientID,
+		PublicClient: false,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, r.ReconcileNetBird(context.Background(), NetBirdSpec{
+		Realm:                "acme",
+		NetBirdMgmtURL:       "https://nb.acme.com",
+		NetBirdBackendSecret: "secret",
+	}))
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	for _, c := range fake.clients["acme"] {
+		if c.ClientID == nil || *c.ClientID != netBirdClientID {
+			continue
+		}
+		require.NotNil(t, c.RedirectURIs)
+		assert.ElementsMatch(t, []string{"https://nb.acme.com/*", netBirdPKCERedirectURI}, *c.RedirectURIs)
+		return
+	}
+	t.Fatalf("client %q not found", netBirdClientID)
+}
+
 // TestReconcileNetBird_GroupsScopeAndMapper guards the JWT Group
 // Sync wiring NetBird's Dashboard toggle ("Settings → Groups →
 // Enable JWT Group Sync") expects to find pre-baked in Keycloak:
